@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light palette (defaults) */
+    --c-surface: 250 251 249;        /* #FAFBF9 */
+    --c-surface-raised: 255 255 255; /* #FFFFFF */
+    --c-surface-sunken: 241 244 240; /* #F1F4F0 */
+    --c-ink: 15 26 20;               /* #0F1A14 */
+    --c-ink-muted: 94 107 98;        /* #5E6B62 */
+    --c-ink-subtle: 138 150 143;     /* #8A968F */
+
+    --bg-gradient-top: #F1FAF5;
+    --bg-gradient-bottom: #FAFBF9;
+
+    /* Fallback Telegram theme vars */
+    --tg-theme-bg-color: #FAFBF9;
+    --tg-theme-text-color: #0F1A14;
+    --tg-theme-hint-color: #8A968F;
+    --tg-theme-link-color: #3CA37B;
+    --tg-theme-button-color: #3CA37B;
+    --tg-theme-button-text-color: #FFFFFF;
+    --tg-theme-secondary-bg-color: #F1F4F0;
+
+    /* Safe area for iOS notches */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --c-surface: 15 26 20;           /* #0F1A14 */
+    --c-surface-raised: 26 38 32;    /* #1A2620 */
+    --c-surface-sunken: 36 48 41;    /* #243029 */
+    --c-ink: 232 240 235;            /* #E8F0EB */
+    --c-ink-muted: 168 181 174;      /* #A8B5AE */
+    --c-ink-subtle: 124 138 130;     /* ~ */
+
+    --bg-gradient-top: #0F1A14;
+    --bg-gradient-bottom: #0B1410;
+
+    color-scheme: dark;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(180deg, var(--bg-gradient-top) 0%, var(--bg-gradient-bottom) 30%);
+    color: rgb(var(--c-ink));
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+    user-select: none;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  /* Better numeric alignment for amounts */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Hide scrollbars but keep functionality */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Disable text selection on UI chrome */
+  button, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input, textarea {
+    user-select: text;
+  }
+}
+
+@layer components {
+  .pill {
+    @apply inline-flex items-center rounded-full px-4 py-2 font-semibold;
+  }
+
+  .card {
+    @apply bg-surface-raised rounded-3xl shadow-soft dark:shadow-soft-dark;
+  }
+
+  .fab {
+    @apply w-16 h-16 rounded-full flex items-center justify-center shadow-fab
+           active:scale-95 transition-transform duration-150;
+  }
+}
