@@ -1,4 +1,4 @@
-# 💚 Кошель — Telegram Mini App для финансов
+#  Кошель — Telegram Mini App для финансов
 
 Стартер для Telegram Mini App в стиле **Monefy**: учёт доходов/расходов,
 аналитика, графики. Готов к запуску локально и деплою на Vercel.
@@ -7,13 +7,13 @@
 
 ## Что внутри
 
-- ⚛️ React 18 + TypeScript + Vite
-- 🎨 Tailwind CSS с готовой Monefy-палитрой
-- 🗄️ Zustand store + localStorage (persist)
-- 📊 Кастомный донат-чарт + бары на SVG
-- ✨ Анимации через framer-motion
-- 📱 Интеграция с Telegram WebApp: тема, haptic feedback, MainButton
-- 💾 Демо-данные одной кнопкой
+-  React 18 + TypeScript + Vite
+-  Tailwind CSS с готовой Monefy-палитрой
+-  Zustand store + localStorage (persist)
+-  Кастомный донат-чарт + бары на SVG
+-  Анимации через framer-motion
+-  Интеграция с Telegram WebApp: тема, haptic feedback, MainButton
+-  Демо-данные одной кнопкой
 
 ## Быстрый старт
 
@@ -128,4 +128,4 @@ Telegram передаёт `colorScheme` и `themeParams`. Сейчас прил�
 
 ---
 
-Сделано с 💚 для Telegram. Кастомизируй смело — это твой стартер.
+Сделано с любовью для Telegram. Кастомизируй смело.
