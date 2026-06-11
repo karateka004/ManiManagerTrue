@@ -1,6 +1,6 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { Plus, BookOpen } from 'lucide-react'
+import { Plus, BookOpen, ChevronLeft } from 'lucide-react'
 import { useStore, selectCategoriesByKind, selectAllCategories } from '../store/transactions'
 import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
@@ -45,7 +45,7 @@ function CurrencyTile({
   )
 }
 
-export function SettingsPage() {
+export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const t = useT()
   const lang = useStore((s) => s.lang)
   const setLang = useStore((s) => s.setLang)
@@ -98,9 +98,20 @@ export function SettingsPage() {
 
   return (
     <div className="pb-24">
-      <div className="px-6 pt-6 pb-2">
-        <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('settings.kicker')}</div>
-        <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('settings.title')}</div>
+      <div className="flex items-center gap-2 px-4 pt-6 pb-2">
+        {onBack && (
+          <button
+            onClick={() => { hapticTap(); onBack() }}
+            aria-label={t('common.back')}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken/60 text-ink-muted active:scale-95"
+          >
+            <ChevronLeft size={22} strokeWidth={2.2} />
+          </button>
+        )}
+        <div className="px-2">
+          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('settings.kicker')}</div>
+          <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('settings.title')}</div>
+        </div>
       </div>
 
       {/* Guide */}

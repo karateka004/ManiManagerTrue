@@ -31,6 +31,8 @@ const DICT: Dict = {
   'nav.charts': { ru: 'Графики', en: 'Charts' },
   'nav.settings': { ru: 'Настройки', en: 'Settings' },
   'nav.profile': { ru: 'Профиль', en: 'Profile' },
+  'nav.rewards': { ru: 'Награды', en: 'Rewards' },
+  'rewards.kicker': { ru: 'Прогресс и награды', en: 'Progress & rewards' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },
@@ -44,6 +46,7 @@ const DICT: Dict = {
   'common.edit': { ru: 'Изменить', en: 'Edit' },
   'common.close': { ru: 'Закрыть', en: 'Close' },
   'common.done': { ru: 'Готово', en: 'Done' },
+  'common.back': { ru: 'Назад', en: 'Back' },
   'common.all_time': { ru: 'За всё время', en: 'All time' },
 
   /* Настройки */

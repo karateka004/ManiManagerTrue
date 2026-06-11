@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { Flame, Check, Sparkles } from 'lucide-react'
+import { BottomSheet } from './ui/BottomSheet'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
@@ -44,59 +45,35 @@ export function RoadpassSheet({ open, onClose }: Props) {
   const t = useT()
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm"
-          />
-          <m.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-x-0 bottom-0 z-[80] max-h-[94vh] overflow-y-auto rounded-t-5xl bg-surface-raised shadow-raised"
-            style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }}
-          >
-            <div className="flex justify-center pb-1 pt-3">
-              <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
-            </div>
+    <BottomSheet open={open} onClose={onClose}>
+      <div className="flex items-center justify-between px-6 py-2">
+        <span className="text-base font-bold text-ink">{t('profile.achievements')}</span>
+        <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[12px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+          🪙 {coins.toLocaleString('ru-RU')}
+        </span>
+      </div>
 
-            <div className="flex items-center justify-between px-6 py-2">
-              <span className="text-base font-bold text-ink">{t('profile.achievements')}</span>
-              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[12px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-                🪙 {coins.toLocaleString('ru-RU')}
-              </span>
-            </div>
+      <p className="px-6 pb-1 text-[12px] leading-relaxed text-ink-subtle">
+        {t('roadpass.intro')}
+      </p>
 
-            <p className="px-6 pb-1 text-[12px] leading-relaxed text-ink-subtle">
-              {t('roadpass.intro')}
-            </p>
+      <StreakCard />
 
-            <StreakCard />
+      <RewardSection kind="accent" />
+      <RewardSection kind="title" />
+      <RewardSection kind="frame" />
 
-            <RewardSection kind="accent" />
-            <RewardSection kind="title" />
-            <RewardSection kind="frame" />
+      <div className="px-6 pb-2 pt-4 text-center text-[11px] text-ink-subtle">
+        {t('roadpass.owned_count', { n: REWARDS.filter((r) => owned.includes(r.id)).length, total: REWARDS.length })}
+      </div>
 
-            <div className="px-6 pb-2 pt-4 text-center text-[11px] text-ink-subtle">
-              {t('roadpass.owned_count', { n: REWARDS.filter((r) => owned.includes(r.id)).length, total: REWARDS.length })}
-            </div>
-
-            <button
-              onClick={() => { hapticSelect(); onClose() }}
-              className="mx-4 mt-1 w-[calc(100%-2rem)] rounded-full bg-surface-sunken py-3 text-sm font-bold text-ink-muted active:scale-[0.99]"
-            >
-              {t('common.done')}
-            </button>
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>
+      <button
+        onClick={() => { hapticSelect(); onClose() }}
+        className="mx-4 mt-1 w-[calc(100%-2rem)] rounded-full bg-surface-sunken py-3 text-sm font-bold text-ink-muted active:scale-[0.99]"
+      >
+        {t('common.done')}
+      </button>
+    </BottomSheet>
   )
 }
 

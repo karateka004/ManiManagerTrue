@@ -1,0 +1,208 @@
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { m } from 'framer-motion'
+import { Trophy, Medal, Hourglass } from 'lucide-react'
+import {
+  useStore,
+  selectCategoriesUsed,
+  selectLogDayStreak,
+  selectGoalsReached,
+  selectBudgetMonthKept,
+} from '../store/transactions'
+import { tg, hapticNotify } from '../lib/telegram'
+import { getReferralStats, submitProfile, isBackendConfigured, type ReferralFriend } from '../lib/api'
+import { useLevel } from '../components/LevelBar'
+import { LEVELS } from '../lib/levels'
+import { allQuestProgress, type QuestProgress } from '../lib/quests'
+import { useT } from '../lib/i18n'
+import { Tile } from '../components/ui/Tile'
+import { QuestCard } from '../components/rewards/QuestCard'
+import { ReferralBlock } from '../components/rewards/ReferralBlock'
+
+// Шторки геймификации — отдельными чанками, грузятся по первому открытию.
+const RoadpassSheet = lazy(() => import('../components/RoadpassSheet').then((m) => ({ default: m.RoadpassSheet })))
+const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
+
+/** Вкладка «Награды» — хаб геймификации: уровень/XP, задания, достижения, лидеры, рефералы. */
+export function RewardsPage() {
+  const t = useT()
+  const transactions = useStore((s) => s.transactions)
+  const coins = useStore((s) => s.coins)
+  const claimedQuests = useStore((s) => s.claimedQuests)
+  const questClaims = useStore((s) => s.questClaims)
+  const events = useStore((s) => s.events)
+  const claimQuest = useStore((s) => s.claimQuest)
+  const track = useStore((s) => s.track)
+  const streak = useStore((s) => s.streak)
+  // Метрики финансовых заданий (по реальным данным).
+  const categoriesUsed = useStore(selectCategoriesUsed)
+  const logDays = useStore(selectLogDayStreak)
+  const goalsReached = useStore(selectGoalsReached)
+  const budgetMonth = useStore(selectBudgetMonthKept)
+  const lvl = useLevel()
+
+  const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
+  const [roadpassOpen, setRoadpassOpen] = useState(false)
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const seenRoadpass = useRef(false)
+  const seenLeaderboard = useRef(false)
+  if (roadpassOpen) seenRoadpass.current = true
+  if (leaderboardOpen) seenLeaderboard.current = true
+
+  // Тик раз в минуту — двигает таймеры разблокировки заданий без перезагрузки.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    if (!isBackendConfigured()) return
+    let alive = true
+    getReferralStats()
+      .then((r) => { if (alive && r.ok) setReferral({ count: r.referrals, friends: r.friends ?? [] }) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // Закрепляем статистику участника в таблице лидеров (только геймификация, без сумм).
+  useEffect(() => {
+    if (!isBackendConfigured() || !tg.isInTelegram) return
+    submitProfile({ xp: lvl.xp, level: lvl.level, ops: transactions.length, coins, streakBest: streak.best }).catch(() => {})
+  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best])
+
+  const metrics = {
+    transactions: transactions.length,
+    referrals: referral?.count ?? 0,
+    streak: streak.best,
+    events,
+    categories: categoriesUsed,
+    logDays,
+    goalsReached,
+    budgetMonth,
+  }
+  const quests = allQuestProgress(metrics, claimedQuests, questClaims, now)
+  const claimable = quests.filter((q) => q.claimable).length
+
+  const onClaim = (q: QuestProgress) => {
+    if (!q.claimable) return
+    hapticNotify('success')
+    claimQuest(q.def.id, q.def.xp, q.def.coins)
+  }
+
+  const openRoadpass = () => { track('open_achievements'); setRoadpassOpen(true) }
+  const openLeaderboard = () => { track('open_leaderboard'); setLeaderboardOpen(true) }
+
+  return (
+    <div className="pb-24">
+      <div className="px-6 pt-6 pb-1">
+        <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('rewards.kicker')}</div>
+        <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('nav.rewards')}</div>
+      </div>
+
+      {/* Level hero */}
+      <div className="mx-4 mt-3 overflow-hidden rounded-4xl bg-gradient-to-br from-brand-500 to-brand-700 p-5 text-white shadow-soft">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-2xl">
+              {lvl.badge}
+            </span>
+            <div className="leading-tight">
+              <div className="text-lg font-extrabold">{t('level.t' + lvl.level)}</div>
+              <div className="text-[11px] text-white/70">{t('profile.level', { level: lvl.level, max: LEVELS.length })}</div>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-extrabold tabular">{lvl.xp.toLocaleString('ru-RU')}</span>
+              <span className="text-[10px] text-white/70">XP</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold tabular">
+                🪙 {coins.toLocaleString('ru-RU')}
+              </span>
+              {streak.count > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold tabular">
+                  🔥 {streak.count}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/20">
+          <m.div
+            className="h-full rounded-full bg-white"
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.round(lvl.ratio * 100)}%` }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </div>
+        <div className="mt-1.5 text-[11px] text-white/80">
+          {lvl.isMax
+            ? t('profile.max_level')
+            : t('profile.xp_progress', { into: lvl.xpIntoLevel, need: lvl.xpForLevel, toNext: lvl.toNext })}
+        </div>
+      </div>
+
+      {/* Бенто-плитки */}
+      <div className="mx-4 mt-3 grid grid-cols-2 gap-3">
+        <Tile
+          icon={<Trophy size={24} strokeWidth={2} />}
+          title={t('profile.achievements')}
+          subtitle={t('profile.achievements_hint')}
+          accent="amber"
+          badge={
+            <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+              🪙 {coins.toLocaleString('ru-RU')}
+            </span>
+          }
+          onClick={openRoadpass}
+        />
+        <Tile
+          icon={<Medal size={24} strokeWidth={2} />}
+          title={t('profile.leaderboard')}
+          subtitle={t('profile.leaderboard_hint')}
+          accent="yellow"
+          badge={
+            <span className="rounded-full bg-yellow-100 px-2 py-1 text-[11px] font-bold text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-300">
+              {lvl.badge}
+            </span>
+          }
+          onClick={openLeaderboard}
+        />
+      </div>
+
+      {/* Задания */}
+      <div className="mx-4 mt-5">
+        <div className="mb-2 flex items-center justify-between px-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('profile.quests')}</span>
+          {claimable > 0 && (
+            <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300">
+              {t('profile.claimable', { n: claimable })}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          {quests.length === 0 ? (
+            <div className="card flex items-center gap-3 p-4 text-[12px] text-ink-subtle">
+              <Hourglass size={16} className="shrink-0 text-brand-500" />
+              {t('quest.empty')}
+            </div>
+          ) : (
+            quests.map((q) => (
+              <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} t={t} now={now} />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Рефералы */}
+      <ReferralBlock count={referral?.count ?? null} friends={referral?.friends ?? []} t={t} />
+
+      <Suspense fallback={null}>
+        {seenRoadpass.current && <RoadpassSheet open={roadpassOpen} onClose={() => setRoadpassOpen(false)} />}
+        {seenLeaderboard.current && <LeaderboardSheet open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />}
+      </Suspense>
+    </div>
+  )
+}

@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.14.0'
+export const APP_VERSION = '1.15.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.15.0',
+    date: '2026-06-11',
+    title: { ru: 'Новая вкладка «Награды» и свежий профиль', en: 'New Rewards tab & a fresh profile' },
+    items: [
+      {
+        icon: '🎁',
+        text: {
+          ru: 'Вся геймификация переехала в отдельную вкладку «Награды»: уровень, задания, достижения и рейтинг — крупными плитками',
+          en: 'All gamification moved to a dedicated Rewards tab: level, quests, achievements and ranking — as big tiles',
+        },
+      },
+      {
+        icon: '👤',
+        text: {
+          ru: 'Профиль стал чище — только вы и ваши финансы; настройки теперь под шестерёнкой в шапке',
+          en: 'Profile is cleaner now — just you and your finances; settings live under the gear in the header',
+        },
+      },
+      {
+        icon: '✨',
+        text: {
+          ru: 'Обновили внешний вид и ускорили загрузку',
+          en: 'Refreshed the look and made it load faster',
+        },
+      },
+    ],
+  },
   {
     version: '1.14.0',
     date: '2026-06-11',

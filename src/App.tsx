@@ -14,11 +14,13 @@ import { lazyRetry } from './lib/lazyRetry'
 // Импорты вынесены в функции, чтобы их же переиспользовать для префетча (прогрева).
 const importAnalytics = () => import('./pages/Analytics')
 const importCharts = () => import('./pages/Charts')
+const importRewards = () => import('./pages/Rewards')
 const importProfile = () => import('./pages/Profile')
 const importSettings = () => import('./pages/Settings')
 
 const AnalyticsPage = lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage })))
 const ChartsPage = lazyRetry(() => importCharts().then((m) => ({ default: m.ChartsPage })))
+const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage })))
 const ProfilePage = lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage })))
 const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage })))
 const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({ default: m.IntroOverlay })))
@@ -35,6 +37,7 @@ function usePrefetchTabs() {
       const swallow = () => {}
       importAnalytics().catch(swallow)
       importCharts().catch(swallow)
+      importRewards().catch(swallow)
       importProfile().catch(swallow)
       importSettings().catch(swallow)
     }
@@ -132,13 +135,20 @@ export default function App() {
             {tab === 'home' && <HomePage onOpenProfile={() => changeTab('profile')} />}
             {tab === 'analytics' && <AnalyticsPage />}
             {tab === 'charts' && <ChartsPage />}
-            {tab === 'profile' && <ProfilePage />}
-            {tab === 'settings' && <SettingsPage />}
+            {tab === 'rewards' && <RewardsPage />}
+            {tab === 'profile' && (
+              <ProfilePage
+                onOpenSettings={() => changeTab('settings')}
+                onOpenRewards={() => changeTab('rewards')}
+              />
+            )}
+            {tab === 'settings' && <SettingsPage onBack={() => changeTab('profile')} />}
           </Suspense>
         </ChunkErrorBoundary>
       </div>
 
-      <TabBar value={tab} onChange={changeTab} />
+      {/* На «Настройках» подсвечиваем Профиль (у настроек нет своей вкладки). */}
+      <TabBar value={tab === 'settings' ? 'profile' : tab} onChange={changeTab} />
 
       <Suspense fallback={null}>
         <IntroOverlay />
