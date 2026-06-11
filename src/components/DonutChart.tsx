@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { useStore, selectByCategory, selectTotals } from '../store/transactions'
+import { m } from 'framer-motion'
+import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
+import { useT, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 
 interface Props {
@@ -9,9 +10,11 @@ interface Props {
 }
 
 export function DonutChart({ kind }: Props) {
-  const categories = useStore((s) => selectByCategory(s, kind))
-  const totals = useStore(selectTotals)
-  const currency = useStore((s) => s.currency)
+  const categories = useStore((s) => selectByCategoryAccount(s, kind))
+  const totals = useStore(selectAccountTotals)
+  const currency = useStore(selectAnalyticsCurrency)
+  const t = useT()
+  const lang = useStore((s) => s.lang)
 
   const total = kind === 'income' ? totals.income : totals.expense
   const SIZE = 240
@@ -44,7 +47,7 @@ export function DonutChart({ kind }: Props) {
           />
           {/* Segments */}
           {segments.map((s, i) => (
-            <motion.circle
+            <m.circle
               key={s.categoryId}
               cx={SIZE / 2}
               cy={SIZE / 2}
@@ -66,10 +69,10 @@ export function DonutChart({ kind }: Props) {
         {/* Center label */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">
-            {kind === 'income' ? 'Доходы' : 'Расходы'}
+            {kind === 'income' ? t('common.income') : t('common.expense')}
           </span>
           <span className="mt-1 text-display-md tabular text-ink">{formatMoney(total, currency)}</span>
-          <span className="mt-1 text-xs text-ink-muted">{categories.length} категорий</span>
+          <span className="mt-1 text-xs text-ink-muted">{categories.length} {categoriesWord(lang, categories.length)}</span>
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { tg, onThemeChange, syncTelegramChrome } from './telegram'
 import { useStore } from '../store/transactions'
+import { ACCENT_PALETTES } from './rewards'
 
 /**
  * Управляет атрибутом `.dark` на <html> в зависимости от themeMode:
@@ -53,4 +54,26 @@ export function useTheme() {
       mediaCleanup()
     }
   }, [mode])
+}
+
+/**
+ * Применяет надетую акцентную палитру: переопределяет CSS-переменные
+ * --brand-50..900 на <html>. Если выбран дефолт (мятный) или палитра не
+ * найдена — снимает оверрайды, и берутся значения по умолчанию из index.css.
+ */
+export function useAccent() {
+  const accent = useStore((s) => s.equipped.accent)
+
+  useEffect(() => {
+    const root = document.documentElement
+    const palette = ACCENT_PALETTES[accent]
+    const shades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900] as const
+
+    if (!palette || accent === 'accent_mint') {
+      // дефолт — убираем инлайновые оверрайды
+      for (const sh of shades) root.style.removeProperty(`--brand-${sh}`)
+      return
+    }
+    for (const sh of shades) root.style.setProperty(`--brand-${sh}`, palette[sh])
+  }, [accent])
 }

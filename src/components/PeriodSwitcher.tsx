@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore, periodLabel, type PeriodMode } from '../store/transactions'
 import { dayjs } from '../lib/format'
+import { useT, weekdaysShort } from '../lib/i18n'
 import { hapticSelect, hapticTap } from '../lib/telegram'
 
 const TABS: { id: PeriodMode; label: string }[] = [
-  { id: 'day', label: 'День' },
-  { id: 'week', label: 'Неделя' },
-  { id: 'month', label: 'Месяц' },
-  { id: 'year', label: 'Год' },
-  { id: 'range', label: 'Период' },
+  { id: 'day', label: 'period.day' },
+  { id: 'week', label: 'period.week' },
+  { id: 'month', label: 'period.month' },
+  { id: 'year', label: 'period.year' },
+  { id: 'range', label: 'period.custom' },
 ]
 
 export function PeriodSwitcher() {
@@ -18,6 +20,10 @@ export function PeriodSwitcher() {
   const shiftPeriod = useStore((s) => s.shiftPeriod)
   const setRange = useStore((s) => s.setRange)
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const tr = useT()
+
+  // Подпись периода: для «всё время» — из словаря, иначе дата из стора (dayjs локализован).
+  const label = period.mode === 'all' ? tr('common.all_time') : periodLabel(period)
 
   const arrows = period.mode !== 'all' && period.mode !== 'range'
   const isCurrent =
@@ -48,13 +54,13 @@ export function PeriodSwitcher() {
               }`}
             >
               {active && (
-                <motion.span
+                <m.span
                   layoutId="period-pill"
                   className="absolute inset-0 rounded-full bg-surface-raised shadow-soft dark:shadow-soft-dark"
                   transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                 />
               )}
-              <span className="relative z-10">{t.label}</span>
+              <span className="relative z-10">{tr(t.label)}</span>
             </button>
           )
         })}
@@ -70,7 +76,7 @@ export function PeriodSwitcher() {
           }}
           disabled={!arrows}
           className="flex h-8 w-8 items-center justify-center rounded-full text-ink-subtle transition-colors active:bg-surface-sunken disabled:opacity-0"
-          aria-label="Назад"
+          aria-label={tr('period.prev')}
         >
           <Chevron dir="left" />
         </button>
@@ -84,18 +90,18 @@ export function PeriodSwitcher() {
           }}
           className="min-w-0 flex-1 px-2"
         >
-          <motion.div
-            key={periodLabel(period)}
+          <m.div
+            key={label}
             initial={{ opacity: 0, y: -3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
             className="truncate text-center text-base font-bold capitalize tracking-tight text-ink"
           >
-            {periodLabel(period)}
+            {label}
             {(period.mode === 'range' || period.mode === 'all') && (
               <span className="ml-1 align-middle text-ink-subtle">⌄</span>
             )}
-          </motion.div>
+          </m.div>
         </button>
 
         <button
@@ -106,7 +112,7 @@ export function PeriodSwitcher() {
           }}
           disabled={!arrows || isCurrent}
           className="flex h-8 w-8 items-center justify-center rounded-full text-ink-subtle transition-colors active:bg-surface-sunken disabled:opacity-20"
-          aria-label="Вперёд"
+          aria-label={tr('period.next')}
         >
           <Chevron dir="right" />
         </button>
@@ -132,10 +138,10 @@ export function PeriodSwitcher() {
 }
 
 function Chevron({ dir }: { dir: 'left' | 'right' }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      {dir === 'left' ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}
-    </svg>
+  return dir === 'left' ? (
+    <ChevronLeft size={18} strokeWidth={2.5} />
+  ) : (
+    <ChevronRight size={18} strokeWidth={2.5} />
   )
 }
 
@@ -154,6 +160,8 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
   const [viewMonth, setViewMonth] = useState(() => dayjs(initialStart ?? undefined).startOf('month'))
   const [start, setStart] = useState<string | null>(initialStart ?? null)
   const [end, setEnd] = useState<string | null>(initialEnd ?? null)
+  const t = useT()
+  const lang = useStore((s) => s.lang)
 
   const reset = () => {
     setStart(null)
@@ -183,14 +191,14 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
           />
-          <motion.div
+          <m.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -203,9 +211,9 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
             </div>
 
             <div className="flex items-center justify-between px-6 py-2">
-              <span className="text-base font-bold text-ink">Выбор периода</span>
+              <span className="text-base font-bold text-ink">{t('period.pick')}</span>
               <button onClick={onClose} className="text-sm font-medium text-ink-subtle active:text-ink-muted">
-                Закрыть
+                {t('common.close')}
               </button>
             </div>
 
@@ -228,7 +236,7 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
 
             {/* Weekday header */}
             <div className="grid grid-cols-7 gap-1 px-4 pt-1 text-center text-[10px] font-bold uppercase text-ink-subtle">
-              {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => (
+              {weekdaysShort(lang).map((d) => (
                 <div key={d} className="py-1">{d}</div>
               ))}
             </div>
@@ -269,15 +277,15 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
                 {start && end
                   ? `${dayjs(start).format('D MMM')} – ${dayjs(end).format('D MMM')}`
                   : start
-                  ? `С ${dayjs(start).format('D MMM')} — выберите конец`
-                  : 'Выберите начало периода'}
+                  ? t('period.pick_end', { date: dayjs(start).format('D MMM') })
+                  : t('period.pick_start')}
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={onAllTime}
                   className="flex-1 rounded-full bg-surface-sunken py-3 text-sm font-bold text-ink-muted active:scale-[0.98]"
                 >
-                  За всё время
+                  {t('common.all_time')}
                 </button>
                 <button
                   onClick={() => {
@@ -289,17 +297,17 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
                     canApply ? '' : 'opacity-40'
                   }`}
                 >
-                  Применить
+                  {t('common.apply')}
                 </button>
               </div>
               <button
                 onClick={reset}
                 className="mt-2 w-full py-1 text-center text-xs text-ink-subtle active:text-ink-muted"
               >
-                Сбросить выбор
+                {t('period.reset')}
               </button>
             </div>
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>

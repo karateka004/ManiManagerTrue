@@ -1,0 +1,21 @@
+name = "koshel-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# Разрешённые источники (Origin) для CORS. Прод — твой GitHub Pages.
+# Для локальной разработки добавь http://localhost:5173 через запятую.
+[vars]
+ALLOWED_ORIGINS = "https://karateka004.github.io,http://localhost:5173"
+# Куда падают отзывы — твой numeric chat_id (@flagman_crypto, Святослав).
+# Это не секрет, поэтому хранится прямо тут.
+OWNER_CHAT_ID = "439944083"
+
+# KV для учёта рефералов. ID получишь командой:
+#   wrangler kv namespace create REFERRALS
+# и подставишь сюда.
+[[kv_namespaces]]
+binding = "REFERRALS"
+id = "ede4ce9e1e5c4e4eaff62f0d91e60857"
+
+# Токен бота НЕ хранится тут (это секрет). Выставляется один раз:
+#   wrangler secret put BOT_TOKEN

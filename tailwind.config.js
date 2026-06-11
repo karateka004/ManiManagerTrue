@@ -5,18 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand palette — soft mint/sage greens (одинаковая в обеих темах)
+        // Brand palette (акцент) — через CSS-переменные, чтобы менять акцент рантайм.
+        // Дефолт — мятно-зелёный (см. --brand-* в index.css).
         brand: {
-          50: '#F1FAF5',
-          100: '#DCF2E5',
-          200: '#B8E5CC',
-          300: '#8FD3AC',
-          400: '#5DB996',
-          500: '#3CA37B',
-          600: '#2D8866',
-          700: '#246E54',
-          800: '#1D5743',
-          900: '#143F30',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
+          800: 'rgb(var(--brand-800) / <alpha-value>)',
+          900: 'rgb(var(--brand-900) / <alpha-value>)',
         },
         expense: {
           DEFAULT: '#E97373',

@@ -37,7 +37,22 @@ interface TelegramWebApp {
     onClick: (cb: () => void) => void
     offClick: (cb: () => void) => void
   }
-  initDataUnsafe?: { user?: { id: number; first_name?: string; username?: string } }
+  /** Сырая подписанная строка для валидации на бэкенде. */
+  initData?: string
+  initDataUnsafe?: {
+    user?: {
+      id: number
+      first_name?: string
+      last_name?: string
+      username?: string
+      photo_url?: string
+      language_code?: string
+    }
+    /** Параметр из deep-link (?startapp=… или ?start=…). */
+    start_param?: string
+  }
+  openLink: (url: string, options?: { try_instant_view?: boolean }) => void
+  openTelegramLink: (url: string) => void
 }
 
 declare global {
@@ -68,6 +83,28 @@ export const tg = {
   get user() {
     return this.webApp?.initDataUnsafe?.user ?? null
   },
+  /** Сырая подписанная initData (для запросов к воркеру). */
+  get initData(): string {
+    return this.webApp?.initData ?? ''
+  },
+  /** start_param из deep-link (используется для рефералов). */
+  get startParam(): string | null {
+    return this.webApp?.initDataUnsafe?.start_param ?? null
+  },
+}
+
+/** Открыть внешнюю ссылку (вне Telegram — в новой вкладке). */
+export function openLink(url: string) {
+  const wa = tg.webApp
+  if (wa?.openLink) wa.openLink(url)
+  else window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+/** Открыть t.me / tg ссылку внутри Telegram. */
+export function openTelegramLink(url: string) {
+  const wa = tg.webApp
+  if (wa?.openTelegramLink) wa.openTelegramLink(url)
+  else window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 export function initTelegram() {

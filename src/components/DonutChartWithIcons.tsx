@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { useStore, selectByCategory, selectTotals } from '../store/transactions'
+import { m } from 'framer-motion'
+import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
+import { useT, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 import { CategoryIcon } from './icons/CategoryIcon'
 
@@ -18,9 +19,11 @@ interface Props {
  * Если процентов очень мало (<3%) — иконка всё равно отображается.
  */
 export function DonutChartWithIcons({ kind }: Props) {
-  const categories = useStore((s) => selectByCategory(s, kind))
-  const totals = useStore(selectTotals)
-  const currency = useStore((s) => s.currency)
+  const categories = useStore((s) => selectByCategoryAccount(s, kind))
+  const totals = useStore(selectAccountTotals)
+  const currency = useStore(selectAnalyticsCurrency)
+  const t = useT()
+  const lang = useStore((s) => s.lang)
 
   const total = kind === 'income' ? totals.income : totals.expense
 
@@ -29,8 +32,8 @@ export function DonutChartWithIcons({ kind }: Props) {
   const STROKE = 28
   const CHART_R = 96             // радиус центра кольца
   const RING_OUTER = CHART_R + STROKE / 2
-  const LEADER_END = CHART_R + STROKE / 2 + 6
-  const ICON_R = CHART_R + 56    // радиус, где живут иконки
+  const LEADER_END = CHART_R + STROKE / 2 + 4
+  const ICON_R = CHART_R + 44    // радиус, где живут иконки (ближе к кольцу)
   const ICON_SIZE = 34
 
   const cx = SIZE / 2
@@ -56,11 +59,72 @@ export function DonutChartWithIcons({ kind }: Props) {
     })
   }, [categories])
 
+  /**
+   * Антиколлизия иконок: у близких по размеру мелких долей (напр. 3% и 1%)
+   * середины сегментов почти совпадают, и иконки с процентами налезают друг
+   * на друга. Релаксацией разносим углы иконок так, чтобы между центрами было
+   * не меньше MIN градусов (с учётом замыкания круга на 12 часах). Сами
+   * сегменты и leader-линии остаются на реальной середине доли.
+   *
+   * MIN подобран от геометрии: на радиусе ICON_R дуга между центрами должна быть
+   * заметно больше диаметра кружка (34px) + ширины подписи процента. 22° дают
+   * ≈54px между центрами — комфортный зазор. Для большого числа категорий MIN
+   * ужимаем, чтобы суммарно влезть в круг.
+   */
+  const iconAnglesDeg = useMemo(() => {
+    const a = segments.map((s) => s.midAngleDeg)
+    const n = a.length
+    if (n < 2) return a
+    const MIN = Math.min(22, 340 / n)
+    for (let iter = 0; iter < 160; iter++) {
+      let moved = false
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        let gap = a[j] - a[i]
+        if (j === 0) gap += 360 // сосед через 12 часов
+        if (gap < MIN) {
+          const push = (MIN - gap) / 2
+          a[i] -= push
+          a[j] += push
+          moved = true
+        }
+      }
+      if (!moved) break
+    }
+    return a
+  }, [segments])
+
+  const iconAnglesRad = useMemo(
+    () => iconAnglesDeg.map((deg) => (deg * Math.PI) / 180),
+    [iconAnglesDeg],
+  )
+
+  /**
+   * Радиальная «ступенька»: даже после развода по углу плотный кластер мелких
+   * долей может оставаться тесным. Если у иконки сосед всё ещё ближе TIGHT
+   * градусов — выносим каждую вторую такую иконку на больший радиус, чтобы
+   * кружки с процентами гарантированно не пересекались.
+   */
+  const iconRadii = useMemo(() => {
+    const n = iconAnglesDeg.length
+    return iconAnglesDeg.map((d, i) => {
+      if (n < 2) return ICON_R
+      const prev = iconAnglesDeg[(i - 1 + n) % n]
+      const next = iconAnglesDeg[(i + 1) % n]
+      let gapPrev = Math.abs(d - prev)
+      if (gapPrev > 180) gapPrev = 360 - gapPrev
+      let gapNext = Math.abs(next - d)
+      if (gapNext > 180) gapNext = 360 - gapNext
+      const tight = Math.min(gapPrev, gapNext) < 24
+      return tight && i % 2 === 1 ? ICON_R + 28 : ICON_R
+    })
+  }, [iconAnglesDeg])
+
   if (categories.length === 0) {
     return (
       <div className="flex flex-col items-center pt-4">
         <div className="relative flex h-[260px] w-[260px] items-center justify-center rounded-full bg-surface-sunken/60 dark:bg-surface-sunken">
-          <span className="text-sm text-ink-subtle">Нет данных</span>
+          <span className="text-sm text-ink-subtle">{t('chart.no_data')}</span>
         </div>
       </div>
     )
@@ -68,14 +132,18 @@ export function DonutChartWithIcons({ kind }: Props) {
 
   return (
     <div className="flex flex-col items-center pt-2">
-      <div className="relative" style={{ width: SIZE, height: SIZE }}>
+      {/* marginBottom резервирует место под иконку+процент, выступающие ниже SVG-бокса */}
+      <div className="relative" style={{ width: SIZE, height: SIZE, marginBottom: 34 }}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="overflow-visible">
           {/* Leader lines — рисуются ПОД кольцом, чтобы кольцо их перекрывало изнутри */}
-          {segments.map((s) => {
+          {segments.map((s, i) => {
+            const iconAngle = iconAnglesRad[i]
+            const iconR = iconRadii[i]
+            // Старт — на реальной середине доли, конец — у (возможно смещённой) иконки.
             const x1 = cx + Math.cos(s.midAngleRad) * LEADER_END
             const y1 = cy + Math.sin(s.midAngleRad) * LEADER_END
-            const x2 = cx + Math.cos(s.midAngleRad) * (ICON_R - ICON_SIZE / 2 - 2)
-            const y2 = cy + Math.sin(s.midAngleRad) * (ICON_R - ICON_SIZE / 2 - 2)
+            const x2 = cx + Math.cos(iconAngle) * (iconR - ICON_SIZE / 2 - 2)
+            const y2 = cy + Math.sin(iconAngle) * (iconR - ICON_SIZE / 2 - 2)
             // Контрольная точка слегка смещена к центру — даёт мягкую кривую
             const mx = (x1 + x2) / 2
             const my = (y1 + y2) / 2
@@ -83,7 +151,7 @@ export function DonutChartWithIcons({ kind }: Props) {
             const nx = mx - Math.sin(s.midAngleRad) * nudge
             const ny = my + Math.cos(s.midAngleRad) * nudge
             return (
-              <motion.path
+              <m.path
                 key={s.categoryId + '-leader'}
                 d={`M ${x1} ${y1} Q ${nx} ${ny} ${x2} ${y2}`}
                 fill="none"
@@ -111,7 +179,7 @@ export function DonutChartWithIcons({ kind }: Props) {
           {/* Segments, rotated -90 чтобы старт был сверху */}
           <g transform={`rotate(-90 ${cx} ${cy})`}>
             {segments.map((s, i) => (
-              <motion.circle
+              <m.circle
                 key={s.categoryId + '-seg'}
                 cx={cx}
                 cy={cy}
@@ -133,10 +201,12 @@ export function DonutChartWithIcons({ kind }: Props) {
 
         {/* Иконки + проценты — отдельным слоем HTML для красивого текста */}
         {segments.map((s, i) => {
-          const x = cx + Math.cos(s.midAngleRad) * ICON_R
-          const y = cy + Math.sin(s.midAngleRad) * ICON_R
+          const iconAngle = iconAnglesRad[i]
+          const iconR = iconRadii[i]
+          const x = cx + Math.cos(iconAngle) * iconR
+          const y = cy + Math.sin(iconAngle) * iconR
           return (
-            <motion.div
+            <m.div
               key={s.categoryId + '-icon'}
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -158,7 +228,7 @@ export function DonutChartWithIcons({ kind }: Props) {
               <span className="tabular mt-0.5 text-[10px] font-bold text-ink">
                 {s.pct >= 1 ? `${s.pct.toFixed(0)}%` : '<1%'}
               </span>
-            </motion.div>
+            </m.div>
           )
         })}
 
@@ -173,13 +243,13 @@ export function DonutChartWithIcons({ kind }: Props) {
           }}
         >
           <span className="text-[10px] font-semibold uppercase tracking-widest text-ink-subtle">
-            {kind === 'income' ? 'Доходы' : 'Расходы'}
+            {kind === 'income' ? t('common.income') : t('common.expense')}
           </span>
           <span className="mt-1 text-xl font-bold tracking-tight tabular text-ink">
             {formatMoney(total, currency)}
           </span>
           <span className="mt-0.5 text-[10px] text-ink-muted">
-            {categories.length} {pluralCats(categories.length)}
+            {categories.length} {categoriesWord(lang, categories.length)}
           </span>
         </div>
 
@@ -192,12 +262,4 @@ export function DonutChartWithIcons({ kind }: Props) {
       </div>
     </div>
   )
-}
-
-function pluralCats(n: number) {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return 'категория'
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'категории'
-  return 'категорий'
 }

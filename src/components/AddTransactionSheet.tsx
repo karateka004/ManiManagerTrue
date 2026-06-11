@@ -1,16 +1,25 @@
-import { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useStore, selectCategoriesByKind } from '../store/transactions'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
+import { m, AnimatePresence } from 'framer-motion'
+import { Calendar, Plus, ChevronDown } from 'lucide-react'
+import { useStore, selectCategoriesByKind, periodBounds, type Transaction } from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
-import { formatMoney } from '../lib/format'
+import { formatMoney, dayjs } from '../lib/format'
+import { useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
-import { CategoryEditor } from './CategoryEditor'
+import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
+
+const MAIN_CURRENCIES: Currency[] = ['USD', 'EUR', 'UAH']
+
+// Редактор категорий — общий ленивый чанк (тот же, что в Settings).
+const CategoryEditor = lazy(() => import('./CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
 
 interface Props {
   open: boolean
   kind: CategoryKind
   onClose: () => void
+  /** Если задано — форма работает в режиме правки этой операции (а не создания новой). */
+  editing?: Transaction | null
 }
 
 const OPS = ['+', '−', '×', '÷'] as const
@@ -62,18 +71,34 @@ function evalExpr(expr: string): number {
   return Number.isFinite(acc) ? Math.max(0, Math.round(acc * 100) / 100) : 0
 }
 
-export function AddTransactionSheet({ open, kind, onClose }: Props) {
+export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: Props) {
+  // В режиме правки вид операции (расход/доход) берём из самой операции.
+  const kind: CategoryKind = editing ? editing.type : kindProp
   const addTransaction = useStore((s) => s.addTransaction)
-  const currency = useStore((s) => s.currency)
+  const updateTransaction = useStore((s) => s.updateTransaction)
+  const removeTransaction = useStore((s) => s.removeTransaction)
+  const globalCurrency = useStore((s) => s.currency)
+  const lastTxCurrency = useStore((s) => s.lastTxCurrency)
+  const setLastTxCurrency = useStore((s) => s.setLastTxCurrency)
   const categories = useStore((s) => selectCategoriesByKind(s, kind))
   const allTransactions = useStore((s) => s.transactions)
+  const period = useStore((s) => s.period)
+  const focusPeriodOn = useStore((s) => s.focusPeriodOn)
+  const tr = useT()
 
+  const todayISO = dayjs().format('YYYY-MM-DD')
   const [expr, setExpr] = useState('0')
   const [categoryId, setCategoryId] = useState<string>('')
   const [note, setNote] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')
+  const [date, setDate] = useState(todayISO)
   const [editorOpen, setEditorOpen] = useState(false)
+  const [txCurrency, setTxCurrency] = useState<Currency>(lastTxCurrency)
+  const [currencyOpen, setCurrencyOpen] = useState(false)
+  const [showMoreCurrencies, setShowMoreCurrencies] = useState(false)
+  const seenEditor = useRef(false)
+  if (editorOpen) seenEditor.current = true
 
   const numeric = useMemo(() => evalExpr(expr), [expr])
   const hasOps = useMemo(() => [...expr].some(isOp), [expr])
@@ -92,14 +117,28 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
   }, [allTransactions, tags])
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    setCurrencyOpen(false)
+    setShowMoreCurrencies(false)
+    setTagDraft('')
+    if (editing) {
+      // Режим правки — заполняем форму из операции.
+      setExpr(String(editing.amount).replace('.', ','))
+      setCategoryId(editing.categoryId)
+      setNote(editing.note ?? '')
+      setTags(editing.tags ?? [])
+      setDate(dayjs(editing.date).format('YYYY-MM-DD'))
+      setTxCurrency(editing.currency ?? globalCurrency)
+    } else {
+      // Режим создания — пустая форма.
       setExpr('0')
       setCategoryId('')
       setNote('')
       setTags([])
-      setTagDraft('')
+      setDate(dayjs().format('YYYY-MM-DD'))
+      setTxCurrency(lastTxCurrency)
     }
-  }, [open, kind])
+  }, [open, kind, editing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const press = (key: string) => {
     hapticSelect()
@@ -139,14 +178,42 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
   const submit = () => {
     if (!canSubmit) return
     hapticNotify('success')
-    addTransaction({
+    // Дата: если день не меняли — сохраняем исходное время операции (не сдвигаем).
+    // Иначе сегодня → текущее время, прошлый день → полдень выбранной даты.
+    const sameDay = editing && dayjs(editing.date).format('YYYY-MM-DD') === date
+    const iso = sameDay
+      ? editing!.date
+      : date === dayjs().format('YYYY-MM-DD')
+      ? new Date().toISOString()
+      : dayjs(date).hour(12).minute(0).second(0).toISOString()
+    const payload = {
       type: kind,
       amount: numeric,
+      currency: txCurrency,
       categoryId,
       note: note.trim() || undefined,
       tags: tags.length ? tags : undefined,
-      date: new Date().toISOString(),
-    })
+      date: iso,
+    }
+    if (editing) {
+      updateTransaction(editing.id, payload)
+    } else {
+      addTransaction(payload)
+      setLastTxCurrency(txCurrency)
+    }
+    // Если операция «задним числом» выпадает за текущий период просмотра —
+    // переводим период на её дату, иначе запись пропала бы из виду.
+    const x = +dayjs(iso)
+    const { start, end } = periodBounds(period)
+    if (x < +start || x >= +end) focusPeriodOn(iso)
+    onClose()
+  }
+
+  // Удаление операции прямо из формы правки.
+  const removeEditing = () => {
+    if (!editing) return
+    hapticNotify('warning')
+    removeTransaction(editing.id)
     onClose()
   }
 
@@ -154,7 +221,7 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -163,7 +230,7 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
             className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
           />
 
-          <motion.div
+          <m.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -179,21 +246,66 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
               <span className={`pill text-sm ${
                 kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'bg-income-soft text-income-deep'
               }`}>
-                {kind === 'expense' ? '− Расход' : '+ Доход'}
+                {kind === 'expense' ? `− ${tr('common.expense_one')}` : `+ ${tr('common.income_one')}`}
               </span>
               <button onClick={onClose} className="text-ink-subtle text-sm font-medium active:text-ink-muted">
-                Отмена
+                {tr('common.cancel')}
               </button>
             </div>
 
             {/* Amount display */}
             <div className="px-6 pt-2 pb-3 text-center">
               <div className={`text-display-lg tabular ${kind === 'expense' ? 'text-expense-deep' : 'text-income-deep'}`}>
-                {kind === 'expense' ? '−' : '+'} {formatMoney(numeric, currency)}
+                {kind === 'expense' ? '−' : '+'} {formatMoney(numeric, txCurrency)}
               </div>
               {hasOps && (
                 <div className="mt-1 text-sm font-medium tabular text-ink-subtle">{expr} =</div>
               )}
+              {/* Чип выбора валюты */}
+              <div className="mt-2 flex flex-col items-center gap-2">
+                <button
+                  onClick={() => { hapticSelect(); setCurrencyOpen((v) => !v) }}
+                  className="flex items-center gap-1.5 rounded-full border border-surface-raised bg-surface-raised px-3 py-1 text-xs font-semibold text-ink-muted active:bg-surface-sunken"
+                >
+                  <span>{getCurrency(txCurrency).symbol}</span>
+                  <span>{txCurrency}</span>
+                  <ChevronDown size={11} strokeWidth={2.5} className={`transition-transform ${currencyOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {currencyOpen && (
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {MAIN_CURRENCIES.map((code) => (
+                      <button
+                        key={code}
+                        onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                          txCurrency === code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                        }`}
+                      >
+                        {getCurrency(code).symbol} {code}
+                      </button>
+                    ))}
+                    {!showMoreCurrencies && (
+                      <button
+                        onClick={() => { hapticSelect(); setShowMoreCurrencies(true) }}
+                        className="rounded-full bg-surface-sunken px-3 py-1 text-xs font-semibold text-ink-subtle"
+                      >
+                        {tr('add.more')}
+                      </button>
+                    )}
+                    {showMoreCurrencies && CURRENCIES.filter((c) => !MAIN_CURRENCIES.includes(c.code)).map((c) => (
+                      <button
+                        key={c.code}
+                        onClick={() => { hapticSelect(); setTxCurrency(c.code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                          txCurrency === c.code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                        }`}
+                      >
+                        {c.symbol} {c.code}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Note */}
@@ -201,10 +313,51 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Заметка (необязательно)"
+                placeholder={tr('add.note_ph')}
                 className="w-full rounded-2xl bg-surface-sunken px-4 py-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-400"
                 maxLength={60}
               />
+            </div>
+
+            {/* Date */}
+            <div className="px-6 pb-2">
+              <div className="flex items-center gap-1.5">
+                {([
+                  { id: todayISO, label: tr('add.today') },
+                  { id: dayjs().subtract(1, 'day').format('YYYY-MM-DD'), label: tr('add.yesterday') },
+                ] as const).map((opt) => {
+                  const active = date === opt.id
+                  return (
+                    <button
+                      key={opt.label}
+                      onClick={() => { hapticSelect(); setDate(opt.id) }}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        active ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+                <label
+                  className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    date !== todayISO && date !== dayjs().subtract(1, 'day').format('YYYY-MM-DD')
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-surface-sunken text-ink-muted'
+                  }`}
+                >
+                  <Calendar size={14} strokeWidth={2} />
+                  <span className="capitalize">{dayjs(date).format('D MMM')}</span>
+                  <input
+                    type="date"
+                    max={todayISO}
+                    value={date}
+                    onChange={(e) => { if (e.target.value) { hapticSelect(); setDate(e.target.value) } }}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    aria-label={tr('add.pick_date')}
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Tags */}
@@ -233,7 +386,7 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
                         setTags((arr) => arr.slice(0, -1))
                       }
                     }}
-                    placeholder={tags.length ? '+ тег' : '+ добавить тег'}
+                    placeholder={tags.length ? tr('add.tag_ph') : tr('add.tag_add')}
                     className="min-w-[80px] flex-1 bg-transparent px-1 py-1 text-xs text-ink placeholder:text-ink-subtle focus:outline-none"
                     maxLength={16}
                   />
@@ -288,11 +441,9 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
                   className="flex flex-col items-center gap-1 rounded-2xl p-2 active:scale-95"
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-dashed border-ink-subtle/40 text-ink-subtle">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
+                    <Plus size={20} strokeWidth={2} />
                   </div>
-                  <span className="text-[10px] font-medium leading-tight text-ink-subtle">Создать</span>
+                  <span className="text-[10px] font-medium leading-tight text-ink-subtle">{tr('add.create')}</span>
                 </button>
               </div>
             </div>
@@ -320,16 +471,32 @@ export function AddTransactionSheet({ open, kind, onClose }: Props) {
                   kind === 'expense' ? 'bg-expense' : 'bg-brand-500'
                 } ${!canSubmit ? 'opacity-40' : ''}`}
               >
-                {kind === 'expense' ? 'Записать расход' : 'Записать доход'}
+                {editing
+                  ? tr('common.save')
+                  : kind === 'expense'
+                  ? tr('add.save_expense')
+                  : tr('add.save_income')}
               </button>
+              {editing && (
+                <button
+                  onClick={removeEditing}
+                  className="mt-2 w-full rounded-full py-3 text-sm font-bold text-expense-deep active:bg-expense-soft"
+                >
+                  {tr('common.delete')}
+                </button>
+              )}
             </div>
-          </motion.div>
+          </m.div>
 
-          <CategoryEditor
-            open={editorOpen}
-            defaultKind={kind}
-            onClose={() => setEditorOpen(false)}
-          />
+          {seenEditor.current && (
+            <Suspense fallback={null}>
+              <CategoryEditor
+                open={editorOpen}
+                defaultKind={kind}
+                onClose={() => setEditorOpen(false)}
+              />
+            </Suspense>
+          )}
         </>
       )}
     </AnimatePresence>

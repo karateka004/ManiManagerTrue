@@ -13,3 +13,8 @@ dist-ssr
 # Cloudflare tunnel (локальная разработка)
 cloudflared.exe
 tunnel.log
+
+# Cloudflare Worker
+worker/node_modules
+worker/.wrangler
+.dev.vars

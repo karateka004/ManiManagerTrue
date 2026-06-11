@@ -15,5 +15,15 @@ export default defineConfig({
   build: {
     target: 'es2020',
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        // Делим вендоры на отдельные чанки: кэшируются между релизами
+        // и парсятся параллельно, ускоряя первый запуск.
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          vendor: ['dayjs', 'zustand', 'clsx', 'lucide-react'],
+        },
+      },
+    },
   },
 })

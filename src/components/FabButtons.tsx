@@ -1,5 +1,7 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
+import { Minus, Plus } from 'lucide-react'
 import { hapticTap } from '../lib/telegram'
+import { useT } from '../lib/i18n'
 
 interface Props {
   onAddExpense: () => void
@@ -7,42 +9,36 @@ interface Props {
 }
 
 export function FabButtons({ onAddExpense, onAddIncome }: Props) {
+  const t = useT()
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 z-30 flex justify-center gap-6 px-6"
-      style={{ bottom: 'calc(var(--safe-bottom, 0px) + 80px)' }}
+      className="pointer-events-none fixed inset-x-0 z-30 flex justify-center"
+      style={{ bottom: 'calc(var(--safe-bottom, 0px) + 84px)' }}
     >
-      <motion.button
-        initial={{ y: 60, opacity: 0 }}
+      <m.div
+        initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        onClick={() => {
-          hapticTap('medium')
-          onAddExpense()
-        }}
-        className="fab pointer-events-auto bg-white ring-4 ring-expense/15"
-        aria-label="Добавить расход"
+        className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-raised/95 p-1.5 shadow-fab backdrop-blur"
       >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path d="M5 12h14" stroke="#E97373" strokeWidth="3.5" strokeLinecap="round" />
-        </svg>
-      </motion.button>
+        <button
+          onClick={() => { hapticTap('medium'); onAddExpense() }}
+          className="flex h-12 items-center gap-1.5 rounded-full bg-expense-soft px-4 text-expense-deep transition-transform active:scale-95 dark:bg-expense/15"
+          aria-label={t('fab.add_expense')}
+        >
+          <Minus size={20} strokeWidth={3} />
+          <span className="text-sm font-bold">{t('common.expense_one')}</span>
+        </button>
 
-      <motion.button
-        initial={{ y: 60, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.15, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        onClick={() => {
-          hapticTap('medium')
-          onAddIncome()
-        }}
-        className="fab pointer-events-auto bg-white ring-4 ring-brand-400/20"
-        aria-label="Добавить доход"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path d="M12 5v14M5 12h14" stroke="#3CA37B" strokeWidth="3.5" strokeLinecap="round" />
-        </svg>
-      </motion.button>
+        <button
+          onClick={() => { hapticTap('medium'); onAddIncome() }}
+          className="flex h-12 items-center gap-1.5 rounded-full bg-brand-500 px-4 text-white transition-transform active:scale-95"
+          aria-label={t('fab.add_income')}
+        >
+          <Plus size={20} strokeWidth={3} />
+          <span className="text-sm font-bold">{t('common.income_one')}</span>
+        </button>
+      </m.div>
     </div>
   )
 }

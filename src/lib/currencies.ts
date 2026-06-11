@@ -8,18 +8,18 @@
  * `locale` используется в Intl.NumberFormat для группировки разрядов.
  */
 export const CURRENCIES = [
-  { code: 'RUB', symbol: '₽',  name: 'Рубль',       locale: 'ru-RU' },
   { code: 'USD', symbol: '$',  name: 'Доллар',      locale: 'en-US' },
   { code: 'EUR', symbol: '€',  name: 'Евро',        locale: 'de-DE' },
+  { code: 'UAH', symbol: '₴',  name: 'Гривна',      locale: 'uk-UA' },
   { code: 'GBP', symbol: '£',  name: 'Фунт',        locale: 'en-GB' },
   { code: 'JPY', symbol: '¥',  name: 'Иена',        locale: 'ja-JP' },
   { code: 'CNY', symbol: '元', name: 'Юань',        locale: 'zh-CN' },
   { code: 'CHF', symbol: '₣',  name: 'Франк',       locale: 'de-CH' },
   { code: 'KZT', symbol: '₸',  name: 'Тенге',       locale: 'ru-KZ' },
-  { code: 'UAH', symbol: '₴',  name: 'Гривна',      locale: 'uk-UA' },
-  { code: 'BYN', symbol: 'Br', name: 'Бел. рубль',  locale: 'ru-BY' },
   { code: 'TRY', symbol: '₺',  name: 'Лира',        locale: 'tr-TR' },
   { code: 'INR', symbol: '₹',  name: 'Рупия',       locale: 'en-IN' },
+  { code: 'BYN', symbol: 'Br', name: 'Бел. рубль',  locale: 'ru-BY' },
+  { code: 'RUB', symbol: '₽',  name: 'Рубль',       locale: 'ru-RU' },
 ] as const
 
 export type Currency = (typeof CURRENCIES)[number]['code']

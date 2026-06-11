@@ -11,13 +11,12 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
-    "@telegram-apps/sdk-react": "^2.0.0",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.13",
     "framer-motion": "^11.11.0",
+    "lucide-react": "^1.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^2.13.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

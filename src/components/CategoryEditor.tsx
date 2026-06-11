@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
+import { Check } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { CATEGORY_COLORS, type Category, type CategoryKind } from '../store/categories'
 import { CategoryIcon, ICON_KEYS } from './icons/CategoryIcon'
+import { useT } from '../lib/i18n'
 import { hapticSelect, hapticNotify, hapticTap } from '../lib/telegram'
 
 interface Props {
@@ -18,6 +20,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
   const addCategory = useStore((s) => s.addCategory)
   const updateCategory = useStore((s) => s.updateCategory)
   const removeCategory = useStore((s) => s.removeCategory)
+  const t = useT()
 
   const [name, setName] = useState('')
   const [kind, setKind] = useState<CategoryKind>(defaultKind)
@@ -52,7 +55,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
   const handleRemove = () => {
     if (!editing) return
-    if (!confirm(`Удалить категорию «${editing.name}»? Операции в ней останутся.`)) return
+    if (!confirm(t('cat.delete_confirm', { name: editing.name }))) return
     hapticNotify('warning')
     removeCategory(editing.id)
     onClose()
@@ -62,14 +65,14 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm"
           />
-          <motion.div
+          <m.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -83,10 +86,10 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             <div className="flex items-center justify-between px-6 py-2">
               <span className="text-base font-bold text-ink">
-                {editing ? 'Категория' : 'Новая категория'}
+                {editing ? t('cat.edit') : t('cat.new')}
               </span>
               <button onClick={onClose} className="text-sm font-medium text-ink-subtle active:text-ink-muted">
-                Отмена
+                {t('common.cancel')}
               </button>
             </div>
 
@@ -98,7 +101,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
               >
                 <CategoryIcon id={icon} size={32} />
               </div>
-              <span className="text-sm font-semibold text-ink">{name.trim() || 'Без названия'}</span>
+              <span className="text-sm font-semibold text-ink">{name.trim() || t('cat.untitled')}</span>
             </div>
 
             {/* Name */}
@@ -106,7 +109,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Название категории"
+                placeholder={t('cat.name_ph')}
                 maxLength={24}
                 className="w-full rounded-2xl bg-surface-sunken px-4 py-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
@@ -116,8 +119,8 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
             <div className="px-6 pb-3">
               <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
                 {([
-                  { id: 'expense', label: 'Расход' },
-                  { id: 'income', label: 'Доход' },
+                  { id: 'expense', label: t('common.expense_one') },
+                  { id: 'income', label: t('common.income_one') },
                 ] as const).map((opt) => (
                   <button
                     key={opt.id}
@@ -134,7 +137,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             {/* Color picker */}
             <div className="px-6 pb-3">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">Цвет</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('cat.color')}</div>
               <div className="flex flex-wrap gap-2">
                 {CATEGORY_COLORS.map((c) => (
                   <button
@@ -144,11 +147,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
                     style={{ background: c }}
                     aria-label={c}
                   >
-                    {color === c && (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6 9 17l-5-5" />
-                      </svg>
-                    )}
+                    {color === c && <Check size={16} color="#fff" strokeWidth={3} />}
                   </button>
                 ))}
               </div>
@@ -156,7 +155,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             {/* Icon picker */}
             <div className="px-6 pb-3">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">Иконка</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('cat.icon')}</div>
               <div className="grid grid-cols-7 gap-2">
                 {ICON_KEYS.map((key) => {
                   const active = icon === key
@@ -187,14 +186,14 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
                   canSave ? '' : 'opacity-40'
                 }`}
               >
-                {editing ? 'Сохранить' : 'Создать категорию'}
+                {editing ? t('common.save') : t('cat.create')}
               </button>
               {editing && (
                 <button
                   onClick={handleRemove}
                   className="mt-2 w-full rounded-full py-3 text-sm font-semibold text-expense-deep active:bg-expense-soft/50"
                 >
-                  Удалить категорию
+                  {t('cat.delete')}
                 </button>
               )}
               {!editing && (
@@ -202,11 +201,11 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
                   onClick={() => { hapticTap(); onClose() }}
                   className="mt-2 w-full py-2 text-center text-xs text-ink-subtle"
                 >
-                  Закрыть
+                  {t('common.close')}
                 </button>
               )}
             </div>
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>

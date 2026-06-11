@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useStore, selectExceededBudgets } from '../store/transactions'
+import { m, AnimatePresence } from 'framer-motion'
+import { AlertTriangle } from 'lucide-react'
+import { useStore, selectExceededBudgets, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
+import { useT } from '../lib/i18n'
 import { hapticNotify } from '../lib/telegram'
 
 /**
@@ -12,7 +14,8 @@ import { hapticNotify } from '../lib/telegram'
 export function BudgetAlert() {
   const exceeded = useStore(selectExceededBudgets)
   const periodKey = useStore((s) => `${s.period.mode}:${s.period.anchor}`)
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
+  const t = useT()
   const warned = useRef<string | null>(null)
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export function BudgetAlert() {
   return (
     <AnimatePresence>
       {exceeded.length > 0 && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
@@ -52,15 +55,11 @@ export function BudgetAlert() {
               }`}
               aria-hidden
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 9v4" />
-                <path d="M12 17h.01" />
-                <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0z" />
-              </svg>
+              <AlertTriangle size={16} strokeWidth={2} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-ink">
-                {over.length > 0 ? 'Бюджет превышен' : 'Бюджет на пределе'}
+                {over.length > 0 ? t('budget.exceeded') : t('budget.near')}
               </div>
               <div className="mt-0.5 text-xs leading-relaxed text-ink-muted">
                 {[...over, ...warn].slice(0, 3).map((b, i, arr) => (
@@ -74,12 +73,12 @@ export function BudgetAlert() {
                   </span>
                 ))}
                 {exceeded.length > 3 && (
-                  <span className="text-ink-subtle"> · и ещё {exceeded.length - 3}</span>
+                  <span className="text-ink-subtle"> · {t('budget.and_more', { n: exceeded.length - 3 })}</span>
                 )}
               </div>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

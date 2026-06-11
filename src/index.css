@@ -15,6 +15,19 @@
     --bg-gradient-top: #F1FAF5;
     --bg-gradient-bottom: #FAFBF9;
 
+    /* Brand-палитра (акцент) — RGB-триплеты, чтобы менять акцент рантайм.
+       Дефолт — мятно-зелёный. Награды-«акценты» переопределяют эти переменные. */
+    --brand-50: 241 250 245;
+    --brand-100: 220 242 229;
+    --brand-200: 184 229 204;
+    --brand-300: 143 211 172;
+    --brand-400: 93 185 150;
+    --brand-500: 60 163 123;
+    --brand-600: 45 136 102;
+    --brand-700: 36 110 84;
+    --brand-800: 29 87 67;
+    --brand-900: 20 63 48;
+
     /* Fallback Telegram theme vars */
     --tg-theme-bg-color: #FAFBF9;
     --tg-theme-text-color: #0F1A14;
@@ -94,4 +107,23 @@
     @apply w-16 h-16 rounded-full flex items-center justify-center shadow-fab
            active:scale-95 transition-transform duration-150;
   }
+}
+
+/* Появление вкладки: лёгкий fade+slide на чистом CSS.
+   ВАЖНО: базовая непрозрачность элемента — 1 (нет animation-fill-mode), поэтому
+   если анимация не отыграет (rAF приостановлен в свёрнутом webview, медленное
+   устройство, переключение фокуса) — контент ВСЁ РАВНО виден. Раньше переход
+   вкладок жил на framer-motion `AnimatePresence mode="wait"` + `initial:opacity 0`:
+   если entrance-анимация не запускалась или exit не завершался, новая вкладка
+   оставалась невидимой (opacity:0) или вовсе не монтировалась — отсюда «в аналитике
+   и календаре не видно сумм». CSS-вариант не блокирует контент за анимацией. */
+@keyframes tab-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tab-enter {
+  animation: tab-enter 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-enter { animation: none; }
 }

@@ -1,22 +1,28 @@
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import {
   useStore,
-  selectByCategory,
+  selectByCategoryAccount,
   selectTransactionsByCategory,
   selectBudgetStatuses,
+  selectAnalyticsCurrency,
   type CategoryAggregate,
   type BudgetStatus,
+  type Transaction,
 } from '../store/transactions'
+import { PieChart } from 'lucide-react'
 import { formatMoney, formatShortDate } from '../lib/format'
+import { useT } from '../lib/i18n'
+import type { Currency } from '../lib/currencies'
 import { hapticTap, hapticSelect } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 
-export function CategoryList() {
-  const expenses = useStore((s) => selectByCategory(s, 'expense'))
-  const incomes = useStore((s) => selectByCategory(s, 'income'))
+export function CategoryList({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
+  const expenses = useStore((s) => selectByCategoryAccount(s, 'expense'))
+  const incomes = useStore((s) => selectByCategoryAccount(s, 'income'))
   const budgets = useStore(selectBudgetStatuses)
   const budgetByCat = new Map(budgets.map((b) => [b.categoryId, b]))
+  const t = useT()
 
   if (expenses.length === 0 && incomes.length === 0) {
     return <EmptyState />
@@ -25,17 +31,17 @@ export function CategoryList() {
   return (
     <div className="mt-2 px-4">
       {incomes.length > 0 && (
-        <SectionHeader title="Доходы" total={incomes.reduce((s, c) => s + c.amount, 0)} kind="income" />
+        <SectionHeader title={t('common.income')} cats={incomes} kind="income" />
       )}
       <div className="space-y-2">
-        {incomes.map((c) => <CategoryRow key={c.categoryId} cat={c} />)}
+        {incomes.map((c) => <CategoryRow key={c.categoryId} cat={c} onEditTx={onEditTx} />)}
       </div>
 
       {expenses.length > 0 && (
-        <SectionHeader title="Расходы" total={expenses.reduce((s, c) => s + c.amount, 0)} kind="expense" />
+        <SectionHeader title={t('common.expense')} cats={expenses} kind="expense" />
       )}
       <div className="space-y-2">
-        {expenses.map((c) => <CategoryRow key={c.categoryId} cat={c} budget={budgetByCat.get(c.categoryId)} />)}
+        {expenses.map((c) => <CategoryRow key={c.categoryId} cat={c} budget={budgetByCat.get(c.categoryId)} onEditTx={onEditTx} />)}
       </div>
 
       {/* Bottom padding so FAB doesn't cover last row */}
@@ -44,23 +50,35 @@ export function CategoryList() {
   )
 }
 
-function SectionHeader({ title, total, kind }: { title: string; total: number; kind: 'income' | 'expense' }) {
-  const currency = useStore((s) => s.currency)
+function SectionHeader({ title, cats, kind }: { title: string; cats: CategoryAggregate[]; kind: 'income' | 'expense' }) {
+  // Суммы по валютам: в режиме «Все» категории могут быть в разных валютах —
+  // не смешиваем их в одно число, а показываем по каждой (722 ₴ · 80 €).
+  const byCur = new Map<Currency, number>()
+  for (const c of cats) byCur.set(c.currency, (byCur.get(c.currency) ?? 0) + c.amount)
+  const parts = [...byCur.entries()]
+  const symbol = kind === 'income' ? '+' : '−'
+
   return (
     <div className="mb-2 mt-4 flex items-center justify-between px-2">
       <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{title}</span>
       <span className={`tabular text-xs font-bold ${kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-        {kind === 'income' ? '+' : '−'} {formatMoney(total, currency).replace('−', '')}
+        {parts.map(([cur, amount], i) => (
+          <span key={cur}>
+            {i > 0 && <span className="font-normal text-ink-subtle"> · </span>}
+            {symbol} {formatMoney(amount, cur).replace('−', '')}
+          </span>
+        ))}
       </span>
     </div>
   )
 }
 
-function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetStatus }) {
+function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget?: BudgetStatus; onEditTx: (t: Transaction) => void }) {
   const [open, setOpen] = useState(false)
   const transactions = useStore((s) => selectTransactionsByCategory(s, cat.categoryId))
   const removeTransaction = useStore((s) => s.removeTransaction)
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
+  const tr = useT()
 
   const toggle = () => {
     hapticSelect()
@@ -116,7 +134,7 @@ function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetS
               >
                 {Math.round(budget.ratio * 100)}%
               </span>
-              <span>из лимита</span>
+              <span>{tr('cat.of_limit')}</span>
               <span className="tabular">{formatMoney(budget.limit, currency)}</span>
             </div>
           )}
@@ -124,7 +142,7 @@ function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetS
 
         <div className="text-right">
           <div className={`tabular font-bold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-            {cat.kind === 'income' ? '+' : '−'} {formatMoney(cat.amount, currency).replace('−', '')}
+            {cat.kind === 'income' ? '+' : '−'} {formatMoney(cat.amount, cat.currency).replace('−', '')}
           </div>
           <div className="text-xs text-ink-subtle">{cat.pct.toFixed(0)}%</div>
         </div>
@@ -132,7 +150,7 @@ function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetS
 
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -142,33 +160,37 @@ function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetS
             <div className="border-t border-surface-sunken bg-surface-sunken/30 px-4 py-2">
               {transactions.map((t) => (
                 <div key={t.id} className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2 w-2 rounded-full" style={{ background: cat.color }} />
-                    <div>
-                      {t.note && <div className="text-sm text-ink">{t.note}</div>}
-                      <div className="text-xs text-ink-subtle">{formatShortDate(t.date)}</div>
+                  <button
+                    onClick={() => { hapticSelect(); onEditTx(t) }}
+                    className="flex flex-1 items-center justify-between gap-3 text-left active:opacity-60"
+                    aria-label={tr('common.edit')}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="h-2 w-2 rounded-full" style={{ background: cat.color }} />
+                      <div>
+                        {t.note && <div className="text-sm text-ink">{t.note}</div>}
+                        <div className="text-xs text-ink-subtle">{formatShortDate(t.date)}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
                     <span className={`tabular text-sm font-semibold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-                      {cat.kind === 'income' ? '+' : '−'} {formatMoney(t.amount, currency).replace('−', '')}
+                      {cat.kind === 'income' ? '+' : '−'} {formatMoney(t.amount, t.currency ?? currency).replace('−', '')}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        hapticTap('medium')
-                        removeTransaction(t.id)
-                      }}
-                      className="text-ink-subtle/60 text-lg active:text-expense"
-                      aria-label="Удалить"
-                    >
-                      ×
-                    </button>
-                  </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      hapticTap('medium')
+                      removeTransaction(t.id)
+                    }}
+                    className="ml-3 text-ink-subtle/60 text-lg active:text-expense"
+                    aria-label={tr('common.delete')}
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -176,25 +198,23 @@ function CategoryRow({ cat, budget }: { cat: CategoryAggregate; budget?: BudgetS
 }
 
 function EmptyState() {
-  const seedDemo = useStore((s) => s.seedDemo)
+  const setDemoMode = useStore((s) => s.setDemoMode)
+  const t = useT()
 
   return (
-    <div className="mt-6 flex flex-col items-center px-6 py-12 text-center">
-      <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-brand-100 text-brand-500">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 3v9l6 4" />
-        </svg>
+    <div className="mt-4 flex flex-col items-center px-6 py-8 text-center">
+      <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-brand-100 text-brand-500">
+        <PieChart size={38} strokeWidth={1.5} />
       </div>
-      <h3 className="text-xl font-bold text-ink">Пусто, но это поправимо</h3>
+      <h3 className="text-xl font-bold text-ink">{t('empty.title')}</h3>
       <p className="mt-2 max-w-xs text-sm text-ink-muted">
-        Нажмите «+» или «−» внизу, чтобы добавить первую запись. Или загрузите демо-данные.
+        {t('empty.text')}
       </p>
       <button
-        onClick={() => { hapticTap(); seedDemo() }}
+        onClick={() => { hapticTap(); setDemoMode(true) }}
         className="mt-6 rounded-full bg-brand-500 px-6 py-3 text-sm font-semibold text-white active:scale-95 transition-transform"
       >
-        Загрузить демо
+        {t('empty.enable_demo')}
       </button>
     </div>
   )
