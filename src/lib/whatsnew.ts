@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.13.0'
+export const APP_VERSION = '1.14.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.14.0',
+    date: '2026-06-11',
+    title: { ru: 'Финансовые задания', en: 'Finance quests' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Новые задания за реальные привычки: 5 разных категорий, неделя учёта подряд, достигнутая цель, месяц в рамках бюджета',
+          en: 'New quests for real habits: 5 different categories, a week of logging in a row, a reached goal, a month within budget',
+        },
+      },
+      {
+        icon: '🪙',
+        text: {
+          ru: 'За них дают больше XP и монет — на косметику в «Достижениях»',
+          en: 'They reward more XP and coins to spend on cosmetics in Achievements',
+        },
+      },
+    ],
+  },
   {
     version: '1.13.0',
     date: '2026-06-02',
