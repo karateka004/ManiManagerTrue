@@ -43,7 +43,8 @@ export function buildReferralLink(): string {
 export function parseRefParam(param: string | null): string | null {
   if (!param) return null
   const digits = param.replace(/[^0-9]/g, '')
-  return digits || null
+  // Telegram user id — до ~12 цифр; всё длиннее/пустое отбрасываем.
+  return digits.length >= 1 && digits.length <= 12 ? digits : null
 }
 
 async function post(path: string, body: unknown): Promise<any> {
@@ -81,9 +82,9 @@ export async function getReferralStats(): Promise<{
   referrals: number
   friends: ReferralFriend[]
 }> {
-  if (!isBackendConfigured()) return { ok: false, referrals: 0, friends: [] }
-  const res = await fetch(`${WORKER_URL}/stats?initData=${encodeURIComponent(tg.initData)}`)
-  return res.json()
+  if (!isBackendConfigured() || !tg.initData) return { ok: false, referrals: 0, friends: [] }
+  // POST с телом: подписанный initData НЕ попадает в URL/логи/Referer.
+  return post('/stats', { initData: tg.initData })
 }
 
 /* ---------- Таблица лидеров ---------- */
@@ -132,9 +133,9 @@ export async function getLeaderboard(): Promise<{
   refs: LeaderBoard
 }> {
   const empty: LeaderBoard = { top: [], me: null }
-  if (!isBackendConfigured()) return { ok: false, total: 0, xp: empty, refs: empty }
-  const res = await fetch(`${WORKER_URL}/leaderboard?initData=${encodeURIComponent(tg.initData)}`)
-  return res.json()
+  if (!isBackendConfigured() || !tg.initData) return { ok: false, total: 0, xp: empty, refs: empty }
+  // POST с телом: подписанный initData НЕ попадает в URL/логи/Referer.
+  return post('/leaderboard', { initData: tg.initData })
 }
 
 /* ---------- Облачная синхронизация данных (привязка к TG-аккаунту) ---------- */

@@ -18,3 +18,10 @@ tunnel.log
 worker/node_modules
 worker/.wrangler
 .dev.vars
+
+# Секреты — никогда не коммитим
+*_secrets.json
+worker/_secrets.json
+.env.*.local
+*.pem
+*.key

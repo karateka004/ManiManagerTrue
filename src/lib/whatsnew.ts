@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.15.0'
+export const APP_VERSION = '1.16.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.16.0',
+    date: '2026-06-12',
+    title: { ru: 'Безопасность и стабильность', en: 'Security & stability' },
+    items: [
+      {
+        icon: '🛡️',
+        text: {
+          ru: 'Под капотом усилили защиту аккаунта и данных',
+          en: 'Hardened account and data protection under the hood',
+        },
+      },
+      {
+        icon: '☁️',
+        text: {
+          ru: 'Синхронизация стала надёжнее и аккуратнее проверяет данные',
+          en: 'Sync is more reliable and validates data more carefully',
+        },
+      },
+    ],
+  },
   {
     version: '1.15.0',
     date: '2026-06-11',

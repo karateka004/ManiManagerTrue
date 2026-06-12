@@ -54,6 +54,25 @@ function readBlob(): string | null {
   }
 }
 
+/** Потолок размера облачного блоба на клиенте (типичный persist ~30–50 KB). */
+const MAX_CLOUD_BLOB = 1_500_000
+
+/**
+ * Валидируем облачный блоб ПЕРЕД применением: непустая строка разумного размера,
+ * валидный JSON, объект с числовым полем `version` (форма zustand-persist
+ * `{ state, version }`). Защита от битого/огромного/«отравленного» значения
+ * (если KV когда-нибудь скомпрометируют) и от падения на слабых устройствах.
+ */
+function isValidBlob(blob: unknown): blob is string {
+  if (typeof blob !== 'string' || blob.length === 0 || blob.length > MAX_CLOUD_BLOB) return false
+  try {
+    const parsed = JSON.parse(blob) as { version?: unknown } | null
+    return !!parsed && typeof parsed === 'object' && typeof parsed.version === 'number'
+  } catch {
+    return false
+  }
+}
+
 let started = false
 /** Пока принимаем облако — не пушим (иначе тут же отправили бы только что скачанное). */
 let adopting = false
@@ -99,14 +118,24 @@ export async function initCloudSync(): Promise<void> {
     const cloud = await pullCloud()
     const localAt = getLocalUpdatedAt()
 
-    if (cloud && cloud.blob && cloud.updatedAt > localAt) {
-      // Облако новее — принимаем его.
+    if (cloud && isValidBlob(cloud.blob) && cloud.updatedAt > localAt) {
+      // Облако новее и блоб валиден — принимаем его.
       adopting = true
+      const prev = readBlob() // снимок локального ДО перезаписи (для отката)
       try {
         localStorage.setItem(PERSIST_KEY, cloud.blob)
         // rehydrate перечитает storage, прогонит миграции и обновит стор.
         await useStore.persist.rehydrate()
         setLocalUpdatedAt(cloud.updatedAt)
+      } catch {
+        // Применить не удалось — откатываемся на прежние локальные данные, не теряем их.
+        try {
+          if (prev !== null) localStorage.setItem(PERSIST_KEY, prev)
+          else localStorage.removeItem(PERSIST_KEY)
+          await useStore.persist.rehydrate()
+        } catch {
+          /* совсем плохо — оставляем как есть */
+        }
       } finally {
         adopting = false
       }

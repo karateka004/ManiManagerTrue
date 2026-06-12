@@ -76,14 +76,19 @@ function clampInt(x: unknown): number {
 /* ------------------------------------------------------------------ */
 
 function corsHeaders(env: Env, origin: string | null): HeadersInit {
-  const allowed = (env.ALLOWED_ORIGINS ?? '*').split(',').map((s) => s.trim())
-  const allowOrigin =
-    allowed.includes('*') || (origin && allowed.includes(origin)) ? origin ?? '*' : allowed[0]
+  const allowed = (env.ALLOWED_ORIGINS ?? '*').split(',').map((s) => s.trim()).filter(Boolean)
+  // Никогда не отражаем ПРОИЗВОЛЬНЫЙ origin: '*' в списке = публично; иначе только
+  // точное совпадение из allowlist, при несовпадении — первый разрешённый (а не запрошенный).
+  let allowOrigin: string
+  if (allowed.includes('*')) allowOrigin = '*'
+  else if (origin && allowed.includes(origin)) allowOrigin = origin
+  else allowOrigin = allowed[0] ?? '*'
   return {
-    'Access-Control-Allow-Origin': allowOrigin || '*',
+    'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
   }
 }
 
@@ -140,7 +145,9 @@ async function verifyInitData(initData: string, botTokenRaw: string): Promise<Tg
 
   try {
     const userRaw = params.get('user')
-    return userRaw ? (JSON.parse(userRaw) as TgUser) : null
+    // Поле user от Telegram компактное; что-то длиннее — мусор/попытка DoS парсера.
+    if (!userRaw || userRaw.length > 1000) return null
+    return JSON.parse(userRaw) as TgUser
   } catch {
     return null
   }
@@ -169,6 +176,47 @@ function escapeHtml(s: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Анти-абуз: rate limiting + чтение initData                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Простой rate-limit на KV-счётчиках: возвращает true, если лимит уже превышен.
+ * Ключ живёт `ttlSec` (минимум KV — 60 c) — окно примерно фиксированной длины.
+ * Атомарности нет, но для анти-спама/анти-DDoS достаточно (Worker per-isolate
+ * однопоточен). Считаем по проверенному `user.id`, поэтому аноним сюда не доходит.
+ */
+async function isRateLimited(
+  env: Env,
+  scope: string,
+  id: string | number,
+  limit: number,
+  ttlSec: number,
+): Promise<boolean> {
+  const key = `rl:${scope}:${id}`
+  const cur = Number((await env.REFERRALS.get(key)) ?? '0')
+  if (cur >= limit) return true
+  await env.REFERRALS.put(key, String(cur + 1), { expirationTtl: ttlSec })
+  return false
+}
+
+function tooMany(env: Env, origin: string | null): Response {
+  return json({ ok: false, error: 'rate_limited' }, { status: 429 }, env, origin)
+}
+
+/**
+ * initData из тела POST (`{ initData }`) или из query `?initData=` (GET, обратная
+ * совместимость со старыми закешированными клиентами на время выката). Новые
+ * клиенты шлют POST с телом — подписанный токен не попадает в URL/логи/Referer.
+ */
+async function readInitData(req: Request): Promise<string> {
+  if (req.method === 'POST') {
+    const body = (await req.json().catch(() => ({}))) as { initData?: string }
+    return typeof body.initData === 'string' ? body.initData : ''
+  }
+  return new URL(req.url).searchParams.get('initData') ?? ''
+}
+
+/* ------------------------------------------------------------------ */
 /* Маршруты                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -188,13 +236,13 @@ export default {
       if (url.pathname === '/referral' && req.method === 'POST') {
         return await handleReferral(req, env, origin)
       }
-      if (url.pathname === '/stats' && req.method === 'GET') {
+      if (url.pathname === '/stats' && (req.method === 'GET' || req.method === 'POST')) {
         return await handleStats(req, env, origin)
       }
       if (url.pathname === '/profile' && req.method === 'POST') {
         return await handleProfile(req, env, origin)
       }
-      if (url.pathname === '/leaderboard' && req.method === 'GET') {
+      if (url.pathname === '/leaderboard' && (req.method === 'GET' || req.method === 'POST')) {
         return await handleLeaderboard(req, env, origin)
       }
       if (url.pathname === '/data/get' && req.method === 'POST') {
@@ -207,7 +255,9 @@ export default {
         return json({ ok: true, service: 'koshel-worker' }, { status: 200 }, env, origin)
       }
     } catch (e) {
-      return json({ ok: false, error: String(e) }, { status: 500 }, env, origin)
+      // Не светим внутренности клиенту; полную ошибку видно в `wrangler tail`.
+      console.error('[worker] unhandled error', e)
+      return json({ ok: false, error: 'internal_error' }, { status: 500 }, env, origin)
     }
 
     return json({ ok: false, error: 'not_found' }, { status: 404 }, env, origin)
@@ -218,6 +268,8 @@ async function handleFeedback(req: Request, env: Env, origin: string | null): Pr
   const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  // Анти-спам в ЛС владельцу: не более 5 отзывов в час на пользователя.
+  if (await isRateLimited(env, 'fb', user.id, 5, 3600)) return tooMany(env, origin)
 
   const text = (body.text ?? '').trim().slice(0, 2000)
   if (!text) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)
@@ -234,8 +286,10 @@ async function handleReferral(req: Request, env: Env, origin: string | null): Pr
   const body = (await req.json().catch(() => ({}))) as { initData?: string; ref?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'ref', user.id, 10, 60)) return tooMany(env, origin)
 
-  const refId = String(body.ref ?? '').replace(/[^0-9]/g, '')
+  // slice до санитайза — чтобы не гонять регексп по гигантской строке.
+  const refId = String(body.ref ?? '').slice(0, 32).replace(/[^0-9]/g, '')
   const me = String(user.id)
   if (!refId || refId === me) {
     return json({ ok: true, counted: false, reason: 'self_or_empty' }, { status: 200 }, env, origin)
@@ -281,7 +335,7 @@ async function handleReferral(req: Request, env: Env, origin: string | null): Pr
 }
 
 async function handleStats(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const initData = new URL(req.url).searchParams.get('initData') ?? ''
+  const initData = await readInitData(req)
   const user = await verifyInitData(initData, env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
 
@@ -320,6 +374,7 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'prof', user.id, 10, 60)) return tooMany(env, origin)
 
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
@@ -356,7 +411,7 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
 
 /** Отдать топ участников + позицию вызывающего (по XP и по рефералам). */
 async function handleLeaderboard(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const initData = new URL(req.url).searchParams.get('initData') ?? ''
+  const initData = await readInitData(req)
   const user = await verifyInitData(initData, env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
 
@@ -438,6 +493,8 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  // Анти-DDoS/квота: не более 20 записей в минуту на пользователя (блоб до 2 MB).
+  if (await isRateLimited(env, 'dput', user.id, 20, 60)) return tooMany(env, origin)
 
   const blob = typeof body.blob === 'string' ? body.blob : ''
   if (!blob) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)

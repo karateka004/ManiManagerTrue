@@ -283,8 +283,22 @@ refs:{top,me} }` (топ-50 + позиция). UI — переключатель
 
 ## Текущее состояние
 **Хэндофф:** проект в чистом состоянии, лежит в `C:\Users\User\Desktop\FinApp`. Последний деплой —
-бандл `index-Cmo9q312.js` (`APP_VERSION` = `1.15.0`). Воркер без изменений с 1.13.0
-(`/data/get`, `/data/put` уже задеплоены). Открытых багов нет.
+бандл `index-eqreT96s.js` (`APP_VERSION` = `1.16.0`). **Воркер обновлён** (rate limiting + initData в теле).
+Открытых багов нет.
+**1.16.0 (усиление безопасности):**
+- **Воркер** (`worker/src/index.ts`): rate limiting на KV-счётчиках (`isRateLimited`, ключи `rl:<scope>:<id>`)
+  на `/feedback` (5/час), `/data/put` (20/мин), `/referral`+`/profile` (10/мин) → 429. `/stats` и
+  `/leaderboard` принимают `initData` в **теле POST** (хелпер `readInitData`) — GET с `?initData=` оставлен
+  для обратной совместимости. Глобальный catch → generic `internal_error` (без `String(e)`). CORS не
+  отражает произвольный origin. Cap длины `ref`/поля `user`.
+- **Клиент:** `api.ts` — `getReferralStats`/`getLeaderboard` теперь POST (токен не в URL). `cloud.ts` —
+  `isValidBlob` (размер/JSON/`version`) + откат на локальные данные при сбое применения облака.
+  `parseRefParam` лимит длины. `index.html` — **CSP meta** (script self+telegram.org, connect self+воркер).
+  `.gitignore` — паттерны секретов. **Прод-сборка без inline-скриптов** (CSP `script-src 'self'` не ломает).
+- **Не сделано:** мажор-апгрейд wrangler 3→4 (5 vuln в dev-зависимости `ws`, не прод-рантайм — отдельно).
+  Ручной чек-лист владельцу: 2FA на Cloudflare/Telegram/GitHub + WAF-rate-limit правило на маршрут воркера.
+
+### История (до 1.16.0)
 **1.15.0 (вкладка «Награды» + редизайн Профиля + UI-примитивы):**
 - Геймификация вынесена в новую нижнюю вкладку **«Награды»** (`src/pages/Rewards.tsx`): уровень/XP-герой,
   бенто-плитки Достижения/Лидеры, список заданий, рефералы. Настройки убраны из панели → шестерёнка в
