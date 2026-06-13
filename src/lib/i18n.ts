@@ -37,6 +37,10 @@ const DICT: Dict = {
   'shop.title': { ru: 'Магазин', en: 'Shop' },
   'shop.subtitle': { ru: 'Палитры, титулы, рамки', en: 'Palettes, titles, frames' },
   'shop.featured': { ru: 'Витрина дня', en: 'Deal of the day' },
+  'streak.title': { ru: 'Серия дня', en: 'Daily streak' },
+  'defi.title': { ru: 'De-Fi', en: 'De-Fi' },
+  'defi.subtitle': { ru: 'Доходность по монетам', en: 'Earn on your coins' },
+  'defi.soon': { ru: 'Скоро', en: 'Soon' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },
@@ -238,6 +242,7 @@ const DICT: Dict = {
   /* Аналитика */
   'analytics.subtitle': { ru: 'Куда уходят деньги', en: 'Where the money goes' },
   'analytics.by_days': { ru: 'По дням', en: 'By days' },
+  'analytics.dynamics': { ru: 'Динамика', en: 'Trends' },
   'analytics.max_per_day': { ru: 'Максимум за день:', en: 'Max per day:' },
 
   /* Графики */
@@ -285,6 +290,8 @@ const DICT: Dict = {
   'cal.income_month': { ru: 'Доходы за месяц', en: 'Income this month' },
   'cal.expense_month': { ru: 'Расходы за месяц', en: 'Expenses this month' },
   'cal.net_month': { ru: 'Чистый итог за месяц', en: 'Net this month' },
+  'cal.both': { ru: 'Оба', en: 'Both' },
+  'cal.both_month': { ru: 'Доходы и расходы за месяц', en: 'Income & expenses this month' },
 
   /* Подпись баланса по периоду */
   'balance.day': { ru: 'Баланс за день', en: 'Daily balance' },
@@ -305,6 +312,7 @@ const DICT: Dict = {
   'period.month': { ru: 'Месяц', en: 'Month' },
   'period.year': { ru: 'Год', en: 'Year' },
   'period.custom': { ru: 'Период', en: 'Period' },
+  'period.more': { ru: 'Ещё периоды', en: 'More periods' },
   'period.prev': { ru: 'Назад', en: 'Back' },
   'period.next': { ru: 'Вперёд', en: 'Forward' },
   'period.pick': { ru: 'Выбор периода', en: 'Select period' },

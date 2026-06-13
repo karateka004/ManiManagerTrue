@@ -33,7 +33,7 @@ export function DonutChartWithIcons({ kind }: Props) {
   const CHART_R = 96             // радиус центра кольца
   const RING_OUTER = CHART_R + STROKE / 2
   const LEADER_END = CHART_R + STROKE / 2 + 4
-  const ICON_R = CHART_R + 44    // радиус, где живут иконки (ближе к кольцу)
+  const ICON_R = CHART_R + 26    // радиус иконок: ближе к кольцу, чтобы влезали с запасом на 320px
   const ICON_SIZE = 34
 
   const cx = SIZE / 2
@@ -60,65 +60,17 @@ export function DonutChartWithIcons({ kind }: Props) {
   }, [categories])
 
   /**
-   * Антиколлизия иконок: у близких по размеру мелких долей (напр. 3% и 1%)
-   * середины сегментов почти совпадают, и иконки с процентами налезают друг
-   * на друга. Релаксацией разносим углы иконок так, чтобы между центрами было
-   * не меньше MIN градусов (с учётом замыкания круга на 12 часах). Сами
-   * сегменты и leader-линии остаются на реальной середине доли.
-   *
-   * MIN подобран от геометрии: на радиусе ICON_R дуга между центрами должна быть
-   * заметно больше диаметра кружка (34px) + ширины подписи процента. 22° дают
-   * ≈54px между центрами — комфортный зазор. Для большого числа категорий MIN
-   * ужимаем, чтобы суммарно влезть в круг.
+   * Иконки распределяем РАВНОМЕРНО по всему кольцу на ФИКСИРОВАННОМ радиусе:
+   * угловой шаг 360/n гарантирует, что кружки никогда не налезают друг на друга,
+   * а постоянный радиус — что иконки не вылезают за край даже на узких экранах
+   * (раньше радиальная «ступенька» +28px выталкивала иконку за вьюпорт). Порядок
+   * иконок = порядок сегментов, поэтому leader-линии к серединам долей почти не
+   * пересекаются. Старт каждой иконки — с 12 часов (-90°).
    */
-  const iconAnglesDeg = useMemo(() => {
-    const a = segments.map((s) => s.midAngleDeg)
-    const n = a.length
-    if (n < 2) return a
-    const MIN = Math.min(22, 340 / n)
-    for (let iter = 0; iter < 160; iter++) {
-      let moved = false
-      for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n
-        let gap = a[j] - a[i]
-        if (j === 0) gap += 360 // сосед через 12 часов
-        if (gap < MIN) {
-          const push = (MIN - gap) / 2
-          a[i] -= push
-          a[j] += push
-          moved = true
-        }
-      }
-      if (!moved) break
-    }
-    return a
+  const iconAnglesRad = useMemo(() => {
+    const n = segments.length
+    return segments.map((_, i) => ((-90 + (i * 360) / n) * Math.PI) / 180)
   }, [segments])
-
-  const iconAnglesRad = useMemo(
-    () => iconAnglesDeg.map((deg) => (deg * Math.PI) / 180),
-    [iconAnglesDeg],
-  )
-
-  /**
-   * Радиальная «ступенька»: даже после развода по углу плотный кластер мелких
-   * долей может оставаться тесным. Если у иконки сосед всё ещё ближе TIGHT
-   * градусов — выносим каждую вторую такую иконку на больший радиус, чтобы
-   * кружки с процентами гарантированно не пересекались.
-   */
-  const iconRadii = useMemo(() => {
-    const n = iconAnglesDeg.length
-    return iconAnglesDeg.map((d, i) => {
-      if (n < 2) return ICON_R
-      const prev = iconAnglesDeg[(i - 1 + n) % n]
-      const next = iconAnglesDeg[(i + 1) % n]
-      let gapPrev = Math.abs(d - prev)
-      if (gapPrev > 180) gapPrev = 360 - gapPrev
-      let gapNext = Math.abs(next - d)
-      if (gapNext > 180) gapNext = 360 - gapNext
-      const tight = Math.min(gapPrev, gapNext) < 24
-      return tight && i % 2 === 1 ? ICON_R + 28 : ICON_R
-    })
-  }, [iconAnglesDeg])
 
   if (categories.length === 0) {
     return (
@@ -138,7 +90,7 @@ export function DonutChartWithIcons({ kind }: Props) {
           {/* Leader lines — рисуются ПОД кольцом, чтобы кольцо их перекрывало изнутри */}
           {segments.map((s, i) => {
             const iconAngle = iconAnglesRad[i]
-            const iconR = iconRadii[i]
+            const iconR = ICON_R
             // Старт — на реальной середине доли, конец — у (возможно смещённой) иконки.
             const x1 = cx + Math.cos(s.midAngleRad) * LEADER_END
             const y1 = cy + Math.sin(s.midAngleRad) * LEADER_END
@@ -202,7 +154,7 @@ export function DonutChartWithIcons({ kind }: Props) {
         {/* Иконки + проценты — отдельным слоем HTML для красивого текста */}
         {segments.map((s, i) => {
           const iconAngle = iconAnglesRad[i]
-          const iconR = iconRadii[i]
+          const iconR = ICON_R
           const x = cx + Math.cos(iconAngle) * iconR
           const y = cy + Math.sin(iconAngle) * iconR
           return (

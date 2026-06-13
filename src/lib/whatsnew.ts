@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.17.0'
+export const APP_VERSION = '1.18.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.18.0',
+    date: '2026-06-13',
+    title: { ru: 'Аналитика в одном месте и чистое кольцо', en: 'Unified analytics & a cleaner chart' },
+    items: [
+      {
+        icon: '📊',
+        text: {
+          ru: 'Аналитика и Графики объединены: расходы, доходы, динамика и календарь — в одной вкладке',
+          en: 'Analytics and Charts merged: expenses, income, trends and calendar in one tab',
+        },
+      },
+      {
+        icon: '🍩',
+        text: {
+          ru: 'Кольцо категорий больше не наезжает на края, в календаре появился режим «Оба», а в периоде — «Всё время»',
+          en: 'The category ring no longer spills off-screen, the calendar gained a “Both” mode, and the period picker got “All time”',
+        },
+      },
+      {
+        icon: '🎮',
+        text: {
+          ru: 'Награды стали плитками: серия, магазин, рейтинг и De-Fi (скоро)',
+          en: 'Rewards are tiles now: streak, shop, leaderboard and De-Fi (soon)',
+        },
+      },
+    ],
+  },
   {
     version: '1.17.0',
     date: '2026-06-12',

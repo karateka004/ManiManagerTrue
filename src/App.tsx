@@ -13,13 +13,11 @@ import { lazyRetry } from './lib/lazyRetry'
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
 // Импорты вынесены в функции, чтобы их же переиспользовать для префетча (прогрева).
 const importAnalytics = () => import('./pages/Analytics')
-const importCharts = () => import('./pages/Charts')
 const importRewards = () => import('./pages/Rewards')
 const importProfile = () => import('./pages/Profile')
 const importSettings = () => import('./pages/Settings')
 
 const AnalyticsPage = lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage })))
-const ChartsPage = lazyRetry(() => importCharts().then((m) => ({ default: m.ChartsPage })))
 const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage })))
 const ProfilePage = lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage })))
 const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage })))
@@ -36,7 +34,6 @@ function usePrefetchTabs() {
       // fire-and-forget; сбой префетча неважен — реальная загрузка идёт через lazyRetry
       const swallow = () => {}
       importAnalytics().catch(swallow)
-      importCharts().catch(swallow)
       importRewards().catch(swallow)
       importProfile().catch(swallow)
       importSettings().catch(swallow)
@@ -111,7 +108,6 @@ export default function App() {
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
   const changeTab = (next: Tab) => {
     if (next === 'analytics') track('visit_analytics')
-    else if (next === 'charts') track('visit_charts')
     setTab(next)
   }
 
@@ -134,7 +130,6 @@ export default function App() {
           <Suspense fallback={<PageFallback />}>
             {tab === 'home' && <HomePage onOpenProfile={() => changeTab('profile')} />}
             {tab === 'analytics' && <AnalyticsPage />}
-            {tab === 'charts' && <ChartsPage />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
               <ProfilePage

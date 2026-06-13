@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
 import { m } from 'framer-motion'
-import { useStore, selectTrend, selectAnalyticsCurrency, type TrendGranularity, type TrendBucket } from '../store/transactions'
-import { AccountSwitcher } from '../components/AccountSwitcher'
-import { formatMoney } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useStore, selectTrend, selectAnalyticsCurrency, type TrendGranularity, type TrendBucket } from '../../store/transactions'
+import { formatMoney } from '../../lib/format'
+import { useT } from '../../lib/i18n'
 
 type Series = 'both' | 'expense' | 'income'
 
@@ -20,7 +19,8 @@ const SERIES: { id: Series; label: string }[] = [
   { id: 'income', label: 'common.income' },
 ]
 
-export function ChartsPage() {
+/** «Динамика» — графики трендов (бывшая вкладка «Графики»), сегмент Аналитики. */
+export function TrendChart() {
   const [gran, setGran] = useState<TrendGranularity>('month')
   const [series, setSeries] = useState<Series>('both')
   const buckets = useStore((s) => selectTrend(s, gran))
@@ -35,14 +35,7 @@ export function ChartsPage() {
   }, [buckets])
 
   return (
-    <div className="pb-28">
-      <div className="px-6 pt-6 pb-2">
-        <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('nav.charts')}</div>
-        <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('charts.subtitle')}</div>
-      </div>
-
-      <AccountSwitcher />
-
+    <div>
       {/* Granularity */}
       <div className="mx-4 mt-2 flex gap-1 rounded-full bg-surface-sunken p-1">
         {GRANS.map((g) => {

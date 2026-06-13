@@ -4,6 +4,7 @@ import { useT } from '../lib/i18n'
 const TABS = [
   { id: 'expense', label: 'common.expense' },
   { id: 'income',  label: 'common.income' },
+  { id: 'dynamics', label: 'analytics.dynamics' },
   { id: 'calendar', label: 'cal.tab' },
 ] as const
 
@@ -17,7 +18,7 @@ interface Props {
 export function AnalyticsTabs({ value, onChange }: Props) {
   const t = useT()
   return (
-    <div className="mx-6 mt-4 grid grid-cols-3 gap-1 rounded-full bg-surface-sunken p-1">
+    <div className="mx-4 mt-4 grid grid-cols-4 gap-1 rounded-full bg-surface-sunken p-1">
       {TABS.map((tab) => {
         const active = value === tab.id
         return (
@@ -27,7 +28,7 @@ export function AnalyticsTabs({ value, onChange }: Props) {
               hapticSelect()
               onChange(tab.id)
             }}
-            className={`relative rounded-full py-2 text-sm font-semibold transition-colors ${
+            className={`relative rounded-full py-2 text-[13px] font-semibold transition-colors ${
               active ? 'bg-surface-raised text-ink shadow-soft dark:shadow-soft-dark' : 'text-ink-muted'
             }`}
           >

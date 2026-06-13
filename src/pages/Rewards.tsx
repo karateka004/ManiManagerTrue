@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { ShoppingBag, Medal, Hourglass } from 'lucide-react'
+import { ShoppingBag, Medal, Hourglass, Coins } from 'lucide-react'
 import {
   useStore,
   selectCategoriesUsed,
@@ -15,7 +15,7 @@ import { LEVELS } from '../lib/levels'
 import { allQuestProgress, type QuestProgress } from '../lib/quests'
 import { useT } from '../lib/i18n'
 import { Tile } from '../components/ui/Tile'
-import { StreakCard } from '../components/rewards/StreakCard'
+import { StreakTile } from '../components/rewards/StreakTile'
 import { QuestCard } from '../components/rewards/QuestCard'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
@@ -151,13 +151,10 @@ export function RewardsPage() {
         </div>
       </div>
 
-      {/* Серия дня — источник монет, держим на виду */}
-      <StreakCard />
-
-      {/* Бенто-плитки */}
+      {/* Бенто-плитки 2×2: Магазин · Лидеры · Серия · De-Fi */}
       <div className="mx-4 mt-3 grid grid-cols-2 gap-3">
         <Tile
-          icon={<ShoppingBag size={24} strokeWidth={2} />}
+          icon={<ShoppingBag size={26} strokeWidth={2} />}
           title={t('shop.title')}
           subtitle={t('shop.subtitle')}
           accent="amber"
@@ -169,7 +166,7 @@ export function RewardsPage() {
           onClick={openShop}
         />
         <Tile
-          icon={<Medal size={24} strokeWidth={2} />}
+          icon={<Medal size={26} strokeWidth={2} />}
           title={t('profile.leaderboard')}
           subtitle={t('profile.leaderboard_hint')}
           accent="yellow"
@@ -179,6 +176,19 @@ export function RewardsPage() {
             </span>
           }
           onClick={openLeaderboard}
+        />
+        <StreakTile />
+        <Tile
+          icon={<Coins size={26} strokeWidth={2} />}
+          title={t('defi.title')}
+          subtitle={t('defi.subtitle')}
+          accent="violet"
+          disabled
+          badge={
+            <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+              {t('defi.soon')}
+            </span>
+          }
         />
       </div>
 

@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MoreHorizontal, Check } from 'lucide-react'
 import { useStore, periodLabel, type PeriodMode } from '../store/transactions'
 import { dayjs } from '../lib/format'
 import { useT, weekdaysShort } from '../lib/i18n'
 import { hapticSelect, hapticTap } from '../lib/telegram'
 
-const TABS: { id: PeriodMode; label: string }[] = [
+// Основные чипы — частые периоды. Остальное (Год / Всё время / Период) — в «⋯»-меню.
+const PRIMARY: { id: PeriodMode; label: string }[] = [
   { id: 'day', label: 'period.day' },
   { id: 'week', label: 'period.week' },
   { id: 'month', label: 'period.month' },
-  { id: 'year', label: 'period.year' },
-  { id: 'range', label: 'period.custom' },
 ]
 
 export function PeriodSwitcher() {
@@ -29,8 +28,17 @@ export function PeriodSwitcher() {
   const isCurrent =
     arrows && dayjs(period.anchor).isSame(dayjs(), period.mode as dayjs.OpUnitType)
 
-  const selectTab = (id: PeriodMode) => {
+  const [menuOpen, setMenuOpen] = useState(false)
+  // «⋯» подсвечен, когда активен режим из меню (Год / Всё время / Период).
+  const moreActive = period.mode === 'year' || period.mode === 'all' || period.mode === 'range'
+
+  const selectPrimary = (id: PeriodMode) => {
     hapticSelect()
+    setPeriodMode(id)
+  }
+  const pickMore = (id: PeriodMode) => {
+    hapticSelect()
+    setMenuOpen(false)
     if (id === 'range') {
       setPeriodMode('range')
       setCalendarOpen(true)
@@ -41,14 +49,14 @@ export function PeriodSwitcher() {
 
   return (
     <div className="px-4 pt-1">
-      {/* Segmented control */}
-      <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
-        {TABS.map((t) => {
-          const active = period.mode === t.id || (t.id === 'range' && period.mode === 'all')
+      {/* Segmented control: 3 основных чипа + «⋯»-меню */}
+      <div className="relative flex gap-1 rounded-full bg-surface-sunken p-1">
+        {PRIMARY.map((t) => {
+          const active = period.mode === t.id
           return (
             <button
               key={t.id}
-              onClick={() => selectTab(t.id)}
+              onClick={() => selectPrimary(t.id)}
               className={`relative flex-1 rounded-full py-1.5 text-xs font-semibold transition-colors ${
                 active ? 'text-ink' : 'text-ink-subtle'
               }`}
@@ -64,6 +72,36 @@ export function PeriodSwitcher() {
             </button>
           )
         })}
+
+        {/* «⋯» — остальные периоды */}
+        <button
+          onClick={() => { hapticSelect(); setMenuOpen((v) => !v) }}
+          aria-label={tr('period.more')}
+          className={`relative flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 transition-colors ${
+            moreActive ? 'text-ink' : 'text-ink-subtle'
+          }`}
+        >
+          {moreActive && (
+            <m.span
+              layoutId="period-pill"
+              className="absolute inset-0 rounded-full bg-surface-raised shadow-soft dark:shadow-soft-dark"
+              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+            />
+          )}
+          <MoreHorizontal size={16} strokeWidth={2.5} className="relative z-10" />
+        </button>
+
+        {menuOpen && (
+          <>
+            {/* клик-вне закрывает */}
+            <button aria-hidden tabIndex={-1} onClick={() => setMenuOpen(false)} className="fixed inset-0 z-40 cursor-default" />
+            <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-2xl bg-surface-raised p-1 shadow-raised">
+              <MoreItem label={tr('period.year')} active={period.mode === 'year'} onClick={() => pickMore('year')} />
+              <MoreItem label={tr('common.all_time')} active={period.mode === 'all'} onClick={() => pickMore('all')} />
+              <MoreItem label={tr('period.custom')} active={period.mode === 'range'} onClick={() => pickMore('range')} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Label + arrows */}
@@ -142,6 +180,21 @@ function Chevron({ dir }: { dir: 'left' | 'right' }) {
     <ChevronLeft size={18} strokeWidth={2.5} />
   ) : (
     <ChevronRight size={18} strokeWidth={2.5} />
+  )
+}
+
+/** Пункт «⋯»-меню периодов. */
+function MoreItem({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+        active ? 'bg-brand-500/15 text-brand-700 dark:text-brand-200' : 'text-ink-muted active:bg-surface-sunken'
+      }`}
+    >
+      {label}
+      {active && <Check size={16} strokeWidth={2.6} className="text-brand-600 dark:text-brand-300" />}
+    </button>
   )
 }
 

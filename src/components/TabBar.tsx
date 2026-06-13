@@ -1,11 +1,12 @@
 import type { ComponentType } from 'react'
-import { Home, PieChart, BarChart3, User, Gift, type LucideProps } from 'lucide-react'
+import { Home, PieChart, User, Gift, type LucideProps } from 'lucide-react'
 import { hapticSelect } from '../lib/telegram'
 import { useT } from '../lib/i18n'
 
 // 'settings' остаётся валидным значением вкладки (рендерится в App), но в нижней
 // панели его НЕТ — Настройки открываются из шапки Профиля (иконка-шестерёнка).
-export type Tab = 'home' | 'analytics' | 'charts' | 'rewards' | 'profile' | 'settings'
+// Графики объединены в Аналитику (сегмент «Динамика») — отдельной вкладки нет.
+export type Tab = 'home' | 'analytics' | 'rewards' | 'profile' | 'settings'
 
 interface Props {
   value: Tab
@@ -15,7 +16,6 @@ interface Props {
 const ITEMS: { id: Tab; labelKey: string; icon: ComponentType<LucideProps> }[] = [
   { id: 'home', labelKey: 'nav.home', icon: Home },
   { id: 'analytics', labelKey: 'nav.analytics', icon: PieChart },
-  { id: 'charts', labelKey: 'nav.charts', icon: BarChart3 },
   { id: 'rewards', labelKey: 'nav.rewards', icon: Gift },
   { id: 'profile', labelKey: 'nav.profile', icon: User },
 ]

@@ -5,6 +5,7 @@ import { DonutChart } from '../components/DonutChart'
 import { DonutChartWithIcons } from '../components/DonutChartWithIcons'
 import { AnalyticsTabs, type AnalyticsTab } from '../components/AnalyticsTabs'
 import { MonthCalendar } from '../components/MonthCalendar'
+import { TrendChart } from '../components/analytics/TrendChart'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import {
   useStore,
@@ -20,12 +21,21 @@ import type { CategoryKind } from '../store/categories'
 export function AnalyticsPage() {
   const [tab, setTab] = useState<AnalyticsTab>('expense')
   const isCalendar = tab === 'calendar'
-  // selectByCategory принимает только income/expense — для календаря не используется.
-  const kind: CategoryKind = isCalendar ? 'expense' : tab
+  const isDynamics = tab === 'dynamics'
+  const isCats = tab === 'expense' || tab === 'income'
+  // selectByCategory принимает только income/expense; для календаря/динамики не используется.
+  const kind: CategoryKind = tab === 'income' ? 'income' : 'expense'
   const categories = useStore((s) => selectByCategoryAccount(s, kind))
   const daily = useStore(selectDailyExpenseAccount)
   const chartStyle = useStore((s) => s.chartStyle)
+  const track = useStore((s) => s.track)
   const t = useT()
+
+  // Открытие «Динамики» = бывший заход на вкладку «Графики» (квест see_charts).
+  const changeAnalyticsTab = (next: AnalyticsTab) => {
+    if (next === 'dynamics') track('visit_charts')
+    setTab(next)
+  }
 
   return (
     <div className="pb-32">
@@ -35,8 +45,9 @@ export function AnalyticsPage() {
       </div>
 
       <AccountSwitcher />
-      {!isCalendar && <PeriodSwitcher />}
-      <AnalyticsTabs value={tab} onChange={setTab} />
+      {/* Период нужен только сводкам по категориям; у Динамики своя гранулярность, у Календаря — своя навигация. */}
+      {isCats && <PeriodSwitcher />}
+      <AnalyticsTabs value={tab} onChange={changeAnalyticsTab} />
 
       {isCalendar ? (
         // CSS-fade (.tab-enter, базовая непрозрачность 1) вместо framer
@@ -44,6 +55,10 @@ export function AnalyticsPage() {
         // webview) календарь оставался невидимым — «не видно сумм за месяц».
         <div key="calendar" className="tab-enter">
           <MonthCalendar />
+        </div>
+      ) : isDynamics ? (
+        <div key="dynamics" className="tab-enter">
+          <TrendChart />
         </div>
       ) : (
         <>

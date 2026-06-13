@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { m } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore, activeTransactions } from '../store/transactions'
 import { dayjs, formatMoney } from '../lib/format'
@@ -7,12 +6,13 @@ import { useT, weekdaysShort, type Lang } from '../lib/i18n'
 import { hapticSelect } from '../lib/telegram'
 
 /** Что показывать под числом дня. */
-type CalFilter = 'net' | 'income' | 'expense'
+type CalFilter = 'net' | 'income' | 'expense' | 'both'
 
 const FILTERS: { id: CalFilter; label: string }[] = [
   { id: 'net', label: 'cal.net' },
   { id: 'income', label: 'common.income' },
   { id: 'expense', label: 'common.expense' },
+  { id: 'both', label: 'cal.both' },
 ]
 
 interface DayAgg {
@@ -114,14 +114,14 @@ export function MonthCalendar() {
       </div>
 
       {/* Фильтр */}
-      <div className="mb-3 grid grid-cols-3 gap-1 rounded-full bg-surface-sunken p-1">
+      <div className="mb-3 grid grid-cols-4 gap-1 rounded-full bg-surface-sunken p-1">
         {FILTERS.map((f) => {
           const active = filter === f.id
           return (
             <button
               key={f.id}
               onClick={() => { hapticSelect(); setFilter(f.id) }}
-              className={`rounded-full py-1.5 text-xs font-semibold transition-colors ${
+              className={`rounded-full py-1.5 text-[11px] font-semibold transition-colors ${
                 active ? 'bg-surface-raised text-ink shadow-soft dark:shadow-soft-dark' : 'text-ink-muted'
               }`}
             >
@@ -142,8 +142,34 @@ export function MonthCalendar() {
           {cells.map((day, i) => {
             if (day === null) return <div key={`e${i}`} />
             const agg = byDay.get(day)
-            const value = cellValue(agg)
             const isToday = isCurrentMonth && today.date() === day
+            // Режим «Оба»: показываем и доход, и расход двумя строками (без вычета).
+            if (filter === 'both') {
+              const hasAny = !!agg && (agg.income > 0 || agg.expense > 0)
+              return (
+                <div
+                  key={day}
+                  className={`flex min-h-[44px] flex-col items-center justify-start rounded-xl py-1 ${
+                    isToday ? 'bg-brand-500/15 ring-1 ring-brand-500/40' : hasAny ? 'bg-surface-sunken/50' : ''
+                  }`}
+                >
+                  <span className={`text-[11px] font-semibold ${isToday ? 'text-brand-600 dark:text-brand-300' : 'text-ink-muted'}`}>
+                    {day}
+                  </span>
+                  {hasAny && (
+                    <span className="mt-0.5 flex flex-col items-center leading-tight">
+                      {agg!.income > 0 && (
+                        <span className="whitespace-nowrap text-[8px] font-bold text-income-deep">+{compact(agg!.income, lang)}</span>
+                      )}
+                      {agg!.expense > 0 && (
+                        <span className="whitespace-nowrap text-[8px] font-bold text-expense-deep">−{compact(agg!.expense, lang)}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )
+            }
+            const value = cellValue(agg)
             const positive = value !== null && value > 0
             const negative = value !== null && value < 0
             return (
@@ -174,15 +200,29 @@ export function MonthCalendar() {
       {/* Итог месяца */}
       <div className="mt-3 flex items-center justify-between rounded-2xl bg-surface-sunken/60 px-4 py-3">
         <span className="text-xs font-semibold text-ink-muted">
-          {filter === 'income' ? tr('cal.income_month') : filter === 'expense' ? tr('cal.expense_month') : tr('cal.net_month')}
+          {filter === 'income'
+            ? tr('cal.income_month')
+            : filter === 'expense'
+            ? tr('cal.expense_month')
+            : filter === 'both'
+            ? tr('cal.both_month')
+            : tr('cal.net_month')}
         </span>
-        <span
-          className={`tabular text-sm font-bold ${
-            monthTotal > 0 ? 'text-income-deep' : monthTotal < 0 ? 'text-expense-deep' : 'text-ink'
-          }`}
-        >
-          {formatMoney(monthTotal, currency, { sign: true })}
-        </span>
+        {filter === 'both' ? (
+          <span className="flex items-center gap-1.5 text-sm font-bold">
+            <span className="tabular text-income-deep">+{formatMoney(totals.income, currency)}</span>
+            <span className="text-ink-subtle">·</span>
+            <span className="tabular text-expense-deep">−{formatMoney(totals.expense, currency)}</span>
+          </span>
+        ) : (
+          <span
+            className={`tabular text-sm font-bold ${
+              monthTotal > 0 ? 'text-income-deep' : monthTotal < 0 ? 'text-expense-deep' : 'text-ink'
+            }`}
+          >
+            {formatMoney(monthTotal, currency, { sign: true })}
+          </span>
+        )}
       </div>
     </div>
   )
