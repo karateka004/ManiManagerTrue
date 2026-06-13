@@ -5,7 +5,7 @@ import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
-import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice } from '../lib/rewards'
+import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice, discountedPrice } from '../lib/rewards'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
@@ -87,6 +87,8 @@ interface State {
   bonusXp: number
   /** Игровая валюта «монеты» — награда за задания (под косметический магазин). */
   coins: number
+  /** Сколько рефералов уже «оплачено» фикс-наградой (для доначисления за новых). */
+  rewardedReferrals: number
   /** ID заданий, награда за которые уже забрана (Claim). */
   claimedQuests: string[]
   /** Ежедневная серия (стрик) — ретеншн-движок. */
@@ -194,13 +196,22 @@ interface Actions {
   /** Надеть косметическую награду (акцент/титул/рамка). */
   equipReward: (kind: 'accent' | 'title' | 'frame', id: string) => void
   /**
-   * Купить награду за монеты. Возвращает true при успехе,
-   * false если уже куплена, не найдена или не хватает монет.
+   * Купить награду за монеты. `priceOverride` — скидочная цена витрины дня
+   * (зажимается в диапазон [скидка, полная цена] для защиты от подмены из UI).
+   * Возвращает true при успехе, false если уже куплена/не найдена/не хватает монет.
    */
-  buyReward: (id: string) => boolean
+  buyReward: (id: string, priceOverride?: number) => boolean
+  /**
+   * Сверить число рефералов с уже оплаченными и доначислить фикс-награду
+   * (REF_REWARD) за новых. Идемпотентно: повторный вызов с тем же count — no-op.
+   */
+  reconcileReferralRewards: (count: number) => void
 }
 
 const cuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/** Фикс-награда за каждого присоединившегося реферала. */
+export const REF_REWARD = { xp: 25, coins: 10 } as const
 
 /** Инкремент счётчика события вовлечения (для заданий «за использование»). */
 const bumpEvent = (events: Record<string, number>, key: string): Record<string, number> => ({
@@ -229,6 +240,7 @@ export const useStore = create<State & Actions>()(
       customCategories: [],
       bonusXp: 0,
       coins: 0,
+      rewardedReferrals: 0,
       claimedQuests: [],
       streak: { count: 0, best: 0, lastClaim: null },
       equipped: { ...DEFAULT_EQUIPPED },
@@ -390,20 +402,37 @@ export const useStore = create<State & Actions>()(
       equipReward: (kind, id) =>
         set((s) => ({ equipped: { ...s.equipped, [kind]: id }, events: bumpEvent(s.events, 'customize') })),
 
-      buyReward: (id) => {
+      buyReward: (id, priceOverride) => {
         const s = get()
         if (s.owned.includes(id)) return false
         const r = getReward(id)
         if (!r) return false
-        const price = rewardPrice(r)
+        const base = rewardPrice(r)
+        // Скидку из UI зажимаем в [скидка дня, полная цена] — защита от подмены.
+        const price =
+          priceOverride != null
+            ? Math.max(Math.min(priceOverride, base), discountedPrice(r))
+            : base
         if (s.coins < price) return false
         set({ owned: [...s.owned, id], coins: Math.max(0, s.coins - price) })
         return true
       },
+
+      reconcileReferralRewards: (count) =>
+        set((s) => {
+          const total = Math.max(0, Math.floor(count))
+          const n = total - s.rewardedReferrals
+          if (n <= 0) return {}
+          return {
+            rewardedReferrals: total,
+            bonusXp: Math.max(0, s.bonusXp + n * REF_REWARD.xp),
+            coins: Math.max(0, s.coins + n * REF_REWARD.coins),
+          }
+        }),
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 11,
+      version: 12,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
@@ -464,6 +493,10 @@ export const useStore = create<State & Actions>()(
         // v11: per-transaction валюта — запоминаем последнюю использованную
         if (persisted && version < 11) {
           persisted.lastTxCurrency = persisted.currency ?? 'USD'
+        }
+        // v12: счётчик оплаченных рефералов (фикс-награда за каждого друга)
+        if (persisted && version < 12) {
+          if (typeof persisted.rewardedReferrals !== 'number') persisted.rewardedReferrals = 0
         }
         return persisted
       },

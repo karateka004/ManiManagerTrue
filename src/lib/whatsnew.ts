@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.16.0'
+export const APP_VERSION = '1.17.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.17.0',
+    date: '2026-06-12',
+    title: { ru: 'Магазин кастомизации и витрина дня', en: 'Customization shop & daily deals' },
+    items: [
+      {
+        icon: '🛍️',
+        text: {
+          ru: 'Магазин переехал на отдельный экран: палитры, титулы и рамки — крупно и удобно',
+          en: 'The shop moved to its own screen: palettes, titles and frames — big and convenient',
+        },
+      },
+      {
+        icon: '🔥',
+        text: {
+          ru: '«Витрина дня» — каждый день три предмета со скидкой −30%, обновляется автоматически',
+          en: 'Daily deals — three items at −30% every day, refreshed automatically',
+        },
+      },
+      {
+        icon: '🤝',
+        text: {
+          ru: 'За каждого приглашённого друга — +25 XP и 🪙10, и теперь видно прямо в списке',
+          en: 'Each invited friend now gives +25 XP and 🪙10, shown right in the list',
+        },
+      },
+    ],
+  },
   {
     version: '1.16.0',
     date: '2026-06-12',

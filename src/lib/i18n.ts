@@ -33,6 +33,10 @@ const DICT: Dict = {
   'nav.profile': { ru: 'Профиль', en: 'Profile' },
   'nav.rewards': { ru: 'Награды', en: 'Rewards' },
   'rewards.kicker': { ru: 'Прогресс и награды', en: 'Progress & rewards' },
+  'shop.kicker': { ru: 'Кастомизация', en: 'Customization' },
+  'shop.title': { ru: 'Магазин', en: 'Shop' },
+  'shop.subtitle': { ru: 'Палитры, титулы, рамки', en: 'Palettes, titles, frames' },
+  'shop.featured': { ru: 'Витрина дня', en: 'Deal of the day' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },

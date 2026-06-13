@@ -151,3 +151,56 @@ export const DEFAULT_EQUIPPED = {
   accent: 'accent_mint',
   frame: 'frame_none',
 } as const
+
+/* ---------- Витрина дня (ежедневная ротация со скидкой) ---------- */
+
+/** Скидка витрины дня, %. */
+export const DAILY_DISCOUNT_PCT = 30
+/** Сколько предметов в витрине дня. */
+const FEATURED_COUNT = 3
+/** Покупаемые предметы (не бесплатные common). */
+const BUYABLE_IDS: string[] = REWARDS.filter((r) => RARITY_PRICE[r.rarity] > 0).map((r) => r.id)
+
+/** Детерминированный сид из строки (FNV-1a). */
+function hashSeed(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+/** mulberry32 — детерминированный PRNG (тот же приём, что в demo.ts). */
+function mulberry32(seed: number): () => number {
+  let a = seed
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Набор «витрины дня» — детерминированно по дате (`YYYY-MM-DD`), одинаков для всех
+ * в этот день и меняется ежедневно. Сидированный Фишер-Йейтс по покупаемым предметам.
+ */
+export function featuredToday(dateKey: string): string[] {
+  const rnd = mulberry32(hashSeed('shop:' + dateKey))
+  const pool = [...BUYABLE_IDS]
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1))
+    const tmp = pool[i]
+    pool[i] = pool[j]
+    pool[j] = tmp
+  }
+  return pool.slice(0, Math.min(FEATURED_COUNT, pool.length))
+}
+
+/** Цена со скидкой витрины дня (округление вниз до 5). */
+export function discountedPrice(reward: RewardDef, pct: number = DAILY_DISCOUNT_PCT): number {
+  const full = rewardPrice(reward)
+  return Math.max(0, Math.floor((full * (100 - pct)) / 100 / 5) * 5)
+}

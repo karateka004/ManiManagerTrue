@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
 import { buildReferralLink, type ReferralFriend } from '../../lib/api'
+import { REF_REWARD } from '../../store/transactions'
 import { openTelegramLink, hapticTap, hapticSelect } from '../../lib/telegram'
 import { dayjs } from '../../lib/format'
 import type { TFunc } from '../../lib/i18n'
@@ -70,7 +71,12 @@ export function ReferralBlock({ count, friends, t }: { count: number | null; fri
                     <div className="truncate text-sm font-medium text-ink">{f.name}</div>
                     {f.username && <div className="truncate text-[11px] text-ink-subtle">@{f.username}</div>}
                   </div>
-                  <div className="shrink-0 text-[10px] text-ink-subtle">{dayjs(f.at).fromNow()}</div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                      +{REF_REWARD.xp} XP · 🪙{REF_REWARD.coins}
+                    </span>
+                    <span className="text-[10px] text-ink-subtle">{dayjs(f.at).fromNow()}</span>
+                  </div>
                 </div>
               ))}
             </div>

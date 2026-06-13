@@ -283,8 +283,19 @@ refs:{top,me} }` (топ-50 + позиция). UI — переключатель
 
 ## Текущее состояние
 **Хэндофф:** проект в чистом состоянии, лежит в `C:\Users\User\Desktop\FinApp`. Последний деплой —
-бандл `index-eqreT96s.js` (`APP_VERSION` = `1.16.0`). **Воркер обновлён** (rate limiting + initData в теле).
+бандл `index-DVgrl8CI.js` (`APP_VERSION` = `1.17.0`). Воркер без изменений с 1.16.0 (только фронт).
 Открытых багов нет.
+**1.17.0 (магазин-экран + витрина дня + награда за рефералов):**
+- Магазин кастомизации вынесен из шторки в **полноэкранный** `src/pages/Shop.tsx` (под-вид вкладки
+  «Награды», `shopOpen` в `Rewards.tsx`, кнопка ←). `RoadpassSheet.tsx` **удалён**; `StreakCard` (серия дня)
+  и `RewardRow` вынесены в `src/components/rewards/`; серия дня теперь карта на хабе «Награды».
+- **Витрина дня:** `featuredToday(date)` в `lib/rewards.ts` (сид-PRNG по дате) — 3 предмета −30% ежедневно;
+  `buyReward(id, priceOverride?)` зажимает скидку в `[discountedPrice, full]`.
+- **Реф-награда:** persist **v11→v12**, `rewardedReferrals` + `REF_REWARD = +25 XP/🪙10` +
+  `reconcileReferralRewards(count)` (идемпотентно, едет в облачном блобе), чип на каждом друге в `ReferralBlock`.
+  Реально виден только в Telegram (список друзей с воркера). Квесты invite_3/5 остались сверху.
+
+### История (до 1.17.0)
 **1.16.0 (усиление безопасности):**
 - **Воркер** (`worker/src/index.ts`): rate limiting на KV-счётчиках (`isRateLimited`, ключи `rl:<scope>:<id>`)
   на `/feedback` (5/час), `/data/put` (20/мин), `/referral`+`/profile` (10/мин) → 429. `/stats` и

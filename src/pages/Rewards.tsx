@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { Trophy, Medal, Hourglass } from 'lucide-react'
+import { ShoppingBag, Medal, Hourglass } from 'lucide-react'
 import {
   useStore,
   selectCategoriesUsed,
@@ -15,11 +15,12 @@ import { LEVELS } from '../lib/levels'
 import { allQuestProgress, type QuestProgress } from '../lib/quests'
 import { useT } from '../lib/i18n'
 import { Tile } from '../components/ui/Tile'
+import { StreakCard } from '../components/rewards/StreakCard'
 import { QuestCard } from '../components/rewards/QuestCard'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
+import { ShopScreen } from './Shop'
 
-// Шторки геймификации — отдельными чанками, грузятся по первому открытию.
-const RoadpassSheet = lazy(() => import('../components/RoadpassSheet').then((m) => ({ default: m.RoadpassSheet })))
+// Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
 
 /** Вкладка «Награды» — хаб геймификации: уровень/XP, задания, достижения, лидеры, рефералы. */
@@ -39,13 +40,12 @@ export function RewardsPage() {
   const goalsReached = useStore(selectGoalsReached)
   const budgetMonth = useStore(selectBudgetMonthKept)
   const lvl = useLevel()
+  const reconcileReferralRewards = useStore((s) => s.reconcileReferralRewards)
 
   const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
-  const [roadpassOpen, setRoadpassOpen] = useState(false)
+  const [shopOpen, setShopOpen] = useState(false)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
-  const seenRoadpass = useRef(false)
   const seenLeaderboard = useRef(false)
-  if (roadpassOpen) seenRoadpass.current = true
   if (leaderboardOpen) seenLeaderboard.current = true
 
   // Тик раз в минуту — двигает таймеры разблокировки заданий без перезагрузки.
@@ -59,10 +59,14 @@ export function RewardsPage() {
     if (!isBackendConfigured()) return
     let alive = true
     getReferralStats()
-      .then((r) => { if (alive && r.ok) setReferral({ count: r.referrals, friends: r.friends ?? [] }) })
+      .then((r) => {
+        if (!alive || !r.ok) return
+        setReferral({ count: r.referrals, friends: r.friends ?? [] })
+        reconcileReferralRewards(r.referrals) // фикс-награда за каждого нового друга
+      })
       .catch(() => {})
     return () => { alive = false }
-  }, [])
+  }, [reconcileReferralRewards])
 
   // Закрепляем статистику участника в таблице лидеров (только геймификация, без сумм).
   useEffect(() => {
@@ -89,8 +93,11 @@ export function RewardsPage() {
     claimQuest(q.def.id, q.def.xp, q.def.coins)
   }
 
-  const openRoadpass = () => { track('open_achievements'); setRoadpassOpen(true) }
+  const openShop = () => { track('open_achievements'); setShopOpen(true) }
   const openLeaderboard = () => { track('open_leaderboard'); setLeaderboardOpen(true) }
+
+  // Магазин — полноэкранный под-вид этой же вкладки (TabBar остаётся снизу).
+  if (shopOpen) return <ShopScreen onBack={() => setShopOpen(false)} />
 
   return (
     <div className="pb-24">
@@ -144,19 +151,22 @@ export function RewardsPage() {
         </div>
       </div>
 
+      {/* Серия дня — источник монет, держим на виду */}
+      <StreakCard />
+
       {/* Бенто-плитки */}
       <div className="mx-4 mt-3 grid grid-cols-2 gap-3">
         <Tile
-          icon={<Trophy size={24} strokeWidth={2} />}
-          title={t('profile.achievements')}
-          subtitle={t('profile.achievements_hint')}
+          icon={<ShoppingBag size={24} strokeWidth={2} />}
+          title={t('shop.title')}
+          subtitle={t('shop.subtitle')}
           accent="amber"
           badge={
             <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
               🪙 {coins.toLocaleString('ru-RU')}
             </span>
           }
-          onClick={openRoadpass}
+          onClick={openShop}
         />
         <Tile
           icon={<Medal size={24} strokeWidth={2} />}
@@ -200,7 +210,6 @@ export function RewardsPage() {
       <ReferralBlock count={referral?.count ?? null} friends={referral?.friends ?? []} t={t} />
 
       <Suspense fallback={null}>
-        {seenRoadpass.current && <RoadpassSheet open={roadpassOpen} onClose={() => setRoadpassOpen(false)} />}
         {seenLeaderboard.current && <LeaderboardSheet open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />}
       </Suspense>
     </div>
