@@ -86,47 +86,47 @@ var jt=typeof globalThis<"u"?globalThis:typeof window<"u"?window:typeof global<"
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const oe=[["path",{d:"M3 3v16a2 2 0 0 0 2 2h16",key:"c24i48"}],["path",{d:"M18 17V9",key:"2bz60n"}],["path",{d:"M13 17V5",key:"1frdt8"}],["path",{d:"M8 17v-3",key:"17ska0"}]],k1=o("chart-column",oe);/**
+ */const oe=[["path",{d:"M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z",key:"pzmjnu"}],["path",{d:"M21.21 15.89A10 10 0 1 1 8 2.83",key:"k2fpak"}]],k1=o("chart-pie",oe);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const ce=[["path",{d:"M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z",key:"pzmjnu"}],["path",{d:"M21.21 15.89A10 10 0 1 1 8 2.83",key:"k2fpak"}]],v1=o("chart-pie",ce);/**
+ */const ce=[["path",{d:"M20 6 9 17l-5-5",key:"1gmf2c"}]],v1=o("check",ce);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const se=[["path",{d:"M20 6 9 17l-5-5",key:"1gmf2c"}]],M1=o("check",se);/**
+ */const se=[["path",{d:"m6 9 6 6 6-6",key:"qrunsl"}]],M1=o("chevron-down",se);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const ie=[["path",{d:"m6 9 6 6 6-6",key:"qrunsl"}]],_1=o("chevron-down",ie);/**
+ */const ie=[["path",{d:"m15 18-6-6 6-6",key:"1wnfg3"}]],_1=o("chevron-left",ie);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const ue=[["path",{d:"m15 18-6-6 6-6",key:"1wnfg3"}]],m1=o("chevron-left",ue);/**
+ */const ue=[["path",{d:"m9 18 6-6-6-6",key:"mthhwq"}]],m1=o("chevron-right",ue);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const he=[["path",{d:"m9 18 6-6-6-6",key:"mthhwq"}]],$1=o("chevron-right",he);/**
+ */const he=[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["path",{d:"m9 12 2 2 4-4",key:"dzmm74"}]],$1=o("circle-check",he);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const le=[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["path",{d:"m9 12 2 2 4-4",key:"dzmm74"}]],g1=o("circle-check",le);/**
+ */const le=[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["path",{d:"M8 12h8",key:"1wcyev"}],["path",{d:"M12 8v8",key:"napkw2"}]],g1=o("circle-plus",le);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const de=[["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}],["path",{d:"M8 12h8",key:"1wcyev"}],["path",{d:"M12 8v8",key:"napkw2"}]],w1=o("circle-plus",de);/**
+ */const de=[["path",{d:"M10 2v2",key:"7u0qdc"}],["path",{d:"M14 2v2",key:"6buw04"}],["path",{d:"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1",key:"pwadti"}],["path",{d:"M6 2v2",key:"colzsn"}]],w1=o("coffee",de);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const ye=[["path",{d:"M10 2v2",key:"7u0qdc"}],["path",{d:"M14 2v2",key:"6buw04"}],["path",{d:"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1",key:"pwadti"}],["path",{d:"M6 2v2",key:"colzsn"}]],x1=o("coffee",ye);/**
+ */const ye=[["path",{d:"M13.744 17.736a6 6 0 1 1-7.48-7.48",key:"bq4yh3"}],["path",{d:"M15 6h1v4",key:"11y1tn"}],["path",{d:"m6.134 14.768.866-.5 2 3.464",key:"17snzx"}],["circle",{cx:"16",cy:"8",r:"6",key:"14bfc9"}]],x1=o("coins",ye);/**
  * @license lucide-react v1.17.0 - ISC
  *
  * This source code is licensed under the ISC license.
