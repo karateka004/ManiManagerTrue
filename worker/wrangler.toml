@@ -9,6 +9,16 @@ ALLOWED_ORIGINS = "https://karateka004.github.io,http://localhost:5173"
 # Куда падают отзывы — твой numeric chat_id (@flagman_crypto, Святослав).
 # Это не секрет, поэтому хранится прямо тут.
 OWNER_CHAT_ID = "439944083"
+# Рубильник ежедневной рассылки напоминаний (cron):
+#   "off"   — ничего не шлём (безопасный дефолт);
+#   "owner" — шлём ТОЛЬКО себе (OWNER_CHAT_ID) для теста;
+#   "all"   — рассылка всем, кто сегодня не заходил.
+REMINDERS_MODE = "all"
+
+# Почасовой cron в окне 12–17 UTC = 15:00–20:00 МСК. Каждый час scheduled-хендлер
+# шлёт «свою» 1/6 базы (слот по хешу id) — рассылка разнесена по времени.
+[triggers]
+crons = ["0 12-17 * * *"]
 
 # KV для учёта рефералов. ID получишь командой:
 #   wrangler kv namespace create REFERRALS

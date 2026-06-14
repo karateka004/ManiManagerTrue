@@ -4,6 +4,7 @@ import { Plus, BookOpen, ChevronLeft } from 'lucide-react'
 import { useStore, selectCategoriesByKind, selectAllCategories } from '../store/transactions'
 import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
+import { setReminders } from '../lib/api'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 
 // Редактор категорий — отдельным чанком, грузится по первому открытию.
@@ -54,6 +55,8 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const clearAll = useStore((s) => s.clearAll)
   const demoMode = useStore((s) => s.demoMode)
   const setDemoMode = useStore((s) => s.setDemoMode)
+  const remindersEnabled = useStore((s) => s.remindersEnabled)
+  const setRemindersEnabled = useStore((s) => s.setRemindersEnabled)
   const count = useStore((s) => s.transactions.length)
   const chartStyle = useStore((s) => s.chartStyle)
   const setChartStyle = useStore((s) => s.setChartStyle)
@@ -417,6 +420,26 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
             value="→"
             danger
             onClick={handleClear}
+          />
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="mx-6 mt-6">
+        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">
+          {t('settings.notifications')}
+        </div>
+        <div className="card divide-y divide-surface-sunken">
+          <ToggleRow
+            label={t('settings.reminders')}
+            hint={t('settings.reminders_hint')}
+            on={remindersEnabled}
+            onToggle={() => {
+              hapticSelect()
+              const next = !remindersEnabled
+              setRemindersEnabled(next)
+              setReminders(next) // сообщаем серверу — чтобы cron сразу учёл
+            }}
           />
         </div>
       </div>

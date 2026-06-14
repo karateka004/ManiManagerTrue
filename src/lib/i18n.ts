@@ -67,6 +67,12 @@ const DICT: Dict = {
   'settings.chart_style': { ru: 'Стиль графика', en: 'Chart style' },
   'settings.chart_compact': { ru: 'Компактный', en: 'Compact' },
   'settings.chart_icons': { ru: 'С иконками', en: 'With icons' },
+  'settings.notifications': { ru: 'Уведомления', en: 'Notifications' },
+  'settings.reminders': { ru: 'Напоминания записывать траты', en: 'Reminders to log expenses' },
+  'settings.reminders_hint': {
+    ru: 'Бот раз в день вечером напомнит зайти, если ты не заходил',
+    en: 'Once a day in the evening the bot nudges you to drop in if you didn’t',
+  },
   'settings.home_header': { ru: 'Шапка Главной', en: 'Home header' },
   'settings.hh_date': { ru: 'Дата', en: 'Date' },
   'settings.hh_goal': { ru: 'Прогресс к цели', en: 'Goal progress' },

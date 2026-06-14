@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.19.0'
+export const APP_VERSION = '1.20.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.20.0',
+    date: '2026-06-14',
+    title: { ru: 'Напоминания заходить', en: 'Daily reminders' },
+    items: [
+      {
+        icon: '🔔',
+        text: {
+          ru: 'Бот раз в день вечером мягко напомнит записать траты — но только если ты в этот день не заходил',
+          en: 'Once a day in the evening the bot gently reminds you to log expenses — only if you didn’t open the app that day',
+        },
+      },
+      {
+        icon: '⚙️',
+        text: {
+          ru: 'Напоминания можно отключить в Настройках → Уведомления',
+          en: 'Reminders can be turned off in Settings → Notifications',
+        },
+      },
+    ],
+  },
   {
     version: '1.19.0',
     date: '2026-06-14',

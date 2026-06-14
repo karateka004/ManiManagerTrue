@@ -22,6 +22,10 @@ export interface Env {
   REFERRALS: KVNamespace
   /** Через запятую: разрешённые Origin (по умолчанию *). */
   ALLOWED_ORIGINS?: string
+  /** Режим ежедневной рассылки напоминаний: 'off' | 'owner' | 'all' (по умолчанию 'off'). */
+  REMINDERS_MODE?: string
+  /** Секрет для owner-only ручного триггера теста напоминаний (/admin/test). */
+  ADMIN_KEY?: string
 }
 
 interface TgUser {
@@ -157,12 +161,33 @@ async function verifyInitData(initData: string, botTokenRaw: string): Promise<Tg
 /* Telegram Bot API                                                   */
 /* ------------------------------------------------------------------ */
 
-async function sendMessage(env: Env, chatId: string | number, text: string): Promise<void> {
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-  })
+/**
+ * Шлёт сообщение от бота. `replyMarkup` — опциональная inline-клавиатура.
+ * Возвращает `{ ok, status }` из ответа Telegram: status=403 означает, что бот
+ * заблокирован пользователем (или аккаунт удалён) — вызывающий может отписать его.
+ */
+async function sendMessage(
+  env: Env,
+  chatId: string | number,
+  text: string,
+  replyMarkup?: unknown,
+): Promise<{ ok: boolean; status: number }> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+    })
+    return { ok: res.ok, status: res.status }
+  } catch {
+    return { ok: false, status: 0 }
+  }
 }
 
 function userLabel(u: TgUser): string {
@@ -251,6 +276,12 @@ export default {
       if (url.pathname === '/data/put' && req.method === 'POST') {
         return await handleDataPut(req, env, origin)
       }
+      if (url.pathname === '/reminders' && req.method === 'POST') {
+        return await handleReminders(req, env, origin)
+      }
+      if (url.pathname === '/admin/test' && req.method === 'POST') {
+        return await handleAdminTest(req, env, origin)
+      }
       if (url.pathname === '/' || url.pathname === '/health') {
         return json({ ok: true, service: 'koshel-worker' }, { status: 200 }, env, origin)
       }
@@ -261,6 +292,11 @@ export default {
     }
 
     return json({ ok: false, error: 'not_found' }, { status: 404 }, env, origin)
+  },
+
+  /** Cron-хендлер: почасовая рассылка напоминаний по слотам (см. wrangler.toml [triggers]). */
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
   },
 }
 
@@ -516,6 +552,154 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     }
   }
 
-  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }))
+  // metadata.updatedAt — чтобы cron-перебор (list) знал активность без чтения значения.
+  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: { updatedAt } })
   return json({ ok: true, updatedAt }, { status: 200 }, env, origin)
+}
+
+/* ------------------------------------------------------------------ */
+/* Ежедневные напоминания (cron)                                       */
+/* ------------------------------------------------------------------ */
+/*
+ * Раз в день (cron в wrangler.toml) бот пишет тем, кто СЕГОДНЯ ещё не заходил,
+ * мягкое напоминание записать траты. Аудитория = ключи `data:<id>` (все, кто
+ * синхронизировался). Активность — по `updatedAt`. По умолчанию ВКЛЮЧЕНО; отписка —
+ * `remind:<id> = '0'` (тумблер в приложении или авто-отписка при 403 «бот
+ * заблокирован»). Дедуп за сутки — `notified:<id>`. Рубильник выката — REMINDERS_MODE.
+ */
+
+/** URL мини-аппа для кнопки «Открыть» (публичный, не секрет). */
+const APP_URL = 'https://karateka004.github.io/ManiManagerTrue/'
+/** Набор текстов напоминаний — ротация по дню (см. pickReminderText). */
+const REMINDER_TEXTS = [
+  'Есть ли транзакции сегодня? 👀\nЗапиши, пока не забыл — это займёт 10 секунд.',
+  'Как прошёл день с деньгами? 💸\nОтметь траты, чтобы ничего не потерялось.',
+  'Минутка на финансы 🧾\nВнеси сегодняшние операции в Кошель.',
+  'Не забудь записать траты за день ✍️\nПотом сложнее вспомнить.',
+  'Сколько ушло сегодня? 🤔\nЗагляни в Кошель и отметь.',
+  'Вечерний чек-ин 🌙\nДобавь сегодняшние доходы и расходы.',
+  'Деньги любят учёт 📊\nЗапиши, на что потратил сегодня.',
+]
+const REMINDER_BUTTON = {
+  inline_keyboard: [[{ text: '📝 Открыть Кошель', web_app: { url: APP_URL } }]],
+}
+/** Сколько держим метку «уже слали сегодня» (20 ч — переживает один суточный цикл). */
+const NOTIFIED_TTL_SEC = 72000
+/** Сдвиг МСК от UTC (у МСК нет перехода на летнее время). */
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
+/**
+ * Окно рассылки: cron бежит почасно в 12–17 UTC = 15:00–20:00 МСК. Каждый
+ * пользователь привязан к своему часу-слоту (REM_SLOTS штук) детерминированным
+ * хешем id — так база разносится по часам, а не шлётся вся разом.
+ */
+const REM_WINDOW_START_UTC = 12
+const REM_SLOTS = 6
+
+/** Начало текущих суток по МСК в epoch ms. */
+function startOfTodayMskMs(nowMs: number): number {
+  const dayStartMsk = Math.floor((nowMs + MSK_OFFSET_MS) / 86_400_000) * 86_400_000
+  return dayStartMsk - MSK_OFFSET_MS
+}
+
+/** Текст напоминания на сегодня: ротация по номеру дня МСК (у всех одинаковый, меняется ежедневно). */
+function pickReminderText(nowMs: number): string {
+  const dayNum = Math.floor((nowMs + MSK_OFFSET_MS) / 86_400_000)
+  const n = REMINDER_TEXTS.length
+  return REMINDER_TEXTS[((dayNum % n) + n) % n]
+}
+
+/** Детерминированный час-слот пользователя в окне рассылки (стабильный хеш id). */
+function slotForId(id: string, slots: number): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return h % slots
+}
+
+/** Установить флаг напоминаний для пользователя (тумблер в приложении). */
+async function handleReminders(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: boolean }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'rem', user.id, 10, 60)) return tooMany(env, origin)
+
+  await env.REFERRALS.put(`remind:${user.id}`, body.enabled ? '1' : '0')
+  return json({ ok: true }, { status: 200 }, env, origin)
+}
+
+/**
+ * Owner-only ручной триггер для проверки: шлёт ВЛАДЕЛЬЦУ сегодняшнее напоминание
+ * (тот же текст и кнопка, что в рассылке). Защита — секрет `ADMIN_KEY` в заголовке
+ * `X-Admin-Key`. Радиус поражения минимален: эндпоинт всегда пишет только
+ * OWNER_CHAT_ID, никого больше зацепить нельзя даже при утечке ключа.
+ */
+async function handleAdminTest(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const key = req.headers.get('X-Admin-Key') ?? ''
+  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) {
+    return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
+  }
+  const r = await sendMessage(env, env.OWNER_CHAT_ID, pickReminderText(Date.now()), REMINDER_BUTTON)
+  return json({ ok: r.ok, status: r.status }, { status: 200 }, env, origin)
+}
+
+/**
+ * Почасовая рассылка напоминаний по слотам (вызывается из scheduled на каждый час
+ * окна 12–17 UTC). `nowMs` — время запуска (event.scheduledTime). В каждый час
+ * шлём только тем, чей слот = текущему часу окна, поэтому база разносится во времени.
+ */
+async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
+  const mode = (env.REMINDERS_MODE ?? 'off').trim()
+  if (mode === 'off') return
+
+  const text = pickReminderText(nowMs) // один текст на весь день
+  const currentSlot = new Date(nowMs).getUTCHours() - REM_WINDOW_START_UTC
+
+  // Тестовый режим: только владельцу и один раз в день (на первом часу окна).
+  if (mode === 'owner') {
+    if (currentSlot === 0) await sendMessage(env, env.OWNER_CHAT_ID, text, REMINDER_BUTTON)
+    return
+  }
+
+  // Вне окна рассылки (страховка, если cron сработал в неожиданный час) — ничего.
+  if (currentSlot < 0 || currentSlot >= REM_SLOTS) return
+
+  const todayStart = startOfTodayMskMs(nowMs)
+  let cursor: string | undefined
+
+  do {
+    const page = await env.REFERRALS.list<{ updatedAt: number }>({ prefix: DATA_PREFIX, cursor })
+    for (const k of page.keys) {
+      const id = k.name.slice(DATA_PREFIX.length)
+      if (!id) continue
+
+      // 0) Слот пользователя: не его час окна — пропускаем дёшево, без KV-чтений.
+      if (slotForId(id, REM_SLOTS) !== currentSlot) continue
+
+      // 1) Отписан? (дефолт ON = ключ отсутствует)
+      if ((await env.REFERRALS.get(`remind:${id}`)) === '0') continue
+
+      // 2) Заходил сегодня? (по метаданным, иначе читаем значение — для старых ключей)
+      let updatedAt = k.metadata?.updatedAt
+      if (typeof updatedAt !== 'number') {
+        try {
+          const raw = await env.REFERRALS.get(k.name)
+          updatedAt = raw ? (JSON.parse(raw) as { updatedAt?: number }).updatedAt : undefined
+        } catch {
+          updatedAt = undefined
+        }
+      }
+      if (typeof updatedAt === 'number' && updatedAt >= todayStart) continue
+
+      // 3) Уже слали сегодня?
+      if (await env.REFERRALS.get(`notified:${id}`)) continue
+
+      const r = await sendMessage(env, id, text, REMINDER_BUTTON)
+      if (r.ok) {
+        await env.REFERRALS.put(`notified:${id}`, '1', { expirationTtl: NOTIFIED_TTL_SEC })
+      } else if (r.status === 403) {
+        // Бот заблокирован / аккаунт удалён — больше не беспокоим.
+        await env.REFERRALS.put(`remind:${id}`, '0')
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
 }

@@ -129,6 +129,12 @@ interface State {
    * валюты, а суммы корректны (без смешивания валют).
    */
   account: Currency | null
+  /**
+   * Ежедневные напоминания от бота («Есть ли транзакции сегодня?»). По умолчанию
+   * включены; источник правды для рассылки — KV воркера (флаг шлётся при
+   * переключении). Поле едет в облачном блобе, чтобы тумблер синкался между устройствами.
+   */
+  remindersEnabled: boolean
 }
 
 interface Actions {
@@ -153,6 +159,8 @@ interface Actions {
   clearAll: () => void
   /** Включить/выключить демо-режим (не затрагивает реальные транзакции). */
   setDemoMode: (on: boolean) => void
+  /** Включить/выключить ежедневные напоминания от бота. */
+  setRemindersEnabled: (on: boolean) => void
   /** Сменить язык интерфейса. */
   setLang: (lang: Lang) => void
   /** Задать общий месячный бюджет (0 = снять). */
@@ -246,6 +254,7 @@ export const useStore = create<State & Actions>()(
       equipped: { ...DEFAULT_EQUIPPED },
       owned: [...DEFAULT_OWNED],
       demoMode: false,
+      remindersEnabled: true,
       lang: initialLang(),
       questClaims: {},
       monthlyBudget: 0,
@@ -327,6 +336,7 @@ export const useStore = create<State & Actions>()(
       clearAll: () => set({ transactions: [] }),
 
       setDemoMode: (on) => set({ demoMode: on }),
+      setRemindersEnabled: (on) => set({ remindersEnabled: on }),
       setLang: (lang) => set({ lang }),
 
       setMonthlyBudget: (amount) =>
@@ -432,7 +442,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 12,
+      version: 13,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
@@ -497,6 +507,10 @@ export const useStore = create<State & Actions>()(
         // v12: счётчик оплаченных рефералов (фикс-награда за каждого друга)
         if (persisted && version < 12) {
           if (typeof persisted.rewardedReferrals !== 'number') persisted.rewardedReferrals = 0
+        }
+        // v13: ежедневные напоминания от бота — по умолчанию включены
+        if (persisted && version < 13) {
+          if (typeof persisted.remindersEnabled !== 'boolean') persisted.remindersEnabled = true
         }
         return persisted
       },

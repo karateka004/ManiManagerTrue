@@ -163,3 +163,19 @@ export async function pushCloud(
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/data/put', { initData: tg.initData, blob, updatedAt })
 }
+
+/* ---------- Напоминания (ежедневный пуш от бота) ---------- */
+
+/**
+ * Включить/выключить ежедневные напоминания для текущего пользователя на сервере.
+ * Best-effort: вне Telegram — no-op, сетевые ошибки глушим (тумблер всё равно
+ * сохранится локально и доедет облачным синком). Дефолт на сервере — включено.
+ */
+export async function setReminders(enabled: boolean): Promise<void> {
+  if (!isBackendConfigured() || !tg.initData) return
+  try {
+    await post('/reminders', { initData: tg.initData, enabled })
+  } catch {
+    /* молча: повторим при следующем переключении */
+  }
+}
