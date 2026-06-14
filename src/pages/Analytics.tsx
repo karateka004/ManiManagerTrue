@@ -75,7 +75,8 @@ export function AnalyticsPage() {
             </div>
           )}
 
-          {/* Detailed list */}
+          {/* Детальный список — только для стиля «compact»; у «icons» своя легенда-чипы в кольце */}
+          {chartStyle === 'compact' && (
           <div className="mx-4 mt-6 space-y-2">
             {categories.map((c) => (
           <div key={c.categoryId} className="card flex items-center gap-3 px-4 py-3">
@@ -104,6 +105,7 @@ export function AnalyticsPage() {
           </div>
             ))}
           </div>
+          )}
         </>
       )}
     </div>
@@ -119,14 +121,16 @@ function DailyBars({ data }: { data: { day: string; amount: number }[] }) {
     <div className="card p-4">
       <div className="flex items-end justify-between gap-1 h-32">
         {data.slice(-14).map((d, i) => (
-          <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
+          // min-w-0 — чтобы 14 колонок ужимались под ширину карточки и не распирали строку на 320px
+          <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
             <m.div
               initial={{ height: 0 }}
               animate={{ height: `${(d.amount / max) * 100}%` }}
               transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
               className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
             />
-            <span className="text-[9px] text-ink-subtle">{d.day.slice(0, 5)}</span>
+            {/* только число дня (DD) — «DD.MM» не влезает в узкую колонку на 320px */}
+            <span className="w-full truncate text-center text-[9px] text-ink-subtle">{d.day.slice(0, 2)}</span>
           </div>
         ))}
       </div>

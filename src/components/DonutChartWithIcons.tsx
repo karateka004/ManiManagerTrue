@@ -11,13 +11,14 @@ interface Props {
 }
 
 /**
- * Диаграмма в стиле Monefy: круг с сегментами, вокруг — иконки категорий
- * с процентами под ними. Иконки распределены РАВНОМЕРНО по кругу на
- * фиксированном радиусе ICON_R (угловой шаг 360/N): никогда не налезают
- * друг на друга и не вылезают за край даже на узких экранах. Связь иконки
- * с долькой — по цвету чипа (тон = цвет сегмента). Соединительных линий
- * (leader lines) нет специально: при равномерных иконках и пропорциональных
- * дольках они пересекались «паутиной» в центре.
+ * Кольцо категорий + легенда-чипы (стиль «icons»).
+ *
+ * Кольцо — ЧИСТОЕ (track + сегменты + сумма в центре), БЕЗ иконок на ободке.
+ * Иконок вокруг кольца больше нет НАМЕРЕННО: на узких экранах (320px) 11 иконок
+ * вокруг либо налезали на ободок, либо вылезали за край — неразрешимый конфликт.
+ * Категории показываем легендой-чипами ПОД кольцом (тинт-иконка её цвета +
+ * название + сумма + %); цвет чипа = цвет дольки кольца. Вся раскладка категорий —
+ * обычный поток (grid), поэтому наезжать на кольцо и вылезать за экран нечему.
  */
 export function DonutChartWithIcons({ kind }: Props) {
   const categories = useStore((s) => selectByCategoryAccount(s, kind))
@@ -28,48 +29,25 @@ export function DonutChartWithIcons({ kind }: Props) {
 
   const total = kind === 'income' ? totals.income : totals.expense
 
-  // Geometry
-  const SIZE = 300
-  const STROKE = 28
-  const CHART_R = 96             // радиус центра кольца
-  const ICON_R = CHART_R + 26    // радиус иконок: ближе к кольцу, чтобы влезали с запасом на 320px
-  const ICON_SIZE = 34
-
-  const cx = SIZE / 2
-  const cy = SIZE / 2
+  const SIZE = 220
+  const STROKE = 30
+  const RADIUS = (SIZE - STROKE) / 2
+  const CIRC = 2 * Math.PI * RADIUS
 
   const segments = useMemo(() => {
-    const CIRC = 2 * Math.PI * CHART_R
     let offset = 0
     return categories.map((c) => {
       const length = (c.pct / 100) * CIRC
-      const seg = {
-        ...c,
-        length,
-        offset,
-        dashGap: CIRC - length,
-      }
+      const seg = { ...c, length, offset, dashGap: CIRC - length }
       offset += length
       return seg
     })
-  }, [categories])
-
-  /**
-   * Иконки распределяем РАВНОМЕРНО по всему кольцу на ФИКСИРОВАННОМ радиусе:
-   * угловой шаг 360/n гарантирует, что кружки никогда не налезают друг на друга,
-   * а постоянный радиус — что иконки не вылезают за край даже на узких экранах
-   * (раньше радиальная «ступенька» +28px выталкивала иконку за вьюпорт). Порядок
-   * иконок = порядок сегментов. Старт каждой иконки — с 12 часов (-90°).
-   */
-  const iconAnglesRad = useMemo(() => {
-    const n = segments.length
-    return segments.map((_, i) => ((-90 + (i * 360) / n) * Math.PI) / 180)
-  }, [segments])
+  }, [categories, CIRC])
 
   if (categories.length === 0) {
     return (
       <div className="flex flex-col items-center pt-4">
-        <div className="relative flex h-[260px] w-[260px] items-center justify-center rounded-full bg-surface-sunken/60 dark:bg-surface-sunken">
+        <div className="relative flex h-[220px] w-[220px] items-center justify-center rounded-full bg-surface-sunken/60 dark:bg-surface-sunken">
           <span className="text-sm text-ink-subtle">{t('chart.no_data')}</span>
         </div>
       </div>
@@ -78,95 +56,62 @@ export function DonutChartWithIcons({ kind }: Props) {
 
   return (
     <div className="flex flex-col items-center pt-2">
-      {/* marginBottom резервирует место под иконку+процент, выступающие ниже SVG-бокса */}
-      <div className="relative" style={{ width: SIZE, height: SIZE, marginBottom: 34 }}>
-        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="overflow-visible">
+      {/* Кольцо — целиком внутри своего бокса, без overflow-visible */}
+      <div className="relative" style={{ width: SIZE, height: SIZE }}>
+        <svg width={SIZE} height={SIZE} className="-rotate-90 text-surface-sunken">
           {/* Track — фон кольца */}
-          <circle
-            cx={cx}
-            cy={cy}
-            r={CHART_R}
-            fill="none"
-            className="stroke-surface-sunken"
-            strokeWidth={STROKE}
-          />
-
-          {/* Segments, rotated -90 чтобы старт был сверху */}
-          <g transform={`rotate(-90 ${cx} ${cy})`}>
-            {segments.map((s, i) => (
-              <m.circle
-                key={s.categoryId + '-seg'}
-                cx={cx}
-                cy={cy}
-                r={CHART_R}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={STROKE}
-                strokeLinecap="butt"
-                initial={{ strokeDasharray: `0 ${2 * Math.PI * CHART_R}`, strokeDashoffset: 0 }}
-                animate={{
-                  strokeDasharray: `${s.length} ${s.dashGap}`,
-                  strokeDashoffset: -s.offset,
-                }}
-                transition={{ duration: 0.7, delay: 0.05 + i * 0.04, ease: [0.16, 1, 0.3, 1] }}
-              />
-            ))}
-          </g>
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} fill="none" stroke="currentColor" strokeWidth={STROKE} />
+          {/* Сегменты (отрисовка анимируется — декоративно) */}
+          {segments.map((s, i) => (
+            <m.circle
+              key={s.categoryId}
+              cx={SIZE / 2}
+              cy={SIZE / 2}
+              r={RADIUS}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={STROKE}
+              strokeLinecap="butt"
+              initial={{ strokeDasharray: `0 ${CIRC}`, strokeDashoffset: 0 }}
+              animate={{ strokeDasharray: `${s.length} ${s.dashGap}`, strokeDashoffset: -s.offset }}
+              transition={{ duration: 0.7, delay: 0.05 + i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+            />
+          ))}
         </svg>
 
-        {/* Иконки + проценты — отдельным слоем HTML для красивого текста */}
-        {segments.map((s, i) => {
-          const iconAngle = iconAnglesRad[i]
-          const iconR = ICON_R
-          const x = cx + Math.cos(iconAngle) * iconR
-          const y = cy + Math.sin(iconAngle) * iconR
-          return (
-            <m.div
-              key={s.categoryId + '-icon'}
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3, delay: 0.4 + i * 0.03, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-              style={{ left: x, top: y }}
-            >
-              <div
-                className="flex items-center justify-center rounded-full shadow-soft ring-2 ring-surface-raised dark:ring-surface-raised"
-                style={{
-                  width: ICON_SIZE,
-                  height: ICON_SIZE,
-                  background: s.color + '22',
-                  color: s.color,
-                }}
-              >
-                <CategoryIcon id={s.icon} size={Math.round(ICON_SIZE * 0.6)} />
-              </div>
-              <span className="tabular mt-0.5 text-[10px] font-bold text-ink">
-                {s.pct >= 1 ? `${s.pct.toFixed(0)}%` : '<1%'}
-              </span>
-            </m.div>
-          )
-        })}
-
-        {/* Center label */}
-        <div
-          className="absolute flex flex-col items-center justify-center text-center"
-          style={{
-            inset: 0,
-            margin: 'auto',
-            width: CHART_R * 2 - STROKE,
-            height: CHART_R * 2 - STROKE,
-          }}
-        >
+        {/* Сумма в центре */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-ink-subtle">
             {kind === 'income' ? t('common.income') : t('common.expense')}
           </span>
-          <span className="mt-1 text-xl font-bold tracking-tight tabular text-ink">
-            {formatMoney(total, currency)}
-          </span>
+          <span className="mt-1 text-xl font-bold tracking-tight tabular text-ink">{formatMoney(total, currency)}</span>
           <span className="mt-0.5 text-[10px] text-ink-muted">
             {categories.length} {categoriesWord(lang, categories.length)}
           </span>
         </div>
+      </div>
+
+      {/* Легенда-чипы — это и есть «легенда» (связь с кольцом по цвету тинта) */}
+      <div className="mt-6 grid w-full grid-cols-2 gap-2 px-4">
+        {categories.map((c) => (
+          <div key={c.categoryId} className="flex items-center gap-2.5 rounded-2xl bg-surface-sunken/40 px-2.5 py-2">
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: c.color + '22', color: c.color }}
+            >
+              <CategoryIcon id={c.icon} size={17} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-ink">{c.name}</span>
+              <span className="block truncate text-[11px] tabular text-ink-subtle">
+                {formatMoney(c.amount, c.currency)}
+              </span>
+            </span>
+            <span className="shrink-0 tabular text-xs font-bold text-ink-muted">
+              {c.pct >= 1 ? `${c.pct.toFixed(0)}%` : '<1%'}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )

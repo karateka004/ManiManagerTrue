@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.18.1'
+export const APP_VERSION = '1.19.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.19.0',
+    date: '2026-06-14',
+    title: { ru: 'Новое кольцо аналитики', en: 'A brand-new analytics ring' },
+    items: [
+      {
+        icon: '🍩',
+        text: {
+          ru: 'Кольцо категорий пересобрано с нуля: чистый круг с суммой в центре, без иконок на ободке — больше ничего не наезжает и не вылезает за край',
+          en: 'The category ring was rebuilt from scratch: a clean circle with the total in the center, no icons on the rim — nothing overlaps or spills off-screen anymore',
+        },
+      },
+      {
+        icon: '🏷️',
+        text: {
+          ru: 'Категории теперь показаны аккуратной легендой-чипами под кольцом: иконка, название, сумма и процент',
+          en: 'Categories now appear as a tidy chip legend under the ring: icon, name, amount and percentage',
+        },
+      },
+    ],
+  },
   {
     version: '1.18.1',
     date: '2026-06-14',
