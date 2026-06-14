@@ -12,11 +12,12 @@ interface Props {
 
 /**
  * Диаграмма в стиле Monefy: круг с сегментами, вокруг — иконки категорий
- * с процентами под ними. Каждую иконку соединяет с центром сегмента
- * тонкая кривая её цвета (curved leader line).
- *
- * Иконки разносятся по углу = середине сегмента, на радиусе ICON_R.
- * Если процентов очень мало (<3%) — иконка всё равно отображается.
+ * с процентами под ними. Иконки распределены РАВНОМЕРНО по кругу на
+ * фиксированном радиусе ICON_R (угловой шаг 360/N): никогда не налезают
+ * друг на друга и не вылезают за край даже на узких экранах. Связь иконки
+ * с долькой — по цвету чипа (тон = цвет сегмента). Соединительных линий
+ * (leader lines) нет специально: при равномерных иконках и пропорциональных
+ * дольках они пересекались «паутиной» в центре.
  */
 export function DonutChartWithIcons({ kind }: Props) {
   const categories = useStore((s) => selectByCategoryAccount(s, kind))
@@ -31,8 +32,6 @@ export function DonutChartWithIcons({ kind }: Props) {
   const SIZE = 300
   const STROKE = 28
   const CHART_R = 96             // радиус центра кольца
-  const RING_OUTER = CHART_R + STROKE / 2
-  const LEADER_END = CHART_R + STROKE / 2 + 4
   const ICON_R = CHART_R + 26    // радиус иконок: ближе к кольцу, чтобы влезали с запасом на 320px
   const ICON_SIZE = 34
 
@@ -44,15 +43,11 @@ export function DonutChartWithIcons({ kind }: Props) {
     let offset = 0
     return categories.map((c) => {
       const length = (c.pct / 100) * CIRC
-      const midAngleDeg = ((offset + length / 2) / CIRC) * 360 - 90 // 12 o'clock = 0
-      const midAngleRad = (midAngleDeg * Math.PI) / 180
       const seg = {
         ...c,
         length,
         offset,
         dashGap: CIRC - length,
-        midAngleRad,
-        midAngleDeg,
       }
       offset += length
       return seg
@@ -64,8 +59,7 @@ export function DonutChartWithIcons({ kind }: Props) {
    * угловой шаг 360/n гарантирует, что кружки никогда не налезают друг на друга,
    * а постоянный радиус — что иконки не вылезают за край даже на узких экранах
    * (раньше радиальная «ступенька» +28px выталкивала иконку за вьюпорт). Порядок
-   * иконок = порядок сегментов, поэтому leader-линии к серединам долей почти не
-   * пересекаются. Старт каждой иконки — с 12 часов (-90°).
+   * иконок = порядок сегментов. Старт каждой иконки — с 12 часов (-90°).
    */
   const iconAnglesRad = useMemo(() => {
     const n = segments.length
@@ -87,37 +81,6 @@ export function DonutChartWithIcons({ kind }: Props) {
       {/* marginBottom резервирует место под иконку+процент, выступающие ниже SVG-бокса */}
       <div className="relative" style={{ width: SIZE, height: SIZE, marginBottom: 34 }}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="overflow-visible">
-          {/* Leader lines — рисуются ПОД кольцом, чтобы кольцо их перекрывало изнутри */}
-          {segments.map((s, i) => {
-            const iconAngle = iconAnglesRad[i]
-            const iconR = ICON_R
-            // Старт — на реальной середине доли, конец — у (возможно смещённой) иконки.
-            const x1 = cx + Math.cos(s.midAngleRad) * LEADER_END
-            const y1 = cy + Math.sin(s.midAngleRad) * LEADER_END
-            const x2 = cx + Math.cos(iconAngle) * (iconR - ICON_SIZE / 2 - 2)
-            const y2 = cy + Math.sin(iconAngle) * (iconR - ICON_SIZE / 2 - 2)
-            // Контрольная точка слегка смещена к центру — даёт мягкую кривую
-            const mx = (x1 + x2) / 2
-            const my = (y1 + y2) / 2
-            const nudge = 6
-            const nx = mx - Math.sin(s.midAngleRad) * nudge
-            const ny = my + Math.cos(s.midAngleRad) * nudge
-            return (
-              <m.path
-                key={s.categoryId + '-leader'}
-                d={`M ${x1} ${y1} Q ${nx} ${ny} ${x2} ${y2}`}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={1.25}
-                strokeLinecap="round"
-                opacity={0.55}
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: 0.55 }}
-                transition={{ duration: 0.5, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              />
-            )
-          })}
-
           {/* Track — фон кольца */}
           <circle
             cx={cx}
@@ -204,13 +167,6 @@ export function DonutChartWithIcons({ kind }: Props) {
             {categories.length} {categoriesWord(lang, categories.length)}
           </span>
         </div>
-
-        {/* Внешний радиус — ограничитель для overflow-visible на мобилках */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{ inset: -RING_OUTER * 0, width: 0, height: 0 }}
-        />
       </div>
     </div>
   )

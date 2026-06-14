@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.18.0'
+export const APP_VERSION = '1.18.1'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,20 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.18.1',
+    date: '2026-06-14',
+    title: { ru: 'Чистое кольцо категорий', en: 'A cleaner category ring' },
+    items: [
+      {
+        icon: '🍩',
+        text: {
+          ru: 'Убрали соединительные линии в кольце аналитики — больше никакой «паутины» в центре, иконки стоят ровно по кругу',
+          en: 'Removed the connector lines in the analytics ring — no more “web” in the center, icons sit evenly around the circle',
+        },
+      },
+    ],
+  },
   {
     version: '1.18.0',
     date: '2026-06-13',
