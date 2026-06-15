@@ -750,6 +750,30 @@ const METRICS_PREFIX = 'metrics:'
 const METRICS_TTL_SEC = 65 * 86400 // авто-прунинг старых снимков (~2 мес) через TTL KV
 const DAY_MS = 86_400_000
 
+/** Потолок числа блобов, парсимых ради «использования разделов» (защита от тяжёлого скана). */
+const SECTION_SCAN_CAP = 3000
+/** Человекочитаемые названия событий-вовлечения (ключи из store.events). */
+const EVENT_LABELS: Record<string, string> = {
+  first_tx: 'Первая операция',
+  visit_analytics: 'Аналитика',
+  see_analytics: 'Аналитика (квест)',
+  visit_charts: 'Динамика/Графики',
+  see_charts: 'Графики (квест)',
+  use_period: 'Смена периода',
+  try_period: 'Период (квест)',
+  add_category: 'Свои категории',
+  make_category: 'Категория (квест)',
+  set_budget: 'Бюджеты',
+  add_goal: 'Цели',
+  set_goal: 'Цель (квест)',
+  customize: 'Кастомизация',
+  personalize: 'Персонализация',
+  open_planning: 'Планирование',
+  open_achievements: 'Достижения',
+  open_leaderboard: 'Лидерборд',
+  see_leaderboard: 'Лидерборд (квест)',
+}
+
 interface MetricsRow {
   date: string
   total: number
@@ -896,6 +920,44 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
   } while (mcur)
   history.sort((a, b) => (a.date < b.date ? -1 : 1))
 
+  // Использование разделов: агрегируем store.events из блобов (cumulative-счётчики).
+  // users = у скольких юзеров событие >0 (охват), total = суммарное число использований.
+  const secAgg: Record<string, { users: number; total: number }> = {}
+  let scanned = 0
+  let scur: string | undefined
+  do {
+    const page = await env.REFERRALS.list({ prefix: DATA_PREFIX, cursor: scur })
+    for (const k of page.keys) {
+      if (scanned >= SECTION_SCAN_CAP) break
+      scanned++
+      const raw = await env.REFERRALS.get(k.name)
+      if (!raw) continue
+      try {
+        const outer = JSON.parse(raw) as { blob?: string }
+        if (!outer.blob) continue
+        const store = JSON.parse(outer.blob) as { state?: { events?: Record<string, number> } }
+        const events = store.state?.events
+        if (!events) continue
+        for (const ev of Object.keys(events)) {
+          const n = Number(events[ev]) || 0
+          if (n <= 0) continue
+          const s = secAgg[ev] ?? { users: 0, total: 0 }
+          s.users += 1
+          s.total += n
+          secAgg[ev] = s
+        }
+      } catch {
+        /* битый блоб — пропускаем */
+      }
+    }
+    scur = page.list_complete || scanned >= SECTION_SCAN_CAP ? undefined : page.cursor
+  } while (scur)
+
+  const sections = Object.keys(secAgg)
+    .map((ev) => ({ key: ev, label: EVENT_LABELS[ev] ?? ev, users: secAgg[ev].users, total: secAgg[ev].total }))
+    .sort((a, b) => b.users - a.users || b.total - a.total)
+    .slice(0, 14)
+
   const round1 = (x: number) => Math.round(x * 10) / 10
   const stickiness = mau ? round1((dau / mau) * 100) : 0
   const retentionD1 =
@@ -915,6 +977,7 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
       game: { sumXp, sumCoins, avgLevel: round1(avgLevel) },
       topXp,
       topRefs,
+      sections,
       history: history.slice(-30),
     },
     { status: 200 },

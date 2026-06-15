@@ -43,6 +43,14 @@ export const ADMIN_HTML = `<!doctype html>
   .chartbox h3{margin:0 0 12px;font-size:12px;font-weight:700;color:var(--muted)}
   .chart{width:100%;height:170px;display:block}
   .empty{color:var(--sub);font-size:13px;text-align:center;padding:60px 0}
+  .subnote{color:var(--sub);font-size:11px;margin:-4px 0 12px}
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .bar{display:grid;grid-template-columns:150px 1fr 44px;align-items:center;gap:10px;font-size:13px}
+  .bar .bl{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .bt{height:10px;border-radius:6px;background:var(--panel2)}
+  .bar .bf{height:100%;border-radius:6px;background:linear-gradient(90deg,#22d3ee,#a78bfa)}
+  .bar .bn{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  @media(max-width:520px){.bar{grid-template-columns:110px 1fr 38px}}
   .tables{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media(max-width:720px){.tables{grid-template-columns:1fr}}
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -108,6 +116,12 @@ export const ADMIN_HTML = `<!doctype html>
         <h3>По рефералам</h3>
         <table><thead><tr><th>Пользователь</th><th class="r">Приглашено</th></tr></thead><tbody id="top-refs"></tbody></table>
       </div>
+    </div>
+
+    <div class="section">Использование разделов</div>
+    <div class="chartbox">
+      <div class="subnote">сколько пользователей открывали раздел (охват)</div>
+      <div id="sections"></div>
     </div>
 
     <div class="updated" id="updated"></div>
@@ -195,6 +209,16 @@ export const ADMIN_HTML = `<!doctype html>
       html+='<tr><td><div class="name">'+esc(r.name)+'</div>'+un+'</td><td class="r">'+(r.refs||0)+'</td></tr>';
     }
     document.getElementById('top-refs').innerHTML=html||'<tr><td colspan="2" class="empty">пока никто не приглашал</td></tr>';
+
+    var secs=d.sections||[], maxU=1;
+    for(i=0;i<secs.length;i++){ if(secs[i].users>maxU) maxU=secs[i].users; }
+    html='';
+    for(i=0;i<secs.length;i++){
+      var s=secs[i];
+      var w=Math.round((s.users/maxU)*100);
+      html+='<div class="bar"><div class="bl">'+esc(s.label)+'</div><div class="bt"><div class="bf" style="width:'+w+'%"></div></div><div class="bn">'+s.users+'</div></div>';
+    }
+    document.getElementById('sections').innerHTML = secs.length ? '<div class="bars">'+html+'</div>' : '<div class="empty">нет данных</div>';
 
     var dt=new Date(d.generatedAt||Date.now());
     setText('updated','обновлено '+dt.toLocaleString('ru-RU'));
