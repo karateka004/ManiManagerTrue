@@ -16,6 +16,8 @@
  * KV namespace (биндинг в wrangler.toml): REFERRALS
  */
 
+import { ADMIN_HTML } from './admin'
+
 export interface Env {
   BOT_TOKEN: string
   OWNER_CHAT_ID: string
@@ -282,6 +284,20 @@ export default {
       if (url.pathname === '/admin/test' && req.method === 'POST') {
         return await handleAdminTest(req, env, origin)
       }
+      if (url.pathname === '/admin' && req.method === 'GET') {
+        return new Response(ADMIN_HTML, {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            // Внутренний инструмент: self + inline (графики/скрипт рисуются на странице).
+            'Content-Security-Policy':
+              "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'",
+            'X-Frame-Options': 'DENY',
+          },
+        })
+      }
+      if (url.pathname === '/admin/stats' && req.method === 'POST') {
+        return await handleAdminStats(req, env, origin)
+      }
       if (url.pathname === '/' || url.pathname === '/health') {
         return json({ ok: true, service: 'koshel-worker' }, { status: 200 }, env, origin)
       }
@@ -294,9 +310,13 @@ export default {
     return json({ ok: false, error: 'not_found' }, { status: 404 }, env, origin)
   },
 
-  /** Cron-хендлер: почасовая рассылка напоминаний по слотам (см. wrangler.toml [triggers]). */
+  /** Cron-хендлер: снимок метрик (00:00 МСК) или почасовая рассылка напоминаний (см. wrangler.toml). */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
+    if (event.cron === '0 21 * * *') {
+      ctx.waitUntil(recordDailySnapshot(env, event.scheduledTime))
+    } else {
+      ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
+    }
   },
 }
 
@@ -539,21 +559,38 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   const updatedAt = parseUpdatedAt(body.updatedAt)
   const key = `${DATA_PREFIX}${user.id}`
 
-  // Защита от гонок между устройствами: не перезаписываем более новую версию старой.
-  const existingRaw = await env.REFERRALS.get(key)
-  if (existingRaw) {
+  // Читаем значение+метаданные сразу: для защиты от гонок и для firstSeen (аналитика).
+  const existing = await env.REFERRALS.getWithMetadata<{ updatedAt?: number; firstSeen?: number }>(key)
+
+  // firstSeen — когда пользователя увидели впервые. Старым ключам без firstSeen ставим их
+  // прошлый updatedAt (оценка, чтобы они НЕ считались «новыми сегодня»); новым — текущее время.
+  let firstSeen: number
+  if (typeof existing.metadata?.firstSeen === 'number') {
+    firstSeen = existing.metadata.firstSeen
+  } else if (existing.value) {
     try {
-      const existing = JSON.parse(existingRaw) as { updatedAt?: number }
-      if (typeof existing.updatedAt === 'number' && existing.updatedAt > updatedAt) {
-        return json({ ok: true, skipped: true, data: existing }, { status: 200 }, env, origin)
+      firstSeen = parseUpdatedAt((JSON.parse(existing.value) as { updatedAt?: number }).updatedAt)
+    } catch {
+      firstSeen = updatedAt
+    }
+  } else {
+    firstSeen = updatedAt
+  }
+
+  // Защита от гонок между устройствами: не перезаписываем более новую версию старой.
+  if (existing.value) {
+    try {
+      const prev = JSON.parse(existing.value) as { updatedAt?: number }
+      if (typeof prev.updatedAt === 'number' && prev.updatedAt > updatedAt) {
+        return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
       }
     } catch {
       /* битое значение — перезапишем */
     }
   }
 
-  // metadata.updatedAt — чтобы cron-перебор (list) знал активность без чтения значения.
-  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: { updatedAt } })
+  // metadata {updatedAt, firstSeen} — чтобы cron/аналитика читали активность из list без чтения значений.
+  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: { updatedAt, firstSeen } })
   return json({ ok: true, updatedAt }, { status: 200 }, env, origin)
 }
 
@@ -696,10 +733,192 @@ async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
       if (r.ok) {
         await env.REFERRALS.put(`notified:${id}`, '1', { expirationTtl: NOTIFIED_TTL_SEC })
       } else if (r.status === 403) {
-        // Бот заблокирован / аккаунт удалён — больше не беспокоим.
+        // Бот заблокирован / аккаунт удалён — больше не беспокоим + метим для аналитики.
         await env.REFERRALS.put(`remind:${id}`, '0')
+        await env.REFERRALS.put(`blocked:${id}`, '1')
       }
     }
     cursor = page.list_complete ? undefined : page.cursor
   } while (cursor)
+}
+
+/* ------------------------------------------------------------------ */
+/* Аналитика: ежедневные снимки + админ-API                            */
+/* ------------------------------------------------------------------ */
+
+const METRICS_PREFIX = 'metrics:'
+const METRICS_TTL_SEC = 65 * 86400 // авто-прунинг старых снимков (~2 мес) через TTL KV
+const DAY_MS = 86_400_000
+
+interface MetricsRow {
+  date: string
+  total: number
+  withData: number
+  new: number
+  dau: number
+  wau: number
+  mau: number
+  blocked: number
+}
+
+/** Строка даты YYYY-MM-DD по МСК для epoch ms. */
+function mskDateStr(ms: number): string {
+  const d = new Date(ms + MSK_OFFSET_MS)
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${m}-${day}`
+}
+
+/** Число заблокировавших бота (ключи blocked:*). */
+async function countBlocked(env: Env): Promise<number> {
+  let n = 0
+  let cursor: string | undefined
+  do {
+    const page = await env.REFERRALS.list({ prefix: 'blocked:', cursor })
+    n += page.keys.length
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  return n
+}
+
+/** Снимок метрик завершившихся суток МСК (cron 00:00 МСК) — история для графиков. */
+async function recordDailySnapshot(env: Env, nowMs: number): Promise<void> {
+  const todayStart = startOfTodayMskMs(nowMs)
+  const endedStart = todayStart - DAY_MS
+  const weekAgo = nowMs - 7 * DAY_MS
+  const monthAgo = nowMs - 30 * DAY_MS
+
+  let total = 0
+  let dau = 0
+  let wau = 0
+  let mau = 0
+  let newCount = 0
+  let cursor: string | undefined
+  do {
+    const page = await env.REFERRALS.list<{ updatedAt?: number; firstSeen?: number }>({ prefix: DATA_PREFIX, cursor })
+    for (const k of page.keys) {
+      total++
+      const u = k.metadata?.updatedAt ?? 0
+      if (u >= endedStart && u < todayStart) dau++
+      if (u >= weekAgo) wau++
+      if (u >= monthAgo) mau++
+      const f = k.metadata?.firstSeen
+      if (typeof f === 'number' && f >= endedStart && f < todayStart) newCount++
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+
+  const lb = await readLeaderboard(env)
+  const withData = Object.values(lb).filter((e) => e.ops > 0).length
+  const blocked = await countBlocked(env)
+
+  const row: MetricsRow = { date: mskDateStr(endedStart), total, withData, new: newCount, dau, wau, mau, blocked }
+  // Дублируем строку в metadata — чтобы дашборд читал историю из list без N чтений.
+  await env.REFERRALS.put(`${METRICS_PREFIX}${row.date}`, JSON.stringify(row), {
+    metadata: row,
+    expirationTtl: METRICS_TTL_SEC,
+  })
+}
+
+/** Админ-API: агрегированная аналитика. Защита — секрет ADMIN_KEY + лёгкий IP-rate-limit. */
+async function handleAdminStats(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const key = req.headers.get('X-Admin-Key') ?? ''
+  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) {
+    return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
+  }
+  const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown'
+  if (await isRateLimited(env, 'admin', ip, 60, 60)) return tooMany(env, origin)
+
+  const now = Date.now()
+  const todayStart = startOfTodayMskMs(now)
+  const yesterdayStart = todayStart - DAY_MS
+  const weekAgo = now - 7 * DAY_MS
+  const monthAgo = now - 30 * DAY_MS
+
+  let total = 0
+  let dau = 0
+  let wau = 0
+  let mau = 0
+  let newToday = 0
+  let new7 = 0
+  let new30 = 0
+  let newYesterday = 0
+  let retainedFromYesterday = 0
+  let cursor: string | undefined
+  do {
+    const page = await env.REFERRALS.list<{ updatedAt?: number; firstSeen?: number }>({ prefix: DATA_PREFIX, cursor })
+    for (const k of page.keys) {
+      total++
+      const u = k.metadata?.updatedAt ?? 0
+      if (u >= todayStart) dau++
+      if (u >= weekAgo) wau++
+      if (u >= monthAgo) mau++
+      const f = k.metadata?.firstSeen
+      if (typeof f === 'number') {
+        if (f >= todayStart) newToday++
+        if (f >= weekAgo) new7++
+        if (f >= monthAgo) new30++
+        if (f >= yesterdayStart && f < todayStart) {
+          newYesterday++
+          if (u >= todayStart) retainedFromYesterday++
+        }
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+
+  const lb = await readLeaderboard(env)
+  const entries = Object.values(lb)
+  const withData = entries.filter((e) => e.ops > 0).length
+  const sumXp = entries.reduce((s, e) => s + (e.xp || 0), 0)
+  const sumCoins = entries.reduce((s, e) => s + (e.coins || 0), 0)
+  const avgLevel = entries.length ? entries.reduce((s, e) => s + (e.level || 0), 0) / entries.length : 0
+  const totalRefs = entries.reduce((s, e) => s + (e.refs || 0), 0)
+  const topXp = [...entries]
+    .sort((a, b) => b.xp - a.xp)
+    .slice(0, 10)
+    .map((e) => ({ name: e.name, username: e.username, level: e.level, xp: e.xp, ops: e.ops }))
+  const topRefs = [...entries]
+    .filter((e) => (e.refs || 0) > 0)
+    .sort((a, b) => (b.refs || 0) - (a.refs || 0))
+    .slice(0, 10)
+    .map((e) => ({ name: e.name, username: e.username, refs: e.refs }))
+
+  const blocked = await countBlocked(env)
+
+  // История из снимков (metadata в metrics:*).
+  const history: MetricsRow[] = []
+  let mcur: string | undefined
+  do {
+    const page = await env.REFERRALS.list<MetricsRow>({ prefix: METRICS_PREFIX, cursor: mcur })
+    for (const k of page.keys) if (k.metadata) history.push(k.metadata)
+    mcur = page.list_complete ? undefined : page.cursor
+  } while (mcur)
+  history.sort((a, b) => (a.date < b.date ? -1 : 1))
+
+  const round1 = (x: number) => Math.round(x * 10) / 10
+  const stickiness = mau ? round1((dau / mau) * 100) : 0
+  const retentionD1 =
+    newYesterday > 0
+      ? { pct: round1((retainedFromYesterday / newYesterday) * 100), base: newYesterday, returned: retainedFromYesterday }
+      : null
+
+  return json(
+    {
+      ok: true,
+      generatedAt: now,
+      users: { total, blocked, withData, withDataPct: total ? round1((withData / total) * 100) : 0 },
+      newUsers: { today: newToday, d7: new7, d30: new30 },
+      active: { dau, wau, mau, stickiness },
+      retentionD1,
+      referrals: { total: totalRefs },
+      game: { sumXp, sumCoins, avgLevel: round1(avgLevel) },
+      topXp,
+      topRefs,
+      history: history.slice(-30),
+    },
+    { status: 200 },
+    env,
+    origin,
+  )
 }
