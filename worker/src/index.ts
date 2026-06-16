@@ -281,6 +281,9 @@ export default {
       if (url.pathname === '/reminders' && req.method === 'POST') {
         return await handleReminders(req, env, origin)
       }
+      if (url.pathname === '/check-sub' && req.method === 'POST') {
+        return await handleCheckSub(req, env, origin)
+      }
       if (url.pathname === '/admin/test' && req.method === 'POST') {
         return await handleAdminTest(req, env, origin)
       }
@@ -661,6 +664,35 @@ async function handleReminders(req: Request, env: Env, origin: string | null): P
 
   await env.REFERRALS.put(`remind:${user.id}`, body.enabled ? '1' : '0')
   return json({ ok: true }, { status: 200 }, env, origin)
+}
+
+/** Канал для задания «подписаться» (публичный username). */
+const CHANNEL_USERNAME = '@Svyat_research'
+
+/**
+ * Проверка подписки на канал (задание subscribe_channel): бот вызывает getChatMember.
+ * Требует, чтобы бот был АДМИНОМ канала — иначе Telegram не отдаст членство, и мы
+ * мягко возвращаем subscribed:false (без 500), чтобы клиент просто показал «Подписаться».
+ */
+async function handleCheckSub(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'sub', user.id, 20, 60)) return tooMany(env, origin)
+
+  let subscribed = false
+  try {
+    const u =
+      `https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/getChatMember` +
+      `?chat_id=${encodeURIComponent(CHANNEL_USERNAME)}&user_id=${user.id}`
+    const r = await fetch(u)
+    const data = (await r.json()) as { ok?: boolean; result?: { status?: string } }
+    const st = data?.result?.status
+    subscribed = data?.ok === true && (st === 'creator' || st === 'administrator' || st === 'member')
+  } catch {
+    subscribed = false
+  }
+  return json({ ok: true, subscribed }, { status: 200 }, env, origin)
 }
 
 /**

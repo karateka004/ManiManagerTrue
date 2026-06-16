@@ -1,25 +1,28 @@
 import { m } from 'framer-motion'
-import { Hourglass } from 'lucide-react'
+import { Check } from 'lucide-react'
 import type { QuestProgress } from '../../lib/quests'
 import type { TFunc } from '../../lib/i18n'
 
-/** Человекочитаемая длительность остатка («2 ч 14 мин»). */
-function formatDuration(ms: number, t: TFunc): string {
-  const totalMin = Math.max(1, Math.ceil(ms / 60000))
-  const h = Math.floor(totalMin / 60)
-  const mins = totalMin % 60
-  return h > 0 ? `${h} ${t('unit.h')} ${mins} ${t('unit.m')}` : `${mins} ${t('unit.m')}`
-}
+/**
+ * Карточка задания: иконка, заголовок/описание, кнопка действия и награды.
+ * Кнопка: «Подписаться» (для задания с actionUrl, пока не выполнено) →
+ * «Забрать» (выполнено, не забрано) → «Получено» (забрано).
+ */
+export function QuestCard({
+  q,
+  onClaim,
+  onAction,
+  t,
+}: {
+  q: QuestProgress
+  onClaim: () => void
+  onAction?: () => void
+  t: TFunc
+}) {
+  const { def, current, ratio, done, claimed, claimable } = q
+  // Действие-кнопка (открыть канал) показывается, пока подписка не подтверждена.
+  const showAction = !!def.actionUrl && !done && !claimed
 
-/** Карточка задания: иконка, прогресс, кнопка Claim, награды XP/монеты. */
-export function QuestCard({ q, onClaim, t, now }: { q: QuestProgress; onClaim: () => void; t: TFunc; now: number }) {
-  const { def, current, ratio, claimed, claimable, expiresAt, hasSuccessor } = q
-  const time = claimed && expiresAt ? formatDuration(expiresAt - now, t) : ''
-  const subline = claimed
-    ? hasSuccessor
-      ? t('quest.next_in', { time })
-      : t('quest.expires_in', { time })
-    : t('quest.' + def.id + '.desc')
   return (
     <div className={`card p-3 transition-opacity ${claimed ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-3">
@@ -27,23 +30,32 @@ export function QuestCard({ q, onClaim, t, now }: { q: QuestProgress; onClaim: (
           {def.icon}
           {claimed && (
             <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-white">
-              <Hourglass size={11} strokeWidth={2.6} />
+              <Check size={11} strokeWidth={3} />
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-ink">{t('quest.' + def.id + '.title')}</div>
-          <div className="truncate text-[11px] text-ink-subtle">{subline}</div>
+          <div className="truncate text-[11px] text-ink-subtle">{t('quest.' + def.id + '.desc')}</div>
         </div>
-        <button
-          onClick={onClaim}
-          disabled={!claimable}
-          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
-            claimable ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-subtle'
-          }`}
-        >
-          {claimed ? t('quest.received') : claimable ? t('quest.claim') : `${current}/${def.goal}`}
-        </button>
+        {showAction ? (
+          <button
+            onClick={onAction}
+            className="shrink-0 rounded-2xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition active:scale-95"
+          >
+            {t('quest.subscribe')}
+          </button>
+        ) : (
+          <button
+            onClick={onClaim}
+            disabled={!claimable}
+            className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+              claimable ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-subtle'
+            }`}
+          >
+            {claimed ? t('quest.received') : claimable ? t('quest.claim') : `${current}/${def.goal}`}
+          </button>
+        )}
       </div>
 
       <div className="mt-2 flex items-center gap-2">

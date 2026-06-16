@@ -1,15 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { ShoppingBag, Medal, Hourglass, Coins } from 'lucide-react'
-import {
-  useStore,
-  selectCategoriesUsed,
-  selectLogDayStreak,
-  selectGoalsReached,
-  selectBudgetMonthKept,
-} from '../store/transactions'
-import { tg, hapticNotify } from '../lib/telegram'
-import { getReferralStats, submitProfile, isBackendConfigured, type ReferralFriend } from '../lib/api'
+import { ShoppingBag, Medal, Coins } from 'lucide-react'
+import { useStore } from '../store/transactions'
+import { tg, hapticNotify, openTelegramLink } from '../lib/telegram'
+import { getReferralStats, submitProfile, isBackendConfigured, checkSubscription, type ReferralFriend } from '../lib/api'
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
 import { allQuestProgress, type QuestProgress } from '../lib/quests'
@@ -29,16 +23,9 @@ export function RewardsPage() {
   const transactions = useStore((s) => s.transactions)
   const coins = useStore((s) => s.coins)
   const claimedQuests = useStore((s) => s.claimedQuests)
-  const questClaims = useStore((s) => s.questClaims)
-  const events = useStore((s) => s.events)
   const claimQuest = useStore((s) => s.claimQuest)
   const track = useStore((s) => s.track)
   const streak = useStore((s) => s.streak)
-  // Метрики финансовых заданий (по реальным данным).
-  const categoriesUsed = useStore(selectCategoriesUsed)
-  const logDays = useStore(selectLogDayStreak)
-  const goalsReached = useStore(selectGoalsReached)
-  const budgetMonth = useStore(selectBudgetMonthKept)
   const lvl = useLevel()
   const reconcileReferralRewards = useStore((s) => s.reconcileReferralRewards)
 
@@ -48,11 +35,17 @@ export function RewardsPage() {
   const seenLeaderboard = useRef(false)
   if (leaderboardOpen) seenLeaderboard.current = true
 
-  // Тик раз в минуту — двигает таймеры разблокировки заданий без перезагрузки.
-  const [now, setNow] = useState(() => Date.now())
+  // Подписка на канал (задание subscribe_channel) — проверяет бот через getChatMember.
+  const [subscribed, setSubscribed] = useState(false)
+  const recheckSub = () => {
+    checkSubscription().then(setSubscribed).catch(() => {})
+  }
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(id)
+    recheckSub()
+    // Вернулись из канала во вкладку — перепроверяем подписку.
+    const onVis = () => { if (document.visibilityState === 'visible') recheckSub() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
   useEffect(() => {
@@ -77,20 +70,23 @@ export function RewardsPage() {
   const metrics = {
     transactions: transactions.length,
     referrals: referral?.count ?? 0,
-    streak: streak.best,
-    events,
-    categories: categoriesUsed,
-    logDays,
-    goalsReached,
-    budgetMonth,
+    subscribed,
   }
-  const quests = allQuestProgress(metrics, claimedQuests, questClaims, now)
+  const quests = allQuestProgress(metrics, claimedQuests)
+  const mainQuests = quests.filter((q) => q.def.group === 'main')
+  const specialQuests = quests.filter((q) => q.def.group === 'special')
   const claimable = quests.filter((q) => q.claimable).length
 
   const onClaim = (q: QuestProgress) => {
     if (!q.claimable) return
     hapticNotify('success')
     claimQuest(q.def.id, q.def.xp, q.def.coins)
+  }
+
+  // Подписка: открыть канал и через момент перепроверить членство.
+  const onSubscribe = (q: QuestProgress) => {
+    if (q.def.actionUrl) openTelegramLink(q.def.actionUrl)
+    setTimeout(recheckSub, 1500)
   }
 
   const openShop = () => { track('open_achievements'); setShopOpen(true) }
@@ -203,20 +199,25 @@ export function RewardsPage() {
           )}
         </div>
         <div className="flex flex-col gap-2">
-          {quests.length === 0 ? (
-            <div className="card flex items-center gap-3 p-4 text-[12px] text-ink-subtle">
-              <Hourglass size={16} className="shrink-0 text-brand-500" />
-              {t('quest.empty')}
-            </div>
-          ) : (
-            quests.map((q) => (
-              <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} t={t} now={now} />
-            ))
-          )}
+          {mainQuests.map((q) => (
+            <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} onAction={() => onSubscribe(q)} t={t} />
+          ))}
         </div>
       </div>
 
-      {/* Рефералы */}
+      {/* Спешел — реферальные задания */}
+      <div className="mx-4 mt-5">
+        <div className="mb-2 px-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('rewards.special')}</span>
+        </div>
+        <div className="flex flex-col gap-2">
+          {specialQuests.map((q) => (
+            <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} t={t} />
+          ))}
+        </div>
+      </div>
+
+      {/* Рефералы — ссылка и список друзей */}
       <ReferralBlock count={referral?.count ?? null} friends={referral?.friends ?? []} t={t} />
 
       <Suspense fallback={null}>

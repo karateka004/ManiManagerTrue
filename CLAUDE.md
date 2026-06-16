@@ -283,8 +283,24 @@ refs:{top,me} }` (топ-50 + позиция). UI — переключатель
 
 ## Текущее состояние
 **Хэндофф:** проект в чистом состоянии, лежит в `C:\Users\User\Desktop\FinApp`. Фронт — бандл
-`index-CyJtSRR-.js` (`APP_VERSION` = `1.20.0`). **Воркер новее фронта** (добавлена админ-аналитика, фронт НЕ
-менялся — фича целиком в воркере). Открытых багов нет.
+`index-CXQV2e9b.js` (`APP_VERSION` = `1.21.0`). Открытых багов нет.
+
+**1.21.0 (переделка заданий — борд из 6 + подписка на канал):**
+- `src/lib/quests.ts` **переписан**: вместо длинной цепочки с 3-ч ротацией — **фиксированный борд из 6**,
+  две группы (`group: 'main' | 'special'`): main = `subscribe_channel` (подписка на @Svyat_research, metric
+  `subscribe`, `actionUrl`), `first_tx`, `tx_10`; special = `invite_1`/`invite_3`/`invite_5`. Цепочка/ротация/
+  `unlockAfter`/`questClaims`-таймеры **убраны**; забранные остаются на борде («✓ Получено»). `allQuestProgress`
+  упрощён до `(metrics, claimedQuests)`. `QuestMetrics` = `{transactions, referrals, subscribed}`.
+- `QuestCard.tsx`: убран таймер; кнопка «Подписаться» (для `actionUrl`, пока не выполнено) → «Забрать» → «Получено».
+- `Rewards.tsx`: две секции — «Задания» (main) и «Спешел» (special); состояние `subscribed` +
+  `checkSubscription()` на маунте и по `visibilitychange`; подписка открывает канал (`openTelegramLink`) и
+  перепроверяет. Убраны неиспользуемые селекторы/`now`-тик.
+- `api.ts`: `checkSubscription()` → POST `/check-sub`. Воркер: эндпоинт **`/check-sub`** (`getChatMember` по
+  `@Svyat_research`, status ∈ creator/administrator/member; мягкий фолбэк `subscribed:false`).
+  **ВЛАДЕЛЬЦУ:** добавить бота `@TrueManiManager_Bot` АДМИНОМ в канал @Svyat_research — иначе проверка всегда false.
+- i18n: `quest.subscribe`, `rewards.special`, `quest.subscribe_channel.*`, `quest.invite_1.*`. Стор/persist —
+  без миграции (используем существующие `claimedQuests`/`claimQuest`; id `first_tx`/`tx_10`/`invite_3`/`invite_5`
+  стабильны — прогресс сохраняется).
 
 **Админ-панель аналитики (воркер, фронт не трогали — НЕ показываем в «что нового»):**
 - Веб-дашборд `GET /admin` (HTML в `worker/src/admin.ts`, тёмная тема, без внешних либ, ручной SVG-график) +

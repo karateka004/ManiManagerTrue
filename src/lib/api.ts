@@ -179,3 +179,19 @@ export async function setReminders(enabled: boolean): Promise<void> {
     /* молча: повторим при следующем переключении */
   }
 }
+
+/* ---------- Подписка на канал (задание subscribe_channel) ---------- */
+
+/**
+ * Проверяет на сервере, подписан ли текущий пользователь на канал (бот делает
+ * getChatMember). Вне Telegram / без бэкенда / при ошибке → false.
+ */
+export async function checkSubscription(): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData) return false
+  try {
+    const res = await post('/check-sub', { initData: tg.initData })
+    return !!res?.subscribed
+  } catch {
+    return false
+  }
+}

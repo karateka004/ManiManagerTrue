@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.20.0'
+export const APP_VERSION = '1.21.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.21.0',
+    date: '2026-06-15',
+    title: { ru: 'Новые задания', en: 'New quests' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Задания обновлены: подписка на канал, первая операция и 10 операций — за каждое XP и монеты',
+          en: 'Quests refreshed: subscribe to the channel, first operation and 10 operations — XP and coins for each',
+        },
+      },
+      {
+        icon: '🚀',
+        text: {
+          ru: 'Новая секция «Спешел»: награды за приглашённых друзей — за 1, 3 и 5',
+          en: 'New “Special” section: rewards for invited friends — for 1, 3 and 5',
+        },
+      },
+    ],
+  },
   {
     version: '1.20.0',
     date: '2026-06-14',
