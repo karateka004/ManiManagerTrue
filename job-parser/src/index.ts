@@ -168,7 +168,7 @@ export default {
         headers: {
           'content-type': 'text/html; charset=utf-8',
           'content-security-policy':
-            "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; connect-src 'self'; img-src data:;",
+            "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src data:;",
         },
       });
     }
