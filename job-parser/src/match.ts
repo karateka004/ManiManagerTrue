@@ -167,7 +167,14 @@ export function detectMinAge(text: string): number | undefined {
 
 // ── Скоринг ───────────────────────────────────────────────────────────────────
 
-export function scoreVacancy(v: RawVacancy): ScoredVacancy {
+// Пороги, которые можно переопределить настройками из Mini App (KV `cfg`).
+export interface ScoreLimits {
+  minHourlyEur: number;
+  radiusKm: number;
+}
+
+export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy {
+  const lim: ScoreLimits = limits ?? { minHourlyEur: CONFIG.minHourlyEur, radiusKm: CONFIG.radiusKm };
   const text = `${v.title} ${v.description}`;
   const t = cleanText(text).toLowerCase();
   const facts = extractFacts(v.title, t);
@@ -201,7 +208,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
   const sal = structuredHourly(v).hourly ? structuredHourly(v) : extractSalary(t);
   let hourly = sal.hourly;
   if (hourly !== undefined) {
-    if (hourly < CONFIG.minHourlyEur) {
+    if (hourly < lim.minHourlyEur) {
       // ниже порога — отсев (даже верх вилки не спасает: низ = что реально предложат)
       return {
         ...v,
@@ -209,7 +216,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
         score: 0,
         verdict: 'none',
         hourlyEur: hourly,
-        reasons: [`❌ ставка €${hourly}/час — ниже порога €${CONFIG.minHourlyEur}`],
+        reasons: [`❌ ставка €${hourly}/час — ниже порога €${lim.minHourlyEur}`],
       };
     }
     const range = sal.hourlyMax && sal.hourlyMax > hourly ? `–${sal.hourlyMax}` : '';
@@ -238,14 +245,14 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
   // 5. Расстояние.
   const dist = distanceKm(v);
   if (dist !== undefined) {
-    if (dist > CONFIG.radiusKm) {
+    if (dist > lim.radiusKm) {
       return {
         ...v,
         facts,
         score: 0,
         verdict: 'none',
         distanceKm: dist,
-        reasons: [`❌ далеко: ~${dist} км от дома (лимит ${CONFIG.radiusKm})`],
+        reasons: [`❌ далеко: ~${dist} км от дома (лимит ${lim.radiusKm})`],
       };
     }
     score += 10;

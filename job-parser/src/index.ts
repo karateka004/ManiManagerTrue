@@ -5,9 +5,12 @@
 // Бюджет подзапросов (лимит 50 на бесплатном плане, KV-операции тоже считаются):
 // Adzuna ≤2 + списки ≤5 + детальные ≤12 + KV ≤10 + Telegram ≤ подписчики×(maxPerRun+1).
 
+import { APP_HTML } from './app';
+import { verifyInitData } from './auth';
 import { CONFIG } from './config';
 import { SeenStore } from './dedup';
 import { scoreVacancy } from './match';
+import { pushFeed, readFavs, readFeed, readSettings, setFav, toFeedItem, writeSettings } from './store';
 import { HTML_GROUPS, pickGroupIndex } from './rotation';
 import { fetchAdzuna } from './sources/adzuna';
 import { fetchRandstad } from './sources/randstad';
@@ -99,6 +102,9 @@ export async function runParse(env: Env, groupOverride?: number): Promise<RunRep
   });
   report.fetched = raw.length;
 
+  // Настройки из Mini App (KV `cfg`) поверх дефолтов CONFIG.
+  const settings = await readSettings(env.JOBS);
+
   // Новые → скоринг. Виденное пропускаем; всё обработанное помечаем виденным
   // (в том числе отбракованное — чтобы не пережёвывать каждый прогон).
   const scored: ScoredVacancy[] = [];
@@ -106,17 +112,21 @@ export async function runParse(env: Env, groupOverride?: number): Promise<RunRep
     if (await seen[v.source].has(v.id)) continue;
     await seen[v.source].add(v.id);
     report.fresh++;
-    const s = scoreVacancy(v);
+    const s = scoreVacancy(v, settings);
     if (s.verdict !== 'none' && s.score >= CONFIG.minScore) scored.push(s);
   }
   scored.sort((a, b) => b.score - a.score);
   report.matched = scored.length;
 
+  // Лента Mini App: копим ВСЁ подходящее (не только топ подборки).
+  const at = report.at;
+  await pushFeed(env.JOBS, scored.map((s) => toFeedItem(s, at))).catch((e) => console.log(`feed put failed: ${e}`));
+
   // Отправка: ОДИН дайджест за прогон каждому подписчику (топ maxPerRun,
   // сгруппировано по категориям, кнопки-ссылки внутри).
   const chats = await getChats(env);
   report.subscribers = Object.keys(chats).length;
-  const top = scored.slice(0, CONFIG.maxPerRun);
+  const top = scored.slice(0, settings.maxPerRun);
   const rest = scored.length - top.length;
   if (top.length > 0) {
     for (const chatId of Object.keys(chats)) {
@@ -150,6 +160,71 @@ export default {
 
     if (url.pathname === '/health') {
       return new Response('ok');
+    }
+
+    // Mini App: страница приложения.
+    if (url.pathname === '/app') {
+      return new Response(APP_HTML, {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-security-policy':
+            "default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; connect-src 'self'; img-src data:;",
+        },
+      });
+    }
+
+    // API Mini App. Все запросы — POST c JSON {initData, ...}; подпись Telegram обязательна.
+    if (url.pathname.startsWith('/api/') && req.method === 'POST') {
+      let body: { initData?: string; id?: string; status?: string | null; settings?: Record<string, unknown> };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return Response.json({ error: 'bad_json' }, { status: 400 });
+      }
+      const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN);
+      if (!user) return Response.json({ error: 'unauthorized' }, { status: 403 });
+
+      try {
+        if (url.pathname === '/api/feed') {
+          const [feed, favs, settings, lastRun] = await Promise.all([
+            readFeed(env.JOBS),
+            readFavs(env.JOBS),
+            readSettings(env.JOBS),
+            env.JOBS.get('lastRun'),
+          ]);
+          return Response.json({ feed, favs, settings, lastRun: lastRun ? JSON.parse(lastRun) : null });
+        }
+
+        if (url.pathname === '/api/refresh') {
+          // Тот же глобальный кулдаун, что у /now — бережём лимиты воркера и источников.
+          const lastNow = await env.JOBS.get('rl:now');
+          if (lastNow) {
+            const waitS = Math.max(30, 600 - Math.floor((Date.now() - Number(lastNow)) / 1000));
+            return Response.json({ error: 'cooldown', waitS }, { status: 429 });
+          }
+          await env.JOBS.put('rl:now', String(Date.now()), { expirationTtl: 600 });
+          const r = await runParse(env);
+          return Response.json({ fresh: r.fresh, matched: r.matched, sent: r.sent });
+        }
+
+        if (url.pathname === '/api/favs') {
+          if (!body.id || typeof body.id !== 'string') return Response.json({ error: 'no_id' }, { status: 400 });
+          const status = body.status === 'fav' || body.status === 'applied' ? body.status : null;
+          const favs = await setFav(env.JOBS, body.id.slice(0, 300), status, user.first_name ?? user.username ?? 'user');
+          return Response.json({ favs });
+        }
+
+        if (url.pathname === '/api/settings') {
+          const settings = body.settings
+            ? await writeSettings(env.JOBS, body.settings)
+            : await readSettings(env.JOBS);
+          return Response.json({ settings });
+        }
+      } catch (e) {
+        console.log(`api failed ${url.pathname}: ${e}`);
+        return Response.json({ error: 'internal' }, { status: 500 });
+      }
+      return Response.json({ error: 'not_found' }, { status: 404 });
     }
 
     // Ручной прогон: GET /run?key=<RUN_KEY>[&group=0|1] — вернёт JSON-отчёт по

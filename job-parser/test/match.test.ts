@@ -5,6 +5,7 @@ import { distanceKm, normalizeCity } from '../src/geo';
 import { extractJsonLd, findJobPostings, jobPostingToVacancy } from '../src/sources/jsonld';
 import { HTML_GROUPS, pickGroupIndex } from '../src/rotation';
 import { formatDigest } from '../src/telegram';
+import { mergeFeed, toFeedItem, type FeedItem } from '../src/store';
 import type { RawVacancy } from '../src/types';
 
 // Мини-assert без node-типов (tsconfig собран под workers-types).
@@ -205,6 +206,39 @@ ok('дайджест группирует по категориям и нуме�
   assert.ok(text.includes('ДОСТАВКА'), 'нет секции доставки');
   assert.ok(text.includes('и ещё 5'), 'нет хвоста');
   assert.ok(keyboard[0][0].url.startsWith('https://'), 'кнопка без url');
+});
+
+console.log('mini app store:');
+ok('toFeedItem собирает карточку', () => {
+  const s = scoreVacancy(
+    base({
+      title: 'Orderpicker',
+      location: 'Rotterdam',
+      description: 'fulltime 32-40 uur, €15 per uur, orderpicken, geen ervaring, per direct',
+    })
+  );
+  const it = toFeedItem(s, '2026-07-03T10:00:00Z');
+  assert.equal(it.cat.id, 'warehouse');
+  assert.equal(it.hourly, 15);
+  assert.ok(it.cond.includes('32–40 ч/нед'), it.cond.join(','));
+  assert.ok(it.cond.includes('старт сразу'));
+});
+ok('mergeFeed: свежие сверху, дедуп, кап 120', () => {
+  const mk = (id: string): FeedItem => ({
+    id, at: 'x', title: id, cat: { id: 'other', emoji: '📋', label: 'Разное' },
+    verdict: 'both', score: 70, url: 'u', cond: [], duties: [], source: 'adzuna',
+  });
+  const old = Array.from({ length: 119 }, (_, i) => mk('old' + i));
+  const merged = mergeFeed([mk('dup'), ...old], [mk('new1'), mk('dup')]);
+  assert.equal(merged.length, 120);
+  assert.equal(merged[0].id, 'new1');
+  assert.equal(merged[1].id, 'dup');
+  assert.equal(merged.filter((i) => i.id === 'dup').length, 1);
+});
+ok('scoreVacancy с override-порогом ставки', () => {
+  const v = base({ location: 'Rotterdam', description: 'fulltime magazijnwerk, € 15 per uur' });
+  assert.equal(scoreVacancy(v).verdict, 'both'); // дефолт 14 — проходит
+  assert.equal(scoreVacancy(v, { minHourlyEur: 16, radiusKm: 30 }).verdict, 'none'); // подняли порог — отсев
 });
 
 console.log('rotation:');
