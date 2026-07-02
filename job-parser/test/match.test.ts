@@ -3,6 +3,7 @@
 import { detectEmployment, detectLanguage, detectMinAge, extractSalary, scoreVacancy } from '../src/match';
 import { distanceKm, normalizeCity } from '../src/geo';
 import { extractJsonLd, findJobPostings, jobPostingToVacancy } from '../src/sources/jsonld';
+import { HTML_GROUPS, pickGroupIndex } from '../src/rotation';
 import type { RawVacancy } from '../src/types';
 
 // Мини-assert без node-типов (tsconfig собран под workers-types).
@@ -160,6 +161,19 @@ ok('JobPosting из HTML', () => {
 ok('@graph и массивы', () => {
   const html = `<script type="application/ld+json">{"@graph":[{"@type":"WebSite"},{"@type":"JobPosting","title":"X","url":"u"}]}</script>`;
   assert.equal(findJobPostings(extractJsonLd(html)).length, 1);
+});
+
+console.log('rotation:');
+ok('cron раз в 3 часа чередует группы', () => {
+  const h = 3_600_000;
+  const runs = [6, 9, 12, 15, 18, 21].map((hour) => pickGroupIndex(hour * h));
+  for (let i = 1; i < runs.length; i++) assert.ok(runs[i] !== runs[i - 1], `runs: ${runs.join(',')}`);
+});
+ok('группы покрывают все 4 HTML-источника без повторов', () => {
+  const all = HTML_GROUPS.flat();
+  assert.equal(all.length, 4);
+  assert.equal(new Set(all).size, 4);
+  assert.ok(!all.includes('adzuna' as never));
 });
 
 console.log(`\nВсе тесты прошли: ${passed}`);

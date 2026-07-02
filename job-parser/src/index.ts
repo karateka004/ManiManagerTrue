@@ -8,7 +8,10 @@
 import { CONFIG } from './config';
 import { SeenStore } from './dedup';
 import { scoreVacancy } from './match';
+import { HTML_GROUPS, pickGroupIndex } from './rotation';
 import { fetchAdzuna } from './sources/adzuna';
+import { fetchRandstad } from './sources/randstad';
+import { fetchTempoTeam } from './sources/tempoteam';
 import { fetchUitzendbureau } from './sources/uitzendbureau';
 import { fetchYoungCapital } from './sources/youngcapital';
 import { getChats, handleUpdate, sendText, sendVacancy } from './telegram';
@@ -25,6 +28,7 @@ export interface Env {
 
 interface RunReport {
   at: string;
+  group: number; // какая группа HTML-источников работала в этом прогоне
   sources: SourceReport[];
   fetched: number; // всего вернули источники
   fresh: number; // из них новых (не виденных раньше)
@@ -35,9 +39,22 @@ interface RunReport {
 
 // ── Прогон ────────────────────────────────────────────────────────────────────
 
-async function runParse(env: Env): Promise<RunReport> {
+// Фабрики HTML-источников: каждому передаётся колбэк «эта ссылка ещё не виделась?».
+const HTML_FETCHERS: Record<Exclude<SourceId, 'adzuna'>, (isNew: (u: string) => Promise<boolean>) => Promise<RawVacancy[]>> = {
+  uitzendbureau: fetchUitzendbureau,
+  youngcapital: fetchYoungCapital,
+  tempoteam: fetchTempoTeam,
+  randstad: fetchRandstad,
+};
+
+async function runParse(env: Env, groupOverride?: number): Promise<RunReport> {
+  // Группа HTML-источников этого прогона (чередуются, см. rotation.ts).
+  const group = groupOverride ?? pickGroupIndex(Date.now());
+  const htmlSources = HTML_GROUPS[group % HTML_GROUPS.length] as Exclude<SourceId, 'adzuna'>[];
+
   const report: RunReport = {
     at: new Date().toISOString(),
+    group,
     sources: [],
     fetched: 0,
     fresh: 0,
@@ -46,13 +63,11 @@ async function runParse(env: Env): Promise<RunReport> {
     subscribers: 0,
   };
 
-  // Память «что уже видели» — по одному KV-ключу на источник.
-  const seen: Record<SourceId, SeenStore> = {
-    adzuna: new SeenStore(env.JOBS, 'adzuna'),
-    uitzendbureau: new SeenStore(env.JOBS, 'uitzendbureau'),
-    youngcapital: new SeenStore(env.JOBS, 'youngcapital'),
-  };
-  await Promise.all(Object.values(seen).map((s) => s.load()));
+  // Память «что уже видели» — по одному KV-ключу на источник; грузим только активные.
+  const active: SourceId[] = ['adzuna', ...htmlSources];
+  const seen = {} as Record<SourceId, SeenStore>;
+  for (const s of active) seen[s] = new SeenStore(env.JOBS, s);
+  await Promise.all(active.map((s) => seen[s].load()));
 
   // Источники независимы: сбой одного не валит прогон.
   const jobs: Array<{ source: SourceId; run: () => Promise<RawVacancy[]> }> = [
@@ -65,8 +80,10 @@ async function runParse(env: Env): Promise<RunReport> {
         return fetchAdzuna(env.ADZUNA_APP_ID, env.ADZUNA_APP_KEY);
       },
     },
-    { source: 'uitzendbureau', run: () => fetchUitzendbureau((url) => seen.uitzendbureau.has(url).then((h) => !h)) },
-    { source: 'youngcapital', run: () => fetchYoungCapital((url) => seen.youngcapital.has(url).then((h) => !h)) },
+    ...htmlSources.map((s) => ({
+      source: s,
+      run: () => HTML_FETCHERS[s]((url) => seen[s].has(url).then((h) => !h)),
+    })),
   ];
 
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
@@ -139,13 +156,15 @@ export default {
       return new Response('ok');
     }
 
-    // Ручной прогон: GET /run?key=<RUN_KEY> — вернёт JSON-отчёт по источникам.
+    // Ручной прогон: GET /run?key=<RUN_KEY>[&group=0|1] — вернёт JSON-отчёт по
+    // источникам. group позволяет проверить обе группы HTML-источников подряд.
     if (url.pathname === '/run') {
       if (!env.RUN_KEY || url.searchParams.get('key') !== env.RUN_KEY) {
         return new Response('forbidden', { status: 403 });
       }
       try {
-        const report = await runParse(env);
+        const g = url.searchParams.get('group');
+        const report = await runParse(env, g === null ? undefined : Math.max(0, parseInt(g, 10) || 0));
         return Response.json(report);
       } catch (e) {
         return Response.json({ error: String(e) }, { status: 500 });
