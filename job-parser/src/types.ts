@@ -24,6 +24,29 @@ export interface RawVacancy {
 // Кому подходит вакансия (по возрастным и прочим требованиям).
 export type Verdict = 'both' | 'him' | 'her' | 'none';
 
+// Категория работы (для заголовка карточки и сводки).
+export interface JobCategory {
+  id: string;
+  emoji: string;
+  label: string; // по-русски
+}
+
+// Структурированные факты из текста вакансии — «выжимка», чтобы не открывать ссылку.
+export interface Facts {
+  category: JobCategory;
+  hoursPerWeek?: string; // «32–40» или «40»
+  shifts?: boolean; // сменный график
+  night?: boolean; // ночные смены
+  weekend?: boolean; // работа в выходные
+  startDirect?: boolean; // можно начать сразу
+  englishOk?: boolean; // достаточно английского
+  noExperience?: boolean; // опыт не нужен
+  travelAllowance?: boolean; // компенсация проезда
+  weeklyPay?: boolean; // выплата раз в неделю
+  needsTransport?: boolean; // нужны права/свой транспорт (у вас есть)
+  duties: string[]; // задачи по-русски, до 3
+}
+
 // Вакансия после анализа: балл + вердикт + причины по-русски.
 export interface ScoredVacancy extends RawVacancy {
   score: number; // 0..100
@@ -32,6 +55,7 @@ export interface ScoredVacancy extends RawVacancy {
   distanceKm?: number; // расстояние от дома, если город известен
   verdict: Verdict;
   reasons: string[]; // человекочитаемые пояснения («✅ ставка €15/час», «⚠️ …»)
+  facts: Facts; // структурированная выжимка для карточки
 }
 
 // Итог прогона одного источника — для диагностики через /run.

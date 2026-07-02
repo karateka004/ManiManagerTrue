@@ -2,6 +2,7 @@
 // скоринг 0..100 и вердикт «кому подходит» — обоим / только ему (21) / только ей (19) / никому.
 
 import { CONFIG } from './config';
+import { extractFacts } from './facts';
 import { distanceKm } from './geo';
 import type { RawVacancy, ScoredVacancy, Verdict } from './types';
 
@@ -169,6 +170,7 @@ export function detectMinAge(text: string): number | undefined {
 export function scoreVacancy(v: RawVacancy): ScoredVacancy {
   const text = `${v.title} ${v.description}`;
   const t = cleanText(text).toLowerCase();
+  const facts = extractFacts(v.title, t);
   const reasons: string[] = [];
   let score = 50;
   let verdict: Verdict = 'both';
@@ -176,7 +178,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
   // 1. Язык — жёсткий фильтр.
   const lang = detectLanguage(t);
   if (lang === 'dutch_required' && !CONFIG.languages.dutch) {
-    return { ...v, score: 0, verdict: 'none', reasons: ['❌ требуется нидерландский язык'] };
+    return { ...v, facts, score: 0, verdict: 'none', reasons: ['❌ требуется нидерландский язык'] };
   }
   if (lang === 'english_ok') {
     score += 5;
@@ -186,7 +188,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
   // 2. Занятость — parttime отсеиваем.
   const emp = detectEmployment(t, v.contractTime);
   if (emp === 'parttime') {
-    return { ...v, score: 0, verdict: 'none', reasons: ['❌ подработка (parttime), а нужен полный день'] };
+    return { ...v, facts, score: 0, verdict: 'none', reasons: ['❌ подработка (parttime), а нужен полный день'] };
   }
   if (emp === 'fulltime') {
     score += 10;
@@ -203,6 +205,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
       // ниже порога — отсев (даже верх вилки не спасает: низ = что реально предложат)
       return {
         ...v,
+        facts,
         score: 0,
         verdict: 'none',
         hourlyEur: hourly,
@@ -228,7 +231,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
       verdict = 'her';
       reasons.push(`👤 только ${CONFIG.people.her.name}: требуется ${minAge}+`);
     } else if (!him && !her) {
-      return { ...v, score: 0, verdict: 'none', reasons: [`❌ требуется возраст ${minAge}+`] };
+      return { ...v, facts, score: 0, verdict: 'none', reasons: [`❌ требуется возраст ${minAge}+`] };
     }
   }
 
@@ -238,6 +241,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
     if (dist > CONFIG.radiusKm) {
       return {
         ...v,
+        facts,
         score: 0,
         verdict: 'none',
         distanceKm: dist,
@@ -270,6 +274,7 @@ export function scoreVacancy(v: RawVacancy): ScoredVacancy {
 
   return {
     ...v,
+    facts,
     score: Math.min(100, score),
     hourlyEur: hourly,
     hourlyMaxEur: sal.hourlyMax,

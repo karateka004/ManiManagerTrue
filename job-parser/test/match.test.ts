@@ -4,6 +4,7 @@ import { detectEmployment, detectLanguage, detectMinAge, extractSalary, scoreVac
 import { distanceKm, normalizeCity } from '../src/geo';
 import { extractJsonLd, findJobPostings, jobPostingToVacancy } from '../src/sources/jsonld';
 import { HTML_GROUPS, pickGroupIndex } from '../src/rotation';
+import { formatDigest } from '../src/telegram';
 import type { RawVacancy } from '../src/types';
 
 // Мини-assert без node-типов (tsconfig собран под workers-types).
@@ -161,6 +162,49 @@ ok('JobPosting из HTML', () => {
 ok('@graph и массивы', () => {
   const html = `<script type="application/ld+json">{"@graph":[{"@type":"WebSite"},{"@type":"JobPosting","title":"X","url":"u"}]}</script>`;
   assert.equal(findJobPostings(extractJsonLd(html)).length, 1);
+});
+
+console.log('facts / категории:');
+ok('категория склада + задачи', () => {
+  const s = scoreVacancy(
+    base({
+      title: 'Orderpicker magazijn',
+      location: 'Rotterdam',
+      description:
+        'Fulltime 32-40 uur, €15 per uur, orderpicken en inpakken, per direct starten, geen ervaring nodig, reiskostenvergoeding, wekelijks uitbetaald',
+    })
+  );
+  assert.equal(s.facts.category.id, 'warehouse');
+  assert.ok(s.facts.duties.includes('сборка заказов'), s.facts.duties.join(','));
+  assert.equal(s.facts.hoursPerWeek, '32–40');
+  assert.ok(s.facts.startDirect === true);
+  assert.ok(s.facts.noExperience === true);
+  assert.ok(s.facts.travelAllowance === true);
+  assert.ok(s.facts.weeklyPay === true);
+});
+ok('категория доставки из названия', () => {
+  const s = scoreVacancy(base({ title: 'Pakketbezorger', description: 'fulltime, €16 per uur, rijbewijs b' }));
+  assert.equal(s.facts.category.id, 'delivery');
+  assert.ok(s.facts.needsTransport === true);
+});
+
+console.log('digest:');
+ok('дайджест группирует по категориям и нумерует кнопки', () => {
+  const a = scoreVacancy(
+    base({ title: 'Orderpicker', location: 'Rotterdam', description: 'fulltime, €15 per uur, orderpicken' })
+  );
+  const b = scoreVacancy(
+    base({ title: 'Pakketbezorger', location: 'Schiedam', description: 'fulltime, €16 per uur, bezorgen' })
+  );
+  const c = scoreVacancy(
+    base({ title: 'Inpakker', location: 'Rotterdam', description: 'fulltime, €14,50 per uur, inpakken' })
+  );
+  const { text, keyboard } = formatDigest([a, b, c], 5, new Date('2026-07-02T18:00:00Z'));
+  assert.equal(keyboard.length, 3);
+  assert.ok(text.includes('СКЛАД'), 'нет секции склада');
+  assert.ok(text.includes('ДОСТАВКА'), 'нет секции доставки');
+  assert.ok(text.includes('и ещё 5'), 'нет хвоста');
+  assert.ok(keyboard[0][0].url.startsWith('https://'), 'кнопка без url');
 });
 
 console.log('rotation:');

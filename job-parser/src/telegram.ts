@@ -1,4 +1,5 @@
-// Телеграм-слой: отправка карточек вакансий и обработка команд бота
+// Телеграм-слой: дайджест вакансий (одно сообщение за прогон, сгруппировано по
+// категориям, с выжимкой и нумерованными кнопками) и команды бота
 // (/start — подписка, /stop — отписка, /status — диагностика).
 // Подписчики хранятся одним KV-ключом `chats` (map chat_id → имя).
 
@@ -41,40 +42,122 @@ async function setChats(env: TgEnv, chats: Record<string, string>): Promise<void
   await env.JOBS.put(CHATS_KEY, JSON.stringify(chats));
 }
 
-// ── Форматирование ────────────────────────────────────────────────────────────
+// ── Форматирование дайджеста ──────────────────────────────────────────────────
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const VERDICT_LABEL: Record<ScoredVacancy['verdict'], string> = {
-  both: '👫 Подходит обоим',
-  him: `👤 Подходит только: ${CONFIG.people.him.name}`,
-  her: `👤 Подходит только: ${CONFIG.people.her.name}`,
-  none: '—',
+const VERDICT_SHORT: Record<ScoredVacancy['verdict'], string> = {
+  both: '👫 подходит обоим',
+  him: `👤 только ${CONFIG.people.him.name} (возраст)`,
+  her: `👤 только ${CONFIG.people.her.name} (возраст)`,
+  none: '',
 };
 
-export function formatVacancy(v: ScoredVacancy): string {
+// Строка с деньгами: «€14,50–16/час» / «≈€15/час (из месячной)» / «ставка не указана».
+function moneyLine(v: ScoredVacancy): string {
+  if (v.hourlyEur === undefined) return '💶 ставка не указана — спросить при отклике';
+  const range = v.hourlyMaxEur && v.hourlyMaxEur > v.hourlyEur ? `–${fmt(v.hourlyMaxEur)}` : '';
+  return `💶 €${fmt(v.hourlyEur)}${range}/час брутто`;
+}
+
+function fmt(n: number): string {
+  return String(Math.round(n * 10) / 10).replace('.', ',');
+}
+
+// Компактная строка условий: часы, смены, старт, опыт, язык, проезд, выплаты.
+function condLine(v: ScoredVacancy): string {
+  const f = v.facts;
+  const parts: string[] = [];
+  parts.push(f.hoursPerWeek ? `${f.hoursPerWeek} ч/нед` : 'fulltime');
+  if (f.night) parts.push('ночные смены');
+  else if (f.shifts) parts.push('смены');
+  if (f.startDirect) parts.push('старт сразу');
+  if (f.noExperience) parts.push('без опыта');
+  if (f.englishOk) parts.push('англ. ок');
+  if (f.travelAllowance) parts.push('проезд оплачивают');
+  if (f.weeklyPay) parts.push('выплата раз в неделю');
+  if (f.needsTransport) parts.push('нужны права (есть ✓)');
+  return parts.join(' · ');
+}
+
+// Номер-эмодзи для списка и кнопок.
+function num(i: number): string {
+  const digits = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+  return i <= 9 ? digits[i] : `${i}.`;
+}
+
+// Одна запись дайджеста (3–4 строки).
+function entry(v: ScoredVacancy, i: number): string {
   const lines: string[] = [];
-  lines.push(`<b>${esc(v.title)}</b> · 🔥 ${v.score}/100`);
-  if (v.company) lines.push(esc(v.company));
-  const loc = v.location ? `📍 ${esc(v.location)}${v.distanceKm !== undefined ? ` · ~${v.distanceKm} км` : ''}` : '';
-  if (loc) lines.push(loc);
-  lines.push('');
-  lines.push(`<b>${VERDICT_LABEL[v.verdict]}</b>`);
-  for (const r of v.reasons) lines.push(esc(r));
-  lines.push('');
-  lines.push(`<i>Источник: ${v.source}</i>`);
+  const hot = v.score >= 85 ? ' 🔥' : '';
+  lines.push(`${num(i)} <b>${esc(v.title)}</b>${hot}`);
+  const where: string[] = [];
+  if (v.company) where.push(esc(v.company));
+  if (v.location) where.push(esc(v.location) + (v.distanceKm !== undefined ? ` · ~${v.distanceKm} км` : ''));
+  if (where.length) lines.push(`🏢 ${where.join(' — ')}`);
+  lines.push(moneyLine(v));
+  lines.push(`🕐 ${condLine(v)}`);
+  if (v.facts.duties.length) lines.push(`📝 ${v.facts.duties.join(', ')}`);
+  const verdict = VERDICT_SHORT[v.verdict];
+  if (v.verdict !== 'both' && verdict) lines.push(verdict);
   return lines.join('\n');
 }
 
-export async function sendVacancy(env: TgEnv, chatId: string, v: ScoredVacancy): Promise<void> {
+// Дайджест: заголовок с датой и разбивкой по категориям, записи по категориям,
+// нумерованные кнопки-ссылки.
+export function formatDigest(list: ScoredVacancy[], hiddenCount: number, now: Date): {
+  text: string;
+  keyboard: Array<Array<{ text: string; url: string }>>;
+} {
+  // Группировка по категориям с сохранением порядка по score.
+  const byCat = new Map<string, ScoredVacancy[]>();
+  for (const v of list) {
+    const key = v.facts.category.id;
+    if (!byCat.has(key)) byCat.set(key, []);
+    byCat.get(key)!.push(v);
+  }
+
+  const date = now.toLocaleString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam' });
+  const counts = [...byCat.values()]
+    .map((vs) => `${vs[0].facts.category.emoji} ${vs.length}`)
+    .join(' · ');
+  const parts: string[] = [`🔔 <b>Новые вакансии — ${date}</b>\n${counts}`];
+
+  const keyboard: Array<Array<{ text: string; url: string }>> = [];
+  let i = 0;
+  for (const vs of byCat.values()) {
+    const cat = vs[0].facts.category;
+    parts.push(`\n${cat.emoji} <b>${cat.label.toUpperCase()}</b>`);
+    for (const v of vs) {
+      i++;
+      parts.push(entry(v, i));
+      const price = v.hourlyEur !== undefined ? ` · €${fmt(v.hourlyEur)}` : '';
+      keyboard.push([{ text: `${num(i)} ${v.title.slice(0, 32)}${price}`, url: v.url }]);
+    }
+  }
+  if (hiddenCount > 0) {
+    parts.push(`\n…и ещё ${hiddenCount} — пришлю в следующих подборках.`);
+  }
+  parts.push(`\n<i>👫 = обоим · 🔥 = топ · кнопки ниже открывают вакансии</i>`);
+  return { text: parts.join('\n'), keyboard };
+}
+
+export async function sendDigest(
+  env: TgEnv,
+  chatId: string,
+  list: ScoredVacancy[],
+  hiddenCount: number,
+  now: Date
+): Promise<void> {
+  const { text, keyboard } = formatDigest(list, hiddenCount, now);
   await tgApi(env, 'sendMessage', {
     chat_id: chatId,
-    text: formatVacancy(v),
+    text,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    reply_markup: { inline_keyboard: [[{ text: '🔗 Открыть вакансию', url: v.url }]] },
+    reply_markup: { inline_keyboard: keyboard },
   });
 }
 
@@ -99,7 +182,6 @@ export async function handleUpdate(env: TgEnv, update: TgUpdate): Promise<void> 
   const id = String(chatId);
 
   if (text.startsWith('/start')) {
-    // фолбэк-мапа {owner} из getChats не сохранена в KV — читаем реальное состояние
     const raw = await env.JOBS.get(CHATS_KEY);
     const real = raw ? (JSON.parse(raw) as Record<string, string>) : {};
     real[id] = msg?.chat?.first_name ?? msg?.chat?.username ?? 'user';
@@ -107,11 +189,10 @@ export async function handleUpdate(env: TgEnv, update: TgUpdate): Promise<void> 
     await sendText(
       env,
       id,
-      `Привет, ${esc(real[id])}! 👋\n\nЯ присылаю свежие вакансии вокруг Роттердама (${CONFIG.radiusKm} км), ` +
-        `fulltime, от €${CONFIG.minHourlyEur}/час, без требования нидерландского.\n` +
-        `Проверяю источники каждые 3 часа.\n\n` +
-        `Команды:\n/status — когда был последний прогон\n/stop — отписаться\n\n` +
-        `(твой chat_id: <code>${id}</code>)`
+      `Привет, ${esc(real[id])}! 👋\n\nРаз в 3 часа (07:00–22:00) я присылаю подборку свежих вакансий: ` +
+        `Роттердам +${CONFIG.radiusKm} км, полный день, от €${CONFIG.minHourlyEur}/час, без нидерландского.\n` +
+        `Все вакансии в одном сообщении, по категориям, с выжимкой.\n\n` +
+        `Команды:\n/status — последний прогон\n/stop — отписаться`
     );
     return;
   }
@@ -130,7 +211,7 @@ export async function handleUpdate(env: TgEnv, update: TgUpdate): Promise<void> 
     await sendText(
       env,
       id,
-      last ? `Последний прогон:\n<pre>${esc(last)}</pre>` : 'Прогонов ещё не было — жди ближайший cron или дёрни /run.'
+      last ? `Последний прогон:\n<pre>${esc(last)}</pre>` : 'Прогонов ещё не было — жди ближайший по расписанию.'
     );
     return;
   }

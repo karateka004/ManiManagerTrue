@@ -14,7 +14,7 @@ import { fetchRandstad } from './sources/randstad';
 import { fetchOlympia } from './sources/olympia';
 import { fetchUitzendbureau } from './sources/uitzendbureau';
 import { fetchYoungCapital } from './sources/youngcapital';
-import { getChats, handleUpdate, sendText, sendVacancy } from './telegram';
+import { getChats, handleUpdate, sendDigest } from './telegram';
 import type { RawVacancy, ScoredVacancy, SourceId, SourceReport } from './types';
 
 export interface Env {
@@ -112,26 +112,22 @@ export async function runParse(env: Env, groupOverride?: number): Promise<RunRep
   scored.sort((a, b) => b.score - a.score);
   report.matched = scored.length;
 
-  // Отправка: топ maxPerRun каждому подписчику + строка «и ещё N».
+  // Отправка: ОДИН дайджест за прогон каждому подписчику (топ maxPerRun,
+  // сгруппировано по категориям, кнопки-ссылки внутри).
   const chats = await getChats(env);
   report.subscribers = Object.keys(chats).length;
   const top = scored.slice(0, CONFIG.maxPerRun);
   const rest = scored.length - top.length;
-  for (const chatId of Object.keys(chats)) {
-    for (const v of top) {
+  if (top.length > 0) {
+    for (const chatId of Object.keys(chats)) {
       try {
-        await sendVacancy(env, chatId, v);
-        report.sent++;
+        await sendDigest(env, chatId, top, rest, new Date());
+        report.sent = top.length;
       } catch (e) {
         console.log(`send to ${chatId} failed: ${e}`);
       }
     }
-    if (rest > 0) {
-      await sendText(env, chatId, `…и ещё ${rest} подходящих — пришлю в следующие прогоны.`).catch(() => {});
-    }
   }
-  // report.sent — карточек на ОДНОГО подписчика (для читаемости /status)
-  if (report.subscribers > 0) report.sent = Math.round(report.sent / report.subscribers);
 
   await Promise.all(Object.values(seen).map((s) => s.save()));
   await env.JOBS.put('lastRun', JSON.stringify(report, null, 1));
