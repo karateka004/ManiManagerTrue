@@ -1,6 +1,7 @@
 name = "vacancy-parser"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
+account_id = "aba2a8c57d77cceaed7bdc68d8e2ef99"
 
 [vars]
 # Начальный получатель, пока никто не написал боту /start — Святослав.
@@ -16,7 +17,7 @@ crons = ["0 6-21/3 * * *"]
 # и подставишь сюда.
 [[kv_namespaces]]
 binding = "JOBS"
-id = "ПОДСТАВЬ_ID_ПОСЛЕ_kv_namespace_create"
+id = "27fb63be3f57460480cf36350981c380"
 
 # Секреты НЕ хранятся тут. Выставляются один раз через файл (см. README):
 #   BOT_TOKEN       — токен нового бота из BotFather
