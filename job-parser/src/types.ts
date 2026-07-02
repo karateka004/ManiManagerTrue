@@ -1,6 +1,6 @@
 // Общие типы парсера вакансий.
 
-export type SourceId = 'adzuna' | 'uitzendbureau' | 'youngcapital' | 'tempoteam' | 'randstad';
+export type SourceId = 'adzuna' | 'uitzendbureau' | 'youngcapital' | 'olympia' | 'randstad';
 
 // «Сырая» вакансия, как её отдал источник (до анализа).
 export interface RawVacancy {

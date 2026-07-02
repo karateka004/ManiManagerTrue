@@ -6,7 +6,7 @@ import type { SourceId } from './types';
 
 export const HTML_GROUPS: readonly SourceId[][] = [
   ['uitzendbureau', 'youngcapital'],
-  ['tempoteam', 'randstad'],
+  ['olympia', 'randstad'],
 ];
 
 // Индекс группы для момента времени: чередуется каждый час, а так как cron ходит

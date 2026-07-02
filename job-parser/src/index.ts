@@ -11,7 +11,7 @@ import { scoreVacancy } from './match';
 import { HTML_GROUPS, pickGroupIndex } from './rotation';
 import { fetchAdzuna } from './sources/adzuna';
 import { fetchRandstad } from './sources/randstad';
-import { fetchTempoTeam } from './sources/tempoteam';
+import { fetchOlympia } from './sources/olympia';
 import { fetchUitzendbureau } from './sources/uitzendbureau';
 import { fetchYoungCapital } from './sources/youngcapital';
 import { getChats, handleUpdate, sendText, sendVacancy } from './telegram';
@@ -43,11 +43,11 @@ interface RunReport {
 const HTML_FETCHERS: Record<Exclude<SourceId, 'adzuna'>, (isNew: (u: string) => Promise<boolean>) => Promise<RawVacancy[]>> = {
   uitzendbureau: fetchUitzendbureau,
   youngcapital: fetchYoungCapital,
-  tempoteam: fetchTempoTeam,
+  olympia: fetchOlympia,
   randstad: fetchRandstad,
 };
 
-async function runParse(env: Env, groupOverride?: number): Promise<RunReport> {
+export async function runParse(env: Env, groupOverride?: number): Promise<RunReport> {
   // Группа HTML-источников этого прогона (чередуются, см. rotation.ts).
   const group = groupOverride ?? pickGroupIndex(Date.now());
   const htmlSources = HTML_GROUPS[group % HTML_GROUPS.length] as Exclude<SourceId, 'adzuna'>[];
