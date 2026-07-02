@@ -170,34 +170,45 @@ export async function sendText(env: TgEnv, chatId: string, text: string): Promis
 interface TgUpdate {
   message?: {
     text?: string;
-    chat?: { id: number; first_name?: string; username?: string };
+    chat?: { id: number; type?: string; title?: string; first_name?: string; username?: string };
   };
 }
 
-export async function handleUpdate(env: TgEnv, update: TgUpdate): Promise<void> {
+// Колбэк «проверить вакансии сейчас» — прокидывается из index.ts (иначе цикл импортов).
+export type RunNow = () => Promise<{ fresh: number; matched: number; sent: number }>;
+
+const NOW_COOLDOWN_S = 600; // /now — не чаще раза в 10 минут (бережём лимиты)
+
+export async function handleUpdate(env: TgEnv, update: TgUpdate, runNow?: RunNow): Promise<void> {
   const msg = update.message;
   const chatId = msg?.chat?.id;
-  const text = (msg?.text ?? '').trim().toLowerCase();
+  // В группах команды приходят как «/start@ИмяБота» — отрезаем хвост.
+  const text = (msg?.text ?? '').trim().toLowerCase().split(/[@\s]/)[0];
   if (!chatId || !text.startsWith('/')) return;
   const id = String(chatId);
+  // Имя: для группы — её название, для личного чата — имя человека.
+  const name = msg?.chat?.title ?? msg?.chat?.first_name ?? msg?.chat?.username ?? 'user';
+  const isGroup = msg?.chat?.type === 'group' || msg?.chat?.type === 'supergroup';
 
-  if (text.startsWith('/start')) {
+  if (text === '/start') {
     const raw = await env.JOBS.get(CHATS_KEY);
     const real = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-    real[id] = msg?.chat?.first_name ?? msg?.chat?.username ?? 'user';
+    real[id] = name;
     await setChats(env, real);
     await sendText(
       env,
       id,
-      `Привет, ${esc(real[id])}! 👋\n\nРаз в 3 часа (07:00–22:00) я присылаю подборку свежих вакансий: ` +
+      `${isGroup ? `Подключил группу «${esc(name)}»` : `Привет, ${esc(name)}`}! 👋\n\n` +
+        `Раз в 3 часа (07:00–22:00) я присылаю подборку свежих вакансий: ` +
         `Роттердам +${CONFIG.radiusKm} км, полный день, от €${CONFIG.minHourlyEur}/час, без нидерландского.\n` +
         `Все вакансии в одном сообщении, по категориям, с выжимкой.\n\n` +
-        `Команды:\n/status — последний прогон\n/stop — отписаться`
+        `Команды:\n/now — проверить вакансии прямо сейчас\n/status — последний прогон\n/stop — отписаться\n\n` +
+        `💡 Добавь меня в общую группу и напиши там /start — подборки будут видны всем в одном месте.`
     );
     return;
   }
 
-  if (text.startsWith('/stop')) {
+  if (text === '/stop') {
     const raw = await env.JOBS.get(CHATS_KEY);
     const real = raw ? (JSON.parse(raw) as Record<string, string>) : {};
     delete real[id];
@@ -206,7 +217,37 @@ export async function handleUpdate(env: TgEnv, update: TgUpdate): Promise<void> 
     return;
   }
 
-  if (text.startsWith('/status')) {
+  // Обновление по запросу: запускает полный прогон, подборка уходит ВСЕМ подписчикам.
+  if (text === '/now' || text === '/jobs') {
+    const chats = await getChats(env);
+    if (!(id in chats)) {
+      await sendText(env, id, 'Сначала подпишись: /start');
+      return;
+    }
+    // Рейт-лимит: глобальный, чтобы не выжечь лимиты воркера и источников.
+    const lastNow = await env.JOBS.get('rl:now');
+    if (lastNow) {
+      const waitMin = Math.max(1, Math.ceil((NOW_COOLDOWN_S - (Date.now() - Number(lastNow)) / 1000) / 60));
+      await sendText(env, id, `⏳ Только что проверял. Следующая ручная проверка — через ~${waitMin} мин.`);
+      return;
+    }
+    await env.JOBS.put('rl:now', String(Date.now()), { expirationTtl: NOW_COOLDOWN_S });
+    if (!runNow) return;
+    await sendText(env, id, '🔎 Проверяю источники…');
+    try {
+      const r = await runNow();
+      // Если что-то нашлось — подборка уже ушла всем подписчикам (включая автора запроса).
+      if (r.sent === 0) {
+        await sendText(env, id, `Ничего нового: просмотрел ${r.fresh} свежих, подходящих нет. Следующая автопроверка — по расписанию.`);
+      }
+    } catch (e) {
+      console.log(`runNow failed: ${e}`);
+      await sendText(env, id, '⚠️ Не получилось проверить, попробуй позже.');
+    }
+    return;
+  }
+
+  if (text === '/status') {
     const last = await env.JOBS.get('lastRun');
     await sendText(
       env,

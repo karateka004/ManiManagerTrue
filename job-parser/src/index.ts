@@ -145,7 +145,7 @@ export default {
     );
   },
 
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === '/health') {
@@ -168,14 +168,21 @@ export default {
     }
 
     // Вебхук Telegram. Секрет задаётся при setWebhook (secret_token=RUN_KEY).
+    // Отвечаем 200 сразу, обработку (в т.ч. долгий /now) доделываем в waitUntil —
+    // иначе Telegram по таймауту пришлёт апдейт повторно.
     if (url.pathname === '/webhook' && req.method === 'POST') {
       if (env.RUN_KEY && req.headers.get('x-telegram-bot-api-secret-token') !== env.RUN_KEY) {
         return new Response('forbidden', { status: 403 });
       }
       try {
-        await handleUpdate(env, await req.json());
+        const update = (await req.json()) as Parameters<typeof handleUpdate>[1];
+        ctx.waitUntil(
+          handleUpdate(env, update, () => runParse(env)).catch((e) => {
+            console.log(`webhook failed: ${e}`);
+          })
+        );
       } catch (e) {
-        console.log(`webhook failed: ${e}`);
+        console.log(`webhook parse failed: ${e}`);
       }
       return new Response('ok'); // Telegram важен только 200
     }
