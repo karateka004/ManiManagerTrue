@@ -337,6 +337,36 @@ ok('жёсткий возраст без контекста ставки — п�
   assert.equal(s.verdict, 'him');
 });
 
+console.log('🇺🇦 вакансии для украинцев:');
+ok('детект + бонус + гео-послабление для неизвестного города', () => {
+  const s = scoreVacancy(
+    base({
+      title: 'Inpakmedewerker glas',
+      location: 'Gorinchem', // нет в geo-таблице — но 🇺🇦 не отсеиваем
+      description: 'Fulltime, €15 per uur, wij verwelkomen ook Oekraïense medewerkers, engels is voldoende',
+    })
+  );
+  assert.equal(s.verdict, 'both');
+  assert.ok(s.facts.ukrainian === true);
+  assert.ok(s.score >= 85, `score ${s.score}`);
+  assert.ok(s.reasons.some((r) => r.includes('🇺🇦')));
+  assert.ok(s.reasons.some((r) => r.includes('уточнить')));
+});
+ok('английская формулировка ukrainian speaking', () => {
+  const s = scoreVacancy(base({ description: 'fulltime €15 per uur, ukrainian speaking people are welcome' }));
+  assert.ok(s.facts.ukrainian === true);
+});
+ok('без 🇺🇦 неизвестный город по-прежнему отсев', () => {
+  const s = scoreVacancy(base({ location: 'Waalwijk', description: 'fulltime magazijnwerk €15 per uur' }));
+  assert.equal(s.verdict, 'none');
+});
+ok('соцработа «Oekraïne Opvang» всё равно отсев (begeleider/manager)', () => {
+  const s = scoreVacancy(
+    base({ title: 'Afdelingsmanager Oekraïne Opvang', location: 'Den Haag', description: 'fulltime, hbo werk- en denkniveau' })
+  );
+  assert.equal(s.verdict, 'none');
+});
+
 console.log('tempo-team sitemap:');
 ok('parseSitemapFresh: свежие URL вакансий, старые и не-вакансии мимо', () => {
   const now = new Date('2026-07-03T12:00:00Z').getTime();

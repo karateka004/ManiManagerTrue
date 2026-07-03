@@ -303,22 +303,24 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
     }
   }
 
-  // 5. Расстояние.
+  // 5. Расстояние. Для 🇺🇦-вакансий — послабление: радиус +15 км, неизвестный
+  // город не отсеивается (такие вакансии редки и адресованы лично им).
+  const maxKm = facts.ukrainian ? lim.radiusKm + 15 : lim.radiusKm;
   const dist = distanceKm(v);
   if (dist !== undefined) {
-    if (dist > lim.radiusKm) {
+    if (dist > maxKm) {
       return {
         ...v,
         facts,
         score: 0,
         verdict: 'none',
         distanceKm: dist,
-        reasons: [`❌ далеко: ~${dist} км от дома (лимит ${lim.radiusKm})`],
+        reasons: [`❌ далеко: ~${dist} км от дома (лимит ${maxKm})`],
       };
     }
     score += 10;
     reasons.push(`🚗 ~${dist} км от дома`);
-  } else if (v.location) {
+  } else if (v.location && !facts.ukrainian) {
     // Город указан, но не из зоны: вся агломерация Роттердама есть в geo-таблице,
     // значит это скорее всего другой регион (кейс: Helmond/Mierlo, ~100 км) — отсев.
     return {
@@ -328,6 +330,8 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
       verdict: 'none',
       reasons: [`❌ ${v.location} — вне зоны поиска (${lim.radiusKm} км от Роттердама)`],
     };
+  } else if (v.location) {
+    reasons.push(`📍 ${v.location} — расстояние уточнить`);
   }
 
   // 6. Бонусы.
@@ -346,6 +350,11 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
   if (CONFIG.hasCar && /rijbewijs\s*b\b|driving licen[cs]e|eigen vervoer|own transport/.test(t)) {
     score += 5;
     reasons.push('🚙 нужны права/транспорт — у вас есть');
+  }
+  // «Украинцы приветствуются» — сильнейший сигнал, поднимаем в топ.
+  if (facts.ukrainian) {
+    score += 15;
+    reasons.push('🇺🇦 украинцы/русскоговорящие приветствуются');
   }
   // Приятные условия из фактов — небольшой плюс (еженедельная выплата, проезд).
   if (facts.weeklyPay) score += 3;

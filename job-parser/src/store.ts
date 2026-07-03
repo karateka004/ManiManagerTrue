@@ -40,6 +40,7 @@ export function toFeedItem(v: ScoredVacancy, at: string): FeedItem {
   if (f.travelAllowance) cond.push('проезд оплачивают');
   if (f.weeklyPay) cond.push('выплата/нед');
   if (f.experience) cond.push('⚠️ просят опыт');
+  if (f.ukrainian) cond.unshift('🇺🇦 украинцы ок');
   return {
     id: v.id,
     at,

@@ -96,6 +96,9 @@ export function extractFacts(title: string, text: string): Facts {
     );
   return {
     experience: exp || undefined,
+    // «Украинцы/русскоговорящие приветствуются» — сильнейший сигнал «ваша вакансия»
+    ukrainian:
+      /oekra[ïi]|ukrain|украин|russisch\s*sprekend|russian[- ]speaking|русскоязычн|русскогово/i.test(t) || undefined,
     category: detectCategory(title, text),
     hoursPerWeek: detectHoursPerWeek(text),
     shifts: /ploegen|ploegendienst|shift(?:s|en| work)|2-ploegen|3-ploegen|wisselende diensten/i.test(t) || undefined,

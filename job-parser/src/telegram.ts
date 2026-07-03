@@ -70,6 +70,7 @@ function fmt(n: number): string {
 function condLine(v: ScoredVacancy): string {
   const f = v.facts;
   const parts: string[] = [];
+  if (f.ukrainian) parts.push('🇺🇦 украинцы ок');
   parts.push(f.hoursPerWeek ? `${f.hoursPerWeek} ч/нед` : 'fulltime');
   if (f.night) parts.push('ночные смены');
   else if (f.shifts) parts.push('смены');

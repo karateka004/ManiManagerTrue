@@ -24,25 +24,49 @@ interface AdzunaItem {
 
 const PAGES = 2; // 2 × 50 = до 100 свежих вакансий за прогон
 
+// Ключи «вакансий для украинцев» — отдельный запрос с расширенным радиусом:
+// такие вакансии редки и адресованы лично ребятам.
+const UA_KEYWORDS = 'oekraiens oekraiense ukrainian ukrainians';
+const UA_DISTANCE = 45;
+
+async function fetchPage(appId: string, appKey: string, page: number, opts?: { whatOr?: string; distance?: number; maxDays?: number }): Promise<AdzunaItem[]> {
+  const url = new URL(`https://api.adzuna.com/v1/api/jobs/nl/search/${page}`);
+  url.searchParams.set('app_id', appId);
+  url.searchParams.set('app_key', appKey);
+  url.searchParams.set('results_per_page', '50');
+  url.searchParams.set('where', CONFIG.home.city);
+  url.searchParams.set('distance', String(opts?.distance ?? CONFIG.radiusKm));
+  url.searchParams.set('max_days_old', String(opts?.maxDays ?? CONFIG.maxDaysOld));
+  url.searchParams.set('sort_by', 'date');
+  if (opts?.whatOr) url.searchParams.set('what_or', opts.whatOr);
+  // full_time=1 НЕ ставим: часть fulltime-вакансий не размечена и пропала бы —
+  // занятость надёжнее определяет наш матчер по тексту.
+  const res = await fetch(url.toString(), { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`adzuna http ${res.status}`);
+  const data = (await res.json()) as { results?: AdzunaItem[] };
+  return data.results ?? [];
+}
+
 export async function fetchAdzuna(appId: string, appKey: string): Promise<RawVacancy[]> {
   const out: RawVacancy[] = [];
+  const seenIds = new Set<string>();
+  const batches: AdzunaItem[][] = [];
   for (let page = 1; page <= PAGES; page++) {
-    const url = new URL(`https://api.adzuna.com/v1/api/jobs/nl/search/${page}`);
-    url.searchParams.set('app_id', appId);
-    url.searchParams.set('app_key', appKey);
-    url.searchParams.set('results_per_page', '50');
-    url.searchParams.set('where', CONFIG.home.city);
-    url.searchParams.set('distance', String(CONFIG.radiusKm));
-    url.searchParams.set('max_days_old', String(CONFIG.maxDaysOld));
-    url.searchParams.set('sort_by', 'date');
-    // full_time=1 НЕ ставим: часть fulltime-вакансий не размечена и пропала бы —
-    // занятость надёжнее определяет наш матчер по тексту.
-
-    const res = await fetch(url.toString(), { headers: { accept: 'application/json' } });
-    if (!res.ok) throw new Error(`adzuna http ${res.status}`);
-    const data = (await res.json()) as { results?: AdzunaItem[] };
-    const items = data.results ?? [];
+    const items = await fetchPage(appId, appKey, page);
+    batches.push(items);
+    if (items.length < 50) break;
+  }
+  // Спец-запрос «для украинцев»: шире радиус, дольше свежесть (их мало).
+  try {
+    batches.push(await fetchPage(appId, appKey, 1, { whatOr: UA_KEYWORDS, distance: UA_DISTANCE, maxDays: 14 }));
+  } catch (e) {
+    console.log(`adzuna ua-query failed: ${e}`);
+  }
+  for (const items of batches) {
     for (const it of items) {
+      const key = String(it.id ?? it.redirect_url);
+      if (seenIds.has(key)) continue;
+      seenIds.add(key);
       if (!it.redirect_url || !it.title) continue;
       const predicted = it.salary_is_predicted === '1';
       out.push({
@@ -63,7 +87,6 @@ export async function fetchAdzuna(appId: string, appKey: string): Promise<RawVac
         postedAt: it.created,
       });
     }
-    if (items.length < 50) break; // дальше пусто
   }
   return out;
 }

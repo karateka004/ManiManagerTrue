@@ -44,6 +44,7 @@ export interface Facts {
   travelAllowance?: boolean; // компенсация проезда
   weeklyPay?: boolean; // выплата раз в неделю
   experience?: boolean; // просят опыт (пометка, не отсев)
+  ukrainian?: boolean; // явно приветствуются украинцы/русскоговорящие
   needsTransport?: boolean; // нужны права/свой транспорт (у вас есть)
   duties: string[]; // задачи по-русски, до 3
 }
