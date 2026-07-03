@@ -14,6 +14,7 @@ import { pushFeed, readFavs, readFeed, readSettings, setFav, toFeedItem, writeSe
 import { HTML_GROUPS, pickGroupIndex } from './rotation';
 import { fetchAdzuna } from './sources/adzuna';
 import { fetchRandstad } from './sources/randstad';
+import { fetchTempoTeam } from './sources/tempoteam';
 import { fetchOlympia } from './sources/olympia';
 import { fetchUitzendbureau } from './sources/uitzendbureau';
 import { fetchYoungCapital } from './sources/youngcapital';
@@ -48,6 +49,7 @@ const HTML_FETCHERS: Record<Exclude<SourceId, 'adzuna'>, (isNew: (u: string) => 
   youngcapital: fetchYoungCapital,
   olympia: fetchOlympia,
   randstad: fetchRandstad,
+  tempoteam: fetchTempoTeam,
 };
 
 export async function runParse(env: Env, groupOverride?: number): Promise<RunReport> {

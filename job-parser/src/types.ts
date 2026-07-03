@@ -1,6 +1,6 @@
 // Общие типы парсера вакансий.
 
-export type SourceId = 'adzuna' | 'uitzendbureau' | 'youngcapital' | 'olympia' | 'randstad';
+export type SourceId = 'adzuna' | 'uitzendbureau' | 'youngcapital' | 'olympia' | 'randstad' | 'tempoteam';
 
 // «Сырая» вакансия, как её отдал источник (до анализа).
 export interface RawVacancy {
@@ -43,6 +43,7 @@ export interface Facts {
   noExperience?: boolean; // опыт не нужен
   travelAllowance?: boolean; // компенсация проезда
   weeklyPay?: boolean; // выплата раз в неделю
+  experience?: boolean; // просят опыт (пометка, не отсев)
   needsTransport?: boolean; // нужны права/свой транспорт (у вас есть)
   duties: string[]; // задачи по-русски, до 3
 }

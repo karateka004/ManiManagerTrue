@@ -87,7 +87,15 @@ export function detectHoursPerWeek(text: string): string | undefined {
 
 export function extractFacts(title: string, text: string): Facts {
   const t = text.toLowerCase();
+  const noExp = /geen ervaring|zonder ervaring|no experience|iedereen kan|wij leren je/i.test(t);
+  // Просят опыт — пометка, не отсев (на такие всё равно стоит откликаться).
+  const exp =
+    !noExp &&
+    /minimaal\s+\d+\s+(?:maanden|jaar)[^.]{0,30}(?:ervaring|gewerkt)|ervaring\s+als\b|aantoonbare ervaring|\d+\s+(?:maanden|jaar)\s+(?:relevante\s+)?(?:werk)?ervaring|experience\s+(?:as|required|in)/i.test(
+      t
+    );
   return {
+    experience: exp || undefined,
     category: detectCategory(title, text),
     hoursPerWeek: detectHoursPerWeek(text),
     shifts: /ploegen|ploegendienst|shift(?:s|en| work)|2-ploegen|3-ploegen|wisselende diensten/i.test(t) || undefined,
@@ -95,7 +103,7 @@ export function extractFacts(title: string, text: string): Facts {
     weekend: /weekend|zaterdag|zondag/i.test(t) || undefined,
     startDirect: /per direct|direct starten|direct aan de slag|start immediately|vandaag nog|morgen (?:al )?beginnen/i.test(t) || undefined,
     englishOk: /geen nederlands|english|engels is voldoende|english[- ]speaking/i.test(t) || undefined,
-    noExperience: /geen ervaring|zonder ervaring|no experience|geen diploma|wij leren je/i.test(t) || undefined,
+    noExperience: (noExp || /geen diploma/i.test(t)) || undefined,
     travelAllowance: /reiskosten|reisvergoeding|travel allowance|travel costs/i.test(t) || undefined,
     weeklyPay: /wekelijks(?:e)? (?:uitbetaal|uitbetaling|betaald|salaris)|weekly pay|per week uitbetaald/i.test(t) || undefined,
     needsTransport: /rijbewijs\s*b\b|eigen vervoer|own transport|driving licen[cs]e/i.test(t) || undefined,

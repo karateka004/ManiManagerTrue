@@ -79,6 +79,7 @@ function condLine(v: ScoredVacancy): string {
   if (f.travelAllowance) parts.push('проезд оплачивают');
   if (f.weeklyPay) parts.push('выплата раз в неделю');
   if (f.needsTransport) parts.push('нужны права (есть ✓)');
+  if (f.experience) parts.push('⚠️ просят опыт');
   return parts.join(' · ');
 }
 

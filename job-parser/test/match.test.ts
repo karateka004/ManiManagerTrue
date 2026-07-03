@@ -6,6 +6,7 @@ import { extractJsonLd, findJobPostings, jobPostingToVacancy } from '../src/sour
 import { HTML_GROUPS, pickGroupIndex } from '../src/rotation';
 import { formatDigest } from '../src/telegram';
 import { mergeFeed, toFeedItem, writeSettings, type FeedItem } from '../src/store';
+import { parseSitemapFresh } from '../src/sources/tempoteam';
 import type { RawVacancy } from '../src/types';
 
 // Мини-assert без node-типов (tsconfig собран под workers-types).
@@ -128,6 +129,14 @@ ok('21+ — только ему', () => {
 ok('далёкий город по координатам — отсев', () => {
   const s = scoreVacancy(base({ lat: 52.3702, lon: 4.8952, description: 'fulltime, €16 per uur' })); // Амстердам
   assert.equal(s.verdict, 'none');
+});
+ok('неизвестный город (вне агломерации) — отсев', () => {
+  const s = scoreVacancy(base({ location: 'Helmond', description: 'fulltime magazijnwerk, €15 per uur' }));
+  assert.equal(s.verdict, 'none');
+});
+ok('без города вообще — не отсев (уточнит матчер по другим полям)', () => {
+  const s = scoreVacancy(base({ description: 'fulltime magazijnwerk in rotterdam, €15 per uur' }));
+  assert.ok(s.verdict === 'both', s.reasons.join(' | '));
 });
 ok('без зарплаты — проходит с пометкой', () => {
   const s = scoreVacancy(
@@ -298,16 +307,60 @@ ok('scoreVacancy с override-порогом ставки', () => {
   assert.equal(scoreVacancy(v, { minHourlyEur: 16, radiusKm: 30 }).verdict, 'none'); // подняли порог — отсев
 });
 
-console.log('rotation:');
-ok('cron раз в 3 часа чередует группы', () => {
-  const h = 3_600_000;
-  const runs = [6, 9, 12, 15, 18, 21].map((hour) => pickGroupIndex(hour * h));
-  for (let i = 1; i < runs.length; i++) assert.ok(runs[i] !== runs[i - 1], `runs: ${runs.join(',')}`);
+console.log('эталонная вакансия (Tempo-Team productiemedewerker):');
+ok('проходит с высоким баллом, подходит ОБОИМ, опыт помечен', () => {
+  const s = scoreVacancy(
+    base({
+      title: 'Productiemedewerker',
+      location: 'Rotterdam',
+      description:
+        'Wat bieden wij jou € 15,32 bruto per uur (vanaf 21 jaar e.o.). Een baan voor langere tijd. ' +
+        'Toeslagen in de avonden en nacht a 34%-37%. Een baan van 5 dagen per week. Reiskostenvergoeding. ' +
+        'Wekelijks je salaris uitbetaald. Je hebt minimaal 6 maanden als orderpicker gewerkt. ' +
+        'Je spreekt Nederlands of Engels. Je bent beschikbaar in de avonduren en nachten.',
+    })
+  );
+  assert.equal(s.verdict, 'both'); // «vanaf 21 jaar» у ставки — НЕ возрастной допуск
+  assert.ok(s.hourlyEur! > 15 && s.hourlyEur! < 16, `hourly ${s.hourlyEur}`);
+  assert.ok(s.score >= 85, `score ${s.score}`);
+  assert.ok(s.facts.experience === true, 'опыт не помечен');
+  assert.ok(s.reasons.some((r) => r.includes('молодёжную')), s.reasons.join(' | '));
+  assert.ok(s.reasons.some((r) => r.includes('просят опыт')));
 });
-ok('группы покрывают все 4 HTML-источника без повторов', () => {
+ok('«geen ervaring nodig» не считается требованием опыта', () => {
+  const s = scoreVacancy(base({ title: 'Inpakker', description: 'fulltime €15 per uur, geen ervaring nodig' }));
+  assert.ok(!s.facts.experience);
+  assert.ok(s.facts.noExperience === true);
+});
+ok('жёсткий возраст без контекста ставки — по-прежнему только ему', () => {
+  const s = scoreVacancy(base({ description: 'fulltime bezorger €15 per uur, je bent minimaal 21 jaar oud' }));
+  assert.equal(s.verdict, 'him');
+});
+
+console.log('tempo-team sitemap:');
+ok('parseSitemapFresh: свежие URL вакансий, старые и не-вакансии мимо', () => {
+  const now = new Date('2026-07-03T12:00:00Z').getTime();
+  const xml = [
+    '<url><loc>https://www.tempo-team.nl/vacatures/740482/productiemedewerker</loc><lastmod>2026-07-02</lastmod></url>',
+    '<url><loc>https://www.tempo-team.nl/vacatures/111/oud</loc><lastmod>2026-06-01</lastmod></url>',
+    '<url><loc>https://www.tempo-team.nl/werkgevers/pagina</loc><lastmod>2026-07-03</lastmod></url>',
+  ].join('\n');
+  const urls = parseSitemapFresh(xml, now);
+  assert.equal(urls.length, 1);
+  assert.ok(urls[0].includes('740482'));
+});
+
+console.log('rotation:');
+ok('за 3 подряд cron-прогона (раз в 3 ч) отрабатывают все 3 группы', () => {
+  const slot = 3 * 3_600_000;
+  const t0 = new Date('2026-07-03T06:00:00Z').getTime();
+  const runs = [0, 1, 2].map((i) => pickGroupIndex(t0 + i * slot));
+  assert.equal(new Set(runs).size, HTML_GROUPS.length);
+});
+ok('группы покрывают все 5 HTML-источников без повторов', () => {
   const all = HTML_GROUPS.flat();
-  assert.equal(all.length, 4);
-  assert.equal(new Set(all).size, 4);
+  assert.equal(all.length, 5);
+  assert.equal(new Set(all).size, 5);
   assert.ok(!all.includes('adzuna' as never));
 });
 

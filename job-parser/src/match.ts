@@ -280,8 +280,16 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
   }
 
   // 4. Возраст: 21+ отсекает её (19), 20+ тоже; 18 и ниже — ок обоим.
+  // НО: «€15,32 per uur (vanaf 21 jaar e.o.)» — возраст у СТАВКИ, а не допуск к работе:
+  // младше просто платят молодёжную ставку — вакансия остаётся «обоим».
   const minAge = detectMinAge(t);
-  if (minAge !== undefined) {
+  const rateAge =
+    /(?:per uur|uurloon|bruto|salaris)[^.]{0,30}vanaf\s*\d{2}\s*jaar|\(\s*vanaf\s*\d{2}\s*jaar\s*(?:e\.?o\.?)?\s*\)/.test(
+      t
+    );
+  if (minAge !== undefined && rateAge) {
+    reasons.push(`💶 полная ставка с ${minAge} лет — младшему платят молодёжную`);
+  } else if (minAge !== undefined) {
     const him = CONFIG.people.him.age >= minAge;
     const her = CONFIG.people.her.age >= minAge;
     if (him && !her) {
@@ -311,7 +319,15 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
     score += 10;
     reasons.push(`🚗 ~${dist} км от дома`);
   } else if (v.location) {
-    reasons.push(`📍 ${v.location} — расстояние уточнить`);
+    // Город указан, но не из зоны: вся агломерация Роттердама есть в geo-таблице,
+    // значит это скорее всего другой регион (кейс: Helmond/Mierlo, ~100 км) — отсев.
+    return {
+      ...v,
+      facts,
+      score: 0,
+      verdict: 'none',
+      reasons: [`❌ ${v.location} — вне зоны поиска (${lim.radiusKm} км от Роттердама)`],
+    };
   }
 
   // 6. Бонусы.
@@ -330,6 +346,14 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
   if (CONFIG.hasCar && /rijbewijs\s*b\b|driving licen[cs]e|eigen vervoer|own transport/.test(t)) {
     score += 5;
     reasons.push('🚙 нужны права/транспорт — у вас есть');
+  }
+  // Приятные условия из фактов — небольшой плюс (еженедельная выплата, проезд).
+  if (facts.weeklyPay) score += 3;
+  if (facts.travelAllowance) score += 3;
+  // Просят опыт — лёгкий минус и пометка, но НЕ отсев: откликаться всё равно стоит.
+  if (facts.experience) {
+    score -= 5;
+    reasons.push('⚠️ просят опыт — можно пробовать и без него');
   }
 
   return {
