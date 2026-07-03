@@ -174,7 +174,7 @@ export function detectEducation(text: string): Education {
 
 // Квалифицированные профессии (по названию) — требуют диплом/опыт/свободный NL.
 const SKILLED_TITLE_RE =
-  /developer|programmeur|software|engineer|consultant|analist|analyst|accountant|boekhouder|jurist|advocaat|adviseur|controller|recruiter|marketeer|pensioen|hypothe[ek]|verzekering|verpleeg|verzorgende|docent|leraar|stagiair|\bstage\b|trainee|financieel|administrat|beleidsmedewerker|projectleider|architect|management|co[öo]rdinator|begeleider|\btax\b|compliance|\bexpert\b|legal|lawyer|\bhr\b|human resources|specialist/i;
+  /developer|programmeur|software|engineer|consultant|analist|analyst|accountant|boekhouder|jurist|advocaat|adviseur|controller|recruiter|marketeer|pensioen|hypothe[ek]|verzekering|verpleeg|verzorgende|docent|leraar|stagiair|\bstage\b|trainee|financieel|administrat|beleidsmedewerker|projectleider|architect|management|co[öo]rdinator|begeleider|\btax\b|compliance|\bexpert\b|legal|lawyer|\bhr\b|human resources|specialist|hulpverlen|maatschappelijk|vluchteling|opvang|beslismedewerker|consulent/i;
 
 export function isSkilledTitle(title: string): boolean {
   return SKILLED_TITLE_RE.test(title);
@@ -212,6 +212,7 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
   const text = `${v.title} ${v.description}`;
   const t = cleanText(text).toLowerCase();
   const facts = extractFacts(v.title, t);
+  if (v.uaHint) facts.ukrainian = true; // найдена спецзапросом по украинским ключам
   const reasons: string[] = [];
   let score = 50;
   let verdict: Verdict = 'both';

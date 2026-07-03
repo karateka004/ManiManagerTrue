@@ -50,20 +50,20 @@ async function fetchPage(appId: string, appKey: string, page: number, opts?: { w
 export async function fetchAdzuna(appId: string, appKey: string): Promise<RawVacancy[]> {
   const out: RawVacancy[] = [];
   const seenIds = new Set<string>();
-  const batches: AdzunaItem[][] = [];
+  const batches: Array<{ items: AdzunaItem[]; ua?: boolean }> = [];
   for (let page = 1; page <= PAGES; page++) {
     const items = await fetchPage(appId, appKey, page);
-    batches.push(items);
+    batches.push({ items });
     if (items.length < 50) break;
   }
   // Спец-запрос «для украинцев»: шире радиус, дольше свежесть (их мало).
   try {
-    batches.push(await fetchPage(appId, appKey, 1, { whatOr: UA_KEYWORDS, distance: UA_DISTANCE, maxDays: 14 }));
+    batches.push({ items: await fetchPage(appId, appKey, 1, { whatOr: UA_KEYWORDS, distance: UA_DISTANCE, maxDays: 14 }), ua: true });
   } catch (e) {
     console.log(`adzuna ua-query failed: ${e}`);
   }
-  for (const items of batches) {
-    for (const it of items) {
+  for (const batch of batches) {
+    for (const it of batch.items) {
       const key = String(it.id ?? it.redirect_url);
       if (seenIds.has(key)) continue;
       seenIds.add(key);
@@ -85,6 +85,7 @@ export async function fetchAdzuna(appId: string, appKey: string): Promise<RawVac
         salaryPeriod: predicted || !it.salary_min ? undefined : 'year',
         contractTime: it.contract_time,
         postedAt: it.created,
+        uaHint: batch.ua,
       });
     }
   }

@@ -19,6 +19,9 @@ export interface RawVacancy {
   salaryPeriod?: 'hour' | 'month' | 'year';
   contractTime?: 'full_time' | 'part_time';
   postedAt?: string; // ISO-дата публикации, если известна
+  // Вакансия найдена спецзапросом «для украинцев»: Adzuna ищет по ПОЛНОМУ тексту,
+  // а описание отдаёт обрезанным — сам детект по тексту может не сработать.
+  uaHint?: boolean;
 }
 
 // Кому подходит вакансия (по возрастным и прочим требованиям).

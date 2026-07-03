@@ -361,10 +361,17 @@ ok('без 🇺🇦 неизвестный город по-прежнему от
   assert.equal(s.verdict, 'none');
 });
 ok('соцработа «Oekraïne Opvang» всё равно отсев (begeleider/manager)', () => {
+  for (const title of ['Afdelingsmanager Oekraïne Opvang', 'Jeugdhulpverlener Vluchtelingenopvang', 'Junior Beslismedewerker Oekraïne IND']) {
+    const s = scoreVacancy(base({ title, location: 'Den Haag', description: 'fulltime, 36 uur' }));
+    assert.equal(s.verdict, 'none');
+  }
+});
+ok('uaHint из спецзапроса Adzuna проставляет 🇺🇦 даже без слов в тексте', () => {
   const s = scoreVacancy(
-    base({ title: 'Afdelingsmanager Oekraïne Opvang', location: 'Den Haag', description: 'fulltime, hbo werk- en denkniveau' })
+    base({ title: 'Inpakmedewerker', location: 'Gorinchem', description: 'fulltime, €15 per uur', uaHint: true })
   );
-  assert.equal(s.verdict, 'none');
+  assert.equal(s.verdict, 'both');
+  assert.ok(s.facts.ukrainian === true);
 });
 
 console.log('tempo-team sitemap:');
