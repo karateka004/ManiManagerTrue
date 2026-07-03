@@ -37,7 +37,7 @@ const CATEGORIES: Array<{ cat: JobCategory; re: RegExp }> = [
   },
   {
     cat: { id: 'office', emoji: '💼', label: 'Офис / сервис' },
-    re: /administrat|klantenservice|callcenter|customer service|office|backoffice|receptie/i,
+    re: /administrat|klantenservice|klantcontact|klantadviseur|callcenter|customer service|office|backoffice|receptie|secretar|data[- ]entry/i,
   },
 ];
 

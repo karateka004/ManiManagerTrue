@@ -146,6 +146,40 @@ export function detectLanguage(text: string): LangRequirement {
   return 'none';
 }
 
+// ── Образование / квалификация ───────────────────────────────────────────────
+// У ребят нет нидерландских дипломов и «белого» опыта — вакансии, где просят
+// образование или квалифицированную профессию, в теории не подходят вовсе.
+
+export type Education = 'none' | 'mbo' | 'higher';
+
+export function detectEducation(text: string): Education {
+  const t = text.toLowerCase();
+  if (/geen diploma|zonder diploma|geen opleiding (?:nodig|vereist)|no diploma|no degree/.test(t)) return 'none';
+  if (
+    /\b(?:hbo|wo)\b[^.]{0,25}(?:diploma|opleiding|niveau|werk|geschoold)|universitair|bachelor|master(?:diploma| degree)|\bdegree\b/.test(
+      t
+    )
+  ) {
+    return 'higher';
+  }
+  if (
+    /mbo[- ]?(?:\d|niveau|diploma|opleiding|werk)|afgeronde (?:mbo|hbo|relevante)? ?opleiding|diploma (?:is )?(?:vereist|verplicht|noodzakelijk)/.test(
+      t
+    )
+  ) {
+    return 'mbo';
+  }
+  return 'none';
+}
+
+// Квалифицированные профессии (по названию) — требуют диплом/опыт/свободный NL.
+const SKILLED_TITLE_RE =
+  /developer|programmeur|software|engineer|consultant|analist|analyst|accountant|boekhouder|jurist|advocaat|adviseur|controller|recruiter|marketeer|pensioen|hypothe[ek]|verzekering|verpleeg|verzorgende|docent|leraar|stagiair|\bstage\b|trainee|financieel|administrat|beleidsmedewerker|projectleider|architect|management|co[öo]rdinator|begeleider|\btax\b|compliance|\bexpert\b|legal|lawyer|\bhr\b|human resources|specialist/i;
+
+export function isSkilledTitle(title: string): boolean {
+  return SKILLED_TITLE_RE.test(title);
+}
+
 // ── Возраст ───────────────────────────────────────────────────────────────────
 
 // Минимальный возраст из текста: "21 jaar of ouder", "minimaal 18 jaar", "18+".
@@ -186,6 +220,25 @@ export function scoreVacancy(v: RawVacancy, limits?: ScoreLimits): ScoredVacancy
   const lang = detectLanguage(t);
   if (lang === 'dutch_required' && !CONFIG.languages.dutch) {
     return { ...v, facts, score: 0, verdict: 'none', reasons: ['❌ требуется нидерландский язык'] };
+  }
+
+  // 1а. Квалификация — жёсткие фильтры: без NL-диплома и опыта такие вакансии
+  // не подходят в принципе (см. кейс «medewerker administratie» с MBO-финансы).
+  if (isSkilledTitle(v.title)) {
+    return { ...v, facts, score: 0, verdict: 'none', reasons: ['❌ квалифицированная профессия — нужны диплом/опыт'] };
+  }
+  if (facts.category.id === 'office') {
+    return { ...v, facts, score: 0, verdict: 'none', reasons: ['❌ офисная позиция — нужен свободный нидерландский'] };
+  }
+  const edu = detectEducation(t);
+  if (edu !== 'none') {
+    return {
+      ...v,
+      facts,
+      score: 0,
+      verdict: 'none',
+      reasons: [`❌ требуется диплом (${edu === 'higher' ? 'HBO/WO' : 'MBO'}) — не подходит`],
+    };
   }
   if (lang === 'english_ok') {
     score += 5;

@@ -82,7 +82,7 @@ export async function pushFeed(kv: KVNamespace, fresh: FeedItem[]): Promise<void
 
 // ── Избранное ─────────────────────────────────────────────────────────────────
 
-export type FavStatus = 'fav' | 'applied';
+export type FavStatus = 'fav' | 'applied' | 'hidden';
 export interface FavEntry {
   status: FavStatus;
   by: string; // имя того, кто отметил
@@ -117,12 +117,28 @@ export interface Settings {
   minHourlyEur: number;
   radiusKm: number;
   maxPerRun: number;
+  // Категории, которые НЕ присылать в подборки Telegram (лента показывает всё).
+  mutedCats: string[];
 }
+
+// Известные id категорий (см. facts.ts) — для валидации mutedCats.
+export const CAT_IDS = [
+  'warehouse',
+  'delivery',
+  'production',
+  'cleaning',
+  'horeca',
+  'retail',
+  'construction',
+  'office',
+  'other',
+] as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   minHourlyEur: CONFIG.minHourlyEur,
   radiusKm: CONFIG.radiusKm,
   maxPerRun: CONFIG.maxPerRun,
+  mutedCats: [],
 };
 
 // Зажимаем в разумные рамки — и от опечаток, и от выхода за лимиты воркера.
@@ -131,10 +147,15 @@ function clampSettings(s: Partial<Settings>): Settings {
     const x = Number(n);
     return Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : dflt;
   };
+  // mutedCats: только известные id; максимум 8 из 9 — хотя бы одна категория остаётся живой
+  const muted = Array.isArray(s.mutedCats)
+    ? s.mutedCats.filter((c): c is string => typeof c === 'string' && (CAT_IDS as readonly string[]).includes(c)).slice(0, 8)
+    : DEFAULT_SETTINGS.mutedCats;
   return {
     minHourlyEur: clamp(s.minHourlyEur, 5, 40, DEFAULT_SETTINGS.minHourlyEur),
     radiusKm: clamp(s.radiusKm, 5, 60, DEFAULT_SETTINGS.radiusKm),
     maxPerRun: clamp(s.maxPerRun, 3, 10, DEFAULT_SETTINGS.maxPerRun),
+    mutedCats: muted,
   };
 }
 

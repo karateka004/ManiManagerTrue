@@ -5,7 +5,7 @@ import { distanceKm, normalizeCity } from '../src/geo';
 import { extractJsonLd, findJobPostings, jobPostingToVacancy } from '../src/sources/jsonld';
 import { HTML_GROUPS, pickGroupIndex } from '../src/rotation';
 import { formatDigest } from '../src/telegram';
-import { mergeFeed, toFeedItem, type FeedItem } from '../src/store';
+import { mergeFeed, toFeedItem, writeSettings, type FeedItem } from '../src/store';
 import type { RawVacancy } from '../src/types';
 
 // Мини-assert без node-типов (tsconfig собран под workers-types).
@@ -19,8 +19,14 @@ const assert = {
 };
 
 let passed = 0;
-function ok(name: string, fn: () => void) {
-  fn();
+function ok(name: string, fn: () => void | Promise<void>): void | Promise<void> {
+  const r = fn();
+  if (r instanceof Promise) {
+    return r.then(() => {
+      passed++;
+      console.log(`  ✓ ${name}`);
+    });
+  }
   passed++;
   console.log(`  ✓ ${name}`);
 }
@@ -208,6 +214,44 @@ ok('дайджест группирует по категориям и нуме�
   assert.ok(keyboard[0][0].url.startsWith('https://'), 'кнопка без url');
 });
 
+console.log('квалификация (кейс «глупый парсер»):');
+ok('требование MBO-диплома — отсев', () => {
+  const s = scoreVacancy(
+    base({
+      title: 'Medewerker financiele administratie',
+      description: 'fulltime, €21 per uur, je hebt minimaal een mbo-diploma richting financien',
+    })
+  );
+  assert.equal(s.verdict, 'none');
+});
+ok('HBO/WO — отсев', () => {
+  const s = scoreVacancy(base({ title: 'Magazijn planner', description: 'fulltime, hbo werk- en denkniveau, €20 per uur' }));
+  assert.equal(s.verdict, 'none');
+});
+ok('квалифицированный титул (developer/adviseur/pensioen) — отсев', () => {
+  for (const title of [
+    'Back-end Developer',
+    'Pensioen medewerker',
+    'Financieel adviseur',
+    'Managementassistent Services',
+    'Global Tax Compliance Expert',
+    'Begeleider flexpool',
+    'Coördinator Logistiek',
+  ]) {
+    assert.equal(scoreVacancy(base({ title, description: 'fulltime, €25 per uur, english ok' })).verdict, 'none');
+  }
+});
+ok('офисная категория — отсев', () => {
+  const s = scoreVacancy(base({ title: 'Medewerker klantcontact', description: 'fulltime, €19 per uur' }));
+  assert.equal(s.verdict, 'none');
+});
+ok('«geen diploma nodig» — НЕ отсев', () => {
+  const s = scoreVacancy(
+    base({ title: 'Orderpicker', location: 'Rotterdam', description: 'fulltime, €15 per uur, geen diploma nodig' })
+  );
+  assert.equal(s.verdict, 'both');
+});
+
 console.log('mini app store:');
 ok('toFeedItem собирает карточку', () => {
   const s = scoreVacancy(
@@ -234,6 +278,19 @@ ok('mergeFeed: свежие сверху, дедуп, кап 120', () => {
   assert.equal(merged[0].id, 'new1');
   assert.equal(merged[1].id, 'dup');
   assert.equal(merged.filter((i) => i.id === 'dup').length, 1);
+});
+await ok('writeSettings: mutedCats валидируется, числа зажимаются', async () => {
+  const mem = new Map<string, string>();
+  const kv = { get: async (k: string) => mem.get(k) ?? null, put: async (k: string, v: string) => void mem.set(k, v) } as unknown as KVNamespace;
+  const s = await writeSettings(kv, {
+    minHourlyEur: 99, radiusKm: 2, maxPerRun: 100,
+    mutedCats: ['horeca', 'мусор', 'office', 'office'],
+  });
+  assert.equal(s.minHourlyEur, 40); // зажато сверху
+  assert.equal(s.radiusKm, 5); // зажато снизу
+  assert.equal(s.maxPerRun, 10);
+  assert.ok(s.mutedCats.includes('horeca') && s.mutedCats.includes('office'));
+  assert.ok(!s.mutedCats.includes('мусор'));
 });
 ok('scoreVacancy с override-порогом ставки', () => {
   const v = base({ location: 'Rotterdam', description: 'fulltime magazijnwerk, € 15 per uur' });

@@ -124,10 +124,12 @@ export async function runParse(env: Env, groupOverride?: number): Promise<RunRep
 
   // Отправка: ОДИН дайджест за прогон каждому подписчику (топ maxPerRun,
   // сгруппировано по категориям, кнопки-ссылки внутри).
+  // Заглушённые категории (настройка из Mini App) в подборку не идут — но в ленте есть.
   const chats = await getChats(env);
   report.subscribers = Object.keys(chats).length;
-  const top = scored.slice(0, settings.maxPerRun);
-  const rest = scored.length - top.length;
+  const forDigest = scored.filter((s) => !settings.mutedCats.includes(s.facts.category.id));
+  const top = forDigest.slice(0, settings.maxPerRun);
+  const rest = forDigest.length - top.length;
   if (top.length > 0) {
     for (const chatId of Object.keys(chats)) {
       try {
@@ -209,7 +211,8 @@ export default {
 
         if (url.pathname === '/api/favs') {
           if (!body.id || typeof body.id !== 'string') return Response.json({ error: 'no_id' }, { status: 400 });
-          const status = body.status === 'fav' || body.status === 'applied' ? body.status : null;
+          const status =
+            body.status === 'fav' || body.status === 'applied' || body.status === 'hidden' ? body.status : null;
           const favs = await setFav(env.JOBS, body.id.slice(0, 300), status, user.first_name ?? user.username ?? 'user');
           return Response.json({ favs });
         }
