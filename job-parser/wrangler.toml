@@ -1,0 +1,26 @@
+name = "vacancy-parser"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+account_id = "aba2a8c57d77cceaed7bdc68d8e2ef99"
+
+[vars]
+# Начальный получатель, пока никто не написал боту /start — Святослав.
+# Это не секрет, поэтому хранится прямо тут (как в koshel-worker).
+OWNER_CHAT_ID = "439944083"
+
+# Прогон каждые 3 часа с ~07:00 до ~22:00 CET (6,9,12,15,18,21 UTC; летом сдвиг на час — не критично).
+[triggers]
+crons = ["0 6-21/3 * * *"]
+
+# KV для дедупа вакансий и списка подписчиков. ID получишь командой:
+#   npx wrangler kv namespace create JOBS
+# и подставишь сюда.
+[[kv_namespaces]]
+binding = "JOBS"
+id = "27fb63be3f57460480cf36350981c380"
+
+# Секреты НЕ хранятся тут. Выставляются один раз через файл (см. README):
+#   BOT_TOKEN       — токен нового бота из BotFather
+#   ADZUNA_APP_ID   — с developer.adzuna.com (бесплатно)
+#   ADZUNA_APP_KEY  — оттуда же
+#   RUN_KEY         — свой случайный пароль для ручного /run и вебхука
