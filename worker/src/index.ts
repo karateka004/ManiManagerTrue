@@ -541,6 +541,21 @@ const DATA_PREFIX = 'data:'
 /** Потолок размера блоба (символов) — защита от разрастания значения KV. */
 const MAX_BLOB = 2_000_000
 
+/**
+ * Сколько операций в persist-блобе приложения. Нужно, чтобы «пустой» снимок не
+ * затирал сохранённые данные (сбой загрузки на новом устройстве).
+ * -1 — блоб не разобрать: тогда по нему не судим и сохраняем как обычно.
+ */
+function blobTxCount(blob: string): number {
+  try {
+    const parsed = JSON.parse(blob) as { state?: { transactions?: unknown[] } }
+    const list = parsed?.state?.transactions
+    return Array.isArray(list) ? list.length : -1
+  } catch {
+    return -1
+  }
+}
+
 /** Безопасная epoch-ms метка из недоверенного ввода (clampInt тут не годится — режет до 1e9). */
 function parseUpdatedAt(x: unknown): number {
   const n = Math.floor(Number(x))
@@ -571,6 +586,7 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     initData?: string
     blob?: string
     updatedAt?: number
+    allowEmpty?: boolean
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -605,9 +621,19 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   // Защита от гонок между устройствами: не перезаписываем более новую версию старой.
   if (existing.value) {
     try {
-      const prev = JSON.parse(existing.value) as { updatedAt?: number }
+      const prev = JSON.parse(existing.value) as { updatedAt?: number; blob?: string }
       if (typeof prev.updatedAt === 'number' && prev.updatedAt > updatedAt) {
         return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
+      }
+      // Последний рубеж против потери данных: снимок БЕЗ операций не затирает
+      // сохранённый С операциями. Клиент присылает allowEmpty только когда
+      // человек сам удалил всё — тогда пустой снимок законен.
+      if (!body.allowEmpty && typeof prev.blob === 'string') {
+        const prevTx = blobTxCount(prev.blob)
+        const nextTx = blobTxCount(blob)
+        if (nextTx === 0 && prevTx > 0) {
+          return json({ ok: true, skipped: true, reason: 'empty_guard' }, { status: 200 }, env, origin)
+        }
       }
     } catch {
       /* битое значение — перезапишем */

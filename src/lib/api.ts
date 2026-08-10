@@ -169,9 +169,15 @@ export async function pullCloud(): Promise<CloudSnapshot | null> {
 export async function pushCloud(
   blob: string,
   updatedAt: number,
+  /**
+   * Разрешить сохранить снимок БЕЗ операций поверх облака, в котором они были.
+   * Ставится только когда человек сам удалил все операции в этой сессии —
+   * иначе сервер отклонит пустой снимок как защиту от потери данных.
+   */
+  allowEmpty = false,
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
-  return post('/data/put', { initData: tg.initData, blob, updatedAt })
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
 }
 
 /* ---------- Напоминания (ежедневный пуш от бота) ---------- */
