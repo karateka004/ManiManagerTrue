@@ -18,6 +18,26 @@ function initialLang(): Lang {
 }
 
 /** Накопительная цель (для вкладки «Цели» в планировании). */
+/**
+ * Актив в разделе «Инвестиции и сбережения»: вклад, брокерский счёт, крипта,
+ * подушка на чёрный день. Учитывается отдельно от операций — на доходы/расходы
+ * и бюджеты не влияет, это витрина накопленного капитала.
+ */
+export interface Investment {
+  id: string
+  title: string
+  /** Вложенная сумма. */
+  amount: number
+  /** Ожидаемая годовая доходность, % (0 — для подушки/сейфа). */
+  rate: number
+  /** Тип актива — только для иконки и группировки. */
+  kind: InvestmentKind
+  currency: Currency
+  createdAt: number
+}
+
+export type InvestmentKind = 'deposit' | 'stocks' | 'crypto' | 'cash' | 'other'
+
 export interface Goal {
   id: string
   title: string
@@ -111,6 +131,8 @@ interface State {
   monthlyBudget: number
   /** Накопительные цели. */
   goals: Goal[]
+  /** Инвестиции и сбережения (витрина капитала, на бюджеты не влияет). */
+  investments: Investment[]
   /** Содержимое шапки «Главной»: дата или прогресс к цели. */
   homeHeaderMode: HomeHeaderMode
   /** Выбранная цель для шапки (если homeHeaderMode === 'goal'). */
@@ -172,6 +194,12 @@ interface Actions {
   updateGoal: (id: string, patch: Partial<Pick<Goal, 'title' | 'target' | 'saved' | 'icon' | 'syncBalance' | 'currency'>>) => void
   /** Удалить цель. */
   removeGoal: (id: string) => void
+  /** Добавить актив в «Инвестиции и сбережения». */
+  addInvestment: (i: { title: string; amount: number; rate?: number; kind?: InvestmentKind; currency?: Currency }) => void
+  /** Изменить актив. */
+  updateInvestment: (id: string, patch: Partial<Pick<Investment, 'title' | 'amount' | 'rate' | 'kind' | 'currency'>>) => void
+  /** Удалить актив. */
+  removeInvestment: (id: string) => void
   /** Внести взнос в цель (delta может быть отрицательным). */
   contributeGoal: (id: string, delta: number) => void
   /** Задать содержимое шапки «Главной». */
@@ -266,6 +294,7 @@ export const useStore = create<State & Actions>()(
       questClaims: {},
       monthlyBudget: 0,
       goals: [],
+      investments: [],
       homeHeaderMode: 'date',
       homeHeaderGoalId: null,
       events: {},
@@ -378,6 +407,31 @@ export const useStore = create<State & Actions>()(
           // Если удалили цель, выбранную для шапки — сбрасываем выбор.
           homeHeaderGoalId: s.homeHeaderGoalId === id ? null : s.homeHeaderGoalId,
         })),
+
+      addInvestment: ({ title, amount, rate, kind, currency }) =>
+        set((s) => ({
+          investments: [
+            ...s.investments,
+            {
+              id: 'inv_' + cuid(),
+              title: title.trim() || 'Актив',
+              amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+              rate: Number.isFinite(rate ?? 0) && (rate ?? 0) >= 0 ? (rate ?? 0) : 0,
+              kind: kind ?? 'deposit',
+              currency: currency ?? s.currency,
+              createdAt: Date.now(),
+            },
+          ],
+          events: bumpEvent(s.events, 'add_investment'),
+        })),
+
+      updateInvestment: (id, patch) =>
+        set((s) => ({
+          investments: s.investments.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+        })),
+
+      removeInvestment: (id) =>
+        set((s) => ({ investments: s.investments.filter((i) => i.id !== id) })),
       contributeGoal: (id, delta) =>
         set((s) => ({
           goals: s.goals.map((g) =>
@@ -466,7 +520,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 13,
+      version: 14,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
@@ -535,6 +589,10 @@ export const useStore = create<State & Actions>()(
         // v13: ежедневные напоминания от бота — по умолчанию включены
         if (persisted && version < 13) {
           if (typeof persisted.remindersEnabled !== 'boolean') persisted.remindersEnabled = true
+        }
+        // v14: раздел «Инвестиции и сбережения»
+        if (persisted && version < 14) {
+          if (!Array.isArray(persisted.investments)) persisted.investments = []
         }
         return persisted
       },

@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.24.0'
+export const APP_VERSION = '1.25.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.25.0',
+    date: '2026-08-10',
+    title: { ru: 'Лимиты за один тап и раздел «Активы»', en: 'One-tap limits and the Assets tab' },
+    items: [
+      {
+        icon: '🎚️',
+        text: {
+          ru: 'Лимиты теперь открываются первыми — это главное в планировании. И настраиваются одной кнопкой: приложение само расставит их по твоим средним тратам',
+          en: 'Limits now open first — they’re the heart of planning. And one button sets them all up from your average spending',
+        },
+      },
+      {
+        icon: '💎',
+        text: {
+          ru: 'Новая вкладка «Активы»: вклады, акции, крипта и подушка в одном месте — видно, сколько накоплено и сколько это приносит за год',
+          en: 'New “Assets” tab: deposits, stocks, crypto and your cash cushion in one place — see how much you’ve saved and what it earns per year',
+        },
+      },
+      {
+        icon: '🧮',
+        text: {
+          ru: 'Встроенный калькулятор доходности: считает сложный процент с ежемесячными пополнениями и показывает реальную ставку (APY)',
+          en: 'Built-in yield calculator: compound interest with monthly top-ups and the real effective rate (APY)',
+        },
+      },
+    ],
+  },
   {
     version: '1.24.0',
     date: '2026-08-10',

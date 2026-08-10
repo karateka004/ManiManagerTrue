@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2, Wand2 } from 'lucide-react'
+import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2, Wand2, TrendingUp } from 'lucide-react'
+import { InvestmentsTab } from './planning/InvestmentsTab'
 import {
   useStore,
   selectCategoriesByKind,
@@ -23,11 +24,12 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'budget' | 'limits' | 'goals'
+type Tab = 'limits' | 'budget' | 'goals' | 'invest'
 
 export function PlanningSheet({ open, onClose }: Props) {
   const t = useT()
-  const [tab, setTab] = useState<Tab>('budget')
+  // Лимиты — главный инструмент планирования, поэтому открываются первыми.
+  const [tab, setTab] = useState<Tab>('limits')
 
   return (
     <AnimatePresence>
@@ -68,25 +70,29 @@ export function PlanningSheet({ open, onClose }: Props) {
               </button>
             </div>
 
-            {/* Вкладки */}
+            {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет) */}
             <div className="px-4 pb-2">
               <div className="flex rounded-2xl bg-surface-sunken/60 p-1">
-                <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
-                  <Wallet size={15} strokeWidth={2.4} /> {t('plan.tab_budget')}
-                </TabButton>
                 <TabButton active={tab === 'limits'} onClick={() => { setTab('limits'); hapticSelect() }}>
-                  <SlidersHorizontal size={15} strokeWidth={2.4} /> {t('plan.tab_limits')}
+                  <SlidersHorizontal size={14} strokeWidth={2.4} /> {t('plan.tab_limits')}
+                </TabButton>
+                <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
+                  <Wallet size={14} strokeWidth={2.4} /> {t('plan.tab_budget')}
                 </TabButton>
                 <TabButton active={tab === 'goals'} onClick={() => { setTab('goals'); hapticSelect() }}>
-                  <Target size={15} strokeWidth={2.4} /> {t('plan.tab_goals')}
+                  <Target size={14} strokeWidth={2.4} /> {t('plan.tab_goals')}
+                </TabButton>
+                <TabButton active={tab === 'invest'} onClick={() => { setTab('invest'); hapticSelect() }}>
+                  <TrendingUp size={14} strokeWidth={2.4} /> {t('plan.tab_invest')}
                 </TabButton>
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-              {tab === 'budget' && <BudgetTab t={t} />}
               {tab === 'limits' && <LimitsTab t={t} />}
+              {tab === 'budget' && <BudgetTab t={t} />}
               {tab === 'goals' && <GoalsTab t={t} />}
+              {tab === 'invest' && <InvestmentsTab t={t} />}
             </div>
           </m.div>
         </>
@@ -99,7 +105,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-semibold transition-colors ${
+      className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition-colors ${
         active ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-subtle active:text-ink-muted'
       }`}
     >
@@ -309,8 +315,40 @@ function LimitsTab({ t }: { t: TFunc }) {
   )
   const withLimitCount = Object.values(budgets).filter((v) => v > 0).length
 
+  // Категории, которым можно поставить лимит автоматически (есть история трат).
+  const autoCandidates = useMemo(
+    () => expenseCats.filter((c) => !((budgets[c.id] ?? 0) > 0) && (avgByCat[c.id] ?? 0) > 0),
+    [expenseCats, budgets, avgByCat],
+  )
+
+  const applyAll = () => {
+    hapticNotify('success')
+    for (const c of autoCandidates) setBudget(c.id, avgByCat[c.id])
+  }
+
   return (
     <div>
+      {/* Первый шаг для новичка: одна кнопка вместо десяти полей ввода */}
+      {withLimitCount === 0 && autoCandidates.length > 0 && (
+        <div className="card mb-2 p-3">
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <Wand2 size={18} strokeWidth={2.2} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink">{t('plan.limits_auto_title')}</div>
+              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-subtle">{t('plan.limits_auto_hint')}</div>
+            </div>
+          </div>
+          <button
+            onClick={applyAll}
+            className="mt-2.5 w-full rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99]"
+          >
+            {t('plan.limits_auto_apply', { n: autoCandidates.length })}
+          </button>
+        </div>
+      )}
+
       {/* Сводка: сколько категорий под контролем и как расходуются лимиты */}
       {withLimitCount > 0 && (
         <div className="mb-2 rounded-3xl bg-surface-sunken/60 p-3">
