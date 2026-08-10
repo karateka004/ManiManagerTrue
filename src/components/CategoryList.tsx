@@ -12,7 +12,7 @@ import {
 } from '../store/transactions'
 import { PieChart } from 'lucide-react'
 import { formatMoney, formatShortDate } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 import { hapticTap, hapticSelect } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
@@ -79,6 +79,7 @@ function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget
   const removeTransaction = useStore((s) => s.removeTransaction)
   const currency = useStore(selectAnalyticsCurrency)
   const tr = useT()
+  const catName = useCatName()
 
   const toggle = () => {
     hapticSelect()
@@ -107,7 +108,7 @@ function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget
 
         <div className="flex-1 text-left">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">{cat.name}</span>
+            <span className="font-semibold text-ink">{catName(cat.categoryId, cat.name)}</span>
             <span
               className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
               style={{ background: cat.color }}

@@ -11,6 +11,7 @@
  */
 import { useEffect } from 'react'
 import { useStore } from '../store/transactions'
+import { categoryName } from './categoryNames'
 import { setFormatLocale } from './format'
 import { tg } from './telegram'
 
@@ -693,6 +694,17 @@ export type TFunc = (key: string, vars?: Record<string, string | number>) => str
 export function useT(): TFunc {
   const lang = useStore((s) => s.lang)
   return (key, vars) => translate(lang, key, vars)
+}
+
+export type CatNameFunc = (id: string, fallback: string) => string
+
+/**
+ * Хук названия категории: встроенные переводятся, пользовательские остаются
+ * такими, какими их назвали. `fallback` — поле `name` из категории.
+ */
+export function useCatName(): CatNameFunc {
+  const lang = useStore((s) => s.lang)
+  return (id, fallback) => categoryName(lang, id, fallback)
 }
 
 /** Слово «категория» с правильным склонением (RU) / числом (EN). */

@@ -10,7 +10,7 @@ import { sendFeedback, isBackendConfigured, BOT_USERNAME } from '../lib/api'
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
 import { getReward } from '../lib/rewards'
-import { useT, type TFunc } from '../lib/i18n'
+import { useCatName, useT, type TFunc } from '../lib/i18n'
 import { MenuRow } from '../components/ui/MenuRow'
 import { RewardBadge } from '../components/rewards/RewardBadge'
 
@@ -41,6 +41,7 @@ interface Props {
 /** Вкладка «Профиль»: личность + финансовая статистика + планирование + отзыв. */
 export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
   const t = useT()
+  const catName = useCatName()
   const transactions = useStore((s) => s.transactions)
   const cats = useStore(selectAllCategories)
   const currency = useStore((s) => s.currency)
@@ -94,11 +95,13 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       }
       if (!firstDate || tx.date < firstDate) firstDate = tx.date
     }
-    let topCat: { name: string; color: string; amount: number } | null = null
+    // Имя категории не локализуем здесь: язык — не зависимость этого мемо,
+    // перевод делаем при рендере по id.
+    let topCat: { id: string; name: string; color: string; amount: number } | null = null
     for (const [id, amount] of byCat) {
       if (!topCat || amount > topCat.amount) {
         const c = getCategory(id, cats)
-        topCat = { name: c.name, color: c.color, amount }
+        topCat = { id, name: c.name, color: c.color, amount }
       }
     }
     return { income, expense, balance: income - expense, count: transactions.length, topCat, firstDate }
@@ -180,7 +183,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
           </div>
           <div className="flex-1">
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{t('profile.top_expense')}</div>
-            <div className="font-semibold text-ink">{stats.topCat.name}</div>
+            <div className="font-semibold text-ink">{catName(stats.topCat.id, stats.topCat.name)}</div>
           </div>
           <div className="tabular text-sm font-bold text-expense-deep">
             {formatMoney(stats.topCat.amount, currency, { compact: true })}

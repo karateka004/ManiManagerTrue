@@ -17,7 +17,7 @@ import { getCurrency, type Currency } from '../lib/currencies'
 import { formatMoney, dayjs } from '../lib/format'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import { hapticSelect, hapticTap, hapticNotify } from '../lib/telegram'
-import { useT, type TFunc } from '../lib/i18n'
+import { useCatName, useT, type TFunc } from '../lib/i18n'
 
 interface Props {
   open: boolean
@@ -287,6 +287,7 @@ function LimitsTab({ t }: { t: TFunc }) {
   const expenseCats = useStore((s) => selectCategoriesByKind(s, 'expense'))
   const spentByCat = useStore(selectCurrentMonthExpenseByCategory)
   const avgByCat = useStore(selectAvgMonthlyExpenseByCategory)
+  const catName = useCatName()
   const sym = getCurrency(currency).symbol
 
   // Порядок: сначала категории с лимитом (самые «горячие» сверху), затем без
@@ -386,7 +387,7 @@ function LimitsTab({ t }: { t: TFunc }) {
             <LimitRow
               key={c.id}
               icon={c.icon}
-              name={c.name}
+              name={catName(c.id, c.name)}
               color={c.color}
               value={budgets[c.id] ?? 0}
               spent={spentByCat[c.id] ?? 0}

@@ -4,7 +4,7 @@ import { Calendar, Plus, ChevronDown } from 'lucide-react'
 import { useStore, selectCategoriesByKind, periodBounds, type Transaction } from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
 import { formatMoney, dayjs } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
@@ -85,6 +85,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   const period = useStore((s) => s.period)
   const focusPeriodOn = useStore((s) => s.focusPeriodOn)
   const tr = useT()
+  const catName = useCatName()
 
   const todayISO = dayjs().format('YYYY-MM-DD')
   const [expr, setExpr] = useState('0')
@@ -430,7 +431,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                       >
                         <CategoryIcon id={c.icon} size={20} />
                       </div>
-                      <span className="text-[10px] font-medium leading-tight text-ink-muted">{c.name}</span>
+                      <span className="text-[10px] font-medium leading-tight text-ink-muted">{catName(c.id, c.name)}</span>
                     </button>
                   )
                 })}

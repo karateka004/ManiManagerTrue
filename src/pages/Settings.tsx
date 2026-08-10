@@ -13,7 +13,7 @@ const CategoryEditor = lazy(() => import('../components/CategoryEditor').then((m
 const GuideSheet = lazy(() => import('../components/GuideSheet').then((m) => ({ default: m.GuideSheet })))
 import { formatMoney } from '../lib/format'
 import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import type { Lang } from '../lib/i18n'
 
 /** Валюты, которые всегда на виду. Остальные — под кнопкой «Ещё». */
@@ -48,6 +48,7 @@ function CurrencyTile({
 
 export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const t = useT()
+  const catName = useCatName()
   const lang = useStore((s) => s.lang)
   const setLang = useStore((s) => s.setLang)
   const currency = useStore((s) => s.currency)
@@ -349,7 +350,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
                   <BudgetRow
                     key={c.id}
                     icon={c.icon}
-                    name={c.name}
+                    name={catName(c.id, c.name)}
                     color={c.color}
                     value={budgets[c.id] ?? 0}
                     onChange={(v) => setBudget(c.id, v)}

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { m } from 'framer-motion'
 import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
-import { useT, categoriesWord } from '../lib/i18n'
+import { useT, useCatName, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 
 interface Props {
@@ -14,6 +14,7 @@ export function DonutChart({ kind }: Props) {
   const totals = useStore(selectAccountTotals)
   const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
+  const catName = useCatName()
   const lang = useStore((s) => s.lang)
 
   const total = kind === 'income' ? totals.income : totals.expense
@@ -81,7 +82,7 @@ export function DonutChart({ kind }: Props) {
         {categories.slice(0, 8).map((c) => (
           <div key={c.categoryId} className="flex items-center gap-2 text-sm">
             <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: c.color }} />
-            <span className="truncate text-ink">{c.name}</span>
+            <span className="truncate text-ink">{catName(c.categoryId, c.name)}</span>
             <span className="ml-auto tabular text-ink-muted">{c.pct.toFixed(0)}%</span>
           </div>
         ))}

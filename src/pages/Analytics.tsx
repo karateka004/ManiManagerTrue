@@ -14,7 +14,7 @@ import {
   selectAnalyticsCurrency,
 } from '../store/transactions'
 import { formatMoney } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import type { CategoryKind } from '../store/categories'
 
@@ -30,6 +30,7 @@ export function AnalyticsPage() {
   const chartStyle = useStore((s) => s.chartStyle)
   const track = useStore((s) => s.track)
   const t = useT()
+  const catName = useCatName()
 
   // Открытие «Динамики» = бывший заход на вкладку «Графики» (квест see_charts).
   const changeAnalyticsTab = (next: AnalyticsTab) => {
@@ -87,7 +88,7 @@ export function AnalyticsPage() {
               <CategoryIcon id={c.icon} size={22} />
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-ink">{c.name}</div>
+              <div className="font-semibold text-ink">{catName(c.categoryId, c.name)}</div>
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
                 <m.div
                   initial={{ width: 0 }}
