@@ -5,7 +5,7 @@ import { useStore } from './store/transactions'
 import { useTheme, useAccent } from './lib/useTheme'
 import { useFormatLocale, useT } from './lib/i18n'
 import { tg, hapticTap } from './lib/telegram'
-import { isBackendConfigured, parseRefParam, registerReferral, submitProfile } from './lib/api'
+import { isBackendConfigured, notifyGift, parseRefParam, registerReferral, submitProfile } from './lib/api'
 import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
 import { giftsFor } from './lib/rewards'
@@ -94,8 +94,18 @@ function useGrantPersonalGifts() {
   useEffect(() => {
     const u = tg.user
     if (!u) return
+    const gifts = giftsFor(u.id, u.username)
+    if (gifts.length === 0) return
     const grant = useStore.getState().grantReward
-    for (const rewardId of giftsFor(u.id, u.username)) grant(rewardId)
+    for (const rewardId of gifts) grant(rewardId)
+
+    // Поздравление от бота в ЛС — один раз (сервер дедупит по KV, локальный флаг
+    // просто экономит запрос при следующих запусках).
+    const KEY = 'koshel:giftNotified'
+    if (localStorage.getItem(KEY) === gifts.join(',')) return
+    notifyGift(gifts).then((ok) => {
+      if (ok) localStorage.setItem(KEY, gifts.join(','))
+    }).catch(() => {})
   }, [])
 }
 

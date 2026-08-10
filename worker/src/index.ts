@@ -286,6 +286,9 @@ export default {
       if (url.pathname === '/check-sub' && req.method === 'POST') {
         return await handleCheckSub(req, env, origin)
       }
+      if (url.pathname === '/gift-notify' && req.method === 'POST') {
+        return await handleGiftNotify(req, env, origin)
+      }
       if (url.pathname === '/admin/test' && req.method === 'POST') {
         return await handleAdminTest(req, env, origin)
       }
@@ -702,6 +705,54 @@ async function handleCheckSub(req: Request, env: Env, origin: string | null): Pr
     subscribed = false
   }
   return json({ ok: true, subscribed }, { status: 200 }, env, origin)
+}
+
+/* ------------------------------------------------------------------ */
+/* Персональные подарки: поздравление от бота                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Тексты поздравлений по id награды. Сервер шлёт ТОЛЬКО известные награды —
+ * произвольный текст с клиента отправить нельзя.
+ */
+const GIFT_MESSAGES: Record<string, string> = {
+  title_ambassador:
+    '🎁 <b>Персональная награда от команды Кошеля</b>\n\n' +
+    'Тебе вручён легендарный титул <b>«Амбассадор»</b> — особый знак за преданность приложению. ' +
+    'Он уже у тебя в профиле и виден всем в таблице лидеров.\n\nСпасибо, что ты с нами! 💚',
+}
+
+/**
+ * Поздравление получателю персонального подарка. Вызывается приложением в момент
+ * выдачи (см. useGrantPersonalGifts): личность берём из проверенной подписи
+ * initData — чужому человеку сообщение не уйдёт, численный id заранее не нужен.
+ * Дедуп в KV (`giftmsg:<id>:<rewardId>`, бессрочно) — каждый подарок поздравляем один раз.
+ */
+async function handleGiftNotify(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; rewards?: unknown }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'gift', user.id, 5, 60)) return tooMany(env, origin)
+
+  const rewards = Array.isArray(body.rewards)
+    ? body.rewards.filter((r): r is string => typeof r === 'string').slice(0, 10)
+    : []
+
+  let sent = 0
+  for (const rewardId of rewards) {
+    const text = GIFT_MESSAGES[rewardId]
+    if (!text) continue // неизвестная награда — молча пропускаем
+    const dedupKey = `giftmsg:${user.id}:${rewardId}`
+    if (await env.REFERRALS.get(dedupKey)) continue
+    const r = await sendMessage(env, user.id, text, {
+      inline_keyboard: [[{ text: '👑 Открыть Кошель', web_app: { url: APP_URL } }]],
+    })
+    if (r.ok) {
+      await env.REFERRALS.put(dedupKey, '1')
+      sent++
+    }
+  }
+  return json({ ok: true, sent }, { status: 200 }, env, origin)
 }
 
 /**

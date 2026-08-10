@@ -199,3 +199,20 @@ export async function checkSubscription(): Promise<boolean> {
     return false
   }
 }
+
+/* ---------- Персональные подарки ---------- */
+
+/**
+ * Попросить бота поздравить текущего пользователя с персональным подарком в ЛС.
+ * Сервер валидирует награды по своему whitelist и шлёт каждую один раз (дедуп в KV).
+ * Возвращает true, если запрос дошёл (в т.ч. когда всё уже было отправлено раньше).
+ */
+export async function notifyGift(rewards: string[]): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData || rewards.length === 0) return false
+  try {
+    const res = await post('/gift-notify', { initData: tg.initData, rewards })
+    return !!res?.ok
+  } catch {
+    return false
+  }
+}
