@@ -362,6 +362,9 @@ const DICT: Dict = {
   'level.t5': { ru: 'Капиталист', en: 'Capitalist' },
   'level.t6': { ru: 'Магнат', en: 'Magnate' },
   'level.t7': { ru: 'Легенда', en: 'Legend' },
+  'level.t8': { ru: 'Магистр финансов', en: 'Master of Finance' },
+  'level.t9': { ru: 'Олигарх', en: 'Oligarch' },
+  'level.t10': { ru: 'Император', en: 'Emperor' },
 
   /* Рарность наград (rewards.ts) */
   'rarity.common': { ru: 'Обычная', en: 'Common' },
@@ -380,6 +383,12 @@ const DICT: Dict = {
   'reward.accent_sunset.hint': { ru: 'Тёплый оранжевый', en: 'Warm orange' },
   'reward.accent_rose.name': { ru: 'Роза', en: 'Rose' },
   'reward.accent_rose.hint': { ru: 'Яркий розовый', en: 'Vivid pink' },
+  'reward.accent_lagoon.name': { ru: 'Лагуна', en: 'Lagoon' },
+  'reward.accent_lagoon.hint': { ru: 'Бирюзовая свежесть', en: 'Turquoise freshness' },
+  'reward.accent_gold.name': { ru: 'Золотой', en: 'Golden' },
+  'reward.accent_gold.hint': { ru: 'Роскошный янтарь', en: 'Luxurious amber' },
+  'reward.accent_graphite.name': { ru: 'Графит', en: 'Graphite' },
+  'reward.accent_graphite.hint': { ru: 'Строгий монохром', en: 'Sleek monochrome' },
 
   /* Награды: титулы */
   'reward.title_newbie.name': { ru: 'Новенький', en: 'Newbie' },
@@ -392,6 +401,12 @@ const DICT: Dict = {
   'reward.title_guru.hint': { ru: 'Деньги слушаются тебя', en: 'Money obeys you' },
   'reward.title_lord.name': { ru: 'Властелин кошелька', en: 'Wallet Lord' },
   'reward.title_lord.hint': { ru: 'Вершина мастерства', en: 'Peak of mastery' },
+  'reward.title_investor.name': { ru: 'Инвестор', en: 'Investor' },
+  'reward.title_investor.hint': { ru: 'Деньги работают на тебя', en: 'Money works for you' },
+  'reward.title_shark.name': { ru: 'Акула бизнеса', en: 'Business Shark' },
+  'reward.title_shark.hint': { ru: 'В финансах — как рыба в воде', en: 'In finance like a fish in water' },
+  'reward.title_crypto.name': { ru: 'Криптомагнат', en: 'Crypto Tycoon' },
+  'reward.title_crypto.hint': { ru: 'Портфель в цифре', en: 'A fully digital portfolio' },
 
   /* Награды: рамки */
   'reward.frame_none.name': { ru: 'Без рамки', en: 'No frame' },
@@ -404,6 +419,10 @@ const DICT: Dict = {
   'reward.frame_gold.hint': { ru: 'Статусное золото', en: 'Prestigious gold' },
   'reward.frame_rainbow.name': { ru: 'Радуга', en: 'Rainbow' },
   'reward.frame_rainbow.hint': { ru: 'Переливается всеми цветами', en: 'Shimmers all colors' },
+  'reward.frame_emerald.name': { ru: 'Изумруд', en: 'Emerald' },
+  'reward.frame_emerald.hint': { ru: 'Драгоценная зелень', en: 'Precious green' },
+  'reward.frame_neon.name': { ru: 'Неон', en: 'Neon' },
+  'reward.frame_neon.hint': { ru: 'Киберпанк-свечение', en: 'Cyberpunk glow' },
 
   /* Задания (quests.ts) */
   'quest.first_tx.title': { ru: 'Первая операция', en: 'First operation' },
@@ -489,6 +508,8 @@ const DICT: Dict = {
   /* Подпись шапки Главной */
   'home.cap_goal': { ru: 'Цель', en: 'Goal' },
   'home.cap_date': { ru: 'Дата', en: 'Date' },
+  'home.plan_left': { ru: 'Бюджет: осталось {left} из {budget}', en: 'Budget: {left} left of {budget}' },
+  'home.plan_over': { ru: 'Бюджет превышен на {over}', en: 'Over budget by {over}' },
 
   /* Плашка демо-режима */
   'demo.banner': { ru: 'Демо-режим: показаны примерные данные', en: 'Demo mode: sample data shown' },

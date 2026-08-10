@@ -1,5 +1,6 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { Target } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
@@ -7,7 +8,14 @@ import { BudgetAlert } from '../components/BudgetAlert'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import { FabButtons } from '../components/FabButtons'
 import { Avatar } from '../components/Avatar'
-import { useStore, selectNetBalanceByCurrency, type Goal, type Transaction } from '../store/transactions'
+import { MenuRow } from '../components/ui/MenuRow'
+import {
+  useStore,
+  selectNetBalanceByCurrency,
+  selectCurrentMonthExpense,
+  type Goal,
+  type Transaction,
+} from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect } from '../lib/telegram'
@@ -17,6 +25,10 @@ import type { CategoryKind } from '../store/categories'
 // Шторка добавления операции — отдельным чанком, грузится по первому тапу FAB.
 const AddTransactionSheet = lazy(() =>
   import('../components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
+)
+// Планирование — та же ленивая шторка, что в Профиле (общий чанк).
+const PlanningSheet = lazy(() =>
+  import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
 
 export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
@@ -28,6 +40,16 @@ export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
   const [mounted, setMounted] = useState(false)
   // Операция, которую правим (null = режим создания новой).
   const [editing, setEditing] = useState<Transaction | null>(null)
+
+  // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
+  const track = useStore((s) => s.track)
+  const [planningOpen, setPlanningOpen] = useState(false)
+  const seenPlanning = useRef(false)
+  if (planningOpen) seenPlanning.current = true
+  const openPlanning = () => {
+    track('open_planning')
+    setPlanningOpen(true)
+  }
 
   const openSheet = (kind: CategoryKind) => {
     setMounted(true)
@@ -47,6 +69,7 @@ export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
+      <PlanningRow onOpen={openPlanning} />
       <BudgetAlert />
       <CategoryList onEditTx={openEdit} />
 
@@ -65,6 +88,42 @@ export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
           />
         </Suspense>
       )}
+
+      <Suspense fallback={null}>
+        {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}
+      </Suspense>
+    </div>
+  )
+}
+
+/**
+ * Компактный вход в Планирование под карточкой баланса. Подсказка живая:
+ * если задан месячный бюджет — показываем остаток (или превышение), иначе
+ * зовём настроить бюджет/лимиты/цели.
+ */
+function PlanningRow({ onOpen }: { onOpen: () => void }) {
+  const t = useT()
+  const budget = useStore((s) => s.monthlyBudget)
+  const spent = useStore(selectCurrentMonthExpense)
+  const currency = useStore((s) => s.currency)
+
+  const left = budget - spent
+  const hint =
+    budget > 0
+      ? left >= 0
+        ? t('home.plan_left', { left: formatMoney(left, currency), budget: formatMoney(budget, currency) })
+        : t('home.plan_over', { over: formatMoney(-left, currency) })
+      : t('plan.subtitle')
+
+  return (
+    <div className="px-6 pb-2">
+      <MenuRow
+        icon={<Target size={20} strokeWidth={2} />}
+        title={t('plan.title')}
+        hint={hint}
+        accent="emerald"
+        onClick={onOpen}
+      />
     </div>
   )
 }

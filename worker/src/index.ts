@@ -477,7 +477,9 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
   const map = await readLeaderboard(env)
   const all = Object.values(map)
   const myId = String(user.id)
-  const TOP = 50
+  // Топ, отдаваемый клиенту. 100 — чтобы при нынешней базе (<100 активных)
+  // в списке были видны все, а не только первые 50.
+  const TOP = 100
 
   // Собирает доску для заданной сортировки: топ + позиция вызывающего.
   const board = (sorted: LeaderEntry[]) => {

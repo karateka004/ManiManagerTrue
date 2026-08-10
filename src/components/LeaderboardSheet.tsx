@@ -18,8 +18,15 @@ type State =
   | { status: 'error' }
   | { status: 'ok'; total: number; xp: LeaderBoard; refs: LeaderBoard }
 
-const badgeForLevel = (level: number): string =>
-  LEVELS.find((l) => l.level === level)?.badge ?? LEVELS[0].badge
+/**
+ * Уровень из карточки лидерборда — недоверенное число (старые клиенты, битые
+ * данные): зажимаем в диапазон существующих уровней, чтобы бейдж и титул
+ * всегда находились.
+ */
+const levelMeta = (level: number): { lvl: number; badge: string } => {
+  const lvl = Math.min(Math.max(1, Math.floor(level) || 1), LEVELS.length)
+  return { lvl, badge: LEVELS[lvl - 1].badge }
+}
 
 const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
@@ -185,6 +192,7 @@ function Row({
 }) {
   const medal = RANK_MEDAL[rank]
   const initial = (entry.name?.[0] ?? '?').toUpperCase()
+  const { lvl, badge } = levelMeta(entry.level)
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
@@ -202,9 +210,11 @@ function Row({
           <span className="truncate">{entry.name}</span>
           {isMe && <span className="shrink-0 text-[10px] font-bold text-brand-600 dark:text-brand-300">· {t('lb.me')}</span>}
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-ink-subtle">
-          <span>{badgeForLevel(entry.level)} {t('lb.level_short')} {entry.level}</span>
-          {entry.streakBest > 0 && <span>· 🔥 {entry.streakBest}</span>}
+        <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-subtle">
+          <span className="truncate">
+            {badge} {t('lb.level_short')} {lvl} · {t('level.t' + lvl)}
+          </span>
+          {entry.streakBest > 0 && <span className="shrink-0">· 🔥 {entry.streakBest}</span>}
         </div>
       </div>
       <div className="text-right">

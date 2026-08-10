@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.21.0'
+export const APP_VERSION = '1.22.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,41 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.22.0',
+    date: '2026-08-10',
+    title: { ru: 'Планирование под рукой и уровни до 10', en: 'Planning at hand and levels up to 10' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Планирование теперь прямо на Главной, под балансом: получил зарплату — сразу распредели бюджет, лимиты и цели',
+          en: 'Planning is now right on Home, under the balance: got your salary — set your budget, limits and goals right away',
+        },
+      },
+      {
+        icon: '🎓',
+        text: {
+          ru: 'Три новых уровня: Магистр финансов, Олигарх и Император — прокачивайся до 10-го',
+          en: 'Three new levels: Master of Finance, Oligarch and Emperor — level up to 10',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В таблице лидеров у каждого игрока виден его статус, а в топ теперь попадает до 100 человек',
+          en: 'The leaderboard now shows each player’s status, and the top now fits up to 100 players',
+        },
+      },
+      {
+        icon: '🛍️',
+        text: {
+          ru: 'Магазин пополнился: акценты Лагуна, Золотой и Графит, титулы Инвестор, Акула бизнеса и Криптомагнат, рамки Изумруд и Неон',
+          en: 'Shop restocked: Lagoon, Golden and Graphite accents, Investor, Business Shark and Crypto Tycoon titles, Emerald and Neon frames',
+        },
+      },
+    ],
+  },
   {
     version: '1.21.0',
     date: '2026-06-15',
