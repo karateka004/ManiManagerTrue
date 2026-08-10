@@ -42,16 +42,17 @@ const DICT: Dict = {
   'lvlrew.title': { ru: 'Титулы уровня', en: 'Level titles' },
   'lvlrew.subtitle': { ru: 'Уникальный титул за каждый уровень', en: 'A unique title for every level' },
   'lvlrew.hint': {
-    ru: 'Титул открывается за уровень И за дни учёта — быстро набить не выйдет. Надень его в профиль, и его увидят все в таблице лидеров.',
-    en: 'A title unlocks for your level AND days of tracking — no way to rush it. Equip it in your profile and everyone will see it on the leaderboard.',
+    ru: 'Титул открывается за уровень И за рекорд ежедневной серии — заходи каждый день и забирай награду серии. Надень титул в профиль, и его увидят все в таблице лидеров.',
+    en: 'A title unlocks for your level AND your best daily streak — come back every day and claim the streak reward. Equip a title and everyone will see it on the leaderboard.',
   },
   'lvlrew.claim': { ru: 'Забрать', en: 'Claim' },
   'lvlrew.locked': { ru: 'с {n} ур.', en: 'lvl {n}+' },
-  'lvlrew.locked_days': { ru: '{n} дней', en: '{n} days' },
+  'lvlrew.locked_days': { ru: 'серия {n}', en: 'streak {n}' },
   'lvlrew.progress': { ru: 'Получено {n} из {total}', en: 'Claimed {n} of {total}' },
   'lvlrew.your_level': { ru: 'Твой уровень', en: 'Your level' },
-  'lvlrew.your_days': { ru: 'Дней учёта', en: 'Days tracked' },
-  'lvlrew.days_progress': { ru: '{n}/{need} дней', en: '{n}/{need} days' },
+  'lvlrew.your_days': { ru: 'Рекорд серии', en: 'Best streak' },
+  'lvlrew.streak_value': { ru: '{best} · сейчас {now}', en: '{best} · now {now}' },
+  'lvlrew.days_progress': { ru: 'серия {n}/{need}', en: 'streak {n}/{need}' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },

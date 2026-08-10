@@ -441,11 +441,12 @@ export const useStore = create<State & Actions>()(
         if (s.owned.includes(id)) return false
         const r = getReward(id)
         if (!r || !r.source) return false
-        // Титул за уровень — только если выполнены оба условия: уровень и дни учёта.
+        // Титул за уровень — только если выполнены оба условия: уровень и рекорд
+        // ежедневной серии (streak.best) — та же «Серия дня», что на хабе наград.
         if (r.source === 'level') {
           const lvl = levelFor(computeXp(s.transactions.length, s.bonusXp)).level
           if (lvl < r.unlockLevel) return false
-          if (r.unlockDays && selectActiveDays(s) < r.unlockDays) return false
+          if (r.unlockDays && s.streak.best < r.unlockDays) return false
         }
         set({ owned: [...s.owned, id] })
         return true
@@ -921,14 +922,6 @@ export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => new Set(s.transactions.map((t) => t.categoryId)).size,
 )
 
-/**
- * Сколько РАЗНЫХ дней пользователь вёл учёт (уникальные даты операций).
- * Накопительная метрика (в отличие от `selectLogDayStreak` не сбрасывается
- * при пропуске дня) — условие выдачи титулов за уровень.
- */
-export const selectActiveDays: (s: State) => number = memo1(
-  (s) => new Set(s.transactions.map((t) => dayjs(t.date).format('YYYY-MM-DD'))).size,
-)
 
 /**
  * Текущая серия дней подряд с хотя бы одной операцией. Считаем назад от сегодня;

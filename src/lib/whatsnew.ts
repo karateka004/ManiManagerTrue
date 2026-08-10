@@ -61,10 +61,10 @@ export const RELEASES: ReleaseNote[] = [
         },
       },
       {
-        icon: '⏳',
+        icon: '🔥',
         text: {
-          ru: 'Титулы уровня теперь и за выдержку: нужен не только уровень, но и дни учёта — от 5 дней до 80',
-          en: 'Level titles now reward persistence: you need both the level and days of tracking — from 5 days up to 80',
+          ru: 'Титулы уровня теперь и за выдержку: нужен не только уровень, но и рекорд ежедневной серии — от 5 дней до 80',
+          en: 'Level titles now reward persistence: you need both the level and your best daily streak — from 5 days up to 80',
         },
       },
     ],

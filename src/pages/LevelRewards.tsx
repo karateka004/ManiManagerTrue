@@ -1,5 +1,5 @@
-import { ChevronLeft, Lock, Check, CalendarDays, Star } from 'lucide-react'
-import { useStore, selectActiveDays } from '../store/transactions'
+import { ChevronLeft, Lock, Check, Flame, Star } from 'lucide-react'
+import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { hapticTap, hapticNotify } from '../lib/telegram'
 import { LEVELS } from '../lib/levels'
@@ -14,7 +14,9 @@ import { RARITY, LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
 export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   const t = useT()
   const lvl = useLevel()
-  const days = useStore(selectActiveDays)
+  // Второе условие — рекорд ежедневной серии («Серия дня» на хабе наград).
+  const days = useStore((s) => s.streak.best)
+  const streakNow = useStore((s) => s.streak.count)
   const owned = useStore((s) => s.owned)
   const claimed = LEVEL_REWARDS.filter((r) => owned.includes(r.id)).length
 
@@ -43,7 +45,11 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
       {/* Текущие показатели по обоим условиям */}
       <div className="mx-4 mb-3 grid grid-cols-2 gap-2">
         <StatChip icon={<Star size={15} strokeWidth={2.4} />} label={t('lvlrew.your_level')} value={String(lvl.level)} />
-        <StatChip icon={<CalendarDays size={15} strokeWidth={2.4} />} label={t('lvlrew.your_days')} value={String(days)} />
+        <StatChip
+          icon={<Flame size={15} strokeWidth={2.4} />}
+          label={t('lvlrew.your_days')}
+          value={t('lvlrew.streak_value', { best: days, now: streakNow })}
+        />
       </div>
 
       <div className="mx-4 flex flex-col gap-2">
