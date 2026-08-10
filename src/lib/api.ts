@@ -98,6 +98,10 @@ export interface LeaderEntry {
   level: number
   /** ID надетого косметического титула (rewards.ts) — «флекс» в рейтинге. */
   title?: string
+  /** ID надетой рамки аватара — рисуем ободок вокруг кружка игрока. */
+  frame?: string
+  /** ID надетого акцента — цвет ободка, когда рамки нет. */
+  accent?: string
   ops: number
   coins: number
   streakBest: number
@@ -119,8 +123,10 @@ export async function submitProfile(stats: {
   ops: number
   coins: number
   streakBest: number
-  /** ID надетого титула (опционально — старый воркер поле просто игнорирует). */
+  /** ID надетой косметики (опционально — старый воркер поля просто игнорирует). */
   title?: string
+  frame?: string
+  accent?: string
 }): Promise<{ ok: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/profile', { initData: tg.initData, ...stats })

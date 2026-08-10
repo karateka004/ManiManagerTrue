@@ -81,6 +81,8 @@ function useRegisterOnLaunch() {
       coins: s.coins,
       streakBest: s.streak.best,
       title: s.equipped.title,
+      frame: s.equipped.frame,
+      accent: s.equipped.accent,
     }).catch(() => {})
   }, [])
 }

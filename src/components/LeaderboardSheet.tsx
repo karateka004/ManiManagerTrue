@@ -198,6 +198,18 @@ function Row({
   // (недоверенные данные с сервера); дефолтный «Новенький» не показываем.
   const titleReward = entry.title && entry.title !== 'title_newbie' ? getReward(entry.title) : undefined
   const flexTitle = titleReward?.kind === 'title' ? titleReward : undefined
+
+  // Кастомизация кружка игрока: надетая рамка (градиентный ободок), а без неё —
+  // тонкий ободок цвета надетого акцента. Дефолты (без рамки / мятный) — без декора.
+  const frameDef = getReward(entry.frame)?.frame
+  const hasFrame = !!frameDef && frameDef.ring !== 'transparent'
+  const accentPalette =
+    !hasFrame && entry.accent && entry.accent !== 'accent_mint' ? getReward(entry.accent)?.palette : undefined
+  const ringStyle = hasFrame
+    ? { padding: 3, background: frameDef!.ring, boxShadow: frameDef!.glow }
+    : accentPalette
+      ? { padding: 2, background: `rgb(${accentPalette[500]})` }
+      : undefined
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
@@ -207,8 +219,16 @@ function Row({
       <div className="flex w-7 shrink-0 items-center justify-center text-sm font-extrabold tabular text-ink-muted">
         {medal ?? rank}
       </div>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-        {initial}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={ringStyle}>
+        <div
+          className={`flex h-full w-full items-center justify-center rounded-full text-sm font-bold ${
+            ringStyle
+              ? 'bg-surface-raised text-brand-600 dark:text-brand-300'
+              : 'bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'
+          }`}
+        >
+          {initial}
+        </div>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-sm font-semibold text-ink">

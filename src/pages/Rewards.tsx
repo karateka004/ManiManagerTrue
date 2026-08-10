@@ -65,7 +65,7 @@ export function RewardsPage() {
   }, [reconcileReferralRewards])
 
   // Закрепляем статистику участника в таблице лидеров (только геймификация, без сумм).
-  const equippedTitle = useStore((s) => s.equipped.title)
+  const equipped = useStore((s) => s.equipped)
   useEffect(() => {
     if (!isBackendConfigured() || !tg.isInTelegram) return
     submitProfile({
@@ -74,9 +74,11 @@ export function RewardsPage() {
       ops: transactions.length,
       coins,
       streakBest: streak.best,
-      title: equippedTitle,
+      title: equipped.title,
+      frame: equipped.frame,
+      accent: equipped.accent,
     }).catch(() => {})
-  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best, equippedTitle])
+  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best, equipped])
 
   const metrics = {
     transactions: transactions.length,
