@@ -185,9 +185,20 @@ export const PERSONAL_GIFTS: Record<string, string[]> = {
   // '<tg-user-id>': ['title_ambassador'],
 }
 
-/** Подарки для конкретного пользователя (пустой массив, если нет). */
-export const giftsFor = (userId: number | string | undefined | null): string[] =>
-  userId == null ? [] : PERSONAL_GIFTS[String(userId)] ?? []
+/** То же по @username (в нижнем регистре, без @) — когда численный id неизвестен. */
+export const PERSONAL_GIFTS_BY_USERNAME: Record<string, string[]> = {
+  mikhail7182: ['title_ambassador'],
+}
+
+/** Подарки для конкретного пользователя: по id и/или username (пустой массив, если нет). */
+export const giftsFor = (
+  userId: number | string | undefined | null,
+  username?: string | null,
+): string[] => {
+  const byId = userId == null ? [] : PERSONAL_GIFTS[String(userId)] ?? []
+  const byName = username ? PERSONAL_GIFTS_BY_USERNAME[username.toLowerCase()] ?? [] : []
+  return [...new Set([...byId, ...byName])]
+}
 
 export const isRewardUnlocked = (r: RewardDef, level: number): boolean =>
   level >= r.unlockLevel

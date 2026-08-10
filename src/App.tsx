@@ -92,10 +92,10 @@ function useRegisterOnLaunch() {
  */
 function useGrantPersonalGifts() {
   useEffect(() => {
-    const id = tg.user?.id
-    if (!id) return
+    const u = tg.user
+    if (!u) return
     const grant = useStore.getState().grantReward
-    for (const rewardId of giftsFor(id)) grant(rewardId)
+    for (const rewardId of giftsFor(u.id, u.username)) grant(rewardId)
   }, [])
 }
 
