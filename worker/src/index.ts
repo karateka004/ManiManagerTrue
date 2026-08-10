@@ -57,6 +57,8 @@ interface LeaderEntry {
   username?: string
   xp: number
   level: number
+  /** ID надетого косметического титула (каталог на клиенте; здесь — просто строка). */
+  title?: string
   ops: number
   coins: number
   streakBest: number
@@ -430,6 +432,7 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     ops?: number
     coins?: number
     streakBest?: number
+    title?: string
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -438,12 +441,16 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
 
+  // Титул — недоверенная строка: только кап длины, клиент валидирует id по каталогу.
+  const title = typeof body.title === 'string' && body.title ? body.title.slice(0, 40) : undefined
+
   const entry: LeaderEntry = {
     id: user.id,
     name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Без имени',
     username: user.username,
     xp: clampInt(body.xp),
     level: clampInt(body.level),
+    title,
     ops: clampInt(body.ops),
     coins: clampInt(body.coins),
     streakBest: clampInt(body.streakBest),

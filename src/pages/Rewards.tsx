@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { ShoppingBag, Medal, Coins } from 'lucide-react'
+import { ShoppingBag, Medal, Crown } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { tg, hapticNotify, openTelegramLink } from '../lib/telegram'
 import { getReferralStats, submitProfile, isBackendConfigured, checkSubscription, type ReferralFriend } from '../lib/api'
@@ -13,6 +13,8 @@ import { StreakTile } from '../components/rewards/StreakTile'
 import { QuestCard } from '../components/rewards/QuestCard'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
+import { LevelRewardsScreen } from './LevelRewards'
+import { LEVEL_REWARDS } from '../lib/rewards'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
@@ -31,6 +33,7 @@ export function RewardsPage() {
 
   const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
   const [shopOpen, setShopOpen] = useState(false)
+  const [levelRewardsOpen, setLevelRewardsOpen] = useState(false)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const seenLeaderboard = useRef(false)
   if (leaderboardOpen) seenLeaderboard.current = true
@@ -62,10 +65,18 @@ export function RewardsPage() {
   }, [reconcileReferralRewards])
 
   // Закрепляем статистику участника в таблице лидеров (только геймификация, без сумм).
+  const equippedTitle = useStore((s) => s.equipped.title)
   useEffect(() => {
     if (!isBackendConfigured() || !tg.isInTelegram) return
-    submitProfile({ xp: lvl.xp, level: lvl.level, ops: transactions.length, coins, streakBest: streak.best }).catch(() => {})
-  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best])
+    submitProfile({
+      xp: lvl.xp,
+      level: lvl.level,
+      ops: transactions.length,
+      coins,
+      streakBest: streak.best,
+      title: equippedTitle,
+    }).catch(() => {})
+  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best, equippedTitle])
 
   const metrics = {
     transactions: transactions.length,
@@ -92,8 +103,15 @@ export function RewardsPage() {
   const openShop = () => { track('open_achievements'); setShopOpen(true) }
   const openLeaderboard = () => { track('open_leaderboard'); setLeaderboardOpen(true) }
 
-  // Магазин — полноэкранный под-вид этой же вкладки (TabBar остаётся снизу).
+  // Титулы уровня, которые уже можно забрать (для бейджа плитки).
+  const owned = useStore((s) => s.owned)
+  const claimableTitles = LEVEL_REWARDS.filter(
+    (r) => lvl.level >= r.unlockLevel && !owned.includes(r.id),
+  ).length
+
+  // Магазин и Титулы уровня — полноэкранные под-виды этой же вкладки (TabBar остаётся снизу).
   if (shopOpen) return <ShopScreen onBack={() => setShopOpen(false)} />
+  if (levelRewardsOpen) return <LevelRewardsScreen onBack={() => setLevelRewardsOpen(false)} />
 
   return (
     <div className="pb-24">
@@ -175,16 +193,22 @@ export function RewardsPage() {
         />
         <StreakTile />
         <Tile
-          icon={<Coins size={26} strokeWidth={2} />}
-          title={t('defi.title')}
-          subtitle={t('defi.subtitle')}
+          icon={<Crown size={26} strokeWidth={2} />}
+          title={t('lvlrew.title')}
+          subtitle={t('lvlrew.subtitle')}
           accent="violet"
-          disabled
           badge={
-            <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-              {t('defi.soon')}
-            </span>
+            claimableTitles > 0 ? (
+              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+                +{claimableTitles}
+              </span>
+            ) : (
+              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+                {lvl.badge}
+              </span>
+            )
           }
+          onClick={() => setLevelRewardsOpen(true)}
         />
       </div>
 

@@ -41,6 +41,12 @@ export interface RewardDef {
   unlockLevel: number
   /** Короткое описание для витрины. */
   hint: string
+  /**
+   * Откуда берётся награда. Не задано — обычный товар магазина (за монеты);
+   * 'level' — выдаётся бесплатно по достижении unlockLevel (экран «Титулы уровня»);
+   * 'gift' — персональный подарок от команды (PERSONAL_GIFTS), в магазине не виден.
+   */
+  source?: 'level' | 'gift'
   /** Для title — текст титула. */
   title?: string
   /** Для accent — палитра. */
@@ -135,6 +141,22 @@ export const REWARDS: RewardDef[] = [
   { id: 'frame_rainbow', kind: 'frame', name: 'Радуга', rarity: 'legendary', unlockLevel: 7, hint: 'Переливается всеми цветами', frame: { ring: 'conic-gradient(from 0deg,#F43F5E,#F59E0B,#22C55E,#3B82F6,#A855F7,#F43F5E)', glow: '0 0 14px rgba(168,85,247,0.45)' } },
   { id: 'frame_emerald', kind: 'frame', name: 'Изумруд', rarity: 'epic', unlockLevel: 5, hint: 'Драгоценная зелень', frame: { ring: 'linear-gradient(135deg,#10B981,#6EE7B7)', glow: '0 0 12px rgba(16,185,129,0.5)' } },
   { id: 'frame_neon', kind: 'frame', name: 'Неон', rarity: 'legendary', unlockLevel: 8, hint: 'Киберпанк-свечение', frame: { ring: 'linear-gradient(135deg,#22D3EE,#E879F9)', glow: '0 0 14px rgba(34,211,238,0.55)' } },
+
+  // Титулы за уровень (source: 'level') — бесплатные, открываются прогрессом.
+  // Основной «флекс»: надетый титул виден другим в таблице лидеров.
+  { id: 'title_lvl1', kind: 'title', name: 'Первопроходец', rarity: 'common', unlockLevel: 1, hint: 'Начало пути', source: 'level', title: 'Первопроходец' },
+  { id: 'title_lvl2', kind: 'title', name: 'Копилка', rarity: 'common', unlockLevel: 2, hint: 'Монетка к монетке', source: 'level', title: 'Копилка' },
+  { id: 'title_lvl3', kind: 'title', name: 'Знаток монет', rarity: 'rare', unlockLevel: 3, hint: 'Видит цену всему', source: 'level', title: 'Знаток монет' },
+  { id: 'title_lvl4', kind: 'title', name: 'Мастер учёта', rarity: 'rare', unlockLevel: 4, hint: 'Ни одной потерянной траты', source: 'level', title: 'Мастер учёта' },
+  { id: 'title_lvl5', kind: 'title', name: 'Стратег', rarity: 'rare', unlockLevel: 5, hint: 'Планирует на ходы вперёд', source: 'level', title: 'Стратег' },
+  { id: 'title_lvl6', kind: 'title', name: 'Кит', rarity: 'epic', unlockLevel: 6, hint: 'Крупная рыба в финансах', source: 'level', title: 'Кит' },
+  { id: 'title_lvl7', kind: 'title', name: 'Живая легенда', rarity: 'epic', unlockLevel: 7, hint: 'О тебе уже рассказывают', source: 'level', title: 'Живая легенда' },
+  { id: 'title_lvl8', kind: 'title', name: 'Финансовый маг', rarity: 'epic', unlockLevel: 8, hint: 'Деньги появляются из воздуха', source: 'level', title: 'Финансовый маг' },
+  { id: 'title_lvl9', kind: 'title', name: 'Мидас', rarity: 'legendary', unlockLevel: 9, hint: 'Всё, к чему прикасаешься, — золото', source: 'level', title: 'Мидас' },
+  { id: 'title_lvl10', kind: 'title', name: 'Император Кошеля', rarity: 'legendary', unlockLevel: 10, hint: 'Вершина. Выше только звёзды', source: 'level', title: 'Император Кошеля' },
+
+  // Персональные подарки (source: 'gift') — выдаются вручную через PERSONAL_GIFTS.
+  { id: 'title_ambassador', kind: 'title', name: 'Амбассадор', rarity: 'legendary', unlockLevel: 1, hint: 'Особый знак от команды Кошеля', source: 'gift', title: 'Амбассадор' },
 ]
 
 /* ---------- Хелперы ---------- */
@@ -142,8 +164,30 @@ export const REWARDS: RewardDef[] = [
 export const getReward = (id: string | null | undefined): RewardDef | undefined =>
   id ? REWARDS.find((r) => r.id === id) : undefined
 
+/** Товары магазина (без уровневых и подарочных наград). */
+export const SHOP_REWARDS: RewardDef[] = REWARDS.filter((r) => !r.source)
+
+/** Товары магазина заданного типа. */
 export const rewardsByKind = (kind: RewardKind): RewardDef[] =>
-  REWARDS.filter((r) => r.kind === kind)
+  SHOP_REWARDS.filter((r) => r.kind === kind)
+
+/** Титулы за уровень — по возрастанию уровня (экран «Титулы уровня»). */
+export const LEVEL_REWARDS: RewardDef[] = REWARDS.filter((r) => r.source === 'level').sort(
+  (a, b) => a.unlockLevel - b.unlockLevel,
+)
+
+/**
+ * Персональные подарки от команды: TG user id → id наград.
+ * Выдаются автоматически при запуске (см. useGrantPersonalGifts в App.tsx),
+ * идемпотентно через grantReward. Добавлять по согласованию с владельцем.
+ */
+export const PERSONAL_GIFTS: Record<string, string[]> = {
+  // '<tg-user-id>': ['title_ambassador'],
+}
+
+/** Подарки для конкретного пользователя (пустой массив, если нет). */
+export const giftsFor = (userId: number | string | undefined | null): string[] =>
+  userId == null ? [] : PERSONAL_GIFTS[String(userId)] ?? []
 
 export const isRewardUnlocked = (r: RewardDef, level: number): boolean =>
   level >= r.unlockLevel
@@ -168,8 +212,8 @@ export const RARITY_PRICE: Record<Rarity, number> = {
 
 export const rewardPrice = (r: RewardDef): number => RARITY_PRICE[r.rarity]
 
-/** Награды, которыми владеешь сразу (бесплатные common). */
-export const DEFAULT_OWNED: string[] = REWARDS.filter((r) => RARITY_PRICE[r.rarity] === 0).map((r) => r.id)
+/** Награды, которыми владеешь сразу (бесплатные common из магазина; уровневые и подарочные — нет). */
+export const DEFAULT_OWNED: string[] = SHOP_REWARDS.filter((r) => RARITY_PRICE[r.rarity] === 0).map((r) => r.id)
 
 /** Дефолтные надетые награды (когда ничего не выбрано). */
 export const DEFAULT_EQUIPPED = {
@@ -184,8 +228,8 @@ export const DEFAULT_EQUIPPED = {
 export const DAILY_DISCOUNT_PCT = 30
 /** Сколько предметов в витрине дня. */
 const FEATURED_COUNT = 3
-/** Покупаемые предметы (не бесплатные common). */
-const BUYABLE_IDS: string[] = REWARDS.filter((r) => RARITY_PRICE[r.rarity] > 0).map((r) => r.id)
+/** Покупаемые предметы (не бесплатные common; только товары магазина). */
+const BUYABLE_IDS: string[] = SHOP_REWARDS.filter((r) => RARITY_PRICE[r.rarity] > 0).map((r) => r.id)
 
 /** Детерминированный сид из строки (FNV-1a). */
 function hashSeed(s: string): number {

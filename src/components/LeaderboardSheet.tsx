@@ -3,6 +3,7 @@ import { m, AnimatePresence } from 'framer-motion'
 import { Trophy, Users, X } from 'lucide-react'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
+import { getReward, RARITY } from '../lib/rewards'
 import { tg, hapticSelect } from '../lib/telegram'
 import { useT, type TFunc } from '../lib/i18n'
 
@@ -193,6 +194,10 @@ function Row({
   const medal = RANK_MEDAL[rank]
   const initial = (entry.name?.[0] ?? '?').toUpperCase()
   const { lvl, badge } = levelMeta(entry.level)
+  // Надетый титул игрока — «флекс» рейтинга. Валидируем id по каталогу
+  // (недоверенные данные с сервера); дефолтный «Новенький» не показываем.
+  const titleReward = entry.title && entry.title !== 'title_newbie' ? getReward(entry.title) : undefined
+  const flexTitle = titleReward?.kind === 'title' ? titleReward : undefined
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
@@ -212,7 +217,14 @@ function Row({
         </div>
         <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-subtle">
           <span className="truncate">
-            {badge} {t('lb.level_short')} {lvl} · {t('level.t' + lvl)}
+            {badge} {t('lb.level_short')} {lvl} ·{' '}
+            {flexTitle ? (
+              <span className="font-semibold" style={{ color: RARITY[flexTitle.rarity].color }}>
+                «{t('reward.' + flexTitle.id + '.name')}»
+              </span>
+            ) : (
+              t('level.t' + lvl)
+            )}
           </span>
           {entry.streakBest > 0 && <span className="shrink-0">· 🔥 {entry.streakBest}</span>}
         </div>

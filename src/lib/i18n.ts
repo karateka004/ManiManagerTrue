@@ -38,9 +38,16 @@ const DICT: Dict = {
   'shop.subtitle': { ru: 'Палитры, титулы, рамки', en: 'Palettes, titles, frames' },
   'shop.featured': { ru: 'Витрина дня', en: 'Deal of the day' },
   'streak.title': { ru: 'Серия дня', en: 'Daily streak' },
-  'defi.title': { ru: 'De-Fi', en: 'De-Fi' },
-  'defi.subtitle': { ru: 'Доходность по монетам', en: 'Earn on your coins' },
-  'defi.soon': { ru: 'Скоро', en: 'Soon' },
+  'lvlrew.kicker': { ru: 'Прогресс', en: 'Progress' },
+  'lvlrew.title': { ru: 'Титулы уровня', en: 'Level titles' },
+  'lvlrew.subtitle': { ru: 'Уникальный титул за каждый уровень', en: 'A unique title for every level' },
+  'lvlrew.hint': {
+    ru: 'За каждый уровень — уникальный титул. Забирай, надевай в профиль — его увидят все в таблице лидеров.',
+    en: 'Every level unlocks a unique title. Claim it, equip it in your profile — everyone will see it on the leaderboard.',
+  },
+  'lvlrew.claim': { ru: 'Забрать', en: 'Claim' },
+  'lvlrew.locked': { ru: 'с {n} ур.', en: 'lvl {n}+' },
+  'lvlrew.progress': { ru: 'Получено {n} из {total}', en: 'Claimed {n} of {total}' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },
@@ -423,6 +430,32 @@ const DICT: Dict = {
   'reward.frame_emerald.hint': { ru: 'Драгоценная зелень', en: 'Precious green' },
   'reward.frame_neon.name': { ru: 'Неон', en: 'Neon' },
   'reward.frame_neon.hint': { ru: 'Киберпанк-свечение', en: 'Cyberpunk glow' },
+
+  /* Награды: титулы за уровень */
+  'reward.title_lvl1.name': { ru: 'Первопроходец', en: 'Pioneer' },
+  'reward.title_lvl1.hint': { ru: 'Начало пути', en: 'The journey begins' },
+  'reward.title_lvl2.name': { ru: 'Копилка', en: 'Piggy Bank' },
+  'reward.title_lvl2.hint': { ru: 'Монетка к монетке', en: 'Coin by coin' },
+  'reward.title_lvl3.name': { ru: 'Знаток монет', en: 'Coin Connoisseur' },
+  'reward.title_lvl3.hint': { ru: 'Видит цену всему', en: 'Knows the price of everything' },
+  'reward.title_lvl4.name': { ru: 'Мастер учёта', en: 'Ledger Master' },
+  'reward.title_lvl4.hint': { ru: 'Ни одной потерянной траты', en: 'Not a single expense lost' },
+  'reward.title_lvl5.name': { ru: 'Стратег', en: 'Strategist' },
+  'reward.title_lvl5.hint': { ru: 'Планирует на ходы вперёд', en: 'Plans moves ahead' },
+  'reward.title_lvl6.name': { ru: 'Кит', en: 'Whale' },
+  'reward.title_lvl6.hint': { ru: 'Крупная рыба в финансах', en: 'Big fish in finance' },
+  'reward.title_lvl7.name': { ru: 'Живая легенда', en: 'Living Legend' },
+  'reward.title_lvl7.hint': { ru: 'О тебе уже рассказывают', en: 'People already tell stories about you' },
+  'reward.title_lvl8.name': { ru: 'Финансовый маг', en: 'Money Wizard' },
+  'reward.title_lvl8.hint': { ru: 'Деньги появляются из воздуха', en: 'Money out of thin air' },
+  'reward.title_lvl9.name': { ru: 'Мидас', en: 'Midas' },
+  'reward.title_lvl9.hint': { ru: 'Всё, к чему прикасаешься, — золото', en: 'Everything you touch turns to gold' },
+  'reward.title_lvl10.name': { ru: 'Император Кошеля', en: 'Koshel Emperor' },
+  'reward.title_lvl10.hint': { ru: 'Вершина. Выше только звёзды', en: 'The summit. Only stars above' },
+
+  /* Награды: персональные подарки */
+  'reward.title_ambassador.name': { ru: 'Амбассадор', en: 'Ambassador' },
+  'reward.title_ambassador.hint': { ru: 'Особый знак от команды Кошеля', en: 'A special token from the Koshel team' },
 
   /* Задания (quests.ts) */
   'quest.first_tx.title': { ru: 'Первая операция', en: 'First operation' },

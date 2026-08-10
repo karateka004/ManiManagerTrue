@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.22.0'
+export const APP_VERSION = '1.23.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.23.0',
+    date: '2026-08-10',
+    title: { ru: 'Титулы уровня и обновлённый магазин', en: 'Level titles and a refreshed shop' },
+    items: [
+      {
+        icon: '👑',
+        text: {
+          ru: 'Новый раздел «Титулы уровня»: за каждый из 10 уровней — уникальный титул. Надень его — и его увидят все в таблице лидеров',
+          en: 'New “Level titles” section: each of the 10 levels unlocks a unique title. Equip it — and everyone will see it on the leaderboard',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В рейтинге теперь виден надетый титул каждого игрока — время флексить',
+          en: 'The leaderboard now shows every player’s equipped title — time to flex',
+        },
+      },
+      {
+        icon: '🛍️',
+        text: {
+          ru: 'Магазин стал спокойнее и чище: меньше пёстрых бейджей, аккуратные цены и отметки «надето»',
+          en: 'The shop is calmer and cleaner: fewer flashy badges, tidy prices and “equipped” marks',
+        },
+      },
+    ],
+  },
   {
     version: '1.22.0',
     date: '2026-08-10',

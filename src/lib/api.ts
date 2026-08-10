@@ -96,6 +96,8 @@ export interface LeaderEntry {
   username?: string
   xp: number
   level: number
+  /** ID надетого косметического титула (rewards.ts) — «флекс» в рейтинге. */
+  title?: string
   ops: number
   coins: number
   streakBest: number
@@ -117,6 +119,8 @@ export async function submitProfile(stats: {
   ops: number
   coins: number
   streakBest: number
+  /** ID надетого титула (опционально — старый воркер поле просто игнорирует). */
+  title?: string
 }): Promise<{ ok: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/profile', { initData: tg.initData, ...stats })

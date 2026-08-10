@@ -11,7 +11,7 @@ import {
   featuredToday,
   discountedPrice,
   DAILY_DISCOUNT_PCT,
-  REWARDS,
+  SHOP_REWARDS,
   type RewardDef,
   type RewardKind,
 } from '../lib/rewards'
@@ -35,7 +35,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
     .map((id) => getReward(id))
     .filter((r): r is RewardDef => Boolean(r))
   const items = rewardsByKind(tab)
-  const ownedCount = REWARDS.filter((r) => owned.includes(r.id)).length
+  const ownedCount = SHOP_REWARDS.filter((r) => owned.includes(r.id)).length
 
   return (
     <div className="pb-24">
@@ -52,7 +52,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
           <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('shop.kicker')}</div>
           <div className="text-2xl font-bold tracking-tight text-ink">{t('shop.title')}</div>
         </div>
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[12px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken/70 px-2.5 py-1 text-[12px] font-bold tabular text-ink">
           🪙 {coins.toLocaleString('ru-RU')}
         </span>
       </div>
@@ -63,9 +63,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
           <div className="mb-2 flex items-center gap-1.5 px-2">
             <Sparkles size={14} className="text-amber-500" />
             <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('shop.featured')}</span>
-            <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-              −{DAILY_DISCOUNT_PCT}%
-            </span>
+            <span className="ml-auto text-[11px] font-bold text-amber-600 dark:text-amber-300">−{DAILY_DISCOUNT_PCT}%</span>
           </div>
           <div className="flex flex-col gap-2">
             {featured.map((r) => (
@@ -108,7 +106,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="mx-4 mt-4 text-center text-[11px] text-ink-subtle">
-        {t('roadpass.owned_count', { n: ownedCount, total: REWARDS.length })}
+        {t('roadpass.owned_count', { n: ownedCount, total: SHOP_REWARDS.length })}
       </div>
     </div>
   )

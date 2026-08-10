@@ -6,6 +6,7 @@ import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
 import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice, discountedPrice } from '../lib/rewards'
+import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
@@ -209,6 +210,12 @@ interface Actions {
    * Возвращает true при успехе, false если уже куплена/не найдена/не хватает монет.
    */
   buyReward: (id: string, priceOverride?: number) => boolean
+  /**
+   * Выдать награду бесплатно (титул за уровень / персональный подарок).
+   * Идемпотентно; для source='level' проверяет достижение уровня.
+   * Возвращает true, если награда добавлена в owned.
+   */
+  grantReward: (id: string) => boolean
   /**
    * Сверить число рефералов с уже оплаченными и доначислить фикс-награду
    * (REF_REWARD) за новых. Идемпотентно: повторный вызов с тем же count — no-op.
@@ -416,7 +423,8 @@ export const useStore = create<State & Actions>()(
         const s = get()
         if (s.owned.includes(id)) return false
         const r = getReward(id)
-        if (!r) return false
+        // Уровневые и подарочные награды за монеты не продаются.
+        if (!r || r.source) return false
         const base = rewardPrice(r)
         // Скидку из UI зажимаем в [скидка дня, полная цена] — защита от подмены.
         const price =
@@ -425,6 +433,20 @@ export const useStore = create<State & Actions>()(
             : base
         if (s.coins < price) return false
         set({ owned: [...s.owned, id], coins: Math.max(0, s.coins - price) })
+        return true
+      },
+
+      grantReward: (id) => {
+        const s = get()
+        if (s.owned.includes(id)) return false
+        const r = getReward(id)
+        if (!r || !r.source) return false
+        // Титул за уровень — только если уровень действительно достигнут.
+        if (r.source === 'level') {
+          const lvl = levelFor(computeXp(s.transactions.length, s.bonusXp)).level
+          if (lvl < r.unlockLevel) return false
+        }
+        set({ owned: [...s.owned, id] })
         return true
       },
 

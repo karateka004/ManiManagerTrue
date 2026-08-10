@@ -8,6 +8,7 @@ import { tg, hapticTap } from './lib/telegram'
 import { isBackendConfigured, parseRefParam, registerReferral, submitProfile } from './lib/api'
 import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
+import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
@@ -79,7 +80,22 @@ function useRegisterOnLaunch() {
       ops: s.transactions.length,
       coins: s.coins,
       streakBest: s.streak.best,
+      title: s.equipped.title,
     }).catch(() => {})
+  }, [])
+}
+
+/**
+ * Персональные подарки от команды (PERSONAL_GIFTS в rewards.ts): при запуске
+ * в Telegram выдаём адресату его награды. grantReward идемпотентен, поэтому
+ * повторные запуски безопасны.
+ */
+function useGrantPersonalGifts() {
+  useEffect(() => {
+    const id = tg.user?.id
+    if (!id) return
+    const grant = useStore.getState().grantReward
+    for (const rewardId of giftsFor(id)) grant(rewardId)
   }, [])
 }
 
@@ -100,6 +116,7 @@ export default function App() {
   useFormatLocale()
   useReferralCapture()
   useRegisterOnLaunch()
+  useGrantPersonalGifts()
   useCloudSync()
   usePrefetchTabs()
   const [tab, setTab] = useState<Tab>('home')
