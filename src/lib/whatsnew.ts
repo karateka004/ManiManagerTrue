@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.23.0'
+export const APP_VERSION = '1.24.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,41 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.24.0',
+    date: '2026-08-10',
+    title: { ru: 'Умные лимиты и титулы за выдержку', en: 'Smart limits and titles for persistence' },
+    items: [
+      {
+        icon: '🎚️',
+        text: {
+          ru: 'Лимиты стали живыми: прогресс расхода, остаток и сколько можно тратить в день до конца месяца',
+          en: 'Limits came alive: spending progress, what’s left and how much you can spend per day until month end',
+        },
+      },
+      {
+        icon: '🪄',
+        text: {
+          ru: 'Не знаешь, какой лимит поставить? Приложение подскажет твой средний расход по категории — ставится в один тап',
+          en: 'Not sure what limit to set? The app suggests your average spend per category — one tap to apply',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'В бюджете появились дневной лимит и прогноз: сколько выйдет к концу месяца при текущем темпе',
+          en: 'Budget now shows a daily allowance and a forecast of where you’ll land at the current pace',
+        },
+      },
+      {
+        icon: '⏳',
+        text: {
+          ru: 'Титулы уровня теперь и за выдержку: нужен не только уровень, но и дни учёта — от 5 дней до 80',
+          en: 'Level titles now reward persistence: you need both the level and days of tracking — from 5 days up to 80',
+        },
+      },
+    ],
+  },
   {
     version: '1.23.0',
     date: '2026-08-10',

@@ -39,6 +39,12 @@ export interface RewardDef {
   rarity: Rarity
   /** Уровень, с которого награда разблокирована. */
   unlockLevel: number
+  /**
+   * Для титулов за уровень — сколько РАЗНЫХ дней нужно вести учёт (второе
+   * условие вдобавок к уровню). XP набивается пачкой операций за один вечер,
+   * а дни — нет: так титул становится отметкой настоящей выдержки.
+   */
+  unlockDays?: number
   /** Короткое описание для витрины. */
   hint: string
   /**
@@ -143,17 +149,18 @@ export const REWARDS: RewardDef[] = [
   { id: 'frame_neon', kind: 'frame', name: 'Неон', rarity: 'legendary', unlockLevel: 8, hint: 'Киберпанк-свечение', frame: { ring: 'linear-gradient(135deg,#22D3EE,#E879F9)', glow: '0 0 14px rgba(34,211,238,0.55)' } },
 
   // Титулы за уровень (source: 'level') — бесплатные, открываются прогрессом.
+  // Два условия сразу: уровень И количество дней учёта (5/10/15/20, дальше шаг 10).
   // Основной «флекс»: надетый титул виден другим в таблице лидеров.
-  { id: 'title_lvl1', kind: 'title', name: 'Первопроходец', rarity: 'common', unlockLevel: 1, hint: 'Начало пути', source: 'level', title: 'Первопроходец' },
-  { id: 'title_lvl2', kind: 'title', name: 'Копилка', rarity: 'common', unlockLevel: 2, hint: 'Монетка к монетке', source: 'level', title: 'Копилка' },
-  { id: 'title_lvl3', kind: 'title', name: 'Знаток монет', rarity: 'rare', unlockLevel: 3, hint: 'Видит цену всему', source: 'level', title: 'Знаток монет' },
-  { id: 'title_lvl4', kind: 'title', name: 'Мастер учёта', rarity: 'rare', unlockLevel: 4, hint: 'Ни одной потерянной траты', source: 'level', title: 'Мастер учёта' },
-  { id: 'title_lvl5', kind: 'title', name: 'Стратег', rarity: 'rare', unlockLevel: 5, hint: 'Планирует на ходы вперёд', source: 'level', title: 'Стратег' },
-  { id: 'title_lvl6', kind: 'title', name: 'Кит', rarity: 'epic', unlockLevel: 6, hint: 'Крупная рыба в финансах', source: 'level', title: 'Кит' },
-  { id: 'title_lvl7', kind: 'title', name: 'Живая легенда', rarity: 'epic', unlockLevel: 7, hint: 'О тебе уже рассказывают', source: 'level', title: 'Живая легенда' },
-  { id: 'title_lvl8', kind: 'title', name: 'Финансовый маг', rarity: 'epic', unlockLevel: 8, hint: 'Деньги появляются из воздуха', source: 'level', title: 'Финансовый маг' },
-  { id: 'title_lvl9', kind: 'title', name: 'Мидас', rarity: 'legendary', unlockLevel: 9, hint: 'Всё, к чему прикасаешься, — золото', source: 'level', title: 'Мидас' },
-  { id: 'title_lvl10', kind: 'title', name: 'Император Кошеля', rarity: 'legendary', unlockLevel: 10, hint: 'Вершина. Выше только звёзды', source: 'level', title: 'Император Кошеля' },
+  { id: 'title_lvl1', kind: 'title', name: 'Первопроходец', rarity: 'common', unlockLevel: 1, unlockDays: 5, hint: 'Начало пути', source: 'level', title: 'Первопроходец' },
+  { id: 'title_lvl2', kind: 'title', name: 'Копилка', rarity: 'common', unlockLevel: 2, unlockDays: 10, hint: 'Монетка к монетке', source: 'level', title: 'Копилка' },
+  { id: 'title_lvl3', kind: 'title', name: 'Знаток монет', rarity: 'rare', unlockLevel: 3, unlockDays: 15, hint: 'Видит цену всему', source: 'level', title: 'Знаток монет' },
+  { id: 'title_lvl4', kind: 'title', name: 'Мастер учёта', rarity: 'rare', unlockLevel: 4, unlockDays: 20, hint: 'Ни одной потерянной траты', source: 'level', title: 'Мастер учёта' },
+  { id: 'title_lvl5', kind: 'title', name: 'Стратег', rarity: 'rare', unlockLevel: 5, unlockDays: 30, hint: 'Планирует на ходы вперёд', source: 'level', title: 'Стратег' },
+  { id: 'title_lvl6', kind: 'title', name: 'Кит', rarity: 'epic', unlockLevel: 6, unlockDays: 40, hint: 'Крупная рыба в финансах', source: 'level', title: 'Кит' },
+  { id: 'title_lvl7', kind: 'title', name: 'Живая легенда', rarity: 'epic', unlockLevel: 7, unlockDays: 50, hint: 'О тебе уже рассказывают', source: 'level', title: 'Живая легенда' },
+  { id: 'title_lvl8', kind: 'title', name: 'Финансовый маг', rarity: 'epic', unlockLevel: 8, unlockDays: 60, hint: 'Деньги появляются из воздуха', source: 'level', title: 'Финансовый маг' },
+  { id: 'title_lvl9', kind: 'title', name: 'Мидас', rarity: 'legendary', unlockLevel: 9, unlockDays: 70, hint: 'Всё, к чему прикасаешься, — золото', source: 'level', title: 'Мидас' },
+  { id: 'title_lvl10', kind: 'title', name: 'Император Кошеля', rarity: 'legendary', unlockLevel: 10, unlockDays: 80, hint: 'Вершина. Выше только звёзды', source: 'level', title: 'Император Кошеля' },
 
   // Персональные подарки (source: 'gift') — выдаются вручную через PERSONAL_GIFTS.
   { id: 'title_ambassador', kind: 'title', name: 'Амбассадор', rarity: 'legendary', unlockLevel: 1, hint: 'Особый знак от команды Кошеля', source: 'gift', title: 'Амбассадор' },

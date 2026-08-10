@@ -441,10 +441,11 @@ export const useStore = create<State & Actions>()(
         if (s.owned.includes(id)) return false
         const r = getReward(id)
         if (!r || !r.source) return false
-        // Титул за уровень — только если уровень действительно достигнут.
+        // Титул за уровень — только если выполнены оба условия: уровень и дни учёта.
         if (r.source === 'level') {
           const lvl = levelFor(computeXp(s.transactions.length, s.bonusXp)).level
           if (lvl < r.unlockLevel) return false
+          if (r.unlockDays && selectActiveDays(s) < r.unlockDays) return false
         }
         set({ owned: [...s.owned, id] })
         return true
@@ -867,6 +868,47 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
     }, 0)
 })
 
+/**
+ * Расход текущего календарного месяца в разрезе категорий — основа вкладки
+ * «Лимиты». Не зависит от выбранного периода просмотра (лимиты всегда месячные).
+ */
+export const selectCurrentMonthExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
+  const start = +dayjs().startOf('month')
+  const end = +dayjs().startOf('month').add(1, 'month')
+  const out: Record<string, number> = {}
+  for (const t of activeTransactions(s)) {
+    if (t.type !== 'expense') continue
+    const x = +dayjs(t.date)
+    if (x < start || x >= end) continue
+    out[t.categoryId] = (out[t.categoryId] ?? 0) + t.amount
+  }
+  return out
+})
+
+/** За сколько последних ПОЛНЫХ месяцев считаем средний расход категории. */
+const AVG_MONTHS = 3
+
+/**
+ * Средний месячный расход по категориям за последние `AVG_MONTHS` полных месяцев.
+ * Текущий месяц исключён — он ещё не закончился и занижал бы среднее.
+ * Нужен для подсказки «поставить лимит из среднего»: главный барьер при
+ * настройке лимитов — не знать, какую цифру вписать.
+ */
+export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
+  const start = +dayjs().startOf('month').subtract(AVG_MONTHS, 'month')
+  const end = +dayjs().startOf('month')
+  const sums: Record<string, number> = {}
+  for (const t of activeTransactions(s)) {
+    if (t.type !== 'expense') continue
+    const x = +dayjs(t.date)
+    if (x < start || x >= end) continue
+    sums[t.categoryId] = (sums[t.categoryId] ?? 0) + t.amount
+  }
+  const out: Record<string, number> = {}
+  for (const [id, sum] of Object.entries(sums)) out[id] = Math.round(sum / AVG_MONTHS)
+  return out
+})
+
 /* ---------- Метрики для финансовых заданий ---------- */
 /*
  * Считаются по РЕАЛЬНЫМ операциям (`s.transactions`), а не `activeTransactions`:
@@ -877,6 +919,15 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
 /** Сколько различных категорий использовано (для задания «5 разных категорий»). */
 export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => new Set(s.transactions.map((t) => t.categoryId)).size,
+)
+
+/**
+ * Сколько РАЗНЫХ дней пользователь вёл учёт (уникальные даты операций).
+ * Накопительная метрика (в отличие от `selectLogDayStreak` не сбрасывается
+ * при пропуске дня) — условие выдачи титулов за уровень.
+ */
+export const selectActiveDays: (s: State) => number = memo1(
+  (s) => new Set(s.transactions.map((t) => dayjs(t.date).format('YYYY-MM-DD'))).size,
 )
 
 /**

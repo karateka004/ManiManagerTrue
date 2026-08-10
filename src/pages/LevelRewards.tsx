@@ -1,5 +1,5 @@
-import { ChevronLeft, Lock, Check } from 'lucide-react'
-import { useStore } from '../store/transactions'
+import { ChevronLeft, Lock, Check, CalendarDays, Star } from 'lucide-react'
+import { useStore, selectActiveDays } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { hapticTap, hapticNotify } from '../lib/telegram'
 import { LEVELS } from '../lib/levels'
@@ -14,6 +14,7 @@ import { RARITY, LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
 export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   const t = useT()
   const lvl = useLevel()
+  const days = useStore(selectActiveDays)
   const owned = useStore((s) => s.owned)
   const claimed = LEVEL_REWARDS.filter((r) => owned.includes(r.id)).length
 
@@ -39,9 +40,15 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
 
       <p className="mx-4 mb-3 px-2 text-[12px] leading-relaxed text-ink-subtle">{t('lvlrew.hint')}</p>
 
+      {/* Текущие показатели по обоим условиям */}
+      <div className="mx-4 mb-3 grid grid-cols-2 gap-2">
+        <StatChip icon={<Star size={15} strokeWidth={2.4} />} label={t('lvlrew.your_level')} value={String(lvl.level)} />
+        <StatChip icon={<CalendarDays size={15} strokeWidth={2.4} />} label={t('lvlrew.your_days')} value={String(days)} />
+      </div>
+
       <div className="mx-4 flex flex-col gap-2">
         {LEVEL_REWARDS.map((r) => (
-          <LevelRewardRow key={r.id} reward={r} currentLevel={lvl.level} />
+          <LevelRewardRow key={r.id} reward={r} currentLevel={lvl.level} days={days} />
         ))}
       </div>
 
@@ -52,8 +59,31 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   )
 }
 
+/** Небольшой чип с текущим показателем (уровень / дни). */
+function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-2xl bg-surface-sunken/60 px-3 py-2">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+        {icon}
+      </span>
+      <div className="min-w-0 leading-tight">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</div>
+        <div className="tabular text-sm font-bold text-ink">{value}</div>
+      </div>
+    </div>
+  )
+}
+
 /** Строка титула: бейдж уровня + название + состояние (забрать / надеть / закрыт). */
-function LevelRewardRow({ reward, currentLevel }: { reward: RewardDef; currentLevel: number }) {
+function LevelRewardRow({
+  reward,
+  currentLevel,
+  days,
+}: {
+  reward: RewardDef
+  currentLevel: number
+  days: number
+}) {
   const t = useT()
   const owned = useStore((s) => s.owned.includes(reward.id))
   const equippedId = useStore((s) => s.equipped.title)
@@ -61,7 +91,10 @@ function LevelRewardRow({ reward, currentLevel }: { reward: RewardDef; currentLe
   const equipReward = useStore((s) => s.equipReward)
 
   const equipped = equippedId === reward.id
-  const unlocked = currentLevel >= reward.unlockLevel
+  const needDays = reward.unlockDays ?? 0
+  const levelOk = currentLevel >= reward.unlockLevel
+  const daysOk = days >= needDays
+  const unlocked = levelOk && daysOk
   const rarity = RARITY[reward.rarity]
   const badge = LEVELS[reward.unlockLevel - 1]?.badge ?? '🌱'
 
@@ -94,12 +127,27 @@ function LevelRewardRow({ reward, currentLevel }: { reward: RewardDef; currentLe
           <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
           <span className="truncate text-sm font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
         </div>
-        <div className="truncate text-[11px] text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
+        {owned ? (
+          <div className="truncate text-[11px] text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
+        ) : (
+          /* Пока не забрано — вместо описания показываем оба условия с прогрессом */
+          <div className="mt-0.5 flex items-center gap-2 text-[11px]">
+            <span className={levelOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
+              {levelOk ? '✓' : ''} {t('lb.level_short')} {reward.unlockLevel}
+            </span>
+            {needDays > 0 && (
+              <span className={daysOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
+                {daysOk ? '✓' : ''} {t('lvlrew.days_progress', { n: Math.min(days, needDays), need: needDays })}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {!unlocked ? (
         <span className="flex shrink-0 items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-2 text-xs font-bold text-ink-subtle">
-          <Lock size={13} strokeWidth={2.5} /> {t('lvlrew.locked', { n: reward.unlockLevel })}
+          <Lock size={13} strokeWidth={2.5} />
+          {!levelOk ? t('lvlrew.locked', { n: reward.unlockLevel }) : t('lvlrew.locked_days', { n: needDays })}
         </span>
       ) : !owned ? (
         <button
