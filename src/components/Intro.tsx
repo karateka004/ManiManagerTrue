@@ -13,6 +13,8 @@ import {
 
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
+// Быстрый старт новичка — отдельным чанком, нужен только при первом входе.
+const QuickStart = lazy(() => import('./onboarding/QuickStart').then((m) => ({ default: m.QuickStart })))
 
 type IntroMode = 'onboarding' | 'whatsnew' | 'guide' | null
 
@@ -58,8 +60,9 @@ function useIntro() {
     hapticSelect()
     localStorage.setItem(ONBOARDED_KEY, '1')
     localStorage.setItem(VERSION_KEY, APP_VERSION) // новичку changelog не показываем
-    // Новичку сразу после онбординга открываем полный гайд (старым он доступен только в Настройках).
-    setMode('guide')
+    // После быстрого старта у человека уже есть данные и первый вывод — гайд
+    // сразу следом был бы перегрузом. Он остаётся доступен в Настройках.
+    setMode(null)
   }
   const closeGuide = () => {
     hapticSelect()
@@ -199,7 +202,11 @@ export function IntroOverlay() {
   return (
     <>
       <AnimatePresence>
-        {mode === 'onboarding' && <Onboarding key="onb" onClose={closeOnboarding} />}
+        {mode === 'onboarding' && (
+          <Suspense fallback={null} key="onb">
+            <QuickStart onDone={closeOnboarding} />
+          </Suspense>
+        )}
         {mode === 'whatsnew' && <WhatsNew key="new" releases={releases} onClose={closeWhatsNew} />}
       </AnimatePresence>
       {mode === 'guide' && (

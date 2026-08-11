@@ -599,6 +599,54 @@ const DICT: Dict = {
   'intro.f_profile_d': { ru: 'Аватар вверху: уровень, задания, монеты, приглашения, отзыв', en: 'Avatar on top: level, quests, coins, invites, feedback' },
 
   /* Подпись шапки Главной */
+  /* Быстрый старт (онбординг новичка) */
+  'qs.welcome_title': { ru: 'Привет! Я «Кошель»', en: 'Hey! I’m Koshel' },
+  'qs.welcome_sub': {
+    ru: 'Помогу понять, куда уходят деньги. Начнём с малого — и уже через минуту ты увидишь первый результат.',
+    en: 'I’ll help you see where your money goes. Let’s start small — you’ll get your first insight in a minute.',
+  },
+  'qs.plan_1': { ru: 'Запишем твой доход', en: 'Add your income' },
+  'qs.plan_2': { ru: 'Добавим пару трат', en: 'Add a couple of expenses' },
+  'qs.plan_3': { ru: 'Покажу прогноз на месяц', en: 'See your month forecast' },
+  'qs.start': { ru: 'Поехали', en: 'Let’s go' },
+  'qs.takes_a_minute': { ru: 'Займёт меньше минуты', en: 'Takes less than a minute' },
+  'qs.exit_confirm': {
+    ru: 'Выйти из быстрого старта? Ты в паре шагов от первого результата.',
+    en: 'Leave the quick start? You’re a couple of steps from your first insight.',
+  },
+  'qs.income_title': { ru: 'Сколько получаешь в месяц?', en: 'How much do you earn a month?' },
+  'qs.income_sub': {
+    ru: 'Примерная сумма — этого хватит для расчёта.',
+    en: 'A rough number is enough for the math.',
+  },
+  'qs.income_source': { ru: 'Источник', en: 'Source' },
+  'qs.next': { ru: 'Дальше', en: 'Next' },
+  'qs.expense_title': { ru: 'На что потратил сегодня?', en: 'What did you spend on today?' },
+  'qs.expense_sub': {
+    ru: 'Добавь 2–3 траты — по ним посчитаем твой темп.',
+    en: 'Add 2–3 expenses — we’ll use them to gauge your pace.',
+  },
+  'qs.add_expense': { ru: 'Добавить трату', en: 'Add expense' },
+  'qs.expense_counter': { ru: 'Добавлено: {n} из 3', en: 'Added: {n} of 3' },
+  'qs.show_result': { ru: 'Показать результат', en: 'Show my result' },
+  'qs.result_title': { ru: 'Вот что получается', en: 'Here’s the picture' },
+  'qs.result_left_label': { ru: 'Останется к концу месяца', en: 'Left by month end' },
+  'qs.result_short_label': { ru: 'Не хватит к концу месяца', en: 'Short by month end' },
+  'qs.result_hint': {
+    ru: 'если каждый день тратить столько же, сколько сегодня',
+    en: 'if you spend the same amount every day',
+  },
+  'qs.spent_today': { ru: 'Траты за день', en: 'Spent today' },
+  'qs.result_advice': {
+    ru: 'Чтобы остаться в плюсе, держи планку около {sum} в день. Записывай траты — и приложение будет следить за ней за тебя.',
+    en: 'To stay in the black, keep it around {sum} a day. Log your expenses and the app will watch that line for you.',
+  },
+  'qs.finish': { ru: 'Открыть приложение', en: 'Open the app' },
+  'qs.finish_hint': {
+    ru: 'Твои операции уже сохранены. Добавляй новые кнопками + и − на главной.',
+    en: 'Your entries are saved. Add more with the + and − buttons on the home screen.',
+  },
+
   'home.cap_goal': { ru: 'Цель', en: 'Goal' },
   'home.cap_date': { ru: 'Дата', en: 'Date' },
   'home.plan_left': { ru: 'Бюджет: осталось {left} из {budget}', en: 'Budget: {left} left of {budget}' },

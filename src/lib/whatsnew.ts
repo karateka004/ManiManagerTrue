@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.25.0'
+export const APP_VERSION = '1.26.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.26.0',
+    date: '2026-08-11',
+    title: { ru: 'Быстрый старт для новичков', en: 'Quick start for newcomers' },
+    items: [
+      {
+        icon: '🚀',
+        text: {
+          ru: 'Новый онбординг: три шага — доход, пара трат — и сразу прогноз, сколько останется к концу месяца',
+          en: 'New onboarding: three steps — income, a couple of expenses — and an instant forecast of what’s left by month end',
+        },
+      },
+      {
+        icon: '💡',
+        text: {
+          ru: 'В конце приложение подсказывает дневную планку трат, чтобы месяц закончился в плюсе',
+          en: 'At the end the app suggests a daily spending line to finish the month in the black',
+        },
+      },
+    ],
+  },
   {
     version: '1.25.0',
     date: '2026-08-10',
