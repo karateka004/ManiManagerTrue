@@ -10,6 +10,8 @@ import { allQuestProgress, type QuestProgress } from '../lib/quests'
 import { useT } from '../lib/i18n'
 import { Tile } from '../components/ui/Tile'
 import { StreakTile } from '../components/rewards/StreakTile'
+import { GardenTile } from '../components/rewards/GardenTile'
+import { isGardenTester } from '../lib/garden'
 import { QuestCard } from '../components/rewards/QuestCard'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
@@ -19,6 +21,8 @@ import { RewardBadge } from '../components/rewards/RewardBadge'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
+// Сад — тяжёлый чанк со спрайтами, грузится только у тестировщиков и только при открытии.
+const GardenScreen = lazy(() => import('./Garden').then((m) => ({ default: m.GardenScreen })))
 
 /** Вкладка «Награды» — хаб геймификации: уровень/XP, задания, достижения, лидеры, рефералы. */
 export function RewardsPage() {
@@ -34,7 +38,10 @@ export function RewardsPage() {
 
   const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
   const [shopOpen, setShopOpen] = useState(false)
+  const [gardenOpen, setGardenOpen] = useState(false)
   const [levelRewardsOpen, setLevelRewardsOpen] = useState(false)
+  // Мини-игра на закрытом тесте: у остальных на этом месте прежняя «Серия дня».
+  const gardenAllowed = isGardenTester(tg.user?.id)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const seenLeaderboard = useRef(false)
   if (leaderboardOpen) seenLeaderboard.current = true
@@ -112,9 +119,22 @@ export function RewardsPage() {
     (r) => lvl.level >= r.unlockLevel && !owned.includes(r.id),
   ).length
 
-  // Магазин и Титулы уровня — полноэкранные под-виды этой же вкладки (TabBar остаётся снизу).
+  // Магазин, Титулы и Сад — полноэкранные под-виды этой же вкладки (TabBar остаётся снизу).
   if (shopOpen) return <ShopScreen onBack={() => setShopOpen(false)} />
   if (levelRewardsOpen) return <LevelRewardsScreen onBack={() => setLevelRewardsOpen(false)} />
+  if (gardenOpen && gardenAllowed) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-500" />
+          </div>
+        }
+      >
+        <GardenScreen onBack={() => setGardenOpen(false)} />
+      </Suspense>
+    )
+  }
 
   return (
     <div className="pb-24">
@@ -192,7 +212,7 @@ export function RewardsPage() {
           }
           onClick={openLeaderboard}
         />
-        <StreakTile />
+        {gardenAllowed ? <GardenTile onOpen={() => setGardenOpen(true)} /> : <StreakTile />}
         <Tile
           icon={<Crown size={26} strokeWidth={2} />}
           title={t('lvlrew.title')}

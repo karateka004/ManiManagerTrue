@@ -127,3 +127,20 @@
 @media (prefers-reduced-motion: reduce) {
   .tab-enter { animation: none; }
 }
+
+/*
+  Покачивание кроны в саду. Только украшение: если анимация не отыграет
+  (свёрнутый webview — rAF приостановлен), дерево просто стоит ровно.
+  Трансформация задана поверх центрирующего translate из Scene.tsx.
+*/
+@keyframes garden-sway {
+  0%, 100% { transform: rotate(-0.5deg); }
+  50%      { transform: rotate(0.5deg); }
+}
+.garden-sway {
+  transform-origin: 50% 100%;
+  animation: garden-sway 5.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-sway { animation: none; }
+}

@@ -54,16 +54,21 @@ export function canClaim(s: StreakState, now = dayjs()): boolean {
 /**
  * Чистый расчёт следующего состояния серии при заборе.
  * Возвращает null, если сегодня уже забирали (no-op).
+ *
+ * `shield` — улучшение сада «крепкие корни»: серия переживает ОДИН пропущенный
+ * день (последний полив позавчера), чтобы разовая занятость не обнуляла месяц.
  */
 export function nextStreak(
   s: StreakState,
   now = dayjs(),
+  shield = false,
 ): { state: StreakState; reward: StreakReward } | null {
   const today = dayKey(now)
   if (s.lastClaim === today) return null
 
   const yesterday = dayKey(now.subtract(1, 'day'))
-  const continued = s.lastClaim === yesterday
+  const beforeYesterday = dayKey(now.subtract(2, 'day'))
+  const continued = s.lastClaim === yesterday || (shield && s.lastClaim === beforeYesterday)
   const count = continued ? s.count + 1 : 1
   const reward = streakReward(count)
 
@@ -78,11 +83,13 @@ export function nextStreak(
  * чем вчера, серия фактически прервана (count визуально = 0 до клейма).
  * Не мутирует стор — только для UI-логики «сгорела/активна».
  */
-export function effectiveStreak(s: StreakState, now = dayjs()): number {
+export function effectiveStreak(s: StreakState, now = dayjs(), shield = false): number {
   if (!s.lastClaim) return 0
   const today = dayKey(now)
   const yesterday = dayKey(now.subtract(1, 'day'))
   if (s.lastClaim === today || s.lastClaim === yesterday) return s.count
+  // «Крепкие корни» держат серию ещё сутки.
+  if (shield && s.lastClaim === dayKey(now.subtract(2, 'day'))) return s.count
   return 0
 }
 

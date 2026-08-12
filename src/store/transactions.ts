@@ -5,6 +5,14 @@ import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
+import {
+  EMPTY_GARDEN,
+  coinBonus,
+  getUpgrade,
+  hasStreakShield,
+  plantBoost,
+  type GardenState,
+} from '../lib/garden'
 import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice, discountedPrice } from '../lib/rewards'
 import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
@@ -133,6 +141,8 @@ interface State {
   goals: Goal[]
   /** Инвестиции и сбережения (витрина капитала, на бюджеты не влияет). */
   investments: Investment[]
+  /** Мини-игра «Сад» (закрытый тест). См. `lib/garden.ts`. */
+  garden: GardenState
   /** Содержимое шапки «Главной»: дата или прогресс к цели. */
   homeHeaderMode: HomeHeaderMode
   /** Выбранная цель для шапки (если homeHeaderMode === 'goal'). */
@@ -230,6 +240,14 @@ interface Actions {
    * Возвращает начисленную награду или null, если сегодня уже забирали.
    */
   claimDailyStreak: () => { coins: number; xp: number; milestone: number } | null
+  /** Посадить семечко: фиксирует текущий XP и даёт стартовый рывок за уровень. */
+  plantSeed: (xp: number) => void
+  /** Купить улучшение сада за монеты. Возвращает false, если не хватило или уже куплено. */
+  buyGardenUpgrade: (id: string) => boolean
+  /** Отметить редкие элементы как открытые (идемпотентно). */
+  unlockGardenItems: (ids: string[]) => void
+  /** Запомнить показанную стадию — чтобы «дерево выросло» не всплывало дважды. */
+  markGardenStage: (stage: number) => void
   /** Надеть косметическую награду (акцент/титул/рамка). */
   equipReward: (kind: 'accent' | 'title' | 'frame', id: string) => void
   /**
@@ -295,6 +313,7 @@ export const useStore = create<State & Actions>()(
       monthlyBudget: 0,
       goals: [],
       investments: [],
+      garden: { ...EMPTY_GARDEN },
       homeHeaderMode: 'date',
       homeHeaderGoalId: null,
       events: {},
@@ -438,6 +457,42 @@ export const useStore = create<State & Actions>()(
             g.id === id ? { ...g, saved: Math.max(0, Math.round((g.saved + delta) * 100) / 100) } : g,
           ),
         })),
+      plantSeed: (xp) =>
+        set((s) => {
+          if (s.garden.plantedAt) return {} // сажаем один раз
+          return {
+            garden: {
+              ...s.garden,
+              plantedAt: todayISO(),
+              seedXp: xp,
+              boost: plantBoost(xp),
+            },
+            events: bumpEvent(s.events, 'plant_seed'),
+          }
+        }),
+
+      buyGardenUpgrade: (id) => {
+        const s = get()
+        const def = getUpgrade(id)
+        if (!def || s.garden.upgrades.includes(id) || s.coins < def.price) return false
+        set({
+          coins: s.coins - def.price,
+          garden: { ...s.garden, upgrades: [...s.garden.upgrades, id] },
+          events: bumpEvent(s.events, 'garden_upgrade'),
+        })
+        return true
+      },
+
+      unlockGardenItems: (ids) =>
+        set((s) => {
+          const fresh = ids.filter((id) => !s.garden.unlocked.includes(id))
+          if (fresh.length === 0) return {}
+          return { garden: { ...s.garden, unlocked: [...s.garden.unlocked, ...fresh] } }
+        }),
+
+      markGardenStage: (stage) =>
+        set((s) => (s.garden.seenStage === stage ? {} : { garden: { ...s.garden, seenStage: stage } })),
+
       setHomeHeaderMode: (mode) => set({ homeHeaderMode: mode }),
       setHomeHeaderGoalId: (id) => set({ homeHeaderGoalId: id }),
 
@@ -460,14 +515,16 @@ export const useStore = create<State & Actions>()(
 
       claimDailyStreak: () => {
         const s = get()
-        const result = nextStreak(s.streak)
+        // «Крепкие корни» в саду прощают один пропущенный день, «каменная кладка» — +% монет.
+        const result = nextStreak(s.streak, undefined, hasStreakShield(s.garden.upgrades))
         if (!result) return null // сегодня уже забирали
+        const coins = Math.round(result.reward.coins * (1 + coinBonus(s.garden.upgrades)))
         set({
           streak: result.state,
-          coins: Math.max(0, s.coins + result.reward.coins),
+          coins: Math.max(0, s.coins + coins),
           bonusXp: Math.max(0, s.bonusXp + result.reward.xp),
         })
-        return result.reward
+        return { ...result.reward, coins }
       },
 
       equipReward: (kind, id) =>
@@ -520,7 +577,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 14,
+      version: 15,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
@@ -593,6 +650,12 @@ export const useStore = create<State & Actions>()(
         // v14: раздел «Инвестиции и сбережения»
         if (persisted && version < 14) {
           if (!Array.isArray(persisted.investments)) persisted.investments = []
+        }
+        // v15: мини-игра «Сад» — семечко ещё не посажено ни у кого
+        if (persisted && version < 15) {
+          if (typeof persisted.garden !== 'object' || persisted.garden === null) {
+            persisted.garden = { ...EMPTY_GARDEN }
+          }
         }
         return persisted
       },
