@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, User } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { useT } from '../../lib/i18n'
 import { hapticTap, hapticNotify } from '../../lib/telegram'
@@ -97,33 +97,29 @@ export function RewardRow({ reward, priceOverride }: Props) {
   )
 }
 
-/** Превью награды: свотч палитры / буква титула / кольцо рамки. */
+/** Превью награды: жетон палитры / жетон титула / кольцо рамки на аватаре. */
 function RewardPreview({ reward, dim }: { reward: RewardDef; dim: boolean }) {
-  const t = useT()
-  const base = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl overflow-hidden'
-
+  // accent — жетон в собственных цветах палитры с тематической иконкой
   if (reward.kind === 'accent' && reward.palette) {
-    return (
-      <div
-        className={base}
-        style={{ background: `rgb(${reward.palette[500]})`, filter: dim ? 'grayscale(0.6)' : undefined }}
-      >
-        <span className="text-sm font-bold text-white">Aa</span>
-      </div>
-    )
+    return <RewardBadge rewardId={reward.id} palette={reward.palette} size={40} dim={dim} />
   }
 
+  // frame — кольцо вокруг силуэта: сразу понятно, что рамка надевается на аватар
   if (reward.kind === 'frame' && reward.frame) {
     const transparent = reward.frame.ring === 'transparent'
     return (
       <div
-        className={base}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
         style={{
-          background: transparent ? undefined : reward.frame.ring,
-          filter: dim ? 'grayscale(0.6)' : undefined,
+          padding: 3,
+          background: transparent ? 'rgb(var(--c-surface-sunken))' : reward.frame.ring,
+          boxShadow: dim ? undefined : reward.frame.glow,
+          filter: dim ? 'grayscale(0.6) opacity(0.7)' : undefined,
         }}
       >
-        <div className="h-5 w-5 rounded-full bg-surface-raised" />
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-surface-raised text-ink-subtle">
+          <User size={17} strokeWidth={2.2} />
+        </span>
       </div>
     )
   }

@@ -2,9 +2,10 @@ import type { ComponentType } from 'react'
 import {
   Sprout, Calculator, PiggyBank, Briefcase, TrendingUp, Crown, Trophy,
   GraduationCap, Gem, Landmark, Coins, Sparkles, Bitcoin, Swords, BadgeCheck,
-  Star, type LucideProps,
+  Star, Leaf, Anchor, Grape, Sunset, Flower, TreePalm, Pencil,
+  type LucideProps,
 } from 'lucide-react'
-import { RARITY, type Rarity } from '../../lib/rewards'
+import { RARITY, type AccentPalette, type Rarity } from '../../lib/rewards'
 
 /**
  * Значок награды: вместо буквы-заглушки и эмодзи — самостоятельный бейдж
@@ -38,6 +39,16 @@ const ICON_BY_ID: Record<string, ComponentType<LucideProps>> = {
   title_lvl8: GraduationCap,
   title_lvl9: Gem,
   title_lvl10: Landmark,
+
+  // Акцентные палитры — иконка по «характеру» цвета
+  accent_mint: Leaf,
+  accent_ocean: Anchor,
+  accent_grape: Grape,
+  accent_sunset: Sunset,
+  accent_rose: Flower,
+  accent_lagoon: TreePalm,
+  accent_gold: Sparkles,
+  accent_graphite: Pencil,
 }
 
 /** Иконка уровня 1..10 — та же система символов, что у титулов за уровень. */
@@ -71,16 +82,24 @@ interface Props {
   size?: number
   /** Приглушить (заблокированная награда). */
   dim?: boolean
+  /**
+   * Палитра акцента: жетон окрашивается её собственными цветами, а не
+   * градиентом редкости — так в магазине сразу видно, что именно покупаешь.
+   */
+  palette?: AccentPalette
 }
 
-export function RewardBadge({ rewardId, level, rarity, size = 40, dim }: Props) {
+export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette }: Props) {
   const lvl = level ? Math.min(Math.max(1, Math.floor(level)), LEVEL_ICONS.length) : null
   const Icon = rewardId ? ICON_BY_ID[rewardId] : lvl ? LEVEL_ICONS[lvl - 1] : undefined
   const finalRarity: Rarity = rarity ?? (lvl ? levelRarity(lvl) : 'common')
-  const [from, to] = RARITY_GRADIENT[finalRarity]
+  // У палитр градиент строится из их же оттенков (400 → 700).
+  const [from, to] = palette
+    ? [`rgb(${palette[400]})`, `rgb(${palette[700]})`]
+    : RARITY_GRADIENT[finalRarity]
   const accent = RARITY[finalRarity].color
   // Уникальный id градиента: несколько бейджей на экране не должны мешать друг другу.
-  const gid = `bg-${rewardId ?? 'lvl' + lvl}-${finalRarity}`
+  const gid = `bg-${rewardId ?? 'lvl' + lvl}-${finalRarity}${palette ? '-p' : ''}`
 
   return (
     <div
