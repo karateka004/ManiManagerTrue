@@ -1,4 +1,4 @@
-import{al as _a}from"./vendor-CZ5ZEVBl.js";var Co={exports:{}},ve={},xo={exports:{}},_o={};/**
+import{c3 as _a}from"./vendor-M187r1tn.js";var Co={exports:{}},ve={},xo={exports:{}},_o={};/**
  * @license React
  * scheduler.production.min.js
  *
