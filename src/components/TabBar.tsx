@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { Home, PieChart, User, Gift, type LucideProps } from 'lucide-react'
+import { Home, PieChart, User, Rocket, type LucideProps } from 'lucide-react'
 import { hapticSelect } from '../lib/telegram'
 import { useT } from '../lib/i18n'
 
@@ -16,7 +16,9 @@ interface Props {
 const ITEMS: { id: Tab; labelKey: string; icon: ComponentType<LucideProps> }[] = [
   { id: 'home', labelKey: 'nav.home', icon: Home },
   { id: 'analytics', labelKey: 'nav.analytics', icon: PieChart },
-  { id: 'rewards', labelKey: 'nav.rewards', icon: Gift },
+  // Ракета, а не подарок: вкладка теперь про прогресс (уровень, серия, задания),
+  // а награды — лишь одна из её частей.
+  { id: 'rewards', labelKey: 'nav.rewards', icon: Rocket },
   { id: 'profile', labelKey: 'nav.profile', icon: User },
 ]
 
