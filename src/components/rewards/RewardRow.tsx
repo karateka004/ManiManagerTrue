@@ -3,6 +3,7 @@ import { useStore } from '../../store/transactions'
 import { useT } from '../../lib/i18n'
 import { hapticTap, hapticNotify } from '../../lib/telegram'
 import { RARITY, rewardPrice, type RewardDef } from '../../lib/rewards'
+import { RewardBadge } from './RewardBadge'
 
 interface Props {
   reward: RewardDef
@@ -127,10 +128,6 @@ function RewardPreview({ reward, dim }: { reward: RewardDef; dim: boolean }) {
     )
   }
 
-  // title
-  return (
-    <div className={`${base} bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300`}>
-      <span className="text-base font-extrabold">{t('reward.' + reward.id + '.name')[0]}</span>
-    </div>
-  )
+  // title — бейдж-жетон с градиентом редкости вместо буквы-заглушки
+  return <RewardBadge rewardId={reward.id} rarity={reward.rarity} size={40} dim={dim} />
 }

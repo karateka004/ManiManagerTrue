@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.26.0'
+export const APP_VERSION = '1.27.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.27.0',
+    date: '2026-08-11',
+    title: { ru: 'Новые иконки и жетоны наград', en: 'New icons and reward badges' },
+    items: [
+      {
+        icon: '🎨',
+        text: {
+          ru: 'Иконок для категорий стало в четыре раза больше — 157 штук, разложенных по темам: еда, транспорт, дом, здоровье, досуг, семья, деньги',
+          en: 'Four times more category icons — 157 of them, grouped by theme: food, transport, home, health, leisure, family, money',
+        },
+      },
+      {
+        icon: '🏅',
+        text: {
+          ru: 'Титулы и уровни получили настоящие жетоны с градиентом по редкости вместо букв и эмодзи',
+          en: 'Titles and levels now have real badges with rarity gradients instead of letters and emoji',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В таблице лидеров у каждого игрока виден жетон его уровня',
+          en: 'The leaderboard now shows each player’s level badge',
+        },
+      },
+    ],
+  },
   {
     version: '1.26.0',
     date: '2026-08-11',

@@ -15,6 +15,7 @@ import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
 import { LevelRewardsScreen } from './LevelRewards'
 import { LEVEL_REWARDS } from '../lib/rewards'
+import { RewardBadge } from '../components/rewards/RewardBadge'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
@@ -126,9 +127,7 @@ export function RewardsPage() {
       <div className="mx-4 mt-3 overflow-hidden rounded-4xl bg-gradient-to-br from-brand-500 to-brand-700 p-5 text-white shadow-soft">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 text-2xl">
-              {lvl.badge}
-            </span>
+            <RewardBadge level={lvl.level} size={48} />
             <div className="leading-tight">
               <div className="text-lg font-extrabold">{t('level.t' + lvl.level)}</div>
               <div className="text-[11px] text-white/70">{t('profile.level', { level: lvl.level, max: LEVELS.length })}</div>

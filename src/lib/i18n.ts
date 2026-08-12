@@ -599,6 +599,17 @@ const DICT: Dict = {
   'intro.f_profile_d': { ru: 'Аватар вверху: уровень, задания, монеты, приглашения, отзыв', en: 'Avatar on top: level, quests, coins, invites, feedback' },
 
   /* Подпись шапки Главной */
+  /* Группы иконок в пикере категорий */
+  'icons.g_popular': { ru: 'Популярные', en: 'Popular' },
+  'icons.g_food': { ru: 'Еда и напитки', en: 'Food & drinks' },
+  'icons.g_transport': { ru: 'Транспорт и поездки', en: 'Transport & travel' },
+  'icons.g_home': { ru: 'Дом и быт', en: 'Home & utilities' },
+  'icons.g_health': { ru: 'Здоровье и спорт', en: 'Health & sport' },
+  'icons.g_fun': { ru: 'Досуг', en: 'Leisure' },
+  'icons.g_family': { ru: 'Семья и питомцы', en: 'Family & pets' },
+  'icons.g_money': { ru: 'Деньги и работа', en: 'Money & work' },
+  'icons.g_other': { ru: 'Разное', en: 'Other' },
+
   /* История обновлений (раздел в Профиле) */
   'changelog.title': { ru: 'Обновления', en: 'What’s new' },
   'changelog.hint': { ru: 'Что нового в версии {v}', en: 'What’s new in v{v}' },

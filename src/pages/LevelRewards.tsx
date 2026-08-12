@@ -2,9 +2,9 @@ import { ChevronLeft, Lock, Check, Flame, Star } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { hapticTap, hapticNotify } from '../lib/telegram'
-import { LEVELS } from '../lib/levels'
 import { useLevel } from '../components/LevelBar'
 import { RARITY, LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
+import { RewardBadge } from '../components/rewards/RewardBadge'
 
 /**
  * Полноэкранные «Титулы уровня» (под-вид вкладки «Награды», заменил заглушку De-Fi).
@@ -102,7 +102,6 @@ function LevelRewardRow({
   const daysOk = days >= needDays
   const unlocked = levelOk && daysOk
   const rarity = RARITY[reward.rarity]
-  const badge = LEVELS[reward.unlockLevel - 1]?.badge ?? '🌱'
 
   const onClaim = () => {
     if (!unlocked || owned) return
@@ -120,13 +119,8 @@ function LevelRewardRow({
 
   return (
     <div className={`card flex items-center gap-3 p-3 ${unlocked ? '' : 'opacity-55'}`}>
-      {/* Бейдж уровня */}
-      <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-2xl bg-surface-sunken/70">
-        <span className="text-base leading-none">{badge}</span>
-        <span className="mt-0.5 text-[8px] font-bold uppercase leading-none text-ink-subtle">
-          {t('lb.level_short')} {reward.unlockLevel}
-        </span>
-      </div>
+      {/* Жетон уровня: градиент по редкости + номер уровня в углу */}
+      <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={42} dim={!unlocked} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">

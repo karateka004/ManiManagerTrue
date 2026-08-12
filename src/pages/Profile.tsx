@@ -12,6 +12,7 @@ import { LEVELS } from '../lib/levels'
 import { getReward } from '../lib/rewards'
 import { useT, type TFunc } from '../lib/i18n'
 import { MenuRow } from '../components/ui/MenuRow'
+import { RewardBadge } from '../components/rewards/RewardBadge'
 
 import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
 
@@ -142,7 +143,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         onClick={() => { hapticTap(); onOpenRewards() }}
         className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-soft active:scale-[0.99]"
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-xl">{lvl.badge}</span>
+        <RewardBadge level={lvl.level} size={44} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-bold">{t('level.t' + lvl.level)}</span>

@@ -4,6 +4,7 @@ import { Trophy, Users, X } from 'lucide-react'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
 import { getReward, RARITY } from '../lib/rewards'
+import { RewardBadge } from './rewards/RewardBadge'
 import { tg, hapticSelect } from '../lib/telegram'
 import { useT, type TFunc } from '../lib/i18n'
 
@@ -24,10 +25,9 @@ type State =
  * данные): зажимаем в диапазон существующих уровней, чтобы бейдж и титул
  * всегда находились.
  */
-const levelMeta = (level: number): { lvl: number; badge: string } => {
-  const lvl = Math.min(Math.max(1, Math.floor(level) || 1), LEVELS.length)
-  return { lvl, badge: LEVELS[lvl - 1].badge }
-}
+const levelMeta = (level: number): { lvl: number } => ({
+  lvl: Math.min(Math.max(1, Math.floor(level) || 1), LEVELS.length),
+})
 
 const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
@@ -193,7 +193,7 @@ function Row({
 }) {
   const medal = RANK_MEDAL[rank]
   const initial = (entry.name?.[0] ?? '?').toUpperCase()
-  const { lvl, badge } = levelMeta(entry.level)
+  const { lvl } = levelMeta(entry.level)
   // Надетый титул игрока — «флекс» рейтинга. Валидируем id по каталогу
   // (недоверенные данные с сервера); дефолтный «Новенький» не показываем.
   const titleReward = entry.title && entry.title !== 'title_newbie' ? getReward(entry.title) : undefined
@@ -230,6 +230,8 @@ function Row({
           {initial}
         </div>
       </div>
+      {/* Жетон уровня — заметнее эмодзи и сразу читается «насколько игрок прокачан» */}
+      <RewardBadge level={lvl} size={26} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-sm font-semibold text-ink">
           <span className="truncate">{entry.name}</span>
@@ -237,7 +239,7 @@ function Row({
         </div>
         <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-subtle">
           <span className="truncate">
-            {badge} {t('lb.level_short')} {lvl} ·{' '}
+            {t('lb.level_short')} {lvl} ·{' '}
             {flexTitle ? (
               <span className="font-semibold" style={{ color: RARITY[flexTitle.rarity].color }}>
                 «{t('reward.' + flexTitle.id + '.name')}»
