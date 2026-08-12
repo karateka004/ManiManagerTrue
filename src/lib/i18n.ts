@@ -599,6 +599,12 @@ const DICT: Dict = {
   'intro.f_profile_d': { ru: 'Аватар вверху: уровень, задания, монеты, приглашения, отзыв', en: 'Avatar on top: level, quests, coins, invites, feedback' },
 
   /* Подпись шапки Главной */
+  /* История обновлений (раздел в Профиле) */
+  'changelog.title': { ru: 'Обновления', en: 'What’s new' },
+  'changelog.hint': { ru: 'Что нового в версии {v}', en: 'What’s new in v{v}' },
+  'changelog.current': { ru: 'Текущая версия {v}', en: 'Current version {v}' },
+  'changelog.new': { ru: 'Новое', en: 'New' },
+
   /* Быстрый старт (онбординг новичка) */
   'qs.welcome_title': { ru: 'Привет! Я «Кошель»', en: 'Hey! I’m Koshel' },
   'qs.welcome_sub': {

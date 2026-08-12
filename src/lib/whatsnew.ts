@@ -947,7 +947,7 @@ export const RELEASES: ReleaseNote[] = [
 ]
 
 /** Сравнение версий semver: -1 / 0 / 1. */
-function cmpVersion(a: string, b: string): number {
+export function cmpVersion(a: string, b: string): number {
   const pa = a.split('.').map(Number)
   const pb = b.split('.').map(Number)
   for (let i = 0; i < 3; i++) {

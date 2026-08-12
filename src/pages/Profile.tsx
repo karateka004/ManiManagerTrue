@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { Settings, Target, Check, ChevronRight } from 'lucide-react'
+import { Settings, Target, Check, ChevronRight, Sparkles } from 'lucide-react'
 import { useStore, selectAllCategories, getCategory } from '../store/transactions'
 import { formatMoney, dayjs } from '../lib/format'
 import { Avatar } from '../components/Avatar'
@@ -13,8 +13,21 @@ import { getReward } from '../lib/rewards'
 import { useT, type TFunc } from '../lib/i18n'
 import { MenuRow } from '../components/ui/MenuRow'
 
+import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
+
 // Планирование (финансы) — ленивая шторка, грузится по первому открытию.
 const PlanningSheet = lazy(() => import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })))
+// История обновлений — тоже лениво, открывается из строки «Обновления».
+const ChangelogSheet = lazy(() => import('../components/ChangelogSheet').then((m) => ({ default: m.ChangelogSheet })))
+
+/** Версия, до которой пользователь уже видел изменения (из localStorage). */
+function readSeenVersion(): string {
+  try {
+    return localStorage.getItem(VERSION_KEY) ?? '0.0.0'
+  } catch {
+    return APP_VERSION
+  }
+}
 
 /** Запасной чат, если бэкенд не настроен. */
 const FEEDBACK_FALLBACK_URL = `https://t.me/${BOT_USERNAME}`
@@ -44,6 +57,24 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
   const openPlanning = () => {
     track('open_planning')
     setPlanningOpen(true)
+  }
+
+  // История обновлений: версия, до которой человек уже всё видел, и счётчик новых.
+  const [seenVersion, setSeenVersion] = useState(readSeenVersion)
+  const [changelogOpen, setChangelogOpen] = useState(false)
+  const seenChangelog = useRef(false)
+  if (changelogOpen) seenChangelog.current = true
+  const unseenCount = useMemo(() => newReleasesSince(seenVersion).length, [seenVersion])
+
+  const closeChangelog = () => {
+    // Открыл раздел — значит изменения просмотрены, счётчик гаснет.
+    try {
+      localStorage.setItem(VERSION_KEY, APP_VERSION)
+    } catch {
+      /* приватный режим — переживём, счётчик просто появится снова */
+    }
+    setSeenVersion(APP_VERSION)
+    setChangelogOpen(false)
   }
 
   const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || t('profile.guest')
@@ -157,13 +188,28 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       )}
 
       {/* Планирование (финансы) */}
-      <div className="mx-4 mt-3">
+      <div className="mx-4 mt-3 flex flex-col gap-2">
         <MenuRow
           icon={<Target size={20} strokeWidth={2} />}
           title={t('profile.planning')}
           hint={t('profile.planning_hint')}
           accent="emerald"
           onClick={openPlanning}
+        />
+        {/* История обновлений — вместо всплывающей шторки при запуске */}
+        <MenuRow
+          icon={<Sparkles size={20} strokeWidth={2} />}
+          title={t('changelog.title')}
+          hint={t('changelog.hint', { v: APP_VERSION })}
+          accent="brand"
+          trailing={
+            unseenCount > 0 ? (
+              <span className="flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold tabular text-white">
+                {unseenCount}
+              </span>
+            ) : undefined
+          }
+          onClick={() => setChangelogOpen(true)}
         />
       </div>
 
@@ -178,6 +224,12 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
 
       <Suspense fallback={null}>
         {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}
+      </Suspense>
+
+      <Suspense fallback={null}>
+        {seenChangelog.current && (
+          <ChangelogSheet open={changelogOpen} onClose={closeChangelog} seenVersion={seenVersion} />
+        )}
       </Suspense>
     </div>
   )
