@@ -13,6 +13,7 @@
 Запуск (из корня проекта):
     python tools/build_assets.py
 """
+import colorsys
 import os
 
 from PIL import Image
@@ -29,11 +30,95 @@ BG = os.path.join(PLAT, "Background", "x32")
 
 T = 32  # размер тайла
 
+# Цвет неба пака — в него растворяем дальние слои (атмосферная перспектива).
+SKY_TINT = (168, 176, 214)
+
 
 def trim(im: Image.Image) -> Image.Image:
     """Обрезает прозрачные поля — регионы задаём с запасом, границы ищем здесь."""
     bbox = im.getbbox()
     return im.crop(bbox) if bbox else im
+
+
+def unify(im: Image.Image, stone: bool = False) -> Image.Image:
+    """
+    Сводит спрайты трёх паков к одной палитре — главная причина ощущения коллажа.
+
+    Всегда: кислотно-жёлтая трава и листва (h≈55–85°) → спокойная зелень. Это
+    нужно применять и к тайлсету, и к деревьям, иначе трава острова разъедется
+    с листвой.
+
+    `stone=True` дополнительно уводит холодный сине-серый камень в тёплый —
+    только для тайлсета. К объектам это правило применять нельзя: под него
+    попадают синий кристалл и другой цветной декор.
+    """
+    px = im.load()
+    w, h = im.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            hh, ss, vv = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            deg = hh * 360
+            if stone and 185 <= deg <= 265 and ss > 0.08:
+                hh, ss, vv = 30 / 360, ss * 0.55, vv * 1.05
+            elif 55 <= deg <= 85 and ss > 0.25:
+                hh, ss, vv = (deg + 26) / 360, ss * 0.86, vv * 0.97
+            else:
+                continue
+            nr, ng, nb = colorsys.hsv_to_rgb(hh, min(ss, 1.0), min(vv, 1.0))
+            px[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
+    return im
+
+
+def fade_to(im: Image.Image, color, k: float) -> Image.Image:
+    """
+    Атмосферная перспектива: подмешиваем цвет неба к дальним слоям, чтобы фон
+    ушёл назад и перестал спорить с деревом. Честнее, чем гасить насыщенность:
+    лес остаётся лесом, просто «за дымкой».
+    """
+    px = im.load()
+    w, h = im.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            px[x, y] = (
+                round(r + (color[0] - r) * k),
+                round(g + (color[1] - g) * k),
+                round(b + (color[2] - b) * k),
+                a,
+            )
+    return im
+
+
+def recolor(im: Image.Image, hue_shift=0.0, sat=1.0, val=1.0, only_hue=None) -> Image.Image:
+    """
+    Сдвиг палитры в HSV. Нужен, чтобы свести три пака к одной гамме: тайлсет
+    нарисован в холодном сине-фиолетовом камне, фон — в голубоватой дымке,
+    а деревья — в тёплой зелени. Без этого сцена выглядит как коллаж.
+
+    `only_hue=(lo, hi)` ограничивает правку диапазоном оттенков (0..1),
+    чтобы, например, перекрасить камень, не тронув траву.
+    """
+    px = im.load()
+    w, h = im.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            hh, ss, vv = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            if only_hue and not (only_hue[0] <= hh <= only_hue[1]):
+                continue
+            hh = (hh + hue_shift) % 1.0
+            ss = max(0.0, min(1.0, ss * sat))
+            vv = max(0.0, min(1.0, vv * val))
+            nr, ng, nb = colorsys.hsv_to_rgb(hh, ss, vv)
+            px[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
+    return im
 
 
 def region(atlas: Image.Image, x0: int, y0: int, x1: int, y1: int) -> Image.Image:
@@ -77,7 +162,7 @@ DECOR_REGIONS = {
 
 
 def build_tree_stages(out: dict) -> None:
-    atlas = Image.open(OBJECTS).convert("RGBA")
+    atlas = unify(Image.open(OBJECTS).convert("RGBA"))
     for name, r in TREE_REGIONS.items():
         work = atlas.copy()
         for ex0, ey0, ex1, ey1 in ERASE.get(name, []):
@@ -106,7 +191,7 @@ def build_ground(out: dict) -> None:
     повторяющейся центральной колонки нельзя, тайлы не бесшовные по вертикали
     и на стыках появляются полосы.
     """
-    atlas = Image.open(TILESET).convert("RGBA")
+    atlas = unify(Image.open(TILESET).convert("RGBA"), stone=True)
     out["ground"] = trim(tiles(atlas, 6, 3, 9, 6))    # 128×116, «капля» под ранние стадии
     out["ground-wide"] = trim(tiles(atlas, 7, 7, 9, 12))  # широкий массив под взрослое дерево
 
@@ -120,16 +205,74 @@ def build_background(out: dict) -> None:
     for src, name, h in (("Skyx32", "bg-sky", 200), ("Clouds_x32", "bg-clouds", 160),
                          ("Flora1x32", "bg-far", 150), ("Flora2x32", "bg-near", 130)):
         im = Image.open(os.path.join(BG, src + ".png")).convert("RGBA")
-        out[name] = im.crop((0, im.height - h, 480, im.height))
+        im = im.crop((0, im.height - h, 480, im.height))
+        # Дальний лес растворяем в небе сильнее ближнего — сцена получает глубину.
+        # unify к фону НЕ применяем: он съедает лесную зелень и оставляет серую кашу.
+        if name == "bg-far":
+            im = fade_to(im, SKY_TINT, 0.40)
+        elif name == "bg-near":
+            im = fade_to(im, SKY_TINT, 0.15)
+        out[name] = im
 
 
 def build_decor(out: dict) -> None:
-    atlas = Image.open(OBJECTS).convert("RGBA")
+    atlas = unify(Image.open(OBJECTS).convert("RGBA"))
     for name, r in DECOR_REGIONS.items():
         out[name] = region(atlas, *r)
-    details = Image.open(DETAILS).convert("RGBA")
-    out["decor-stones"] = region(details, 0, 0, 224, 130)
-    out["decor-grass"] = region(details, 0, 300, 224, 420)
+    details = unify(Image.open(DETAILS).convert("RGBA"), stone=True)
+    # Компактная горка камней: широкая россыпь в силуэте коллекции читалась как пятно.
+    out["decor-stones"] = region(details, 24, 6, 92, 46)
+    out["decor-grass"] = region(details, 0, 300, 120, 360)
+
+
+# ── Иконки улучшений 16×16 ──────────────────────────────────────────────
+# Рисуем сами: в паках нет листа, корней, лейки и камня в нужном стиле, а
+# эмодзи в пиксель-арт сцене выглядят чужеродно. Символ → цвет из палитры ниже.
+ICON_COLORS = {
+    "g": (104, 163, 82, 255), "G": (153, 206, 106, 255), "d": (72, 122, 64, 255),
+    "e": (38, 66, 40, 255), "b": (116, 82, 50, 255), "B": (150, 110, 68, 255),
+    "k": (52, 34, 20, 255), "s": (146, 143, 136, 255), "S": (186, 184, 176, 255),
+    "t": (104, 100, 94, 255), "w": (98, 174, 204, 255), "W": (158, 214, 232, 255),
+    "m": (170, 176, 186, 255), "M": (120, 128, 140, 255),
+}
+
+ICONS = {
+    "icon-leaves": [
+        "................", "...........ee...", ".........eeGe...", ".......eeGGGe...",
+        ".....eeGGGGge...", "....eGGGgggge...", "...eGGgggggde...", "..eGGgggggdde...",
+        "..eGgggggddde...", "..eGggggdddee...", "..eGgggdddee....", "..eeggddee......",
+        "...eeddee.......", "....ekee........", "...ek...........", "..ek............",
+    ],
+    "icon-water": [
+        "................", "................", "........mmmm....", ".......mMMMMm...",
+        "..mm..mMmmmmMm..", ".m..m.mMmmmmMm..", "m....mmMmmmmMm..", "m...mmmMmmmmMm..",
+        ".mmmmmmMmmmmMm..", "......mMmmmmMm..", "......mMMMMMMm..", ".......mmmmmm...",
+        "....WW..........", "...WwW..........", "...Ww...........", "....W...........",
+    ],
+    "icon-roots": [
+        "................", "......bbbb......", "......bBBb......", "......bBBb......",
+        "......bBBb......", ".....kbBBbk.....", "....kbbBBbbk....", "...kb.bBBb.bk...",
+        "..kb..bBBb..bk..", ".kb..kbbbbk..bk.", "kb..kb....bk..bk", "b..kb......bk..b",
+        "..kb........bk..", ".kb..........bk.", "kb............bk", "................",
+    ],
+    "icon-stones": [
+        "................", "................", "......ttt.......", ".....tSSSt......",
+        "....tSSSSSt.....", "....tSSssst.....", "...tSsssssst....", "...tssssssst....",
+        "..ttsssssssit...".replace("i", "s"), "..ttsssssttt....", "...ttttttt......", "......ttt.......",
+        "..ttt...........", ".tSSSt..........", ".tssst..........", "..ttt...........",
+    ],
+}
+
+
+def build_icons(out: dict) -> None:
+    for name, rows in ICONS.items():
+        img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+        px = img.load()
+        for y, row in enumerate(rows):
+            for x, ch in enumerate(row[:16]):
+                if ch in ICON_COLORS:
+                    px[x, y] = ICON_COLORS[ch]
+        out[name] = img
 
 
 def main() -> None:
@@ -139,6 +282,7 @@ def main() -> None:
     build_ground(sprites)
     build_background(sprites)
     build_decor(sprites)
+    build_icons(sprites)
 
     total = 0
     for name, im in sorted(sprites.items()):

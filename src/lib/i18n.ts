@@ -59,7 +59,11 @@ const DICT: Dict = {
   'garden.grew': { ru: 'Дерево подросло!', en: 'Your tree grew!' },
   'garden.upgrades': { ru: 'Уход за деревом', en: 'Tree care' },
   'garden.bought': { ru: 'Куплено', en: 'Owned' },
-  'garden.collection': { ru: 'Что открыто в саду', en: 'Garden collection' },
+  'garden.collection': { ru: 'Сад', en: 'Garden' },
+  'garden.collection_hint': {
+    ru: 'Нажми на предмет, чтобы узнать, как его открыть',
+    en: 'Tap an item to see how to unlock it',
+  },
   'garden.locked_hint': { ru: 'Ещё не открыто', en: 'Not unlocked yet' },
   'garden.beta': { ru: 'Тест', en: 'Beta' },
 
