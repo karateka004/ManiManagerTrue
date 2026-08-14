@@ -1,7 +1,12 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { Plus, BookOpen, ChevronLeft } from 'lucide-react'
-import { useStore, selectCategoriesByKind, selectAllCategories } from '../store/transactions'
+import {
+  useStore,
+  selectCategoriesByKind,
+  selectAllCategories,
+  selectQuickCurrencies,
+} from '../store/transactions'
 import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
 import { setReminders } from '../lib/api'
@@ -53,6 +58,8 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const setLang = useStore((s) => s.setLang)
   const currency = useStore((s) => s.currency)
   const setCurrency = useStore((s) => s.setCurrency)
+  const quickCurrencies = useStore(selectQuickCurrencies)
+  const setQuickCurrency = useStore((s) => s.setQuickCurrency)
   const clearAll = useStore((s) => s.clearAll)
   const demoMode = useStore((s) => s.demoMode)
   const setDemoMode = useStore((s) => s.setDemoMode)
@@ -88,6 +95,8 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const moreCurrencies = CURRENCIES.filter((c) => !MAIN_CURRENCY_CODES.includes(c.code))
   const activeIsMain = MAIN_CURRENCY_CODES.includes(currency)
   const [moreOpen, setMoreOpen] = useState(!activeIsMain)
+  // Какой слот быстрых валют сейчас меняем (null — список выбора скрыт).
+  const [quickSlot, setQuickSlot] = useState<number | null>(null)
 
   const handleClear = () => {
     if (!confirm(t('settings.clear_confirm'))) return
@@ -205,6 +214,73 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
               </m.div>
             )}
           </AnimatePresence>
+        </div>
+      </div>
+
+      {/*
+        Быстрый выбор валют в форме операции. Раньше там были зашиты USD/EUR/UAH,
+        и человеку с рублём приходилось каждый раз лезть в «Ещё».
+      */}
+      <div className="mx-6 mt-6">
+        <div className="mb-2 flex items-baseline justify-between px-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.quick_cur')}</span>
+          {quickSlot !== null && (
+            <span className="text-[11px] text-brand-600 dark:text-brand-300">{t('settings.quick_cur_pick')}</span>
+          )}
+        </div>
+        <div className="card p-2">
+          <div className="grid grid-cols-3 gap-1.5">
+            {quickCurrencies.map((code, i) => {
+              const meta = getCurrency(code)
+              return (
+                <button
+                  key={i}
+                  onClick={() => { hapticSelect(); setQuickSlot(quickSlot === i ? null : i) }}
+                  className={`flex flex-col items-center gap-0.5 rounded-2xl py-2.5 transition ${
+                    quickSlot === i
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-surface-sunken/60 text-ink active:bg-surface-sunken'
+                  }`}
+                >
+                  <span className="text-lg font-bold leading-none">{meta.symbol}</span>
+                  <span className={`text-[11px] ${quickSlot === i ? 'text-white/80' : 'text-ink-subtle'}`}>{code}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <AnimatePresence initial={false}>
+            {quickSlot !== null && (
+              <m.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="mt-2 grid grid-cols-4 gap-1.5">
+                  {CURRENCIES.map((c) => (
+                    <button
+                      key={c.code}
+                      onClick={() => {
+                        hapticSelect()
+                        setQuickCurrency(quickSlot, c.code)
+                        setQuickSlot(null)
+                      }}
+                      className={`flex flex-col items-center gap-0.5 rounded-xl py-2 text-ink transition ${
+                        quickCurrencies[quickSlot] === c.code ? 'bg-brand-500/15' : 'bg-surface-sunken/50 active:bg-surface-sunken'
+                      }`}
+                    >
+                      <span className="text-sm font-bold leading-none">{c.symbol}</span>
+                      <span className="text-[10px] text-ink-subtle">{c.code}</span>
+                    </button>
+                  ))}
+                </div>
+              </m.div>
+            )}
+          </AnimatePresence>
+
+          <p className="mt-2 px-1 text-[11px] leading-relaxed text-ink-subtle">{t('settings.quick_cur_hint')}</p>
         </div>
       </div>
 

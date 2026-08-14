@@ -143,6 +143,11 @@ interface State {
   investments: Investment[]
   /** Мини-игра «Сад» (закрытый тест). См. `lib/garden.ts`. */
   garden: GardenState
+  /**
+   * Валюты быстрого выбора в форме операции (до 3).
+   * Пустой массив = подобрать автоматически по данным (`selectQuickCurrencies`).
+   */
+  quickCurrencies: Currency[]
   /** Содержимое шапки «Главной»: дата или прогресс к цели. */
   homeHeaderMode: HomeHeaderMode
   /** Выбранная цель для шапки (если homeHeaderMode === 'goal'). */
@@ -248,6 +253,11 @@ interface Actions {
   unlockGardenItems: (ids: string[]) => void
   /** Запомнить показанную стадию — чтобы «дерево выросло» не всплывало дважды. */
   markGardenStage: (stage: number) => void
+  /**
+   * Задать валюту быстрого выбора в слот 0..2. Первый вызов фиксирует текущий
+   * автоподбор, дальше правится только выбранный слот.
+   */
+  setQuickCurrency: (slot: number, code: Currency) => void
   /** Надеть косметическую награду (акцент/титул/рамка). */
   equipReward: (kind: 'accent' | 'title' | 'frame', id: string) => void
   /**
@@ -270,6 +280,27 @@ interface Actions {
 }
 
 const cuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/** Запасные валюты, если у человека ещё нет операций в разных валютах. */
+const FALLBACK_QUICK: Currency[] = ['USD', 'EUR', 'UAH']
+
+/**
+ * Автоподбор быстрых валют: сначала та, что выбрана в настройках, затем те,
+ * что реально встречаются в операциях, затем запасные. Так у человека с одной
+ * рублёвой валютой в форме сразу рубль, а не чужие USD/EUR/UAH.
+ */
+function quickCurrenciesOf(s: State): Currency[] {
+  const list: Currency[] = [s.currency]
+  for (const t of s.transactions) {
+    if (t.currency && !list.includes(t.currency)) list.push(t.currency)
+    if (list.length >= 3) break
+  }
+  for (const c of FALLBACK_QUICK) {
+    if (list.length >= 3) break
+    if (!list.includes(c)) list.push(c)
+  }
+  return list.slice(0, 3)
+}
 
 /** Фикс-награда за каждого присоединившегося реферала. */
 export const REF_REWARD = { xp: 25, coins: 10 } as const
@@ -314,6 +345,7 @@ export const useStore = create<State & Actions>()(
       goals: [],
       investments: [],
       garden: { ...EMPTY_GARDEN },
+      quickCurrencies: [],
       homeHeaderMode: 'date',
       homeHeaderGoalId: null,
       events: {},
@@ -493,6 +525,19 @@ export const useStore = create<State & Actions>()(
       markGardenStage: (stage) =>
         set((s) => (s.garden.seenStage === stage ? {} : { garden: { ...s.garden, seenStage: stage } })),
 
+      setQuickCurrency: (slot, code) =>
+        set((s) => {
+          // Пока список пуст, он вычисляется автоматически — фиксируем то, что
+          // человек уже видит, и правим один слот, а не сбрасываем всё.
+          const base = s.quickCurrencies.length > 0 ? [...s.quickCurrencies] : quickCurrenciesOf(s)
+          if (slot < 0 || slot > 2) return {}
+          base[slot] = code
+          // Дубликаты не нужны: если валюта уже стоит в другом слоте — меняем их местами.
+          const twin = base.findIndex((c, i) => c === code && i !== slot)
+          if (twin >= 0) base[twin] = s.quickCurrencies[slot] ?? quickCurrenciesOf(s)[slot]
+          return { quickCurrencies: base.slice(0, 3) }
+        }),
+
       setHomeHeaderMode: (mode) => set({ homeHeaderMode: mode }),
       setHomeHeaderGoalId: (id) => set({ homeHeaderGoalId: id }),
 
@@ -577,7 +622,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 15,
+      version: 16,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
@@ -656,6 +701,10 @@ export const useStore = create<State & Actions>()(
           if (typeof persisted.garden !== 'object' || persisted.garden === null) {
             persisted.garden = { ...EMPTY_GARDEN }
           }
+        }
+        // v16: быстрый выбор валют в форме операции (пусто = автоподбор по данным)
+        if (persisted && version < 16) {
+          if (!Array.isArray(persisted.quickCurrencies)) persisted.quickCurrencies = []
         }
         return persisted
       },
@@ -1063,6 +1112,11 @@ export const selectLogDayStreak: (s: State) => number = memo1((s) => {
 })
 
 /** Сколько накопительных целей полностью достигнуто (для задания «достигни цели»). */
+/** Валюты быстрого выбора в форме: заданные вручную либо подобранные по данным. */
+export const selectQuickCurrencies: (s: State) => Currency[] = memo1((s) =>
+  s.quickCurrencies.length > 0 ? s.quickCurrencies.slice(0, 3) : quickCurrenciesOf(s),
+)
+
 export const selectGoalsReached: (s: State) => number = memo1(
   (s) => s.goals.filter((g) => g.target > 0 && goalSavedAmount(s, g) >= g.target).length,
 )

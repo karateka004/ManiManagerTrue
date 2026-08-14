@@ -1,7 +1,13 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { Calendar, Plus, ChevronDown } from 'lucide-react'
-import { useStore, selectCategoriesByKind, periodBounds, type Transaction } from '../store/transactions'
+import {
+  useStore,
+  selectCategoriesByKind,
+  selectQuickCurrencies,
+  periodBounds,
+  type Transaction,
+} from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
 import { formatMoney, dayjs } from '../lib/format'
 import { useCatName, useT } from '../lib/i18n'
@@ -9,7 +15,6 @@ import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
 
-const MAIN_CURRENCIES: Currency[] = ['USD', 'EUR', 'UAH']
 
 // Редактор категорий — общий ленивый чанк (тот же, что в Settings).
 const CategoryEditor = lazy(() => import('./CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
@@ -84,6 +89,8 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   const allTransactions = useStore((s) => s.transactions)
   const period = useStore((s) => s.period)
   const focusPeriodOn = useStore((s) => s.focusPeriodOn)
+  // Быстрые валюты: настроенные в Settings либо подобранные по данным человека.
+  const quickCurrencies = useStore(selectQuickCurrencies)
   const tr = useT()
   const catName = useCatName()
 
@@ -274,7 +281,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 </button>
                 {currencyOpen && (
                   <div className="flex flex-wrap justify-center gap-1.5">
-                    {MAIN_CURRENCIES.map((code) => (
+                    {quickCurrencies.map((code) => (
                       <button
                         key={code}
                         onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
@@ -293,7 +300,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                         {tr('add.more')}
                       </button>
                     )}
-                    {showMoreCurrencies && CURRENCIES.filter((c) => !MAIN_CURRENCIES.includes(c.code)).map((c) => (
+                    {showMoreCurrencies && CURRENCIES.filter((c) => !quickCurrencies.includes(c.code)).map((c) => (
                       <button
                         key={c.code}
                         onClick={() => { hapticSelect(); setTxCurrency(c.code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}

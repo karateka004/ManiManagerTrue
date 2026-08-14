@@ -126,6 +126,12 @@ const DICT: Dict = {
   'settings.title': { ru: 'Тонкая настройка', en: 'Fine-tuning' },
   'settings.currency': { ru: 'Валюта', en: 'Currency' },
   'settings.more_currencies': { ru: 'Ещё валюты', en: 'More currencies' },
+  'settings.quick_cur': { ru: 'Быстрый выбор валют', en: 'Quick currency picks' },
+  'settings.quick_cur_pick': { ru: 'выберите валюту ниже', en: 'pick a currency below' },
+  'settings.quick_cur_hint': {
+    ru: 'Эти три валюты предлагаются при добавлении операции. Нажмите на слот, чтобы заменить.',
+    en: 'These three are offered when adding an entry. Tap a slot to replace it.',
+  },
   'settings.hide': { ru: 'Скрыть', en: 'Hide' },
   'settings.language': { ru: 'Язык', en: 'Language' },
   'settings.chart_style': { ru: 'Стиль графика', en: 'Chart style' },
