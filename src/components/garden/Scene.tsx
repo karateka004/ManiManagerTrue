@@ -21,24 +21,33 @@ export function sprite(name: string): string {
   return hit[1]
 }
 
-export const SCENE_W = 320
+/**
+ * Размер кадра по стадиям — это «камера»: у ростка она близко, у взрослого
+ * дерева отъезжает. Так масштабируется ВСЯ сцена целиком, и пиксель у дерева,
+ * острова и фона остаётся одного размера.
+ *
+ * Раньше зумилось только дерево — в кадре оказывались два разных разрешения
+ * пикселя, и сцена читалась как склейка из разных игр.
+ */
+const CAMERA: [w: number, h: number][] = [
+  [200, 250], // 0 семечко
+  [200, 250], // 1 росток
+  [210, 260], // 2 кустик
+  [220, 270], // 3 куст
+  [240, 290], // 4 саженец
+  [280, 330], // 5 деревце
+  [320, 360], // 6 молодое дерево
+  [420, 500], // 7 взрослое
+  [420, 500], // 8 финал
+]
+
+const camera = (stage: number) => CAMERA[Math.max(0, Math.min(stage, CAMERA.length - 1))]
 
 /**
- * Кадр растёт вместе с деревом: взрослому нужно небо над кроной, а саженцу
- * высокое поле ни к чему — он в нём теряется. Заодно это читается как «мир
- * стал больше».
+ * Остров (высота ~116px) целиком помещается над нижней кромкой, плюс запас
+ * под HUD — иначе кнопка полива срезает землю.
  */
-const sceneHeight = (stage: number) => (stage >= 7 ? 390 : stage >= 5 ? 330 : 296)
-
-/** Остров высотой ~116px должен целиком помещаться над нижней кромкой. */
-const groundTop = (stage: number) => sceneHeight(stage) - 150
-
-/**
- * Ранние стадии — спрайты по 20–60px, в кадре они теряются. Растим их
- * целочисленным масштабом: пиксель-арт от этого не мылится, а дерево остаётся
- * главным героем экрана на любой стадии.
- */
-const STAGE_ZOOM = [3, 3, 2.5, 2.5, 2, 1.6, 1.15, 0.72, 0.72]
+const groundTop = (h: number) => h - 156
 
 /** Куда ставим редкие элементы: смещение от центра и от линии травы. */
 const DECOR_SPOTS: Record<string, { dx: number; dy: number }> = {
@@ -66,22 +75,21 @@ export function GardenScene({ stage, unlocked, thirsty, streak = 0, watering }: 
   const box = useRef<HTMLDivElement>(null)
   const [k, setK] = useState(1)
 
+  // Мир растёт вместе с деревом: у взрослого остров шире.
+  const ground = stage >= 6 ? 'ground-wide' : 'ground'
+  const [W, H] = camera(stage)
+  const GROUND_TOP = groundTop(H)
+  const GRASS_Y = GROUND_TOP + 12
+
   useEffect(() => {
     const el = box.current
     if (!el) return
-    const apply = () => setK(el.clientWidth / SCENE_W)
+    const apply = () => setK(el.clientWidth / W)
     apply()
     const ro = new ResizeObserver(apply)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
-
-  // Мир растёт вместе с деревом: у взрослого — широкий остров и высокое небо.
-  const ground = stage >= 6 ? 'ground-wide' : 'ground'
-  const zoom = STAGE_ZOOM[stage] ?? 1
-  const H = sceneHeight(stage)
-  const GROUND_TOP = groundTop(stage)
-  const GRASS_Y = GROUND_TOP + 12
+  }, [W])
 
   return (
     <div
@@ -92,10 +100,14 @@ export function GardenScene({ stage, unlocked, thirsty, streak = 0, watering }: 
       <div
         className="absolute left-0 top-0 origin-top-left"
         style={{
-          width: SCENE_W,
+          width: W,
           height: H,
           transform: `scale(${k})`,
           imageRendering: 'pixelated',
+          // Кадр выше и ниже картинок фона: сверху заливаем цветом неба (иначе
+          // крона высокого дерева торчит на фоне страницы), снизу — цветом
+          // подлеска, чтобы под островом не было пустой полосы.
+          background: 'linear-gradient(to bottom, rgb(154,168,205) 0%, rgb(154,168,205) 55%, rgb(110,121,133) 88%)',
           filter: thirsty ? 'saturate(0.82) brightness(0.96)' : undefined,
           transition: 'filter 500ms ease',
         }}
@@ -140,7 +152,7 @@ export function GardenScene({ stage, unlocked, thirsty, streak = 0, watering }: 
           style={{
             left: '50%',
             top: GRASS_Y,
-            transform: `translate(-50%, -100%) scale(${zoom})`,
+            transform: 'translate(-50%, -100%)',
             transformOrigin: 'bottom center',
           }}
         >

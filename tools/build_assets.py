@@ -192,8 +192,8 @@ def build_ground(out: dict) -> None:
     и на стыках появляются полосы.
     """
     atlas = unify(Image.open(TILESET).convert("RGBA"), stone=True)
-    out["ground"] = trim(tiles(atlas, 6, 3, 9, 6))    # 128×116, «капля» под ранние стадии
-    out["ground-wide"] = trim(tiles(atlas, 7, 7, 9, 12))  # широкий массив под взрослое дерево
+    out["ground"] = trim(tiles(atlas, 6, 3, 9, 6))          # «капля» — основной остров
+    out["ground-wide"] = trim(tiles(atlas, 7, 7, 9, 12))    # широкий массив под взрослое дерево
 
 
 def build_background(out: dict) -> None:
