@@ -5,6 +5,8 @@ import {
   useStore,
   selectCategoriesByKind,
   selectQuickCurrencies,
+  selectFrequent,
+  type FrequentEntry,
   type Transaction,
 } from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
@@ -25,6 +27,17 @@ interface Props {
   /** Если задано — форма работает в режиме правки этой операции (а не создания новой). */
   editing?: Transaction | null
 }
+
+/**
+ * Стабильные пустышки для подписок закрытой шторки.
+ *
+ * После первого открытия шторка остаётся смонтированной (чтобы отыграла анимация
+ * закрытия), поэтому её подписки продолжают срабатывать. Если при закрытой шторке
+ * отдавать новые пустые массивы, компонент будет перерисовываться на КАЖДУЮ
+ * записанную операцию впустую. Одна и та же ссылка это исключает.
+ */
+const NO_TX: Transaction[] = []
+const NO_FREQUENT: FrequentEntry[] = []
 
 const OPS = ['+', '−', '×', '÷'] as const
 
@@ -99,9 +112,13 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   const globalCurrency = useStore((s) => s.currency)
   const lastTxCurrency = useStore((s) => s.lastTxCurrency)
   const categories = useStore((s) => selectCategoriesByKind(s, kind))
-  const allTransactions = useStore((s) => s.transactions)
+  // Нужны только для подсказок тегов, то есть лишь при открытой шторке.
+  const allTransactions = useStore((s) => (open ? s.transactions : NO_TX))
   // Быстрые валюты: настроенные в Settings либо подобранные по данным человека.
   const quickCurrencies = useStore(selectQuickCurrencies)
+  // Привычные операции для повтора в один тап. Пока шторка закрыта, они не нужны —
+  // и полный проход по всем операциям тоже.
+  const frequent = useStore((st) => (open ? selectFrequent(st, kind) : NO_FREQUENT))
   const tr = useT()
   const catName = useCatName()
 
@@ -170,6 +187,18 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
     hapticSelect()
     setKind(next)
     setCategoryId('')
+  }
+
+  /**
+   * Подставить частую операцию: сумма, категория и валюта разом. Намеренно НЕ
+   * сохраняем сразу — человек должен увидеть, что подставилось, и подтвердить.
+   * Случайный тап по чипу не должен создавать запись.
+   */
+  const applyFrequent = (f: FrequentEntry) => {
+    hapticTap()
+    setExpr(String(f.amount).replace('.', ','))
+    setCategoryId(f.categoryId)
+    setTxCurrency(f.currency)
   }
 
   const press = (key: string) => {
@@ -346,6 +375,41 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 )}
               </div>
             </div>
+
+            {/* Повтор частых операций — только при создании: в правке подставлять
+                чужую сумму поверх редактируемой было бы неожиданно. */}
+            {!editing && frequent.length > 0 && (
+              <div className="pb-3 pt-1">
+                <div className="px-6 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+                  {tr('add.frequent')}
+                </div>
+                <div className="no-scrollbar flex gap-2 overflow-x-auto px-6">
+                  {frequent.map((f) => {
+                    const cat = categories.find((c) => c.id === f.categoryId)
+                    if (!cat) return null // категорию удалили — подсказку не показываем
+                    return (
+                      <button
+                        key={`${f.categoryId}|${f.amount}|${f.currency}`}
+                        onClick={() => applyFrequent(f)}
+                        className="flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 transition-transform active:scale-95"
+                        style={{ background: cat.color + '1F' }}
+                      >
+                        <span
+                          className="flex h-7 w-7 items-center justify-center rounded-full"
+                          style={{ background: cat.color + '2E', color: cat.color }}
+                        >
+                          <CategoryIcon id={cat.icon} size={15} />
+                        </span>
+                        <span className="text-xs font-semibold text-ink">{catName(cat.id, cat.name)}</span>
+                        <span className="tabular text-xs font-bold text-ink-muted">
+                          {formatMoney(f.amount, f.currency)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Note */}
             <div className="px-6 pb-2">

@@ -1311,6 +1311,109 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
  * Расход текущего календарного месяца в разрезе категорий — основа вкладки
  * «Лимиты». Не зависит от выбранного периода просмотра (лимиты всегда месячные).
  */
+/* ---------- Быстрый повтор частых операций ---------- */
+
+export interface FrequentEntry {
+  categoryId: string
+  amount: number
+  currency: Currency
+  /** Сколько раз такая пара встретилась в окне — по нему и сортируем. */
+  count: number
+}
+
+/** Окно поиска привычек и порог, ниже которого пара — просто случайная запись. */
+const FREQUENT_WINDOW_DAYS = 90
+const FREQUENT_MIN_COUNT = 2
+const FREQUENT_MAX = 4
+
+/**
+ * Частые операции: пары «категория + сумма», которые человек записывает
+ * регулярно (кофе, метро, обед). Нужны для повтора в один тап — самый частый
+ * сценарий в трекере расходов.
+ *
+ * Совпадение суммы требуется точное: привычные траты обычно круглые, а нестрогое
+ * сравнение давало бы мусорные подсказки. Пары, встретившиеся один раз, не
+ * показываем — это не привычка.
+ *
+ * Берём `s.transactions`, а не `activeTransactions`: подсказки должны отражать
+ * реальные привычки человека. В демо-режиме их просто не будет, и это честнее,
+ * чем предлагать повторить выдуманную операцию.
+ *
+ * Окно считается от `Date.now()` на момент пересчёта; результат кэшируется до
+ * следующего изменения операций. За сессию граница окна не сдвигается заметно.
+ */
+export const selectFrequent: (s: State, kind: CategoryKind) => FrequentEntry[] = memo2(
+  (s, kind) => {
+    const since = Date.now() - FREQUENT_WINDOW_DAYS * 864e5
+    const map = new Map<string, FrequentEntry & { last: number }>()
+    for (const t of s.transactions) {
+      if (t.type !== kind) continue
+      const at = Date.parse(t.date)
+      if (!Number.isFinite(at) || at < since) continue
+      const cur = t.currency ?? s.currency
+      const key = `${t.categoryId}|${t.amount}|${cur}`
+      const hit = map.get(key)
+      if (hit) {
+        hit.count += 1
+        if (at > hit.last) hit.last = at
+      } else {
+        map.set(key, { categoryId: t.categoryId, amount: t.amount, currency: cur, count: 1, last: at })
+      }
+    }
+    return [...map.values()]
+      .filter((e) => e.count >= FREQUENT_MIN_COUNT)
+      .sort((a, b) => b.count - a.count || b.last - a.last)
+      .slice(0, FREQUENT_MAX)
+      .map(({ categoryId, amount, currency, count }) => ({ categoryId, amount, currency, count }))
+  },
+  (s) => [s.transactions, s.currency],
+)
+
+/* ---------- Остаток на сегодня ---------- */
+
+export interface DailyAllowance {
+  /** Сколько можно тратить в день, чтобы уложиться в остаток месяца. */
+  perDay: number
+  /** Сколько ещё можно потратить сегодня (может быть отрицательным). */
+  leftToday: number
+  spentToday: number
+  daysLeft: number
+}
+
+/**
+ * Дневной лимит из месячного бюджета. Пересчитывается каждый день от ОСТАТКА
+ * бюджета, а не делит бюджет поровну изначально: перерасход сегодня ужимает
+ * завтрашний лимит, экономия — расширяет. Это и делает подсказку живой.
+ *
+ * `null`, когда месячный бюджет не задан — тогда показывать нечего.
+ */
+export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
+  (s) => {
+    if (!(s.monthlyBudget > 0)) return null
+    const now = dayjs()
+    const monthStart = +now.startOf('month')
+    const monthEnd = +now.startOf('month').add(1, 'month')
+    const dayStart = +now.startOf('day')
+
+    let spentMonth = 0
+    let spentToday = 0
+    for (const t of activeTransactions(s)) {
+      if (t.type !== 'expense') continue
+      const at = Date.parse(t.date)
+      if (at < monthStart || at >= monthEnd) continue
+      spentMonth += t.amount
+      if (at >= dayStart) spentToday += t.amount
+    }
+
+    // Сегодняшний день тоже считается оставшимся — иначе в последний день месяца
+    // получилось бы деление на ноль.
+    const daysLeft = Math.max(1, now.daysInMonth() - now.date() + 1)
+    const perDay = Math.max(0, (s.monthlyBudget - spentMonth + spentToday) / daysLeft)
+    return { perDay, leftToday: perDay - spentToday, spentToday, daysLeft }
+  },
+  (s) => [activeTransactions(s), s.monthlyBudget],
+)
+
 export const selectCurrentMonthExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
   const start = +dayjs().startOf('month')
   const end = +dayjs().startOf('month').add(1, 'month')

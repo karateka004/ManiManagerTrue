@@ -340,6 +340,7 @@ const DICT: Dict = {
   'charts.no_data': { ru: 'Нет данных за период', en: 'No data for this period' },
 
   /* Добавление операции */
+  'add.frequent': { ru: 'Повторить', en: 'Repeat' },
   'add.more': { ru: 'Ещё', en: 'More' },
   'add.note_ph': { ru: 'Заметка (необязательно)', en: 'Note (optional)' },
   'add.today': { ru: 'Сегодня', en: 'Today' },
@@ -673,6 +674,12 @@ const DICT: Dict = {
   'home.cap_date': { ru: 'Дата', en: 'Date' },
   'home.plan_left': { ru: 'Бюджет: осталось {left} из {budget}', en: 'Budget: {left} left of {budget}' },
   'home.plan_over': { ru: 'Бюджет превышен на {over}', en: 'Over budget by {over}' },
+  /* Остаток на сегодня (дневной лимит из месячного бюджета) */
+  'home.today_kicker': { ru: 'На сегодня', en: 'For today' },
+  'home.today_left': { ru: 'Можно ещё {left}', en: '{left} still available' },
+  'home.today_over': { ru: 'Перерасход {over}', en: 'Over by {over}' },
+  'home.today_spent': { ru: 'Потрачено {spent} из {perDay}', en: 'Spent {spent} of {perDay}' },
+  'home.today_days': { ru: 'осталось дней: {days}', en: '{days} days left' },
 
   /* Плашка демо-режима */
   'demo.banner': { ru: 'Демо-режим: показаны примерные данные', en: 'Demo mode: sample data shown' },

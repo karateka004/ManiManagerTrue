@@ -12,6 +12,7 @@ import {
   useStore,
   selectNetBalanceByCurrency,
   selectCurrentMonthExpense,
+  selectDailyAllowance,
   type Goal,
   type Transaction,
 } from '../store/transactions'
@@ -53,6 +54,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx }: Prop
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
+      <TodayBudget />
       <PlanningRow onOpen={openPlanning} />
       <BudgetAlert />
       <CategoryList onEditTx={onEditTx} />
@@ -63,6 +65,59 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx }: Prop
     </div>
   )
 })
+
+/**
+ * Сколько ещё можно потратить сегодня.
+ *
+ * Месячный бюджет сам по себе абстрактен: «осталось 40 000 до конца месяца»
+ * ничего не говорит о сегодняшнем дне. Дневной лимит пересчитывается каждый день
+ * от ОСТАТКА (см. selectDailyAllowance), поэтому перерасход сразу ужимает
+ * завтрашний лимит, а экономия — расширяет.
+ *
+ * Показывается только когда бюджет задан — иначе на Главной висел бы пустой блок.
+ */
+function TodayBudget() {
+  const allowance = useStore(selectDailyAllowance)
+  const currency = useStore((s) => s.currency)
+  const t = useT()
+  if (!allowance) return null
+
+  const { perDay, leftToday, spentToday, daysLeft } = allowance
+  const over = leftToday < 0
+  // Копейки в дневном лимите только шумят — округляем до целых единиц валюты.
+  const money = (v: number) => formatMoney(Math.round(v), currency)
+  const ratio = perDay > 0 ? Math.min(1, spentToday / perDay) : 1
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="card px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+            {t('home.today_kicker')}
+          </span>
+          <span className="text-[11px] font-medium text-ink-subtle">
+            {t('home.today_days', { days: daysLeft })}
+          </span>
+        </div>
+
+        <div className={`mt-0.5 tabular text-lg font-bold ${over ? 'text-expense-deep' : 'text-ink'}`}>
+          {over ? t('home.today_over', { over: money(-leftToday) }) : t('home.today_left', { left: money(leftToday) })}
+        </div>
+
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+          <div
+            className={`h-full rounded-full transition-[width] duration-500 ${over ? 'bg-expense' : 'bg-brand-500'}`}
+            style={{ width: `${ratio * 100}%` }}
+          />
+        </div>
+
+        <div className="mt-1 tabular text-[11px] text-ink-subtle">
+          {t('home.today_spent', { spent: money(spentToday), perDay: money(perDay) })}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Компактный вход в Планирование под карточкой баланса. Подсказка живая:
