@@ -369,6 +369,27 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
     if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) s[key] = {}
   }
 
+  // Поля-объекты, порча которых не роняет приложение, но даёт пустой экран или
+  // бросок при обращении к полю. Удаляем ключ — merge подставит значение по
+  // умолчанию из текущего состояния.
+  const PERIOD_MODES = ['day', 'week', 'month', 'year', 'all', 'range']
+  const period = s.period as Record<string, unknown> | null | undefined
+  if (
+    period !== undefined &&
+    (!period ||
+      typeof period !== 'object' ||
+      Array.isArray(period) ||
+      typeof period.mode !== 'string' ||
+      !PERIOD_MODES.includes(period.mode) ||
+      typeof period.anchor !== 'string')
+  ) {
+    delete s.period
+  }
+  for (const key of ['equipped', 'streak']) {
+    const v = s[key]
+    if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) delete s[key]
+  }
+
   // Счётчики прогресса: отрицательные и нечисловые ломают арифметику уровней.
   if (s.coins !== undefined) s.coins = clampNumber(s.coins, 0, 1e9, 0)
   if (s.bonusXp !== undefined) s.bonusXp = clampNumber(s.bonusXp, 0, 1e9, 0)
