@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.30.0'
+export const APP_VERSION = '1.31.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.31.0',
+    date: '2026-08-18',
+    title: { ru: 'Поиск по операциям', en: 'Transaction search' },
+    items: [
+      {
+        icon: '🔍',
+        text: {
+          ru: 'В шапке Главной появился поиск. Находит по заметке, названию категории, тегу и сумме',
+          en: 'Search now lives in the Home header. It finds transactions by note, category name, tag or amount',
+        },
+      },
+      {
+        icon: '🗃',
+        text: {
+          ru: 'Ищет по всей истории, а не только за выбранный период — платёж годичной давности найдётся сразу',
+          en: 'It searches your whole history, not just the selected period — a payment from a year ago shows up right away',
+        },
+      },
+      {
+        icon: '✏',
+        text: {
+          ru: 'Найденную операцию можно открыть на правку одним касанием',
+          en: 'Tap a result to open it for editing',
+        },
+      },
+    ],
+  },
   {
     version: '1.30.0',
     date: '2026-08-18',
