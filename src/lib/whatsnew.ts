@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.29.0'
+export const APP_VERSION = '1.30.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.30.0',
+    date: '2026-08-18',
+    title: { ru: 'Повтор трат и лимит на день', en: 'Repeat spending and a daily limit' },
+    items: [
+      {
+        icon: '↻',
+        text: {
+          ru: 'В форме появились подсказки «Повторить»: привычные траты вроде кофе или метро записываются в два касания вместо шести',
+          en: 'The form now suggests Repeat: habitual spending like coffee or transit takes two taps instead of six',
+        },
+      },
+      {
+        icon: '📅',
+        text: {
+          ru: 'На Главной видно, сколько можно потратить именно сегодня. Лимит пересчитывается каждый день: перерасход ужимает завтрашний, экономия расширяет',
+          en: 'Home now shows how much you can spend today. The limit recalculates daily: overspending shrinks tomorrow, saving expands it',
+        },
+      },
+      {
+        icon: '⌨',
+        text: {
+          ru: 'Клавиатура суммы стала понятнее: у клавиш появились плашки, а калькулятор отделён от цифр',
+          en: 'The amount keypad is clearer: keys now have surfaces and the calculator is visually separated from the digits',
+        },
+      },
+    ],
+  },
   {
     version: '1.29.0',
     date: '2026-08-18',
