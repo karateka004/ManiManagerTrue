@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.28.0'
+export const APP_VERSION = '1.29.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.29.0',
+    date: '2026-08-18',
+    title: { ru: 'Приложение стало заметно быстрее', en: 'Noticeably faster app' },
+    items: [
+      {
+        icon: '⚡',
+        text: {
+          ru: 'Запись операций подряд больше не подтормаживает: десять записей подряд теперь идут в несколько раз легче, даже когда в истории уже тысячи операций',
+          en: 'Recording transactions one after another no longer stutters — ten in a row are several times lighter, even with thousands already in your history',
+        },
+      },
+      {
+        icon: '🛡',
+        text: {
+          ru: 'Рейтинг защищён от накрутки: опыт теперь проверяется по реальным данным, а не принимается на веру',
+          en: 'The leaderboard is protected from cheating: XP is now verified against real data instead of being taken on trust',
+        },
+      },
+    ],
+  },
   {
     version: '1.28.0',
     date: '2026-08-18',

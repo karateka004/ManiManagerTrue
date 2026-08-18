@@ -18,7 +18,7 @@
  * Вне Telegram (обычный браузер, превью) синк выключен — приложение работает
  * локально, как раньше.
  */
-import { useStore } from '../store/transactions'
+import { useStore, flushPersist } from '../store/transactions'
 import { pullCloud, pushCloud, isBackendConfigured } from './api'
 import { tg } from './telegram'
 
@@ -104,13 +104,20 @@ let hadDataThisSession = false
 
 function schedulePush(): void {
   if (adopting) return
-  if (txCount(readBlob()) > 0) hadDataThisSession = true
+  // Флаг «данные в этой сессии были» берём из стора в памяти, а не из блоба:
+  // этот код выполняется на КАЖДОЕ изменение стора, а разбор блоба на сотнях
+  // операций — сотни килобайт JSON.parse за тап. Проверяем только пока флаг
+  // не взведён — дальше он всё равно не меняется.
+  if (!hadDataThisSession && useStore.getState().transactions.length > 0) {
+    hadDataThisSession = true
+  }
   if (pushTimer) clearTimeout(pushTimer)
   pushTimer = setTimeout(flushPush, PUSH_DEBOUNCE)
 }
 
 async function flushPush(): Promise<void> {
   pushTimer = null
+  flushPersist() // на диске должен лежать актуальный снимок, а не отложенный
   const blob = readBlob()
   if (!blob) return
 
@@ -159,6 +166,7 @@ export async function initCloudSync(): Promise<void> {
 
   try {
     const localAt = getLocalUpdatedAt()
+    flushPersist() // читаем блоб напрямую — сначала дожидаемся отложенной записи
     const localTx = txCount(readBlob())
     const cloudTx = cloud && isValidBlob(cloud.blob) ? txCount(cloud.blob) : 0
     cloudTxAtStart = Math.max(0, cloudTx)
@@ -172,6 +180,7 @@ export async function initCloudSync(): Promise<void> {
     if (cloud && isValidBlob(cloud.blob) && (cloudNewer || localEmpty)) {
       // Облако новее и блоб валиден — принимаем его.
       adopting = true
+      flushPersist() // отложенная запись не должна «догнать» и затереть облако
       const prev = readBlob() // снимок локального ДО перезаписи (для отката)
       try {
         localStorage.setItem(PERSIST_KEY, cloud.blob)

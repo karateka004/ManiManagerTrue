@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import {
   useStore,
@@ -17,11 +17,13 @@ import type { Currency } from '../lib/currencies'
 import { hapticTap, hapticSelect } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 
-export function CategoryList({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
+export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
   const expenses = useStore((s) => selectByCategoryAccount(s, 'expense'))
   const incomes = useStore((s) => selectByCategoryAccount(s, 'income'))
   const budgets = useStore(selectBudgetStatuses)
-  const budgetByCat = new Map(budgets.map((b) => [b.categoryId, b]))
+  // Пересобираем карту только когда изменились сами бюджеты, иначе каждая строка
+  // получала бы новый объект budget и memo на ней не срабатывал бы.
+  const budgetByCat = useMemo(() => new Map(budgets.map((b) => [b.categoryId, b])), [budgets])
   const t = useT()
 
   if (expenses.length === 0 && incomes.length === 0) {
@@ -48,7 +50,7 @@ export function CategoryList({ onEditTx }: { onEditTx: (t: Transaction) => void 
       <div className="h-32" />
     </div>
   )
-}
+})
 
 function SectionHeader({ title, cats, kind }: { title: string; cats: CategoryAggregate[]; kind: 'income' | 'expense' }) {
   // Суммы по валютам: в режиме «Все» категории могут быть в разных валютах —
@@ -73,10 +75,8 @@ function SectionHeader({ title, cats, kind }: { title: string; cats: CategoryAgg
   )
 }
 
-function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget?: BudgetStatus; onEditTx: (t: Transaction) => void }) {
+const CategoryRow = memo(function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget?: BudgetStatus; onEditTx: (t: Transaction) => void }) {
   const [open, setOpen] = useState(false)
-  const transactions = useStore((s) => selectTransactionsByCategory(s, cat.categoryId))
-  const removeTransaction = useStore((s) => s.removeTransaction)
   const currency = useStore(selectAnalyticsCurrency)
   const tr = useT()
   const catName = useCatName()
@@ -158,42 +158,66 @@ function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="border-t border-surface-sunken bg-surface-sunken/30 px-4 py-2">
-              {transactions.map((t) => (
-                <div key={t.id} className="flex items-center justify-between py-2">
-                  <button
-                    onClick={() => { hapticSelect(); onEditTx(t) }}
-                    className="flex flex-1 items-center justify-between gap-3 text-left active:opacity-60"
-                    aria-label={tr('common.edit')}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="h-2 w-2 rounded-full" style={{ background: cat.color }} />
-                      <div>
-                        {t.note && <div className="text-sm text-ink">{t.note}</div>}
-                        <div className="text-xs text-ink-subtle">{formatShortDate(t.date)}</div>
-                      </div>
-                    </div>
-                    <span className={`tabular text-sm font-semibold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-                      {cat.kind === 'income' ? '+' : '−'} {formatMoney(t.amount, t.currency ?? currency).replace('−', '')}
-                    </span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      hapticTap('medium')
-                      removeTransaction(t.id)
-                    }}
-                    className="ml-3 text-ink-subtle/60 text-lg active:text-expense"
-                    aria-label={tr('common.delete')}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
+            <RowTransactions cat={cat} currency={currency} onEditTx={onEditTx} />
           </m.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+})
+
+/**
+ * Список операций раскрытой категории. Вынесен отдельным компонентом ради
+ * подписки: пока строка свёрнута, он не смонтирован — и селектор, проходящий по
+ * всем операциям периода, для неё не считается. Раньше эта работа выполнялась
+ * для КАЖДОЙ категории на каждое изменение стора, даже для свёрнутых.
+ */
+function RowTransactions({
+  cat,
+  currency,
+  onEditTx,
+}: {
+  cat: CategoryAggregate
+  currency: Currency
+  onEditTx: (t: Transaction) => void
+}) {
+  const transactions = useStore((s) => selectTransactionsByCategory(s, cat.categoryId))
+  const removeTransaction = useStore((s) => s.removeTransaction)
+  const tr = useT()
+
+  return (
+    <div className="border-t border-surface-sunken bg-surface-sunken/30 px-4 py-2">
+      {transactions.map((t) => (
+        <div key={t.id} className="flex items-center justify-between py-2">
+          <button
+            onClick={() => { hapticSelect(); onEditTx(t) }}
+            className="flex flex-1 items-center justify-between gap-3 text-left active:opacity-60"
+            aria-label={tr('common.edit')}
+          >
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full" style={{ background: cat.color }} />
+              <div>
+                {t.note && <div className="text-sm text-ink">{t.note}</div>}
+                <div className="text-xs text-ink-subtle">{formatShortDate(t.date)}</div>
+              </div>
+            </div>
+            <span className={`tabular text-sm font-semibold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
+              {cat.kind === 'income' ? '+' : '−'} {formatMoney(t.amount, t.currency ?? currency).replace('−', '')}
+            </span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              hapticTap('medium')
+              removeTransaction(t.id)
+            }}
+            className="ml-3 text-ink-subtle/60 text-lg active:text-expense"
+            aria-label={tr('common.delete')}
+          >
+            ×
+          </button>
+        </div>
+      ))}
     </div>
   )
 }

@@ -168,6 +168,13 @@ interface State {
 interface Actions {
   addTransaction: (t: Omit<Transaction, 'id'>) => void
   updateTransaction: (id: string, patch: Partial<Omit<Transaction, 'id'>>) => void
+  /**
+   * Записать операцию из формы одним изменением стора. `editingId` = null —
+   * создание новой, иначе правка существующей. См. реализацию: раньше форма
+   * дёргала три действия подряд, и одно сохранение стоило три полных прохода
+   * подписчиков и три записи на диск.
+   */
+  commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => void
   removeTransaction: (id: string) => void
   setPeriodMode: (mode: PeriodMode) => void
   shiftPeriod: (delta: number) => void
@@ -302,6 +309,152 @@ const UNIT: Record<Exclude<PeriodMode, 'all' | 'range'>, dayjs.ManipulateType> =
   year: 'year',
 }
 
+/* ---------- Нормализация данных при загрузке ---------- */
+
+/**
+ * localStorage целиком доступен пользователю: снимок можно испортить руками или
+ * получить битым после сбоя записи. Раньше он попадал в приложение как есть — и
+ * мог уронить экран, а через облачный синк уехать на другие устройства.
+ *
+ * Главный принцип здесь — НЕ ТЕРЯТЬ данные. Числа чиним (зажимаем в разумные
+ * границы), контейнеры не того типа заменяем пустыми, а выбрасываем только те
+ * операции, с которыми экран всё равно не отрисуется: без id, без категории,
+ * с нечисловой суммой. Всё остальное проходит как есть.
+ *
+ * Локальную накрутку монет это не предотвращает (данные принадлежат человеку) —
+ * от неё защищает потолок XP на воркере, см. handleProfile.
+ */
+const MAX_MONEY = 1e15
+
+function clampNumber(x: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(x)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+function isUsableTransaction(t: unknown): boolean {
+  if (!t || typeof t !== 'object') return false
+  const x = t as Record<string, unknown>
+  return (
+    typeof x.id === 'string' &&
+    (x.type === 'income' || x.type === 'expense') &&
+    typeof x.categoryId === 'string' &&
+    typeof x.date === 'string' &&
+    Number.isFinite(Number(x.amount))
+  )
+}
+
+function sanitizePersisted(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {}
+  const s = { ...(raw as Record<string, unknown>) }
+
+  if (Array.isArray(s.transactions)) {
+    s.transactions = (s.transactions as unknown[])
+      .filter(isUsableTransaction)
+      .map((t) => {
+        const x = t as Record<string, unknown>
+        const amount = clampNumber(x.amount, 0, MAX_MONEY, 0)
+        return amount === x.amount ? x : { ...x, amount }
+      })
+  } else if (s.transactions !== undefined) {
+    s.transactions = []
+  }
+
+  // Контейнеры: если тип не тот, приложение упадёт на первом же .map/.filter.
+  for (const key of ['customCategories', 'goals', 'investments', 'owned', 'quickCurrencies', 'claimedQuests']) {
+    if (s[key] !== undefined && !Array.isArray(s[key])) s[key] = []
+  }
+  for (const key of ['budgets', 'events', 'questClaims']) {
+    const v = s[key]
+    if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) s[key] = {}
+  }
+
+  // Счётчики прогресса: отрицательные и нечисловые ломают арифметику уровней.
+  if (s.coins !== undefined) s.coins = clampNumber(s.coins, 0, 1e9, 0)
+  if (s.bonusXp !== undefined) s.bonusXp = clampNumber(s.bonusXp, 0, 1e9, 0)
+  if (s.rewardedReferrals !== undefined) s.rewardedReferrals = clampNumber(s.rewardedReferrals, 0, 1e9, 0)
+  if (s.monthlyBudget !== undefined) s.monthlyBudget = clampNumber(s.monthlyBudget, 0, MAX_MONEY, 0)
+
+  return s
+}
+
+/* ---------- Отложенная запись persist ---------- */
+
+/**
+ * Хранилище для persist с отложенной записью.
+ *
+ * zustand по умолчанию сериализует весь стор в localStorage на КАЖДОЕ изменение,
+ * синхронно и в главном потоке. При сотнях операций блоб весит сотни килобайт, и
+ * несколько изменений подряд превращаются в несколько полных сериализаций.
+ *
+ * Здесь запись откладывается на PERSIST_DELAY, а изменения внутри окна просто
+ * заменяют то, что будет записано. Это троттлинг, а НЕ debounce: окно не
+ * продлевается новыми изменениями, поэтому задержка записи ограничена сверху и
+ * поток непрерывных правок не может отложить запись бесконечно.
+ *
+ * Риск потерять последние правки при закрытии закрыт принудительным сбросом на
+ * visibilitychange/pagehide (ниже) и вызовом flushPersist() из облачного синка.
+ */
+const PERSIST_DELAY = 400
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+let persistPending: { name: string; value: string } | null = null
+
+function writePersist(): void {
+  persistTimer = null
+  const pending = persistPending
+  persistPending = null
+  if (!pending) return
+  try {
+    localStorage.setItem(pending.name, pending.value)
+  } catch {
+    /* приватный режим или кончилось место — данные остаются в памяти */
+  }
+}
+
+/**
+ * Немедленно записать отложенное. Вызывать перед чтением блоба напрямую из
+ * localStorage (облачный синк) и перед выгрузкой страницы.
+ */
+export function flushPersist(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  writePersist()
+}
+
+const throttledStorage = {
+  getItem: (name: string): string | null => {
+    // Ещё не записанное значение свежее того, что лежит на диске.
+    if (persistPending && persistPending.name === name) return persistPending.value
+    try {
+      return localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    persistPending = { name, value }
+    if (!persistTimer) persistTimer = setTimeout(writePersist, PERSIST_DELAY)
+  },
+  removeItem: (name: string): void => {
+    if (persistPending && persistPending.name === name) persistPending = null
+    try {
+      localStorage.removeItem(name)
+    } catch {
+      /* нечего удалять */
+    }
+  },
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPersist()
+  })
+  window.addEventListener('pagehide', flushPersist)
+}
+
 export const useStore = create<State & Actions>()(
   persist(
     (set, get) => ({
@@ -342,6 +495,26 @@ export const useStore = create<State & Actions>()(
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
 
+      commitTransaction: (t, editingId) =>
+        set((s) => {
+          const patch: Partial<State> = {}
+          if (editingId) {
+            patch.transactions = s.transactions.map((x) => (x.id === editingId ? { ...x, ...t } : x))
+          } else {
+            patch.transactions = [{ ...t, id: cuid() }, ...s.transactions]
+            if (t.currency) patch.lastTxCurrency = t.currency
+          }
+          // Операция «задним числом» может выпасть за текущий период просмотра —
+          // тогда сдвигаем период на её дату, иначе запись пропала бы из виду.
+          const x = Date.parse(t.date)
+          const { start, end } = periodBounds(s.period)
+          if (x < +start || x >= +end) {
+            const next = focusedPeriod(s.period, t.date)
+            if (next) patch.period = next
+          }
+          return patch
+        }),
+
       setPeriodMode: (mode) =>
         set((s) => {
           const events = bumpEvent(s.events, 'use_period')
@@ -363,12 +536,8 @@ export const useStore = create<State & Actions>()(
         set(() => ({ period: { mode: 'range', anchor: todayISO(), rangeStart: start, rangeEnd: end } })),
       focusPeriodOn: (dateISO) =>
         set((s) => {
-          const p = s.period
-          if (p.mode === 'all') return {} // «За всё время» и так показывает всё
-          const anchor = dayjs(dateISO).format('YYYY-MM-DD')
-          // Для диапазона переключаемся на месяц нужной даты — иначе операция «потеряется».
-          if (p.mode === 'range') return { period: { mode: 'month', anchor } }
-          return { period: { ...p, anchor } }
+          const next = focusedPeriod(s.period, dateISO)
+          return next ? { period: next } : {}
         }),
 
       setCurrency: (c) => set({ currency: c }),
@@ -566,7 +735,9 @@ export const useStore = create<State & Actions>()(
     {
       name: 'finance-mini-app:v1',
       version: 16,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => throttledStorage),
+      // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
+      merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
         if (persisted && version < 2) {
@@ -651,6 +822,18 @@ export const useStore = create<State & Actions>()(
 
 /* ---------- Период ---------- */
 
+/**
+ * Период, сдвинутый так, чтобы указанная дата в него попала.
+ * `null` — сдвигать не нужно (режим «За всё время» и так показывает всё).
+ */
+function focusedPeriod(p: Period, dateISO: string): Period | null {
+  if (p.mode === 'all') return null
+  const anchor = dayjs(dateISO).format('YYYY-MM-DD')
+  // Для диапазона переключаемся на месяц нужной даты — иначе операция «потеряется».
+  if (p.mode === 'range') return { mode: 'month', anchor }
+  return { ...p, anchor }
+}
+
 export function periodBounds(p: Period): { start: Dayjs; end: Dayjs } {
   if (p.mode === 'all') {
     return { start: dayjs('1970-01-01'), end: dayjs('2100-01-01') }
@@ -682,33 +865,149 @@ export function periodLabel(p: Period): string {
   }
 }
 
-/* ---------- Селекторы (мемоизация по ссылке state через WeakMap) ---------- */
+/* ---------- Селекторы ---------- */
 
-function memo1<R>(fn: (s: State) => R): (s: State) => R {
-  const cache = new WeakMap<State, R>()
+/*
+ * Как устроена мемоизация и зачем именно так.
+ *
+ * Раньше результат кэшировался в WeakMap по ссылке на объект состояния. Но
+ * zustand создаёт НОВЫЙ объект состояния на каждое изменение, поэтому кэш
+ * промахивался всегда: любое изменение (хоть смена темы) заставляло селекторы
+ * строить новые массивы, `useStore` видел новую ссылку и будил все подписанные
+ * компоненты. Отсюда полная перерисовка дерева на каждую записанную операцию.
+ *
+ * Теперь два уровня защиты:
+ *
+ *  1. `deps` (не обязателен) — если перечисленные зависимости не изменились,
+ *     тело селектора вообще не выполняется. Экономит вычисления.
+ *  2. СОХРАНЕНИЕ ССЫЛКИ — после пересчёта результат сравнивается с предыдущим,
+ *     и при совпадении по содержимому отдаётся СТАРАЯ ссылка. Компонент не
+ *     перерисовывается.
+ *
+ * Второй уровень важнее и надёжнее первого: он не зависит от того, правильно ли
+ * перечислены зависимости. Даже если `deps` где-то указаны неполно или вовсе
+ * отсутствуют, селектор всё равно честно пересчитается — устаревшие данные
+ * показать невозможно. `deps` — только оптимизация поверх.
+ */
+
+/** Совпадают ли списки зависимостей (поэлементно, по ссылке). */
+function sameDeps(a: readonly unknown[] | undefined, b: readonly unknown[]): boolean {
+  if (!a || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false
+  return true
+}
+
+/** Равенство объектов по собственным полям (один уровень). */
+function sameFields(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  const ka = Object.keys(a as object)
+  const kb = Object.keys(b as object)
+  if (ka.length !== kb.length) return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  for (const k of ka) if (!Object.is(ra[k], rb[k])) return false
+  return true
+}
+
+/**
+ * Одинаков ли результат селектора по содержимому.
+ *
+ * Глубина — два уровня, и этого ровно хватает: массивы транзакций состоят из тех
+ * же самых объектов (сравнение по ссылке отрабатывает сразу), а агрегаты
+ * категорий каждый раз собираются заново, но из тех же значений — их сравниваем
+ * по полям. Глубже не идём, чтобы стоимость сравнения оставалась линейной.
+ */
+function sameResult(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!sameFields(a[i], b[i])) return false
+    return true
+  }
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  // Словарь вида { RUB: { income, expense, balance } } — значения тоже сравниваем
+  // по полям, иначе вложенные объекты всегда «разные» и ссылка не переиспользуется.
+  const ka = Object.keys(a as object)
+  const kb = Object.keys(b as object)
+  if (ka.length !== kb.length) return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  for (const k of ka) if (!sameFields(ra[k], rb[k])) return false
+  return true
+}
+
+function memo1<R>(fn: (s: State) => R, deps?: (s: State) => readonly unknown[]): (s: State) => R {
+  let lastState: State | undefined
+  let lastDeps: readonly unknown[] | undefined
+  let last: R
+  let filled = false
+
   return (s) => {
-    const hit = cache.get(s)
-    if (hit !== undefined) return hit
-    const result = fn(s)
-    cache.set(s, result)
-    return result
+    if (filled) {
+      if (lastState === s) return last
+      if (deps) {
+        const d = deps(s)
+        if (sameDeps(lastDeps, d)) {
+          lastState = s
+          return last
+        }
+        lastDeps = d
+      }
+    } else if (deps) {
+      lastDeps = deps(s)
+    }
+    const next = fn(s)
+    lastState = s
+    if (filled && sameResult(last, next)) return last
+    last = next
+    filled = true
+    return last
   }
 }
 
-function memo2<P, R>(fn: (s: State, p: P) => R): (s: State, p: P) => R {
-  const cache = new WeakMap<State, Map<P, R>>()
+/**
+ * То же для селекторов с параметром. Кэш — обычный Map по параметру: значения
+ * параметров у нас перечислимы и их немного (вид операции, id категории,
+ * гранулярность), так что расти ему некуда.
+ */
+function memo2<P, R>(
+  fn: (s: State, p: P) => R,
+  deps?: (s: State, p: P) => readonly unknown[],
+): (s: State, p: P) => R {
+  interface Entry {
+    state?: State
+    deps?: readonly unknown[]
+    value: R
+    filled: boolean
+  }
+  const cache = new Map<P, Entry>()
+
   return (s, p) => {
-    let inner = cache.get(s)
-    if (inner) {
-      const hit = inner.get(p)
-      if (hit !== undefined) return hit
-    } else {
-      inner = new Map()
-      cache.set(s, inner)
+    let e = cache.get(p)
+    if (!e) {
+      e = { value: undefined as R, filled: false }
+      cache.set(p, e)
     }
-    const result = fn(s, p)
-    inner.set(p, result)
-    return result
+    if (e.filled) {
+      if (e.state === s) return e.value
+      if (deps) {
+        const d = deps(s, p)
+        if (sameDeps(e.deps, d)) {
+          e.state = s
+          return e.value
+        }
+        e.deps = d
+      }
+    } else if (deps) {
+      e.deps = deps(s, p)
+    }
+    const next = fn(s, p)
+    e.state = s
+    if (e.filled && sameResult(e.value, next)) return e.value
+    e.value = next
+    e.filled = true
+    return e.value
   }
 }
 
@@ -717,29 +1016,36 @@ function memo2<P, R>(fn: (s: State, p: P) => R): (s: State, p: P) => R {
  * демо-режим, иначе реальные данные пользователя. Профиль/уровни/задания
  * читают `s.transactions` напрямую и демо не затрагивает их.
  */
-export const activeTransactions: (s: State) => Transaction[] = memo1((s) =>
-  s.demoMode ? demoTransactions() : s.transactions,
+export const activeTransactions: (s: State) => Transaction[] = memo1(
+  (s) => (s.demoMode ? demoTransactions() : s.transactions),
+  (s) => [s.demoMode, s.transactions],
 )
 
 /** Все категории: встроенные + пользовательские. */
-export const selectAllCategories: (s: State) => Category[] = memo1((s) => [
-  ...DEFAULT_CATEGORIES,
-  ...s.customCategories,
-])
-
-export const selectCategoriesByKind: (s: State, kind: CategoryKind) => Category[] = memo2((s, kind) =>
-  selectAllCategories(s).filter((c) => c.kind === kind),
+export const selectAllCategories: (s: State) => Category[] = memo1(
+  (s) => [...DEFAULT_CATEGORIES, ...s.customCategories],
+  (s) => [s.customCategories],
 )
 
-export const selectPeriodTransactions: (s: State) => Transaction[] = memo1((s) => {
-  const { start, end } = periodBounds(s.period)
-  const lo = +start
-  const hi = +end
-  return activeTransactions(s).filter((t) => {
-    const x = +dayjs(t.date)
-    return x >= lo && x < hi
-  })
-})
+export const selectCategoriesByKind: (s: State, kind: CategoryKind) => Category[] = memo2(
+  (s, kind) => selectAllCategories(s).filter((c) => c.kind === kind),
+  (s) => [selectAllCategories(s)],
+)
+
+export const selectPeriodTransactions: (s: State) => Transaction[] = memo1(
+  (s) => {
+    const { start, end } = periodBounds(s.period)
+    const lo = +start
+    const hi = +end
+    // Date.parse, а не dayjs(): разбор ISO-строки тут в горячем цикле по всем
+    // операциям, а dayjs на каждый вызов создаёт объект — на порядок дороже.
+    return activeTransactions(s).filter((t) => {
+      const x = Date.parse(t.date)
+      return x >= lo && x < hi
+    })
+  },
+  (s) => [activeTransactions(s), s.period],
+)
 
 export function selectBalance(s: State): number {
   const month = selectPeriodTransactions(s)
@@ -764,11 +1070,15 @@ export const selectAccounts: (s: State) => Currency[] = memo1((s) => {
  * только операции этой валюты, иначе все (прежнее поведение). База для всех
  * аналитических агрегатов (диаграмма / категории / по дням).
  */
-export const selectAccountTransactions: (s: State) => Transaction[] = memo1((s) => {
-  const txs = selectPeriodTransactions(s)
-  if (!s.account) return txs
-  return txs.filter((t) => txCurrency(t, s) === s.account)
-})
+export const selectAccountTransactions: (s: State) => Transaction[] = memo1(
+  (s) => {
+    const txs = selectPeriodTransactions(s)
+    if (!s.account) return txs
+    return txs.filter((t) => txCurrency(t, s) === s.account)
+  },
+  // s.currency — потому что txCurrency подставляет её операциям без своей валюты.
+  (s) => [selectPeriodTransactions(s), s.account, s.currency],
+)
 
 /** Валюта для подписей в Аналитике: выбранный счёт или глобальная. */
 export function selectAnalyticsCurrency(s: State): Currency {

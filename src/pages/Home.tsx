@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { Target } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
@@ -31,7 +31,12 @@ interface Props {
   onEditTx: (t: Transaction) => void
 }
 
-export function HomePage({ onOpenProfile, onEditTx }: Props) {
+/**
+ * Главная. Обёрнута в memo намеренно: состояние шторки добавления живёт в App,
+ * и без этого каждое её открытие или закрытие перерисовывало бы весь список
+ * категорий. Пропсы приходят стабильными (useCallback в App).
+ */
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -57,7 +62,7 @@ export function HomePage({ onOpenProfile, onEditTx }: Props) {
       </Suspense>
     </div>
   )
-}
+})
 
 /**
  * Компактный вход в Планирование под карточкой баланса. Подсказка живая:

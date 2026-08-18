@@ -74,6 +74,46 @@ interface LeaderEntry {
 const LB_KEY = 'leaderboard'
 const LB_MAX = 500
 
+/* ---------- Потолок XP: рейтинг не должен верить числу из тела запроса ---------- */
+
+/**
+ * Клиент сам присылает свой XP, и раньше воркер принимал любое число до
+ * миллиарда: одного запроса из консоли хватало, чтобы навсегда занять первое
+ * место. Теперь значение режется потолком, выведенным из данных, которые сервер
+ * знает сам: числа операций в облачном блобе и своего счётчика рефералов.
+ *
+ * Константы обязаны совпадать с клиентскими — при изменении правил начисления
+ * поправить и здесь, иначе честные игроки упрутся в потолок.
+ */
+const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
+const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
+const XP_ALL_QUESTS = 630 // сумма xp всех заданий в src/lib/quests.ts
+/**
+ * Запас на операции, записанные ПОСЛЕ последней выгрузки в облако: профиль
+ * уходит при запуске, а блоб мог отстать на несколько записей. Потолок не должен
+ * задевать честного человека, поэтому небольшой люфт закладываем намеренно.
+ */
+const XP_GRACE = 30 * XP_PER_TRANSACTION
+/** Сколько операций принимаем на веру, если облачного блоба ещё нет (первый запуск). */
+const OPS_WITHOUT_BLOB = 500
+/**
+ * Абсолютный предел, применяемый ко ВСЕМ записям рейтинга при каждой записи —
+ * заодно подрезает значения, накрученные до появления проверки. Честному игроку
+ * столько не набрать: это порядка 16 000 операций.
+ */
+const HARD_MAX_XP = 200_000
+const HARD_MAX_COINS = 200_000
+
+/** Пороги уровней — копия LEVELS из src/lib/levels.ts. */
+const LEVEL_MIN_XP = [0, 60, 180, 400, 750, 1300, 2200, 3500, 5200, 7500]
+
+/** Уровень считаем из XP сами, а не берём из тела запроса. */
+function levelForXp(xp: number): number {
+  let level = 1
+  for (let i = 0; i < LEVEL_MIN_XP.length; i++) if (xp >= LEVEL_MIN_XP[i]) level = i + 1
+  return level
+}
+
 /** Безопасное неотрицательное целое из недоверенного ввода. */
 function clampInt(x: unknown): number {
   const n = Math.floor(Number(x))
@@ -132,6 +172,18 @@ function toHex(buf: ArrayBuffer): string {
  * Возвращает пользователя, если подпись валидна, иначе null.
  * Алгоритм из доков Telegram: «Validating data received via the Mini App».
  */
+/**
+ * Сравнение строк за постоянное время. Обычное `!==` выходит на первом же
+ * несовпавшем символе, и по времени ответа подпись теоретически подбирается
+ * побайтово. Разница в длине не секрет, её проверяем сразу.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 async function verifyInitData(initData: string, botTokenRaw: string): Promise<TgUser | null> {
   if (!initData) return null
   const botToken = botTokenRaw.trim() // секрет мог прийти с \r\n при задании через пайп
@@ -147,7 +199,7 @@ async function verifyInitData(initData: string, botTokenRaw: string): Promise<Tg
 
   const secretKey = await hmac(new TextEncoder().encode('WebAppData'), botToken)
   const computed = toHex(await hmac(secretKey, dataCheckString))
-  if (computed !== hash) return null
+  if (!timingSafeEqual(computed, hash)) return null
 
   // защита от старых данных (24 часа)
   const authDate = Number(params.get('auth_date') ?? 0)
@@ -448,6 +500,25 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
 
+  // Число операций — из облачного блоба этого пользователя: он пишется другим
+  // эндпоинтом и служит здесь независимым источником правды. Блоба может не быть
+  // при самом первом запуске — тогда принимаем присланное, но с жёстким лимитом.
+  const blobRaw = await env.REFERRALS.get(`${DATA_PREFIX}${user.id}`)
+  let blobOps = -1
+  if (blobRaw) {
+    try {
+      const stored = JSON.parse(blobRaw) as { blob?: unknown }
+      if (typeof stored?.blob === 'string') blobOps = blobTxCount(stored.blob)
+    } catch {
+      /* битая запись — считаем, что блоба нет */
+    }
+  }
+  const ops = blobOps >= 0 ? blobOps : Math.min(clampInt(body.ops), OPS_WITHOUT_BLOB)
+
+  // Потолок: операции + рефералы + все задания + запас на несинхронизированное.
+  const maxXp = ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + XP_GRACE
+  const xp = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
+
   // Косметика — недоверенные строки: только кап длины, клиент валидирует id по каталогу.
   const cosmetic = (x: unknown): string | undefined =>
     typeof x === 'string' && x ? x.slice(0, 40) : undefined
@@ -459,20 +530,31 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     id: user.id,
     name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Без имени',
     username: user.username,
-    xp: clampInt(body.xp),
-    level: clampInt(body.level),
+    xp,
+    level: levelForXp(xp), // уровень выводим из XP, а не принимаем от клиента
     title,
     frame,
     accent,
-    ops: clampInt(body.ops),
-    coins: clampInt(body.coins),
-    streakBest: clampInt(body.streakBest),
+    ops,
+    coins: Math.min(clampInt(body.coins), HARD_MAX_COINS),
+    streakBest: Math.min(clampInt(body.streakBest), 3650), // 10 лет — заведомо выше реального
     refs,
     at: Date.now(),
   }
 
   let map = await readLeaderboard(env)
   map[String(user.id)] = entry
+
+  // Подрезаем и чужие записи: значения, накрученные до появления потолка, иначе
+  // остались бы в топе навсегда. Активные игроки перезапишут свои строки честными
+  // числами при следующем запуске приложения.
+  for (const e of Object.values(map)) {
+    if (e.xp > HARD_MAX_XP) {
+      e.xp = HARD_MAX_XP
+      e.level = levelForXp(HARD_MAX_XP)
+    }
+    if (e.coins > HARD_MAX_COINS) e.coins = HARD_MAX_COINS
+  }
 
   // Не даём KV-значению разрастаться: держим топ по XP (но себя сохраняем всегда).
   const entries = Object.values(map)

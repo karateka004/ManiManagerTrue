@@ -5,7 +5,6 @@ import {
   useStore,
   selectCategoriesByKind,
   selectQuickCurrencies,
-  periodBounds,
   type Transaction,
 } from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
@@ -81,16 +80,12 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   // в открытой шторке. С пропом синхронизируется при каждом открытии (см. эффект
   // ниже); в режиме правки стартует с типа правимой операции.
   const [kind, setKind] = useState<CategoryKind>(kindProp)
-  const addTransaction = useStore((s) => s.addTransaction)
-  const updateTransaction = useStore((s) => s.updateTransaction)
+  const commitTransaction = useStore((s) => s.commitTransaction)
   const removeTransaction = useStore((s) => s.removeTransaction)
   const globalCurrency = useStore((s) => s.currency)
   const lastTxCurrency = useStore((s) => s.lastTxCurrency)
-  const setLastTxCurrency = useStore((s) => s.setLastTxCurrency)
   const categories = useStore((s) => selectCategoriesByKind(s, kind))
   const allTransactions = useStore((s) => s.transactions)
-  const period = useStore((s) => s.period)
-  const focusPeriodOn = useStore((s) => s.focusPeriodOn)
   // Быстрые валюты: настроенные в Settings либо подобранные по данным человека.
   const quickCurrencies = useStore(selectQuickCurrencies)
   const tr = useT()
@@ -218,17 +213,9 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
       tags: tags.length ? tags : undefined,
       date: iso,
     }
-    if (editing) {
-      updateTransaction(editing.id, payload)
-    } else {
-      addTransaction(payload)
-      setLastTxCurrency(txCurrency)
-    }
-    // Если операция «задним числом» выпадает за текущий период просмотра —
-    // переводим период на её дату, иначе запись пропала бы из виду.
-    const x = +dayjs(iso)
-    const { start, end } = periodBounds(period)
-    if (x < +start || x >= +end) focusPeriodOn(iso)
+    // Одно изменение стора на всё сохранение: добавление/правка, запоминание
+    // валюты и сдвиг периода для операции «задним числом» (см. commitTransaction).
+    commitTransaction(payload, editing?.id ?? null)
     onClose()
   }
 

@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { TabBar, type Tab } from './components/TabBar'
 import { HomePage } from './pages/Home'
 import { useStore, type Transaction } from './store/transactions'
@@ -18,6 +18,9 @@ const importAnalytics = () => import('./pages/Analytics')
 const importRewards = () => import('./pages/Rewards')
 const importProfile = () => import('./pages/Profile')
 const importSettings = () => import('./pages/Settings')
+// Шторка операции — теперь главное действие приложения («+» есть на каждой вкладке),
+// поэтому её чанк греем вместе со вкладками: первое открытие иначе стоит заметную паузу.
+const importAddSheet = () => import('./components/AddTransactionSheet')
 
 const AnalyticsPage = lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage })))
 const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage })))
@@ -26,9 +29,7 @@ const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.
 const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({ default: m.IntroOverlay })))
 // Шторка операции живёт на уровне App, а не Главной: «плюс» в нижней панели
 // доступен с любой вкладки. Отдельный чанк, грузится по первому открытию.
-const AddTransactionSheet = lazy(() =>
-  import('./components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
-)
+const AddTransactionSheet = lazy(() => importAddSheet().then((m) => ({ default: m.AddTransactionSheet })))
 
 /**
  * Прогрев чанков вкладок в простое: качаем их заранее, чтобы первый переход
@@ -44,6 +45,7 @@ function usePrefetchTabs() {
       importRewards().catch(swallow)
       importProfile().catch(swallow)
       importSettings().catch(swallow)
+      importAddSheet().catch(swallow)
     }
     const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
     if (ric) {
@@ -147,23 +149,35 @@ export default function App() {
   const [sheetMounted, setSheetMounted] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     setSheetMounted(true)
     setEditing(null)
     setSheet({ open: true, kind: 'expense' })
-  }
+  }, [])
 
-  const openEdit = (t: Transaction) => {
+  const openEdit = useCallback((t: Transaction) => {
     setSheetMounted(true)
     setEditing(t)
     setSheet({ open: true, kind: t.type })
-  }
+  }, [])
+
+  const closeSheet = useCallback(() => {
+    setSheet((s) => ({ ...s, open: false }))
+    setEditing(null)
+  }, [])
 
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
-  const changeTab = (next: Tab) => {
-    if (next === 'analytics') track('visit_analytics')
-    setTab(next)
-  }
+  const changeTab = useCallback(
+    (next: Tab) => {
+      if (next === 'analytics') track('visit_analytics')
+      setTab(next)
+    },
+    [track],
+  )
+
+  const openProfile = useCallback(() => changeTab('profile'), [changeTab])
+  const openSettings = useCallback(() => changeTab('settings'), [changeTab])
+  const openRewards = useCallback(() => changeTab('rewards'), [changeTab])
 
   return (
     <div className="min-h-screen" style={{ paddingTop: 'var(--safe-top)' }}>
@@ -182,18 +196,13 @@ export default function App() {
       <div key={tab} className="tab-enter">
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
-            {tab === 'home' && (
-              <HomePage onOpenProfile={() => changeTab('profile')} onEditTx={openEdit} />
-            )}
+            {tab === 'home' && <HomePage onOpenProfile={openProfile} onEditTx={openEdit} />}
             {tab === 'analytics' && <AnalyticsPage />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
-              <ProfilePage
-                onOpenSettings={() => changeTab('settings')}
-                onOpenRewards={() => changeTab('rewards')}
-              />
+              <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />
             )}
-            {tab === 'settings' && <SettingsPage onBack={() => changeTab('profile')} />}
+            {tab === 'settings' && <SettingsPage onBack={openProfile} />}
           </Suspense>
         </ChunkErrorBoundary>
       </div>
@@ -207,7 +216,7 @@ export default function App() {
             open={sheet.open}
             kind={sheet.kind}
             editing={editing}
-            onClose={() => { setSheet((s) => ({ ...s, open: false })); setEditing(null) }}
+            onClose={closeSheet}
           />
         </Suspense>
       )}
