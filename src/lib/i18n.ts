@@ -33,6 +33,7 @@ const DICT: Dict = {
   'nav.settings': { ru: 'Настройки', en: 'Settings' },
   'nav.profile': { ru: 'Профиль', en: 'Profile' },
   'nav.rewards': { ru: 'Прогресс', en: 'Progress' },
+  'nav.add': { ru: 'Добавить операцию', en: 'Add transaction' },
   'rewards.kicker': { ru: 'Уровень и награды', en: 'Level & rewards' },
   'shop.kicker': { ru: 'Кастомизация', en: 'Customization' },
   'shop.title': { ru: 'Магазин', en: 'Shop' },
@@ -413,10 +414,6 @@ const DICT: Dict = {
     en: 'Add your first operation with the + or − button below — a category breakdown will appear here.',
   },
   'empty.enable_demo': { ru: 'Включить демо-режим', en: 'Enable demo mode' },
-
-  /* FAB */
-  'fab.add_expense': { ru: 'Добавить расход', en: 'Add expense' },
-  'fab.add_income': { ru: 'Добавить доход', en: 'Add income' },
 
   /* Уровень */
   'level.aria': { ru: 'Уровень и прогресс', en: 'Level and progress' },

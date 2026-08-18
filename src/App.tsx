@@ -1,7 +1,7 @@
-import { Component, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react'
 import { TabBar, type Tab } from './components/TabBar'
 import { HomePage } from './pages/Home'
-import { useStore } from './store/transactions'
+import { useStore, type Transaction } from './store/transactions'
 import { useTheme, useAccent } from './lib/useTheme'
 import { useFormatLocale, useT } from './lib/i18n'
 import { tg, hapticTap } from './lib/telegram'
@@ -10,6 +10,7 @@ import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
 import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
+import type { CategoryKind } from './store/categories'
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
 // Импорты вынесены в функции, чтобы их же переиспользовать для префетча (прогрева).
@@ -23,6 +24,11 @@ const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.Re
 const ProfilePage = lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage })))
 const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage })))
 const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({ default: m.IntroOverlay })))
+// Шторка операции живёт на уровне App, а не Главной: «плюс» в нижней панели
+// доступен с любой вкладки. Отдельный чанк, грузится по первому открытию.
+const AddTransactionSheet = lazy(() =>
+  import('./components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
+)
 
 /**
  * Прогрев чанков вкладок в простое: качаем их заранее, чтобы первый переход
@@ -134,6 +140,25 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home')
   const track = useStore((s) => s.track)
 
+  // Шторка операции: «+» в панели создаёт новую, тап по строке на Главной —
+  // правит существующую. Монтируем только после первого открытия и больше не
+  // размонтируем, чтобы отыграла анимация закрытия.
+  const [sheet, setSheet] = useState<{ open: boolean; kind: CategoryKind }>({ open: false, kind: 'expense' })
+  const [sheetMounted, setSheetMounted] = useState(false)
+  const [editing, setEditing] = useState<Transaction | null>(null)
+
+  const openAdd = () => {
+    setSheetMounted(true)
+    setEditing(null)
+    setSheet({ open: true, kind: 'expense' })
+  }
+
+  const openEdit = (t: Transaction) => {
+    setSheetMounted(true)
+    setEditing(t)
+    setSheet({ open: true, kind: t.type })
+  }
+
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
   const changeTab = (next: Tab) => {
     if (next === 'analytics') track('visit_analytics')
@@ -157,7 +182,9 @@ export default function App() {
       <div key={tab} className="tab-enter">
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
-            {tab === 'home' && <HomePage onOpenProfile={() => changeTab('profile')} />}
+            {tab === 'home' && (
+              <HomePage onOpenProfile={() => changeTab('profile')} onEditTx={openEdit} />
+            )}
             {tab === 'analytics' && <AnalyticsPage />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
@@ -172,7 +199,18 @@ export default function App() {
       </div>
 
       {/* На «Настройках» подсвечиваем Профиль (у настроек нет своей вкладки). */}
-      <TabBar value={tab === 'settings' ? 'profile' : tab} onChange={changeTab} />
+      <TabBar value={tab === 'settings' ? 'profile' : tab} onChange={changeTab} onAdd={openAdd} />
+
+      {sheetMounted && (
+        <Suspense fallback={null}>
+          <AddTransactionSheet
+            open={sheet.open}
+            kind={sheet.kind}
+            editing={editing}
+            onClose={() => { setSheet((s) => ({ ...s, open: false })); setEditing(null) }}
+          />
+        </Suspense>
+      )}
 
       <Suspense fallback={null}>
         <IntroOverlay />

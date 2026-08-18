@@ -6,7 +6,6 @@ import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
 import { BudgetAlert } from '../components/BudgetAlert'
 import { AccountSwitcher } from '../components/AccountSwitcher'
-import { FabButtons } from '../components/FabButtons'
 import { Avatar } from '../components/Avatar'
 import { MenuRow } from '../components/ui/MenuRow'
 import {
@@ -20,27 +19,19 @@ import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
-import type { CategoryKind } from '../store/categories'
 
-// Шторка добавления операции — отдельным чанком, грузится по первому тапу FAB.
-const AddTransactionSheet = lazy(() =>
-  import('../components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
-)
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
 const PlanningSheet = lazy(() =>
   import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
 
-export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
-  const [sheet, setSheet] = useState<{ open: boolean; kind: CategoryKind }>({
-    open: false,
-    kind: 'expense',
-  })
-  // Монтируем шторку только после первого открытия (чтобы анимация закрытия отыграла — держим смонтированной).
-  const [mounted, setMounted] = useState(false)
-  // Операция, которую правим (null = режим создания новой).
-  const [editing, setEditing] = useState<Transaction | null>(null)
+interface Props {
+  onOpenProfile: () => void
+  /** Открыть шторку правки операции — сама шторка живёт в App. */
+  onEditTx: (t: Transaction) => void
+}
 
+export function HomePage({ onOpenProfile, onEditTx }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -51,18 +42,6 @@ export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
     setPlanningOpen(true)
   }
 
-  const openSheet = (kind: CategoryKind) => {
-    setMounted(true)
-    setEditing(null)
-    setSheet({ open: true, kind })
-  }
-
-  const openEdit = (t: Transaction) => {
-    setMounted(true)
-    setEditing(t)
-    setSheet({ open: true, kind: t.type })
-  }
-
   return (
     <div className="pb-24">
       <Header onOpenProfile={onOpenProfile} />
@@ -71,23 +50,7 @@ export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
       <BalanceCard />
       <PlanningRow onOpen={openPlanning} />
       <BudgetAlert />
-      <CategoryList onEditTx={openEdit} />
-
-      <FabButtons
-        onAddExpense={() => openSheet('expense')}
-        onAddIncome={() => openSheet('income')}
-      />
-
-      {mounted && (
-        <Suspense fallback={null}>
-          <AddTransactionSheet
-            open={sheet.open}
-            kind={sheet.kind}
-            editing={editing}
-            onClose={() => { setSheet((s) => ({ ...s, open: false })); setEditing(null) }}
-          />
-        </Suspense>
-      )}
+      <CategoryList onEditTx={onEditTx} />
 
       <Suspense fallback={null}>
         {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}

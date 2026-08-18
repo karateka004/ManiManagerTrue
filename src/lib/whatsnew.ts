@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.27.0'
+export const APP_VERSION = '1.28.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.28.0',
+    date: '2026-08-18',
+    title: { ru: 'Новая нижняя панель', en: 'New bottom bar' },
+    items: [
+      {
+        icon: '✨',
+        text: {
+          ru: 'Нижняя панель теперь парит над экраном: полупрозрачная, с размытием и плавно ездящей подсветкой активной вкладки',
+          en: 'The bottom bar now floats above the screen: translucent, blurred, with a highlight that glides between tabs',
+        },
+      },
+      {
+        icon: '➕',
+        text: {
+          ru: 'Круглая кнопка «плюс» рядом с панелью — записать операцию можно с любой вкладки, а не только с Главной',
+          en: 'A round plus button next to the bar — you can record a transaction from any tab, not just Home',
+        },
+      },
+      {
+        icon: '⇄',
+        text: {
+          ru: 'Расход и доход теперь переключаются прямо в форме записи — введённая сумма при этом сохраняется',
+          en: 'Expense and income now switch right inside the form — the amount you typed is kept',
+        },
+      },
+    ],
+  },
   {
     version: '1.27.0',
     date: '2026-08-11',

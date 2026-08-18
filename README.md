@@ -82,11 +82,10 @@ src/
 │   ├── BalanceCard.tsx       # Зелёная карточка баланса
 │   ├── MonthSwitcher.tsx     # Переключатель месяцев
 │   ├── CategoryList.tsx      # Список с раскрытием
-│   ├── FabButtons.tsx        # Кнопки + / −
 │   ├── DonutChart.tsx        # Кольцевая диаграмма
 │   ├── AnalyticsTabs.tsx     # Расходы / Доходы
 │   ├── AddTransactionSheet.tsx # BottomSheet с numpad
-│   └── TabBar.tsx            # Нижняя навигация
+│   └── TabBar.tsx            # Плавающая нижняя панель + круглая «+»
 └── pages/
     ├── Home.tsx
     ├── Analytics.tsx

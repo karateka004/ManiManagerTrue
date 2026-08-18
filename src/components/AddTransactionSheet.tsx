@@ -77,8 +77,10 @@ function evalExpr(expr: string): number {
 }
 
 export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: Props) {
-  // В режиме правки вид операции (расход/доход) берём из самой операции.
-  const kind: CategoryKind = editing ? editing.type : kindProp
+  // Вид операции — состояние, а не проп: сегмент в шапке переключает его прямо
+  // в открытой шторке. С пропом синхронизируется при каждом открытии (см. эффект
+  // ниже); в режиме правки стартует с типа правимой операции.
+  const [kind, setKind] = useState<CategoryKind>(kindProp)
   const addTransaction = useStore((s) => s.addTransaction)
   const updateTransaction = useStore((s) => s.updateTransaction)
   const removeTransaction = useStore((s) => s.removeTransaction)
@@ -126,6 +128,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
   useEffect(() => {
     if (!open) return
+    setKind(editing ? editing.type : kindProp)
     setCurrencyOpen(false)
     setShowMoreCurrencies(false)
     setTagDraft('')
@@ -146,7 +149,19 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
       setDate(dayjs().format('YYYY-MM-DD'))
       setTxCurrency(lastTxCurrency)
     }
-  }, [open, kind, editing]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Смена вида операции внутри шторки. Сумму, дату, заметку и теги сохраняем —
+   * человек уже их ввёл, — а категорию сбрасываем: у расходов и доходов разные
+   * списки, и старый id в новом списке не существует.
+   */
+  const switchKind = (next: CategoryKind) => {
+    if (next === kind) return
+    hapticSelect()
+    setKind(next)
+    setCategoryId('')
+  }
 
   const press = (key: string) => {
     hapticSelect()
@@ -250,13 +265,28 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 py-2">
-              <span className={`pill text-sm ${
-                kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'bg-income-soft text-income-deep'
-              }`}>
-                {kind === 'expense' ? `− ${tr('common.expense_one')}` : `+ ${tr('common.income_one')}`}
-              </span>
-              <button onClick={onClose} className="text-ink-subtle text-sm font-medium active:text-ink-muted">
+            <div className="flex items-center justify-between gap-3 px-4 py-2">
+              <div className="flex items-center gap-1 rounded-full bg-surface-sunken p-1">
+                <button
+                  onClick={() => switchKind('expense')}
+                  aria-pressed={kind === 'expense'}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                    kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'text-ink-subtle'
+                  }`}
+                >
+                  − {tr('common.expense_one')}
+                </button>
+                <button
+                  onClick={() => switchKind('income')}
+                  aria-pressed={kind === 'income'}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                    kind === 'income' ? 'bg-income-soft text-income-deep' : 'text-ink-subtle'
+                  }`}
+                >
+                  + {tr('common.income_one')}
+                </button>
+              </div>
+              <button onClick={onClose} className="shrink-0 pr-2 text-sm font-medium text-ink-subtle active:text-ink-muted">
                 {tr('common.cancel')}
               </button>
             </div>
