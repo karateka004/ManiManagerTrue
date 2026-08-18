@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { Target } from 'lucide-react'
+import { Search, Target } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
@@ -30,6 +30,8 @@ interface Props {
   onOpenProfile: () => void
   /** Открыть шторку правки операции — сама шторка живёт в App. */
   onEditTx: (t: Transaction) => void
+  /** Открыть поиск по всей истории — шторка тоже живёт в App. */
+  onOpenSearch: () => void
 }
 
 /**
@@ -37,7 +39,7 @@ interface Props {
  * и без этого каждое её открытие или закрытие перерисовывало бы весь список
  * категорий. Пропсы приходят стабильными (useCallback в App).
  */
-export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx }: Props) {
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -50,7 +52,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx }: Prop
 
   return (
     <div className="pb-24">
-      <Header onOpenProfile={onOpenProfile} />
+      <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
@@ -151,7 +153,7 @@ function PlanningRow({ onOpen }: { onOpen: () => void }) {
   )
 }
 
-function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
+function Header({ onOpenProfile, onOpenSearch }: { onOpenProfile: () => void; onOpenSearch: () => void }) {
   const mode = useStore((s) => s.homeHeaderMode)
   const goals = useStore((s) => s.goals)
   const currency = useStore((s) => s.currency)
@@ -169,6 +171,13 @@ function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
         </div>
+        <button
+          onClick={() => { hapticSelect(); onOpenSearch() }}
+          aria-label={t('search.open')}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+        >
+          <Search size={18} strokeWidth={2.4} />
+        </button>
         <Avatar size={40} onClick={onOpenProfile} />
       </div>
     </div>

@@ -63,6 +63,15 @@ const DICT: Dict = {
   'common.expense': { ru: 'Расходы', en: 'Expenses' },
   'common.balance': { ru: 'Баланс', en: 'Balance' },
   'common.cancel': { ru: 'Отмена', en: 'Cancel' },
+  'common.clear': { ru: 'Очистить', en: 'Clear' },
+
+  /* Поиск по операциям */
+  'search.open': { ru: 'Поиск по операциям', en: 'Search transactions' },
+  'search.placeholder': { ru: 'Заметка, категория, тег или сумма', en: 'Note, category, tag or amount' },
+  'search.hint': { ru: 'Ищем по всей истории — не только за выбранный период', en: 'Searches your whole history, not just the selected period' },
+  'search.empty': { ru: 'Ничего не найдено', en: 'Nothing found' },
+  'search.found': { ru: 'Найдено: {n}', en: 'Found: {n}' },
+  'search.capped': { ru: 'показаны первые {n}', en: 'showing first {n}' },
   'common.save': { ru: 'Сохранить', en: 'Save' },
   'common.add': { ru: 'Добавить', en: 'Add' },
   'common.delete': { ru: 'Удалить', en: 'Delete' },

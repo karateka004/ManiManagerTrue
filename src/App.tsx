@@ -30,6 +30,8 @@ const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({
 // Шторка операции живёт на уровне App, а не Главной: «плюс» в нижней панели
 // доступен с любой вкладки. Отдельный чанк, грузится по первому открытию.
 const AddTransactionSheet = lazy(() => importAddSheet().then((m) => ({ default: m.AddTransactionSheet })))
+// Поиск — отдельный чанк: нужен не каждому запуску, греть его заранее незачем.
+const SearchSheet = lazy(() => import('./components/SearchSheet').then((m) => ({ default: m.SearchSheet })))
 
 /**
  * Прогрев чанков вкладок в простое: качаем их заранее, чтобы первый переход
@@ -161,6 +163,15 @@ export default function App() {
     setSheet({ open: true, kind: t.type })
   }, [])
 
+  // Поиск по всей истории. Монтируем только после первого открытия.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchMounted, setSearchMounted] = useState(false)
+  const openSearch = useCallback(() => {
+    setSearchMounted(true)
+    setSearchOpen(true)
+  }, [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+
   const closeSheet = useCallback(() => {
     setSheet((s) => ({ ...s, open: false }))
     setEditing(null)
@@ -196,7 +207,9 @@ export default function App() {
       <div key={tab} className="tab-enter">
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
-            {tab === 'home' && <HomePage onOpenProfile={openProfile} onEditTx={openEdit} />}
+            {tab === 'home' && (
+              <HomePage onOpenProfile={openProfile} onEditTx={openEdit} onOpenSearch={openSearch} />
+            )}
             {tab === 'analytics' && <AnalyticsPage />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
@@ -218,6 +231,12 @@ export default function App() {
             editing={editing}
             onClose={closeSheet}
           />
+        </Suspense>
+      )}
+
+      {searchMounted && (
+        <Suspense fallback={null}>
+          <SearchSheet open={searchOpen} onClose={closeSearch} onEditTx={openEdit} />
         </Suspense>
       )}
 
