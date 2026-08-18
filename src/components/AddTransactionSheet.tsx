@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Calendar, Plus, ChevronDown } from 'lucide-react'
+import { Calendar, Plus, ChevronDown, Delete } from 'lucide-react'
 import {
   useStore,
   selectCategoriesByKind,
@@ -27,6 +27,20 @@ interface Props {
 }
 
 const OPS = ['+', '−', '×', '÷'] as const
+
+/**
+ * Раскладка клавиатуры. Раньше клавиши были просто глифами на фоне шторки — без
+ * поверхностей не видно, куда жать, а операторы отличались от цифр только цветом
+ * и сливались с ними. Теперь у каждой клавиши своя плашка, а колонка операторов
+ * выделена тоном: цифры и калькулятор читаются как две разные зоны, при этом
+ * сетка осталась 4x4 и шторка не стала выше.
+ */
+const KEYS: { k: string; kind: 'digit' | 'op' | 'back' }[] = [
+  { k: '7', kind: 'digit' }, { k: '8', kind: 'digit' }, { k: '9', kind: 'digit' }, { k: '÷', kind: 'op' },
+  { k: '4', kind: 'digit' }, { k: '5', kind: 'digit' }, { k: '6', kind: 'digit' }, { k: '×', kind: 'op' },
+  { k: '1', kind: 'digit' }, { k: '2', kind: 'digit' }, { k: '3', kind: 'digit' }, { k: '−', kind: 'op' },
+  { k: ',', kind: 'digit' }, { k: '0', kind: 'digit' }, { k: '⌫', kind: 'back' }, { k: '+', kind: 'op' },
+]
 const isOp = (ch: string) => OPS.includes(ch as (typeof OPS)[number])
 
 /** Безопасный калькулятор: + − × ÷ с приоритетом, запятая = десятичный. */
@@ -473,17 +487,22 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               </div>
             </div>
 
-            {/* Numpad with operators */}
-            <div className="grid grid-cols-4 gap-1 px-4 pb-2">
-              {['7','8','9','÷','4','5','6','×','1','2','3','−',',','0','⌫','+'].map((k) => (
+            {/* Клавиатура: цифры + калькулятор (см. KEYS) */}
+            <div className="grid grid-cols-4 gap-1.5 px-4 pb-2">
+              {KEYS.map(({ k, kind }) => (
                 <button
                   key={k}
                   onClick={() => press(k)}
-                  className={`rounded-2xl py-3 text-2xl font-semibold active:bg-surface-sunken ${
-                    isOp(k) ? 'text-brand-500' : 'text-ink'
+                  aria-label={kind === 'back' ? tr('common.delete') : k}
+                  className={`flex items-center justify-center rounded-2xl py-3.5 text-2xl font-semibold transition-transform active:scale-95 ${
+                    kind === 'op'
+                      ? 'bg-brand-500/[0.18] text-brand-700 active:bg-brand-500/30 dark:bg-brand-500/20 dark:text-brand-300'
+                      : kind === 'back'
+                      ? 'bg-surface-sunken text-ink-muted active:bg-surface-sunken/70'
+                      : 'bg-surface-sunken text-ink active:bg-surface-sunken/70'
                   }`}
                 >
-                  {k}
+                  {kind === 'back' ? <Delete size={22} strokeWidth={2.2} /> : k}
                 </button>
               ))}
             </div>
