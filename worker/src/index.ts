@@ -101,6 +101,10 @@ const OPS_WITHOUT_BLOB = 500
  * заодно подрезает значения, накрученные до появления проверки. Честному игроку
  * столько не набрать: это порядка 16 000 операций.
  */
+/**
+ * Абсолютный предел на ОДНУ присланную величину — заслон от значения вроде 1e9.
+ * Уже сохранённые результаты не трогаем: накопленный прогресс сохраняется как есть.
+ */
 const HARD_MAX_XP = 200_000
 const HARD_MAX_COINS = 200_000
 
@@ -500,6 +504,11 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
 
+  // Читаем рейтинг заранее: прежняя запись нужна, чтобы потолок не опустил
+  // уже достигнутый результат. Ниже map переприсваивается при обрезке до LB_MAX.
+  let map = await readLeaderboard(env)
+  const previousEntry = map[String(user.id)]
+
   // Число операций — из облачного блоба этого пользователя: он пишется другим
   // эндпоинтом и служит здесь независимым источником правды. Блоба может не быть
   // при самом первом запуске — тогда принимаем присланное, но с жёстким лимитом.
@@ -517,7 +526,7 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
 
   // Потолок: операции + рефералы + все задания + запас на несинхронизированное.
   const maxXp = ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + XP_GRACE
-  const xp = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
+  const capped = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
 
   // Косметика — недоверенные строки: только кап длины, клиент валидирует id по каталогу.
   const cosmetic = (x: unknown): string | undefined =>
@@ -525,6 +534,13 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   const title = cosmetic(body.title)
   const frame = cosmetic(body.frame)
   const accent = cosmetic(body.accent)
+
+  // Потолок только НЕ ПУСКАЕТ выше положенного, но никогда не опускает уже
+  // достигнутое: если облачный блоб отстал или пропал, честный игрок не должен
+  // потерять позицию. Накрутке это не помогает — поднять значение всё равно
+  // можно только до потолка.
+  const previousXp = clampInt(previousEntry?.xp)
+  const xp = Math.max(capped, previousXp)
 
   const entry: LeaderEntry = {
     id: user.id,
@@ -542,19 +558,7 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     at: Date.now(),
   }
 
-  let map = await readLeaderboard(env)
   map[String(user.id)] = entry
-
-  // Подрезаем и чужие записи: значения, накрученные до появления потолка, иначе
-  // остались бы в топе навсегда. Активные игроки перезапишут свои строки честными
-  // числами при следующем запуске приложения.
-  for (const e of Object.values(map)) {
-    if (e.xp > HARD_MAX_XP) {
-      e.xp = HARD_MAX_XP
-      e.level = levelForXp(HARD_MAX_XP)
-    }
-    if (e.coins > HARD_MAX_COINS) e.coins = HARD_MAX_COINS
-  }
 
   // Не даём KV-значению разрастаться: держим топ по XP (но себя сохраняем всегда).
   const entries = Object.values(map)
