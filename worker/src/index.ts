@@ -89,6 +89,19 @@ const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
 const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
 const XP_ALL_QUESTS = 1385 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP)
 /**
+ * Запас на XP от ежедневной серии (src/lib/streak.ts: 2 XP в день плюс 20/40/100
+ * на рубежах 7/14/30). Величина не фиксированная — она копится со временем,
+ * поэтому считаем от рекорда серии из блоба самого игрока.
+ *
+ * Множитель 4 — на то, что серию можно набирать заново много раз, а рекорд при
+ * этом не растёт. Слагаемое 600 — запас на рубежи и на игрока, у которого рекорд
+ * ещё нулевой. Потолок обязан быть щедрым: заниженный отнимает прогресс у
+ * честного человека, а это хуже, чем оставить накрутчику немного простора.
+ */
+const XP_PER_STREAK_DAY = 2
+const STREAK_REBUILD_FACTOR = 4
+const XP_STREAK_BASE = 600
+/**
  * Запас на операции, записанные ПОСЛЕ последней выгрузки в облако: профиль
  * уходит при запуске, а блоб мог отстать на несколько записей. Потолок не должен
  * задевать честного человека, поэтому небольшой люфт закладываем намеренно.
@@ -514,18 +527,24 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // при самом первом запуске — тогда принимаем присланное, но с жёстким лимитом.
   const blobRaw = await env.REFERRALS.get(`${DATA_PREFIX}${user.id}`)
   let blobOps = -1
+  let streakBest = 0
   if (blobRaw) {
     try {
       const stored = JSON.parse(blobRaw) as { blob?: unknown }
-      if (typeof stored?.blob === 'string') blobOps = blobTxCount(stored.blob)
+      if (typeof stored?.blob === 'string') {
+        blobOps = blobTxCount(stored.blob)
+        streakBest = Math.max(0, blobStreakBest(stored.blob))
+      }
     } catch {
       /* битая запись — считаем, что блоба нет */
     }
   }
   const ops = blobOps >= 0 ? blobOps : Math.min(clampInt(body.ops), OPS_WITHOUT_BLOB)
+  const streakXp = streakBest * XP_PER_STREAK_DAY * STREAK_REBUILD_FACTOR + XP_STREAK_BASE
 
-  // Потолок: операции + рефералы + все задания + запас на несинхронизированное.
-  const maxXp = ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + XP_GRACE
+  // Потолок: операции + рефералы + все задания + серия + запас на несинхронизированное.
+  const maxXp =
+    ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + streakXp + XP_GRACE
   const capped = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
 
   // Косметика — недоверенные строки: только кап длины, клиент валидирует id по каталогу.
@@ -637,6 +656,21 @@ function blobTxCount(blob: string): number {
     const parsed = JSON.parse(blob) as { state?: { transactions?: unknown[] } }
     const list = parsed?.state?.transactions
     return Array.isArray(list) ? list.length : -1
+  } catch {
+    return -1
+  }
+}
+
+/**
+ * Рекорд ежедневной серии из блоба. Нужен для потолка XP: за серию тоже даётся
+ * опыт, и без этого слагаемого потолок со временем задушил бы честного игрока.
+ * -1 — блоб не разобрать.
+ */
+function blobStreakBest(blob: string): number {
+  try {
+    const parsed = JSON.parse(blob) as { state?: { streak?: { best?: unknown } } }
+    const best = Number(parsed?.state?.streak?.best)
+    return Number.isFinite(best) && best >= 0 ? Math.min(Math.floor(best), 3650) : 0
   } catch {
     return -1
   }
