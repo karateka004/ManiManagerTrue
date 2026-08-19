@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.31.0'
+export const APP_VERSION = '1.32.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.32.0',
+    date: '2026-08-19',
+    title: { ru: 'Задания теперь обновляются', en: 'Quests now refresh' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Забрал награду — задание уходит, а на его место встаёт новое. Всего в пуле больше двадцати заданий',
+          en: 'Claim a reward and the quest leaves, with a new one taking its place. The pool holds over twenty quests',
+        },
+      },
+      {
+        icon: '⏳',
+        text: {
+          ru: 'После получения награды слот отдыхает восемь часов — на плашке виден таймер до следующего задания',
+          en: 'After a claim the slot rests for eight hours — the card shows a timer until the next quest',
+        },
+      },
+      {
+        icon: '🧭',
+        text: {
+          ru: 'Новые задания знакомят с функциями, которые сами по себе не находятся: повтор трат, поиск и дневной лимит',
+          en: 'New quests introduce features you would not stumble upon: repeat spending, search and the daily limit',
+        },
+      },
+    ],
+  },
   {
     version: '1.31.0',
     date: '2026-08-18',

@@ -87,7 +87,7 @@ const LB_MAX = 500
  */
 const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
 const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
-const XP_ALL_QUESTS = 630 // сумма xp всех заданий в src/lib/quests.ts
+const XP_ALL_QUESTS = 1385 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP)
 /**
  * Запас на операции, записанные ПОСЛЕ последней выгрузки в облако: профиль
  * уходит при запуске, а блоб мог отстать на несколько записей. Потолок не должен

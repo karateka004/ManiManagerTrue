@@ -1,13 +1,26 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { m } from 'framer-motion'
-import { ShoppingBag, Medal, Crown } from 'lucide-react'
-import { useStore } from '../store/transactions'
+import { AnimatePresence, m } from 'framer-motion'
+import { ShoppingBag, Medal, Crown, Lock } from 'lucide-react'
+import {
+  useStore,
+  selectCategoriesUsed,
+  selectLogDayStreak,
+  selectGoalsReached,
+  selectBudgetMonthKept,
+} from '../store/transactions'
 import { tg, hapticNotify, openTelegramLink } from '../lib/telegram'
 import { getReferralStats, submitProfile, isBackendConfigured, checkSubscription, type ReferralFriend } from '../lib/api'
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
-import { allQuestProgress, type QuestProgress } from '../lib/quests'
-import { useT } from '../lib/i18n'
+import {
+  questBoard,
+  questsLeft,
+  BOARD_SIZE,
+  QUEST_COOLDOWN_MS,
+  type QuestProgress,
+  type QuestSlot,
+} from '../lib/quests'
+import { useT, type TFunc } from '../lib/i18n'
 import { Tile } from '../components/ui/Tile'
 import { StreakTile } from '../components/rewards/StreakTile'
 import { QuestCard } from '../components/rewards/QuestCard'
@@ -29,6 +42,13 @@ export function RewardsPage() {
   const claimQuest = useStore((s) => s.claimQuest)
   const track = useStore((s) => s.track)
   const streak = useStore((s) => s.streak)
+  const questClaims = useStore((s) => s.questClaims)
+  // Метрики заданий: счётчики действий и «поведенческие» показатели.
+  const events = useStore((s) => s.events)
+  const categoriesUsed = useStore(selectCategoriesUsed)
+  const logDays = useStore(selectLogDayStreak)
+  const goalsReached = useStore(selectGoalsReached)
+  const budgetKept = useStore(selectBudgetMonthKept)
   const lvl = useLevel()
   const reconcileReferralRewards = useStore((s) => s.reconcileReferralRewards)
 
@@ -85,11 +105,24 @@ export function RewardsPage() {
     transactions: transactions.length,
     referrals: referral?.count ?? 0,
     subscribed,
+    events,
+    streak: Math.max(streak.count, streak.best),
+    categories: categoriesUsed,
+    logDays,
+    goalsReached,
+    budgetKept,
   }
-  const quests = allQuestProgress(metrics, claimedQuests)
-  const mainQuests = quests.filter((q) => q.def.group === 'main')
-  const specialQuests = quests.filter((q) => q.def.group === 'special')
-  const claimable = quests.filter((q) => q.claimable).length
+  // Борд-конвейер: показываем только ближайшие невыполненные задания, забранные
+  // уходят и уступают место следующим (см. questBoard).
+  // `now` тикает раз в минуту, только пока на борде есть перезаряжающийся слот —
+  // без этого таймер замер бы до следующей перерисовки страницы.
+  const now = useCountdownTick(questClaims)
+  const mainSlots = questBoard(metrics, claimedQuests, questClaims, 'main', now)
+  const specialSlots = questBoard(metrics, claimedQuests, questClaims, 'special', now)
+  const mainLeft = questsLeft(claimedQuests, 'main')
+  const claimable = [...mainSlots, ...specialSlots].filter(
+    (s) => s.kind === 'quest' && s.quest.claimable,
+  ).length
 
   const onClaim = (q: QuestProgress) => {
     if (!q.claimable) return
@@ -217,16 +250,22 @@ export function RewardsPage() {
       <div className="mx-4 mt-5">
         <div className="mb-2 flex items-center justify-between px-2">
           <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('profile.quests')}</span>
-          {claimable > 0 && (
+          {claimable > 0 ? (
             <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300">
               {t('profile.claimable', { n: claimable })}
             </span>
+          ) : (
+            mainLeft > BOARD_SIZE && (
+              <span className="text-[11px] font-medium text-ink-subtle">
+                {t('quest.left', { n: Math.max(0, mainLeft - mainSlots.length) })}
+              </span>
+            )
           )}
         </div>
+        {/* Забранная карточка уезжает, следующая встаёт на её место: без анимации
+            задание просто исчезало бы, и человек не понимал бы, что произошло. */}
         <div className="flex flex-col gap-2">
-          {mainQuests.map((q) => (
-            <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} onAction={() => onSubscribe(q)} t={t} />
-          ))}
+          <QuestSlots slots={mainSlots} now={now} t={t} onClaim={onClaim} onAction={onSubscribe} />
         </div>
       </div>
 
@@ -236,9 +275,7 @@ export function RewardsPage() {
           <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('rewards.special')}</span>
         </div>
         <div className="flex flex-col gap-2">
-          {specialQuests.map((q) => (
-            <QuestCard key={q.def.id} q={q} onClaim={() => onClaim(q)} t={t} />
-          ))}
+          <QuestSlots slots={specialSlots} now={now} t={t} onClaim={onClaim} />
         </div>
       </div>
 
@@ -249,5 +286,100 @@ export function RewardsPage() {
         {seenLeaderboard.current && <LeaderboardSheet open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />}
       </Suspense>
     </div>
+  )
+}
+
+/**
+ * Тик раз в полминуты, пока на борде есть перезаряжающийся слот. Без него таймер
+ * замер бы до следующей перерисовки страницы. Когда перезарядок нет, интервал не
+ * заводится — лишних перерисовок вкладки не будет.
+ */
+function useCountdownTick(questClaims: Record<string, number>): number {
+  const [now, setNow] = useState(() => Date.now())
+  const cooling = Object.values(questClaims).some((at) => at + QUEST_COOLDOWN_MS > now)
+
+  useEffect(() => {
+    // Сразу подтягиваем время: страница могла провисеть открытой несколько часов.
+    setNow(Date.now())
+    if (!cooling) return
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [cooling, questClaims])
+
+  return now
+}
+
+/** Остаток времени словами: «7 ч 42 мин» / «42 мин» / «меньше минуты». */
+function formatLeft(ms: number, t: TFunc): string {
+  const minutes = Math.ceil(ms / 60_000)
+  if (minutes <= 0) return t('time.soon')
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h > 0 ? t('time.hm', { h, m }) : t('time.m', { m })
+}
+
+/** Перезаряжающийся слот: серая плашка с обратным отсчётом вместо задания. */
+function LockedSlot({ unlockAt, now, t }: { unlockAt: number; now: number; t: TFunc }) {
+  return (
+    <div className="flex items-center gap-3 rounded-3xl border border-dashed border-surface-sunken bg-surface-sunken/40 p-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken text-ink-subtle">
+        <Lock size={16} strokeWidth={2.2} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-ink-muted">{t('quest.locked_title')}</div>
+        <div className="truncate text-[11px] text-ink-subtle">
+          {t('quest.locked_desc', { time: formatLeft(unlockAt - now, t) })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Борд группы: карточки заданий и перезаряжающиеся слоты. Забранная карточка
+ * уезжает, на её место въезжает плашка с таймером — без анимации задание просто
+ * исчезало бы, и человек не понимал бы, что произошло.
+ */
+function QuestSlots({
+  slots,
+  now,
+  t,
+  onClaim,
+  onAction,
+}: {
+  slots: QuestSlot[]
+  now: number
+  t: TFunc
+  onClaim: (q: QuestProgress) => void
+  onAction?: (q: QuestProgress) => void
+}) {
+  if (slots.length === 0) {
+    return <div className="card px-4 py-6 text-center text-sm text-ink-subtle">{t('quest.empty')}</div>
+  }
+
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      {slots.map((slot) => (
+        <m.div
+          key={slot.kind === 'quest' ? slot.quest.def.id : `locked-${slot.unlockAt}`}
+          layout
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.94 }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {slot.kind === 'quest' ? (
+            <QuestCard
+              q={slot.quest}
+              onClaim={() => onClaim(slot.quest)}
+              onAction={onAction ? () => onAction(slot.quest) : undefined}
+              t={t}
+            />
+          ) : (
+            <LockedSlot unlockAt={slot.unlockAt} now={now} t={t} />
+          )}
+        </m.div>
+      ))}
+    </AnimatePresence>
   )
 }

@@ -35,6 +35,7 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
   const categories = useStore(selectAllCategories)
   const lang = useStore((s) => s.lang)
   const globalCurrency = useStore((s) => s.currency)
+  const track = useStore((s) => s.track)
   const t = useT()
 
   const [query, setQuery] = useState('')
@@ -61,6 +62,16 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
   }, [open, transactions, byId, lang])
 
   const q = query.trim().toLowerCase()
+
+  // Задание «найди операцию» засчитываем за настоящий поиск, а не за открытие
+  // шторки: иначе оно выполнялось бы случайным тапом и ничему не учило.
+  const searched = useRef(false)
+  useEffect(() => {
+    if (!open) { searched.current = false; return }
+    if (searched.current || q.length < 2) return
+    searched.current = true
+    track('use_search')
+  }, [open, q, track])
   const results = useMemo(() => {
     if (q.length === 0) return []
     return index

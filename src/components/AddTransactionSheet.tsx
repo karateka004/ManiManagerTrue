@@ -108,6 +108,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   // ниже); в режиме правки стартует с типа правимой операции.
   const [kind, setKind] = useState<CategoryKind>(kindProp)
   const commitTransaction = useStore((s) => s.commitTransaction)
+  const track = useStore((s) => s.track)
   const removeTransaction = useStore((s) => s.removeTransaction)
   const globalCurrency = useStore((s) => s.currency)
   const lastTxCurrency = useStore((s) => s.lastTxCurrency)
@@ -196,6 +197,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
    */
   const applyFrequent = (f: FrequentEntry) => {
     hapticTap()
+    track('use_repeat')
     setExpr(String(f.amount).replace('.', ','))
     setCategoryId(f.categoryId)
     setTxCurrency(f.currency)
