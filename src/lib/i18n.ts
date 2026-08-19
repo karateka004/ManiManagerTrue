@@ -588,7 +588,7 @@ const DICT: Dict = {
   },
   'roadpass.owned_count': { ru: 'Куплено {n} из {total} наград', en: 'Owned {n} of {total} rewards' },
   'roadpass.days_short': { ru: 'дн.', en: 'd' },
-  'roadpass.streak_record': { ru: 'Серия · рекорд {best}', en: 'Streak · best {best}' },
+  'roadpass.streak_record': { ru: 'рекорд {best}', en: 'best {best}' },
   'roadpass.claimed_today': { ru: 'Сегодня ✓', en: 'Today ✓' },
   'roadpass.to_milestone': { ru: 'До рубежа {n} дн.', en: 'To milestone: {n}d' },
   'roadpass.milestone_hit': { ru: 'рубеж {n} дн.!', en: 'milestone {n}d!' },

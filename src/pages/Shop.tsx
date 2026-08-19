@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CoinAmount } from '../components/rewards/CoinAmount'
 import { m } from 'framer-motion'
 import { ChevronLeft, Sparkles } from 'lucide-react'
 import { useStore } from '../store/transactions'
@@ -53,7 +54,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
           <div className="text-2xl font-bold tracking-tight text-ink">{t('shop.title')}</div>
         </div>
         <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken/70 px-2.5 py-1 text-[12px] font-bold tabular text-ink">
-          🪙 {coins.toLocaleString('ru-RU')}
+          <CoinAmount value={coins} size={13} />
         </span>
       </div>
 

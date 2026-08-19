@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { CoinAmount } from '../components/rewards/CoinAmount'
 import { AnimatePresence, m } from 'framer-motion'
 import { ShoppingBag, Medal, Crown, Lock } from 'lucide-react'
 import {
@@ -173,7 +174,7 @@ export function RewardsPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold tabular">
-                🪙 {coins.toLocaleString('ru-RU')}
+                <CoinAmount value={coins} />
               </span>
               {streak.count > 0 && (
                 <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold tabular">
@@ -204,11 +205,10 @@ export function RewardsPage() {
         <Tile
           icon={<ShoppingBag size={26} strokeWidth={2} />}
           title={t('shop.title')}
-          subtitle={t('shop.subtitle')}
           accent="amber"
           badge={
             <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-              🪙 {coins.toLocaleString('ru-RU')}
+              <CoinAmount value={coins} />
             </span>
           }
           onClick={openShop}
@@ -216,31 +216,20 @@ export function RewardsPage() {
         <Tile
           icon={<Medal size={26} strokeWidth={2} />}
           title={t('profile.leaderboard')}
-          subtitle={t('profile.leaderboard_hint')}
           accent="yellow"
-          badge={
-            <span className="rounded-full bg-yellow-100 px-2 py-1 text-[11px] font-bold text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-300">
-              {lvl.badge}
-            </span>
-          }
           onClick={openLeaderboard}
         />
         <StreakTile />
         <Tile
           icon={<Crown size={26} strokeWidth={2} />}
           title={t('lvlrew.title')}
-          subtitle={t('lvlrew.subtitle')}
           accent="violet"
           badge={
             claimableTitles > 0 ? (
               <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
                 +{claimableTitles}
               </span>
-            ) : (
-              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-                {lvl.badge}
-              </span>
-            )
+            ) : null
           }
           onClick={() => setLevelRewardsOpen(true)}
         />

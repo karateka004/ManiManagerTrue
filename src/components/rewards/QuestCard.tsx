@@ -1,12 +1,16 @@
 import { m } from 'framer-motion'
-import { Check } from 'lucide-react'
 import type { QuestProgress } from '../../lib/quests'
 import type { TFunc } from '../../lib/i18n'
+import { QuestIcon } from './QuestIcon'
+import { CoinAmount } from './CoinAmount'
 
 /**
  * Карточка задания: иконка, заголовок/описание, кнопка действия и награды.
- * Кнопка: «Подписаться» (для задания с actionUrl, пока не выполнено) →
- * «Забрать» (выполнено, не забрано) → «Получено» (забрано).
+ * Кнопка: «Подписаться» (для задания с actionUrl, пока не выполнено) либо
+ * «Забрать» / текущий прогресс.
+ *
+ * Состояния «получено» здесь нет намеренно: забранные задания уходят с борда
+ * (см. questBoard), так что такая карточка просто не может отрисоваться.
  */
 export function QuestCard({
   q,
@@ -19,21 +23,14 @@ export function QuestCard({
   onAction?: () => void
   t: TFunc
 }) {
-  const { def, current, ratio, done, claimed, claimable } = q
+  const { def, current, ratio, done, claimable } = q
   // Действие-кнопка (открыть канал) показывается, пока подписка не подтверждена.
-  const showAction = !!def.actionUrl && !done && !claimed
+  const showAction = !!def.actionUrl && !done
 
   return (
-    <div className={`card p-3 transition-opacity ${claimed ? 'opacity-70' : ''}`}>
+    <div className="card p-3">
       <div className="flex items-center gap-3">
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken text-xl">
-          {def.icon}
-          {claimed && (
-            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-500 text-white">
-              <Check size={11} strokeWidth={3} />
-            </span>
-          )}
-        </div>
+        <QuestIcon id={def.id} />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-ink">{t('quest.' + def.id + '.title')}</div>
           <div className="truncate text-[11px] text-ink-subtle">{t('quest.' + def.id + '.desc')}</div>
@@ -53,7 +50,7 @@ export function QuestCard({
               claimable ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-subtle'
             }`}
           >
-            {claimed ? t('quest.received') : claimable ? t('quest.claim') : `${current}/${def.goal}`}
+            {claimable ? t('quest.claim') : `${current}/${def.goal}`}
           </button>
         )}
       </div>
@@ -63,7 +60,7 @@ export function QuestCard({
           +{def.xp} XP
         </span>
         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-          🪙 {def.coins.toLocaleString('ru-RU')}
+          <CoinAmount value={def.coins} />
         </span>
         <div className="ml-auto h-1.5 w-24 overflow-hidden rounded-full bg-surface-sunken">
           <m.div

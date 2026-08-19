@@ -1,4 +1,5 @@
 import { Check, User } from 'lucide-react'
+import { CoinAmount } from './CoinAmount'
 import { useStore } from '../../store/transactions'
 import { useT } from '../../lib/i18n'
 import { hapticTap, hapticNotify } from '../../lib/telegram'
@@ -89,7 +90,7 @@ export function RewardRow({ reward, priceOverride }: Props) {
             {discounted && (
               <span className="text-[10px] font-semibold text-ink-subtle line-through">{fullPrice.toLocaleString('ru-RU')}</span>
             )}
-            🪙 {price.toLocaleString('ru-RU')}
+            <CoinAmount value={price} />
           </span>
         </button>
       )}

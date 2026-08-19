@@ -22,7 +22,7 @@ export function StreakTile() {
     <button
       onClick={onClick}
       disabled={!claimable}
-      className={`relative flex aspect-square w-full flex-col justify-between overflow-hidden rounded-4xl p-4 text-left shadow-soft transition ${
+      className={`relative flex min-h-[136px] w-full flex-col justify-between overflow-hidden rounded-4xl p-4 text-left shadow-soft transition ${
         claimable
           ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white active:scale-[0.98]'
           : 'bg-surface-raised dark:shadow-soft-dark'
@@ -52,7 +52,7 @@ export function StreakTile() {
       </div>
 
       <div className="relative">
-        <div className={`text-[15px] font-bold leading-tight ${claimable ? 'text-white' : 'text-ink'}`}>
+        <div className={`text-[16px] font-bold leading-tight ${claimable ? 'text-white' : 'text-ink'}`}>
           {t('streak.title')}
         </div>
         <div className={`mt-1 text-[12px] leading-snug ${claimable ? 'text-white/85' : 'text-ink-subtle'}`}>
