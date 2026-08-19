@@ -1461,7 +1461,29 @@ export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, num
 /** Сколько различных категорий использовано (для задания «5 разных категорий»). */
 export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => new Set(s.transactions.map((t) => t.categoryId)).size,
+  (s) => [s.transactions],
 )
+
+/**
+ * Метка локального календарного дня (полночь по местному времени) для epoch-ms.
+ * Раньше день считался как `dayjs(t.date).format('YYYY-MM-DD')` — это создание
+ * объекта-обёртки и форматирование строки НА КАЖДУЮ операцию. На тысяче записей
+ * заметно, а результат тот же.
+ */
+function localDayKey(at: number): number {
+  const d = new Date(at)
+  d.setHours(0, 0, 0, 0)
+  return +d
+}
+
+/** Предыдущий календарный день. Через Date, а не вычитание суток: переход на
+ *  летнее время сдвигает сутки, и арифметика по миллисекундам промахнулась бы. */
+function prevDayKey(key: number): number {
+  const d = new Date(key)
+  d.setDate(d.getDate() - 1)
+  d.setHours(0, 0, 0, 0)
+  return +d
+}
 
 
 /**
@@ -1469,18 +1491,28 @@ export const selectCategoriesUsed: (s: State) => number = memo1(
  * если за сегодня записей ещё нет — стартуем со вчера (день не «закрыт»).
  * Для задания «веди учёт N дней подряд».
  */
-export const selectLogDayStreak: (s: State) => number = memo1((s) => {
-  const days = new Set(s.transactions.map((t) => dayjs(t.date).format('YYYY-MM-DD')))
-  if (days.size === 0) return 0
-  let cursor = dayjs()
-  if (!days.has(cursor.format('YYYY-MM-DD'))) cursor = cursor.subtract(1, 'day')
-  let streak = 0
-  while (days.has(cursor.format('YYYY-MM-DD'))) {
-    streak += 1
-    cursor = cursor.subtract(1, 'day')
-  }
-  return streak
-})
+export const selectLogDayStreak: (s: State) => number = memo1(
+  (s) => {
+    const days = new Set<number>()
+    for (const t of s.transactions) {
+      const at = Date.parse(t.date)
+      if (Number.isFinite(at)) days.add(localDayKey(at))
+    }
+    if (days.size === 0) return 0
+
+    // Серия считается от сегодня; если сегодня записи нет — от вчера, иначе
+    // вечерний заход до первой траты обнулял бы честную серию.
+    let cursor = localDayKey(Date.now())
+    if (!days.has(cursor)) cursor = prevDayKey(cursor)
+    let streak = 0
+    while (days.has(cursor)) {
+      streak += 1
+      cursor = prevDayKey(cursor)
+    }
+    return streak
+  },
+  (s) => [s.transactions],
+)
 
 /** Сколько накопительных целей полностью достигнуто (для задания «достигни цели»). */
 /** Валюты быстрого выбора в форме: заданные вручную либо подобранные по данным. */
@@ -1490,6 +1522,8 @@ export const selectQuickCurrencies: (s: State) => Currency[] = memo1((s) =>
 
 export const selectGoalsReached: (s: State) => number = memo1(
   (s) => s.goals.filter((g) => g.target > 0 && goalSavedAmount(s, g) >= g.target).length,
+  // Цели с syncBalance читают баланс по валютам — он и стоит в зависимостях.
+  (s) => [s.goals, selectNetBalanceByCurrency(s), s.currency],
 )
 
 /**
@@ -1497,18 +1531,21 @@ export const selectGoalsReached: (s: State) => number = memo1(
  * (по реальным операциям) больше нуля и укладывается в бюджет; иначе 0.
  * Для задания «удержи месяц в пределах бюджета».
  */
-export const selectBudgetMonthKept: (s: State) => number = memo1((s) => {
-  if (s.monthlyBudget <= 0) return 0
-  const start = +dayjs().startOf('month')
-  const end = +dayjs().startOf('month').add(1, 'month')
-  const spent = s.transactions
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => {
-      const x = +dayjs(t.date)
-      return x >= start && x < end ? sum + t.amount : sum
-    }, 0)
-  return spent > 0 && spent <= s.monthlyBudget ? 1 : 0
-})
+export const selectBudgetMonthKept: (s: State) => number = memo1(
+  (s) => {
+    if (s.monthlyBudget <= 0) return 0
+    const start = +dayjs().startOf('month')
+    const end = +dayjs().startOf('month').add(1, 'month')
+    let spent = 0
+    for (const t of s.transactions) {
+      if (t.type !== 'expense') continue
+      const x = Date.parse(t.date) // dayjs в цикле по всем операциям слишком дорог
+      if (x >= start && x < end) spent += t.amount
+    }
+    return spent > 0 && spent <= s.monthlyBudget ? 1 : 0
+  },
+  (s) => [s.transactions, s.monthlyBudget],
+)
 
 function dailyExpense(txs: Transaction[]): { day: string; amount: number }[] {
   const month = txs.filter((t) => t.type === 'expense')
