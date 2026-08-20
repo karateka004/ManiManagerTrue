@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { AlertTriangle, CalendarDays, Lightbulb, Repeat, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react'
 import { useStore, selectOverview, selectAllCategories } from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
@@ -50,6 +50,13 @@ export const Overview = memo(function Overview() {
         <>
           <SectionTitle>{t('ov.rhythm')}</SectionTitle>
           <WeekRhythm />
+        </>
+      )}
+
+      {o.recurring.length > 0 && (
+        <>
+          <SectionTitle>{t('ov.recurring')}</SectionTitle>
+          <Recurring />
         </>
       )}
 
@@ -256,7 +263,6 @@ function Sparkline() {
 
 const INSIGHT_ICON = {
   spike: TrendingUp,
-  recurring: Repeat,
   weekday: CalendarDays,
   budget: Lightbulb,
   pace: Lightbulb,
@@ -279,14 +285,6 @@ function InsightRow({ insight, first }: { insight: Insight; first: boolean }) {
       color = insight.color
       title = t('ov.i.spike.title', { name: catName(insight.categoryId, insight.name), amount: money(insight.amount) })
       text = t('ov.i.spike.text', { pct: Math.round(insight.pct) })
-      break
-    case 'recurring':
-      color = insight.color
-      title = t('ov.i.recurring.title', { amount: formatMoney(insight.amount, o.currency) })
-      text = t('ov.i.recurring.text', {
-        name: catName(insight.categoryId, insight.name),
-        yearly: money(insight.yearly),
-      })
       break
     case 'weekday':
       color = '#6FA8DC'
@@ -353,6 +351,59 @@ function WeekRhythm() {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Регулярные платежи ---------- */
+
+/**
+ * Постоянные траты одним списком с итогом за год.
+ *
+ * Смысл блока — в последней строке. Люди редко держат в голове, во что
+ * обходятся подписки и аренда за двенадцать месяцев, пока не увидят сумму
+ * целиком; на этом выросли приложения вроде Rocket Money. Банк нам для этого
+ * не нужен: повтор одинаковой суммы в одной категории виден и в ручных записях.
+ */
+function Recurring() {
+  const o = useStore(selectOverview)
+  const t = useT()
+  const catName = useCatName()
+
+  const monthly = o.recurring.reduce((a, r) => a + r.amount, 0)
+
+  return (
+    <div className="mx-4 rounded-3xl bg-surface-raised px-4 shadow-soft dark:shadow-soft-dark">
+      {o.recurring.map((r, i) => (
+        <div
+          key={r.id}
+          className={`flex items-center gap-3 py-3 ${i ? 'border-t border-ink/[.06] dark:border-ink/[.09]' : ''}`}
+        >
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: r.color + '28', color: r.color }}
+          >
+            <CategoryIcon id={r.icon} size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14px] font-semibold text-ink">
+              {r.title || catName(r.categoryId, r.name)}
+            </div>
+            <div className="text-[12px] text-ink-subtle">
+              {t('ov.recurring_next', { date: dayjs(r.nextDay).format('D MMMM') })}
+            </div>
+          </div>
+          <span className="tabular shrink-0 text-[14px] font-extrabold text-ink">
+            {formatMoney(r.amount, o.currency)}
+          </span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between border-t border-ink/[.06] py-3 dark:border-ink/[.09]">
+        <span className="text-[13px] font-semibold text-ink-muted">{t('ov.recurring_year')}</span>
+        <span className="tabular text-[15px] font-extrabold text-ink">
+          {formatMoney(Math.round(monthly * 12), o.currency)}
+        </span>
       </div>
     </div>
   )

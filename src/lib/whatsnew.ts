@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.35.0'
+export const APP_VERSION = '1.36.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.36.0',
+    date: '2026-08-20',
+    title: { ru: 'Поток денег и постоянные траты', en: 'Money flow and recurring payments' },
+    items: [
+      {
+        icon: '🌊',
+        text: {
+          ru: 'В «Обзоре» появился поток денег: полоса делит доход на потраченное и остаток, а ниже расходы веером растекаются по категориям — видно, куда именно ушёл месяц',
+          en: 'The Overview now shows a money flow: a bar splits income into spent and left over, and below it expenses fan out into categories — you see exactly where the month went',
+        },
+      },
+      {
+        icon: '🔁',
+        text: {
+          ru: 'Блок «Постоянные траты» собирает всё, что списывается каждый месяц одинаковой суммой — аренду, связь, подписки, — показывает дату следующего списания и главное: сколько это стоит за год',
+          en: 'A “Recurring payments” block gathers everything charged the same amount every month — rent, mobile, subscriptions — with the next expected date and, above all, what it costs you in a year',
+        },
+      },
+    ],
+  },
   {
     version: '1.35.0',
     date: '2026-08-20',

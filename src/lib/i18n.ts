@@ -368,11 +368,9 @@ const DICT: Dict = {
     ru: 'На {pct}% больше, чем обычно за такой же период',
     en: '{pct}% more than usual for the same period',
   },
-  'ov.i.recurring.title': { ru: 'Повторяется каждый месяц: {amount}', en: 'Repeats every month: {amount}' },
-  'ov.i.recurring.text': {
-    ru: 'Одна и та же сумма каждый месяц в «{name}». За год — {yearly}',
-    en: 'The same amount every month in “{name}”. That is {yearly} a year',
-  },
+  'ov.recurring': { ru: 'Постоянные траты', en: 'Recurring payments' },
+  'ov.recurring_next': { ru: 'следующий раз ~{date}', en: 'next around {date}' },
+  'ov.recurring_year': { ru: 'Столько уходит за год', en: 'That is a year' },
   'ov.i.weekday.title': { ru: '{day} — самый дорогой день', en: '{day} is your priciest day' },
   'ov.i.weekday.text': {
     ru: 'В среднем {avg} против {minAvg} в {minDay}',

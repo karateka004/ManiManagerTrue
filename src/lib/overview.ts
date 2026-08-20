@@ -44,10 +44,37 @@ const RECUR_MIN_TIMES = 3
 /** Разрыв между списаниями, дней: «раз в месяц» с запасом на плавающую дату. */
 const RECUR_MIN_GAP = 25
 const RECUR_MAX_GAP = 36
-/** Если последнего списания давно нет — платёж закончился, не показываем. */
-const RECUR_STALE_DAYS = 50
+/**
+ * Запас сверх обычного промежутка. Если списания нет дольше — платёж, видимо,
+ * закончился (отписались, съехали), и в панели ему не место. Считаем от самого
+ * промежутка, а не фиксированным числом дней: у платежа раз в месяц и у платежа
+ * раз в пять недель терпение должно быть разным.
+ */
+const RECUR_GRACE_DAYS = 12
 /** Глубина поиска регулярных платежей. */
 const RECUR_WINDOW_DAYS = 400
+/** Больше строк в панели постоянных трат не показываем. */
+const MAX_RECURRING = 6
+
+/** Повторяющийся платёж: одинаковая сумма в одной категории примерно раз в месяц. */
+export interface Recurring {
+  id: string
+  categoryId: string
+  name: string
+  color: string
+  icon: string
+  /**
+   * Как назвать строку. Самая частая заметка группы, иначе название категории:
+   * «Аренда» и «Бензин» узнаются, а две строки «Машина» подряд читаются как
+   * дубликат, хотя это разные платежи.
+   */
+  title: string
+  amount: number
+  /** Сколько раз уже списывалось. */
+  times: number
+  /** Ожидаемая дата следующего списания (локальная полночь). */
+  nextDay: number
+}
 
 export interface CatDelta {
   categoryId: string
@@ -66,8 +93,6 @@ export interface CatDelta {
 export type Insight =
   /** Категория съела заметно больше, чем обычно за такой же период. */
   | { id: string; kind: 'spike'; categoryId: string; name: string; color: string; icon: string; amount: number; pct: number }
-  /** Одинаковая сумма в одной категории раз в месяц — похоже на подписку. */
-  | { id: string; kind: 'recurring'; categoryId: string; name: string; color: string; icon: string; amount: number; times: number; yearly: number }
   /** Самый дорогой день недели против самого дешёвого. */
   | { id: string; kind: 'weekday'; day: number; avg: number; minDay: number; minAvg: number }
   /** Прогноз против лимита или против прошлого периода. */
@@ -113,6 +138,11 @@ export interface Overview {
   categories: CatDelta[]
   /** Сумма категорий за пределами топа — строка «Прочее» в потоке денег. */
   categoriesRest: number
+  /**
+   * Регулярные платежи. Пусто, если период не содержит сегодняшний день:
+   * это панель текущих постоянных трат, а не история.
+   */
+  recurring: Recurring[]
   biggest: Transaction[]
   insights: Insight[]
 }
@@ -227,6 +257,11 @@ export function buildOverview(input: OverviewInput): Overview {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, TOP_BIGGEST)
 
+  // Панель постоянных трат показываем только когда период содержит сегодня:
+  // это срез текущих обязательств, а не история за выбранный месяц.
+  const isCurrent = todayKey >= startKey && todayKey < endKey
+  const recurring = isCurrent ? findRecurring(history, now, byId) : []
+
   const insights = buildInsights({
     cats,
     previous,
@@ -237,8 +272,6 @@ export function buildOverview(input: OverviewInput): Overview {
     projected,
     prevSpent,
     budget: budgetApplies ? budget : 0,
-    history,
-    now,
   })
 
   return {
@@ -261,6 +294,7 @@ export function buildOverview(input: OverviewInput): Overview {
     weekday,
     categories: cats.slice(0, TOP_CATEGORIES),
     categoriesRest: cats.slice(TOP_CATEGORIES).reduce((a, c) => a + c.amount, 0),
+    recurring,
     biggest,
     insights,
   }
@@ -335,52 +369,98 @@ function buildForecast(
 }
 
 /**
- * Регулярный платёж: одна и та же сумма в одной категории, три и больше раз,
- * с промежутком около месяца, и последний раз — недавно. Точное совпадение
- * суммы намеренно: подписки списывают ровно столько же, а «примерно столько же»
- * поймало бы обычные продукты.
+ * Все регулярные платежи: одна и та же сумма в одной категории, три и больше
+ * раз, с промежутком около месяца, и последний раз — недавно.
+ *
+ * Совпадение суммы требуется ТОЧНОЕ. «Примерно столько же» ловило бы обычные
+ * продукты, а подписка, аренда и связь списывают ровно одну и ту же цифру —
+ * именно это и делает их узнаваемыми в ручных записях, без банка.
+ *
+ * Отсортированы по сумме убыв.: сверху то, что стоит дороже всего.
  */
-function findRecurring(history: Transaction[], now: number): { key: string; amount: number; categoryId: string; times: number } | null {
+function findRecurring(
+  history: Transaction[],
+  now: number,
+  byId: Map<string, Category>,
+): Recurring[] {
   const since = now - RECUR_WINDOW_DAYS * DAY_MS
-  const groups = new Map<string, number[]>()
+  const groups = new Map<string, { days: number[]; notes: Map<string, number> }>()
 
   for (const t of history) {
     if (t.type !== 'expense') continue
     const at = parseDay(t.date)
     if (!Number.isFinite(at) || at < since) continue
     const key = t.categoryId + '|' + Math.round(t.amount * 100)
-    const list = groups.get(key)
-    if (list) list.push(at)
-    else groups.set(key, [at])
+    let g = groups.get(key)
+    if (!g) {
+      g = { days: [], notes: new Map() }
+      groups.set(key, g)
+    }
+    g.days.push(at)
+    const note = t.note?.trim()
+    if (note) g.notes.set(note, (g.notes.get(note) ?? 0) + 1)
   }
 
   const todayKey = localDayKey(now)
-  let best: { key: string; amount: number; categoryId: string; times: number } | null = null
+  const out: Recurring[] = []
 
-  for (const [key, rawDays] of groups) {
+  for (const [key, group] of groups) {
+    const rawDays = group.days
     if (rawDays.length < RECUR_MIN_TIMES) continue
     const days = [...new Set(rawDays)].sort((a, b) => a - b)
     if (days.length < RECUR_MIN_TIMES) continue
-    if (daysBetween(days[days.length - 1], todayKey) > RECUR_STALE_DAYS) continue
+    const last = days[days.length - 1]
 
     let monthly = true
+    let total = 0
     for (let i = 1; i < days.length; i++) {
-      const gap = daysBetween(days[i - 1], days[i])
-      if (gap < RECUR_MIN_GAP || gap > RECUR_MAX_GAP) {
+      const step = daysBetween(days[i - 1], days[i])
+      if (step < RECUR_MIN_GAP || step > RECUR_MAX_GAP) {
         monthly = false
         break
       }
+      total += step
     }
     if (!monthly) continue
 
+    const gap = Math.round(total / (days.length - 1))
+    if (daysBetween(last, todayKey) > gap + RECUR_GRACE_DAYS) continue
+
     const sep = key.lastIndexOf('|')
-    const amount = Number(key.slice(sep + 1)) / 100
-    if (!best || amount > best.amount) {
-      best = { key, amount, categoryId: key.slice(0, sep), times: days.length }
+    const categoryId = key.slice(0, sep)
+    const c = byId.get(categoryId)
+
+    // Дату следующего списания прокручиваем вперёд, пока она не окажется в
+    // будущем: «следующий раз ~8 августа», когда сегодня двадцатое, — бессмыслица.
+    const next = new Date(last)
+    do {
+      next.setDate(next.getDate() + gap)
+    } while (+next < todayKey)
+
+    // Самая частая заметка группы; при равенстве — первая встреченная.
+    let title = ''
+    let best = 0
+    for (const [note, count] of group.notes) {
+      if (count > best) {
+        best = count
+        title = note
+      }
     }
+
+    out.push({
+      id: key,
+      categoryId,
+      title,
+      name: c?.name ?? categoryId,
+      color: c?.color ?? '#8A968F',
+      icon: c?.icon ?? 'other',
+      amount: Number(key.slice(sep + 1)) / 100,
+      times: days.length,
+      nextDay: +next,
+    })
   }
 
-  return best
+  return out.sort((a, b) => b.amount - a.amount).slice(0, MAX_RECURRING)
 }
 
 interface InsightInput {
@@ -393,8 +473,6 @@ interface InsightInput {
   projected: number
   prevSpent: number | null
   budget: number
-  history: Transaction[]
-  now: number
 }
 
 function buildInsights(x: InsightInput): Insight[] {
@@ -426,23 +504,6 @@ function buildInsights(x: InsightInput): Insight[] {
         pct: ((top.cat.amount - top.avg) / top.avg) * 100,
       })
     }
-  }
-
-  /* 2. Регулярный платёж. */
-  const rec = findRecurring(x.history, x.now)
-  if (rec) {
-    const c = x.byId.get(rec.categoryId)
-    out.push({
-      id: 'recurring:' + rec.key,
-      kind: 'recurring',
-      categoryId: rec.categoryId,
-      name: c?.name ?? rec.categoryId,
-      color: c?.color ?? '#8A968F',
-      icon: c?.icon ?? 'other',
-      amount: rec.amount,
-      times: rec.times,
-      yearly: rec.amount * 12,
-    })
   }
 
   /* 3. Самый дорогой день недели против самого дешёвого.
