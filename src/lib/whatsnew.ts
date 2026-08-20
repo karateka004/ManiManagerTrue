@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.34.0'
+export const APP_VERSION = '1.35.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,41 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.35.0',
+    date: '2026-08-20',
+    title: { ru: 'Разбор Аналитики по косточкам', en: 'Analytics, debugged' },
+    items: [
+      {
+        icon: '📉',
+        text: {
+          ru: 'График «По дням» был плоским: столбики всегда рисовались в три пикселя. Теперь он показывает настоящую картину, и дни идут по порядку даже на неделе, которая переходит из месяца в месяц',
+          en: 'The “By day” chart was flat — every bar was drawn three pixels tall. It now shows the real picture, and days stay in order even for a week that crosses into the next month',
+        },
+      },
+      {
+        icon: '🕓',
+        text: {
+          ru: 'Операции за первое число месяца могли выпадать из него — в часовых поясах западнее Гринвича день считался неверно. Исправлено во всей аналитике, включая календарь',
+          en: 'Entries dated the first of the month could fall out of it — the day was computed wrongly west of Greenwich. Fixed across all analytics, the calendar included',
+        },
+      },
+      {
+        icon: '🔮',
+        text: {
+          ru: 'Прогноз перестал раздуваться от записей будущим числом: аренда, отмеченная вперёд, теперь считается один раз, а темп берётся только по прожитым дням',
+          en: 'The forecast no longer inflates from entries dated ahead: rent marked in advance counts once, and the pace comes only from days already lived',
+        },
+      },
+      {
+        icon: '🗂',
+        text: {
+          ru: 'Удаление своей категории больше не теряет её операции: они переезжают в «Прочее» и остаются видны в кольце',
+          en: 'Deleting your own category no longer loses its entries: they move to “Other” and stay visible in the ring',
+        },
+      },
+    ],
+  },
   {
     version: '1.34.0',
     date: '2026-08-20',

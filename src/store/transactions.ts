@@ -10,7 +10,7 @@ import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
-import { DAY_MS, localDayKey, prevDayKey } from '../lib/day'
+import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
 import { buildOverview, type Overview } from '../lib/overview'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
@@ -346,17 +346,33 @@ function isUsableTransaction(t: unknown): boolean {
   )
 }
 
+/** Куда девать операции удалённой категории — «Прочее» своего вида. */
+const FALLBACK_CATEGORY = { income: 'other_in', expense: 'other' } as const
+
 function sanitizePersisted(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {}
   const s = { ...(raw as Record<string, unknown>) }
 
   if (Array.isArray(s.transactions)) {
+    // Категории, которые вообще существуют: встроенные плюс пользовательские.
+    // Удаление пользовательской категории раньше оставляло операции сиротами:
+    // из кольца они пропадали (там перебор идёт ПО категориям), а сумма в
+    // центре их всё равно включала — проценты не сходились в сто.
+    const known = new Set(DEFAULT_CATEGORIES.map((c) => c.id))
+    if (Array.isArray(s.customCategories)) {
+      for (const c of s.customCategories as { id?: unknown }[]) if (typeof c?.id === 'string') known.add(c.id)
+    }
     s.transactions = (s.transactions as unknown[])
       .filter(isUsableTransaction)
       .map((t) => {
         const x = t as Record<string, unknown>
         const amount = clampNumber(x.amount, 0, MAX_MONEY, 0)
-        return amount === x.amount ? x : { ...x, amount }
+        const categoryId = known.has(x.categoryId as string)
+          ? x.categoryId
+          : x.type === 'income'
+            ? FALLBACK_CATEGORY.income
+            : FALLBACK_CATEGORY.expense
+        return amount === x.amount && categoryId === x.categoryId ? x : { ...x, amount, categoryId }
       })
   } else if (s.transactions !== undefined) {
     s.transactions = []
@@ -529,7 +545,7 @@ export const useStore = create<State & Actions>()(
           }
           // Операция «задним числом» может выпасть за текущий период просмотра —
           // тогда сдвигаем период на её дату, иначе запись пропала бы из виду.
-          const x = Date.parse(t.date)
+          const x = parseDay(t.date)
           const { start, end } = periodBounds(s.period)
           if (x < +start || x >= +end) {
             const next = focusedPeriod(s.period, t.date)
@@ -587,9 +603,22 @@ export const useStore = create<State & Actions>()(
         set((s) => {
           const nextBudgets = { ...s.budgets }
           delete nextBudgets[id]
+          // Операции удалённой категории переносим в «Прочее». Иначе они
+          // остаются сиротами: в кольце их не видно (перебор идёт по
+          // существующим категориям), а в общей сумме они есть.
+          const orphaned = s.transactions.some((t) => t.categoryId === id)
           return {
             customCategories: s.customCategories.filter((c) => c.id !== id),
             budgets: nextBudgets,
+            ...(orphaned
+              ? {
+                  transactions: s.transactions.map((t) =>
+                    t.categoryId === id
+                      ? { ...t, categoryId: t.type === 'income' ? FALLBACK_CATEGORY.income : FALLBACK_CATEGORY.expense }
+                      : t,
+                  ),
+                }
+              : {}),
           }
         }),
 
@@ -1060,10 +1089,11 @@ export const selectPeriodTransactions: (s: State) => Transaction[] = memo1(
     const { start, end } = periodBounds(s.period)
     const lo = +start
     const hi = +end
-    // Date.parse, а не dayjs(): разбор ISO-строки тут в горячем цикле по всем
-    // операциям, а dayjs на каждый вызов создаёт объект — на порядок дороже.
+    // parseDay, а не dayjs(): цикл идёт по всем операциям, а dayjs создаёт
+    // объект-обёртку на каждый вызов. И не Date.parse — он разбирает дату без
+    // времени как полночь UTC, см. [[lib/day]].
     return activeTransactions(s).filter((t) => {
-      const x = Date.parse(t.date)
+      const x = parseDay(t.date)
       return x >= lo && x < hi
     })
   },
@@ -1304,7 +1334,7 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
   return activeTransactions(s)
     .filter((t) => t.type === 'expense')
     .reduce((sum, t) => {
-      const x = +dayjs(t.date)
+      const x = parseDay(t.date)
       return x >= start && x < end ? sum + t.amount : sum
     }, 0)
 })
@@ -1350,7 +1380,7 @@ export const selectFrequent: (s: State, kind: CategoryKind) => FrequentEntry[] =
     const map = new Map<string, FrequentEntry & { last: number }>()
     for (const t of s.transactions) {
       if (t.type !== kind) continue
-      const at = Date.parse(t.date)
+      const at = parseDay(t.date)
       if (!Number.isFinite(at) || at < since) continue
       const cur = t.currency ?? s.currency
       const key = `${t.categoryId}|${t.amount}|${cur}`
@@ -1401,7 +1431,7 @@ export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
     let spentToday = 0
     for (const t of activeTransactions(s)) {
       if (t.type !== 'expense') continue
-      const at = Date.parse(t.date)
+      const at = parseDay(t.date)
       if (at < monthStart || at >= monthEnd) continue
       spentMonth += t.amount
       if (at >= dayStart) spentToday += t.amount
@@ -1422,7 +1452,7 @@ export const selectCurrentMonthExpenseByCategory: (s: State) => Record<string, n
   const out: Record<string, number> = {}
   for (const t of activeTransactions(s)) {
     if (t.type !== 'expense') continue
-    const x = +dayjs(t.date)
+    const x = parseDay(t.date)
     if (x < start || x >= end) continue
     out[t.categoryId] = (out[t.categoryId] ?? 0) + t.amount
   }
@@ -1444,7 +1474,7 @@ export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, num
   const sums: Record<string, number> = {}
   for (const t of activeTransactions(s)) {
     if (t.type !== 'expense') continue
-    const x = +dayjs(t.date)
+    const x = parseDay(t.date)
     if (x < start || x >= end) continue
     sums[t.categoryId] = (sums[t.categoryId] ?? 0) + t.amount
   }
@@ -1476,8 +1506,8 @@ export const selectLogDayStreak: (s: State) => number = memo1(
   (s) => {
     const days = new Set<number>()
     for (const t of s.transactions) {
-      const at = Date.parse(t.date)
-      if (Number.isFinite(at)) days.add(localDayKey(at))
+      const at = parseDay(t.date)
+      if (Number.isFinite(at)) days.add(at)
     }
     if (days.size === 0) return 0
 
@@ -1520,7 +1550,7 @@ export const selectBudgetMonthKept: (s: State) => number = memo1(
     let spent = 0
     for (const t of s.transactions) {
       if (t.type !== 'expense') continue
-      const x = Date.parse(t.date) // dayjs в цикле по всем операциям слишком дорог
+      const x = parseDay(t.date)
       if (x >= start && x < end) spent += t.amount
     }
     return spent > 0 && spent <= s.monthlyBudget ? 1 : 0
@@ -1528,16 +1558,29 @@ export const selectBudgetMonthKept: (s: State) => number = memo1(
   (s) => [s.transactions, s.monthlyBudget],
 )
 
+/**
+ * Расходы по дням периода, по возрастанию даты.
+ *
+ * Ключ — метка дня (число), а НЕ подпись «ДД.ММ»: раньше сортировка шла по
+ * строке, и на периоде, пересекающем границу месяца, порядок ломался —
+ * «01.08» вставало перед «29.07». А `DailyBars` берёт последние 14 записей
+ * по порядку массива, то есть показывал не те дни.
+ */
 function dailyExpense(txs: Transaction[]): { day: string; amount: number }[] {
-  const month = txs.filter((t) => t.type === 'expense')
-  const map = new Map<string, number>()
-  for (const t of month) {
-    const day = dayjs(t.date).format('DD.MM')
-    map.set(day, (map.get(day) ?? 0) + t.amount)
+  const map = new Map<number, number>()
+  for (const t of txs) {
+    if (t.type !== 'expense') continue
+    const key = parseDay(t.date)
+    if (!Number.isFinite(key)) continue
+    map.set(key, (map.get(key) ?? 0) + t.amount)
   }
+  const pad = (n: number) => String(n).padStart(2, '0')
   return [...map.entries()]
-    .map(([day, amount]) => ({ day, amount }))
-    .sort((a, b) => (a.day < b.day ? -1 : 1))
+    .sort((a, b) => a[0] - b[0])
+    .map(([key, amount]) => {
+      const d = new Date(key)
+      return { day: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`, amount }
+    })
 }
 
 export const selectDailyExpense: (s: State) => { day: string; amount: number }[] = memo1((s) =>
@@ -1560,6 +1603,8 @@ export interface TrendBucket {
 }
 
 const TREND_COUNT: Record<TrendGranularity, number> = { day: 14, week: 12, month: 12, year: 5 }
+/** Меньше корзин на графике не оставляем, даже если данных совсем немного. */
+const TREND_MIN_BUCKETS = 4
 
 function trendLabel(d: Dayjs, g: TrendGranularity): string {
   switch (g) {
@@ -1589,13 +1634,19 @@ export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = mem
     // иначе (s.account === null, «Все») суммы смешивались бы — но тогда и
     // форматируем по глобальной валюте (selectAnalyticsCurrency), как раньше.
     if (s.account && txCurrency(t, s) !== s.account) continue
-    const x = +dayjs(t.date)
+    const x = parseDay(t.date)
     const b = buckets.find((bk) => x >= bk.start && x < bk.end)
     if (!b) continue
     if (t.type === 'income') b.income += t.amount
     else b.expense += t.amount
   }
-  return buckets.map(({ label, income, expense }) => ({ label, income, expense }))
+  // Пустое прошлое не рисуем: у нового пользователя из двенадцати месяцев
+  // одиннадцать были бы нулевыми, и график выглядел бы поломанным. Оставляем
+  // минимум четыре корзины, чтобы не схлопнуть его в один столбик.
+  const firstActive = buckets.findIndex((b) => b.income > 0 || b.expense > 0)
+  const visible = firstActive > 0 ? buckets.slice(Math.min(firstActive, buckets.length - TREND_MIN_BUCKETS)) : buckets
+
+  return visible.map(({ label, income, expense }) => ({ label, income, expense }))
 })
 
 /* ---------- Обзор (первый сегмент Аналитики) ---------- */
@@ -1653,7 +1704,7 @@ export const selectOverview: (s: State) => Overview = memo1(
     // Один проход по истории на все окна сразу: операций может быть тысячи.
     for (const t of all) {
       if (!inAccount(t)) continue
-      const x = Date.parse(t.date)
+      const x = parseDay(t.date)
       if (!Number.isFinite(x)) continue
       if (x >= historySince) history.push(t)
       for (let i = 0; i < windows.length; i++) {

@@ -41,15 +41,19 @@ export function formatMoney(value: number, currency: Currency = 'USD', opts?: { 
   const sign = opts?.sign ? (value > 0 ? '+' : value < 0 ? '−' : '') : ''
   const abs = Math.abs(value)
 
+  // Пробел перед символом валюты — НЕРАЗРЫВНЫЙ: иначе «148,64 €» переносится
+  // так, что «€» уезжает на следующую строку и подпись выглядит сломанной.
+  const NBSP = String.fromCharCode(160)
+
   if (opts?.compact && abs >= 1000) {
     const k = abs / 1000
     const formatted = k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')
-    return `${sign}${formatted}${currentLang === 'ru' ? 'к' : 'k'} ${meta.symbol}`
+    return `${sign}${formatted}${currentLang === 'ru' ? 'к' : 'k'}${NBSP}${meta.symbol}`
   }
 
   const formatted = numberFormat(meta.locale, abs % 1 === 0 ? 0 : 2, 2).format(abs)
 
-  return `${sign}${formatted} ${meta.symbol}`
+  return `${sign}${formatted}${NBSP}${meta.symbol}`
 }
 
 /** Short date for transaction rows (e.g. "5 февр.") */

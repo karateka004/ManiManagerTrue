@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore, activeTransactions } from '../store/transactions'
 import { dayjs, formatMoney } from '../lib/format'
 import { useT, weekdaysShort, type Lang } from '../lib/i18n'
+import { parseDay } from '../lib/day'
 import { hapticSelect } from '../lib/telegram'
 
 /** Что показывать под числом дня. */
@@ -52,9 +53,10 @@ export function MonthCalendar() {
     const hi = +month.endOf('month')
     for (const t of transactions) {
       if (account && (t.currency ?? globalCurrency) !== account) continue
-      // Date.parse + Date вместо двух вызовов dayjs: цикл идёт по всем операциям,
-      // а dayjs на каждый вызов создаёт объект-обёртку — на порядок дороже.
-      const x = Date.parse(t.date)
+      // parseDay вместо dayjs: цикл идёт по всем операциям, а dayjs создаёт
+      // объект-обёртку на каждый вызов. И не Date.parse — он читает дату без
+      // времени как полночь UTC, см. [[lib/day]].
+      const x = parseDay(t.date)
       if (x < lo || x > hi) continue
       const d = new Date(x).getDate()
       const cur = map.get(d) ?? { income: 0, expense: 0 }

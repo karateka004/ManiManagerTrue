@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { CalendarDays, Lightbulb, Repeat, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Lightbulb, Repeat, TrendingDown, TrendingUp } from 'lucide-react'
 import { useStore, selectOverview, selectAllCategories } from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
@@ -74,7 +74,9 @@ function Hero() {
   const o = useStore(selectOverview)
   const t = useT()
 
-  const down = (o.deltaPct ?? 0) < 0
+  // Округляем ДО выбора стрелки: «0 %» со стрелкой вверх выглядит ошибкой
+  const delta = o.deltaPct === null ? null : Math.round(o.deltaPct)
+  const down = (delta ?? 0) < 0
   // Подпись прогноза — последний день периода, а не его граница (граница = полночь следующего)
   const lastDay = dayjs(o.endKey).subtract(1, 'day').format('D MMMM')
 
@@ -88,23 +90,36 @@ function Hero() {
               {formatMoney(o.spent, o.currency)}
             </div>
           </div>
-          {o.deltaPct !== null && (
-            <span
-              className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-extrabold ${
-                down
-                  ? 'bg-income-soft text-income-deep dark:bg-brand-500/16 dark:text-brand-300'
-                  : 'bg-expense-soft text-expense-deep dark:bg-expense/16 dark:text-expense'
-              }`}
-            >
-              {down ? <TrendingDown size={13} strokeWidth={2.6} /> : <TrendingUp size={13} strokeWidth={2.6} />}
-              {Math.abs(Math.round(o.deltaPct))}%
-            </span>
-          )}
+          {delta !== null &&
+            (delta === 0 ? (
+              <span className="shrink-0 rounded-full bg-surface-sunken px-2.5 py-1 text-[12px] font-extrabold text-ink-subtle">
+                {t('ov.as_usual')}
+              </span>
+            ) : (
+              <span
+                className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-extrabold ${
+                  down
+                    ? 'bg-income-soft text-income-deep dark:bg-brand-500/16 dark:text-brand-300'
+                    : 'bg-expense-soft text-expense-deep dark:bg-expense/16 dark:text-expense'
+                }`}
+              >
+                {down ? <TrendingDown size={13} strokeWidth={2.6} /> : <TrendingUp size={13} strokeWidth={2.6} />}
+                {Math.abs(delta)}%
+              </span>
+            ))}
         </div>
-        {o.prevSpent !== null && o.prevSpent > 0 && (
-          <div className="mt-1.5 text-[12px] text-ink-subtle">
-            {t('ov.prev_was', { amount: formatMoney(o.prevSpent, o.currency) })}
+        {o.mixedCurrency ? (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-expense-deep dark:text-expense">
+            <AlertTriangle size={13} strokeWidth={2.4} />
+            {t('ov.mixed')}
           </div>
+        ) : (
+          o.prevSpent !== null &&
+          o.prevSpent > 0 && (
+            <div className="mt-1.5 text-[12px] text-ink-subtle">
+              {t('ov.prev_was', { amount: formatMoney(o.prevSpent, o.currency) })}
+            </div>
+          )
         )}
       </div>
 
@@ -113,19 +128,23 @@ function Hero() {
       {o.forecast.length > 0 && (
         <div className="border-t border-ink/[.07] px-5 py-4 dark:border-ink/10">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-[13px] font-semibold text-ink-muted">{t('ov.forecast_to', { date: lastDay })}</span>
-            <span className="tabular text-[17px] font-extrabold text-ink">
+            {/* Подпись ужимается, число — никогда: на девятизначной сумме оно
+                переносилось на вторую строку и карточка выглядела сломанной */}
+            <span className="min-w-0 truncate text-[13px] font-semibold text-ink-muted">
+              {t('ov.forecast_to', { date: lastDay })}
+            </span>
+            <span className="tabular shrink-0 whitespace-nowrap text-[17px] font-extrabold text-ink">
               ≈ {formatMoney(Math.round(o.projected), o.currency)}
             </span>
           </div>
           <ForecastBar />
           <div className="mt-2 flex justify-between text-[12px] text-ink-subtle">
-            <span>
+            <span className="min-w-0 truncate">
               {o.budget > 0
                 ? t('ov.limit', { amount: formatMoney(o.budget, o.currency) })
-                : t('ov.spent_so_far', { amount: formatMoney(o.spent, o.currency) })}
+                : t('ov.per_day', { amount: formatMoney(Math.round(o.perDay), o.currency) })}
             </span>
-            <span>{t('ov.days_left', { n: o.daysTotal - o.daysPassed })}</span>
+            <span className="shrink-0">{t('ov.days_left', { n: o.daysTotal - o.daysPassed })}</span>
           </div>
         </div>
       )}
@@ -141,7 +160,7 @@ function Hero() {
 function ForecastBar() {
   const o = useStore(selectOverview)
   const total = o.budget > 0 ? Math.max(o.budget, o.projected) : o.projected || 1
-  const spentPct = Math.min(100, (o.spent / total) * 100)
+  const spentPct = Math.min(100, (o.spentToDate / total) * 100)
   const projPct = Math.min(100, (o.projected / total) * 100)
 
   return (
@@ -362,19 +381,21 @@ function WeekRhythm() {
 
   return (
     <div className="mx-4 rounded-3xl bg-surface-raised px-4 py-4 shadow-soft dark:shadow-soft-dark">
-      <div className="flex h-[92px] items-end gap-2">
+      {/* Столбик занимает отдельную область с собственной высотой: процент
+          обязан считаться от родителя с высотой, иначе график схлопывается */}
+      <div className="flex h-[92px] items-stretch gap-2">
         {o.weekday.map((v, i) => {
           const top = v === max
           return (
-            <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-              <span
-                aria-hidden
-                className={`block w-full rounded-t-lg rounded-b ${top ? 'bg-expense' : 'bg-expense/35'}`}
-                style={{ height: `${Math.max(4, (v / max) * 100)}%` }}
-              />
-              <span className={`text-[11px] font-bold ${top ? 'text-ink' : 'text-ink-subtle'}`}>
-                {days[i]}
-              </span>
+            <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+              <div className="flex w-full flex-1 items-end">
+                <span
+                  aria-hidden
+                  className={`block w-full rounded-t-lg rounded-b ${top ? 'bg-expense' : 'bg-expense/35'}`}
+                  style={{ height: `${Math.max(4, (v / max) * 100)}%` }}
+                />
+              </div>
+              <span className={`text-[11px] font-bold ${top ? 'text-ink' : 'text-ink-subtle'}`}>{days[i]}</span>
             </div>
           )
         })}

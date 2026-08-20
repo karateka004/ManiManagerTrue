@@ -126,16 +126,22 @@ function DailyBars({ data }: { data: { day: string; amount: number }[] }) {
 
   return (
     <div className="card p-4">
-      <div className="flex items-end justify-between gap-1 h-32">
+      {/* items-stretch, а не items-end: высота столбика задана процентом, а процент
+          считается от РОДИТЕЛЯ С ВЫСОТОЙ. При items-end колонка сжималась по
+          содержимому, проценты разрешались в auto — и все столбики оставались
+          ровно min-h-[3px], то есть график был плоским. */}
+      <div className="flex h-32 items-stretch justify-between gap-1">
         {data.slice(-14).map((d, i) => (
           // min-w-0 — чтобы 14 колонок ужимались под ширину карточки и не распирали строку на 320px
           <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <m.div
-              initial={{ height: 0 }}
-              animate={{ height: `${(d.amount / max) * 100}%` }}
-              transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
-              className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
-            />
+            <div className="flex w-full flex-1 items-end">
+              <m.div
+                initial={{ height: 0 }}
+                animate={{ height: `${(d.amount / max) * 100}%` }}
+                transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
+                className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
+              />
+            </div>
             {/* только число дня (DD) — «DD.MM» не влезает в узкую колонку на 320px */}
             <span className="w-full truncate text-center text-[9px] text-ink-subtle">{d.day.slice(0, 2)}</span>
           </div>

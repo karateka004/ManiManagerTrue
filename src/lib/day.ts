@@ -37,6 +37,27 @@ export function daysBetween(fromKey: number, key: number): number {
   return Math.round((key - fromKey) / DAY_MS)
 }
 
+
+/**
+ * Дата операции («ГГГГ-ММ-ДД») как ЛОКАЛЬНАЯ полночь.
+ *
+ * Так делать обязательно, и вот почему. `Date.parse('2026-08-01')` по
+ * спецификации разбирает дату БЕЗ времени как полночь UTC. Границы периодов
+ * приложение строит через dayjs — а это полночь ЛОКАЛЬНАЯ. Восточнее Гринвича
+ * разницы не видно, но западнее операция за первое число оказывается раньше
+ * начала месяца и выпадает из него: в Нью-Йорке август показывал 300 € вместо
+ * 400 €, а первое августа утекало в июль.
+ *
+ * Возвращает NaN для мусора — вызывающая сторона проверяет Number.isFinite.
+ */
+export function parseDay(iso: string): number {
+  const y = +iso.slice(0, 4)
+  const m = +iso.slice(5, 7)
+  const d = +iso.slice(8, 10)
+  if (!y || !m || !d) return NaN
+  return +new Date(y, m - 1, d)
+}
+
 /** День недели с понедельника: 0 = пн … 6 = вс. */
 export function weekdayIndex(key: number): number {
   return (new Date(key).getDay() + 6) % 7

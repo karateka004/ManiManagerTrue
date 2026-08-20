@@ -17,7 +17,7 @@
 import type { Transaction } from '../store/transactions'
 import type { Category } from '../store/categories'
 import type { Currency } from './currencies'
-import { DAY_MS, daysBetween, localDayKey } from './day'
+import { DAY_MS, daysBetween, localDayKey, parseDay } from './day'
 
 /** Период длиннее — не строим разбивку по дням и прогноз (режим «за всё время»). */
 const MAX_DAILY_DAYS = 400
@@ -25,6 +25,11 @@ const MAX_DAILY_DAYS = 400
 const MIN_DAYS_FOR_FORECAST = 3
 /** Ритм недели показываем, только когда каждый день недели успел встретиться. */
 const MIN_DAYS_FOR_WEEKDAY = 14
+/**
+ * И только когда трат набралось хотя бы на неделю разных дней. Иначе две
+ * операции за месяц рисуют «ритм» из одного столбика до потолка.
+ */
+const MIN_SPENT_DAYS_FOR_WEEKDAY = 7
 /** Сколько категорий показываем в разбивке. */
 const TOP_CATEGORIES = 6
 /** Сколько самых дорогих операций показываем. */
@@ -87,8 +92,20 @@ export interface Overview {
   daysPassed: number
   /** Прогноз на оставшиеся дни. Пусто, если период кончился или данных мало. */
   forecast: number[]
-  /** Расходы плюс прогноз. Равен spent, если прогноза нет. */
+  /**
+   * Расходы по уже прожитым дням периода. Отличается от spent, когда операции
+   * записаны будущим числом внутри периода (например, аренда вперёд).
+   */
+  spentToDate: number
+  /** Средние расходы в день по прожитой части периода. */
+  perDay: number
+  /** Расходы к концу периода: прожитое плюс прогноз. */
   projected: number
+  /**
+   * В периоде смешаны валюты, а счёт не выбран — суммы складывать нельзя и
+   * итог в шапке бессмысленен. Экран должен об этом сказать.
+   */
+  mixedCurrency: boolean
   /** Месячный лимит; 0 — не задан или неприменим к этому периоду. */
   budget: number
   /** Средние расходы по дням недели, пн…вс. Пусто для коротких периодов. */
@@ -119,7 +136,7 @@ export interface OverviewInput {
 }
 
 /** День операции как локальная полночь. */
-const txDay = (t: Transaction) => localDayKey(Date.parse(t.date))
+const txDay = (t: Transaction) => parseDay(t.date)
 
 const sumExpense = (txs: Transaction[]) =>
   txs.reduce((acc, t) => (t.type === 'expense' ? acc + t.amount : acc), 0)
@@ -129,6 +146,16 @@ export function buildOverview(input: OverviewInput): Overview {
 
   const spent = sumExpense(current)
   const income = current.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc), 0)
+
+  // Складывать евро с рублями нельзя. Счёт не выбран и валют больше одной —
+  // предупреждаем, вместо того чтобы молча показать сумму-бессмыслицу.
+  let mixedCurrency = false
+  for (const t of current) {
+    if ((t.currency ?? currency) !== currency) {
+      mixedCurrency = true
+      break
+    }
+  }
 
   /* ---------- Сравнение с прошлым периодом ---------- */
   const prevSpent = previous.length ? sumExpense(previous[0]) : null
@@ -152,14 +179,24 @@ export function buildOverview(input: OverviewInput): Overview {
     todayKey >= endKey ? daysTotal : todayKey < startKey ? 0 : Math.min(daysTotal, daysBetween(startKey, todayKey) + 1)
 
   /* ---------- Ритм недели ---------- */
-  const weekday = trackDaily && daysPassed >= MIN_DAYS_FOR_WEEKDAY ? weekdayAverages(daily, startKey, daysPassed) : []
+  let spentDays = 0
+  if (trackDaily) for (let i = 0; i < daysPassed; i++) if (daily[i] > 0) spentDays += 1
+  const weekday =
+    trackDaily && daysPassed >= MIN_DAYS_FOR_WEEKDAY && spentDays >= MIN_SPENT_DAYS_FOR_WEEKDAY
+      ? weekdayAverages(daily, startKey, daysPassed)
+      : []
 
-  /* ---------- Прогноз до конца периода ---------- */
+  /* ---------- Прогноз до конца периода ----------
+     Темп считаем ТОЛЬКО по прожитым дням. Иначе записанная вперёд аренда
+     задирает средний расход в день, а потом ещё раз добавляется прогнозом
+     на тот же день — месяц «выходил» вдвое дороже, чем на самом деле. */
+  const spentToDate = trackDaily ? sumRange(daily, 0, daysPassed) : spent
+  const perDay = daysPassed > 0 ? spentToDate / daysPassed : 0
   const forecast =
     trackDaily && daysPassed >= MIN_DAYS_FOR_FORECAST && daysPassed < daysTotal
-      ? buildForecast(spent / daysPassed, weekday, startKey, daysPassed, daysTotal)
+      ? buildForecast(perDay, weekday, daily, startKey, daysPassed, daysTotal)
       : []
-  const projected = spent + forecast.reduce((a, b) => a + b, 0)
+  const projected = spentToDate + forecast.reduce((a, b) => a + b, 0)
 
   /* ---------- Категории с дельтами ---------- */
   const byId = new Map(categories.map((c) => [c.id, c]))
@@ -207,7 +244,10 @@ export function buildOverview(input: OverviewInput): Overview {
     startKey,
     endKey,
     spent,
+    spentToDate,
+    perDay,
     income,
+    mixedCurrency,
     prevSpent,
     deltaPct,
     daily,
@@ -224,6 +264,12 @@ export function buildOverview(input: OverviewInput): Overview {
 }
 
 /* ---------- Внутренности ---------- */
+
+const sumRange = (a: number[], from: number, to: number) => {
+  let sum = 0
+  for (let i = from; i < to; i++) sum += a[i]
+  return sum
+}
 
 function totalsByCategory(txs: Transaction[]): Map<string, number> {
   const map = new Map<string, number>()
@@ -260,6 +306,7 @@ function weekdayAverages(daily: number[], startKey: number, daysPassed: number):
 function buildForecast(
   avgDaily: number,
   weekday: number[],
+  daily: number[],
   startKey: number,
   daysPassed: number,
   daysTotal: number,
@@ -276,7 +323,9 @@ function buildForecast(
   const cursor = new Date(startKey)
   cursor.setDate(cursor.getDate() + daysPassed)
   for (let i = daysPassed; i < daysTotal; i++) {
-    out.push(avgDaily * factor[(cursor.getDay() + 6) % 7])
+    // На день с уже записанной операцией прогноз не может быть НИЖЕ известной
+    // суммы: аренда, отмеченная вперёд, — это не оценка, а факт.
+    out.push(Math.max(daily[i] ?? 0, avgDaily * factor[(cursor.getDay() + 6) % 7]))
     cursor.setDate(cursor.getDate() + 1)
   }
   return out
@@ -294,12 +343,12 @@ function findRecurring(history: Transaction[], now: number): { key: string; amou
 
   for (const t of history) {
     if (t.type !== 'expense') continue
-    const at = Date.parse(t.date)
+    const at = parseDay(t.date)
     if (!Number.isFinite(at) || at < since) continue
     const key = t.categoryId + '|' + Math.round(t.amount * 100)
     const list = groups.get(key)
-    if (list) list.push(localDayKey(at))
-    else groups.set(key, [localDayKey(at)])
+    if (list) list.push(at)
+    else groups.set(key, [at])
   }
 
   const todayKey = localDayKey(now)
