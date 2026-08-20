@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.38.0'
+export const APP_VERSION = '1.39.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,20 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.39.0',
+    date: '2026-08-20',
+    title: { ru: 'Итоги месяца', en: 'Monthly recap' },
+    items: [
+      {
+        icon: '🗓',
+        text: {
+          ru: 'В начале месяца на Главной появляется карточка с итогами прошедшего: сумма и изменение, крупнейшая категория, самая большая трата, число операций и дни, когда вы не потратили ничего',
+          en: 'At the start of a month the Home screen shows a recap of the previous one: the total and its change, the biggest category, the largest expense, how many entries you made and the days you spent nothing',
+        },
+      },
+    ],
+  },
   {
     version: '1.38.0',
     date: '2026-08-20',

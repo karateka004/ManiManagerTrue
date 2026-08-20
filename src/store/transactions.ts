@@ -12,6 +12,7 @@ import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
 import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
 import { buildOverview, buildRecurring, type Overview, type Recurring } from '../lib/overview'
+import { buildMonthlySummary, previousMonthBounds, type MonthlySummary } from '../lib/monthly'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -1749,6 +1750,35 @@ export const selectRecurring: (s: State) => Recurring[] = memo1(
     return buildRecurring(history, Date.now(), byId, selectAnalyticsCurrency(s))
   },
   (s) => [activeTransactions(s), s.account, s.currency, s.customCategories],
+)
+
+/**
+ * Итоги прошедшего месяца — для карточки на Главной.
+ *
+ * Считаются по всем операциям, без учёта выбранного счёта и периода: это
+ * ретроспектива, а не срез, и она не должна меняться от того, что человек
+ * листает Аналитику.
+ */
+export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
+  (s) => {
+    const { start, end, prevStart } = previousMonthBounds(Date.now())
+    const month: Transaction[] = []
+    const prev: Transaction[] = []
+    for (const t of activeTransactions(s)) {
+      const x = parseDay(t.date)
+      if (!Number.isFinite(x)) continue
+      if (x >= start && x < end) month.push(t)
+      else if (x >= prevStart && x < start) prev.push(t)
+    }
+    return buildMonthlySummary({
+      month,
+      prev,
+      categories: selectAllCategories(s),
+      monthStart: start,
+      monthEnd: end,
+    })
+  },
+  (s) => [activeTransactions(s), s.customCategories],
 )
 
 export { getCategory }
