@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.37.0'
+export const APP_VERSION = '1.38.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,20 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.38.0',
+    date: '2026-08-20',
+    title: { ru: 'Выгрузка операций', en: 'Export your transactions' },
+    items: [
+      {
+        icon: '📄',
+        text: {
+          ru: 'В настройках появилась выгрузка: бот присылает в чат файл со всеми вашими операциями — датой, категорией, суммой, валютой, заметкой и тегами. Открывается в Excel и Google Таблицах как есть',
+          en: 'Settings now offer an export: the bot sends you a file with all your transactions — date, category, amount, currency, note and tags. Opens in Excel and Google Sheets as is',
+        },
+      },
+    ],
+  },
   {
     version: '1.37.0',
     date: '2026-08-20',

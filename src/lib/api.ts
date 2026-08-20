@@ -228,3 +228,31 @@ export async function notifyGift(rewards: string[]): Promise<boolean> {
     return false
   }
 }
+
+/* ---------- Выгрузка операций ---------- */
+
+export type ExportResult = 'ok' | 'blocked' | 'failed' | 'too_large' | 'no_backend'
+
+/**
+ * Отправить операции файлом в чат с ботом.
+ *
+ * Скачивание прямо из webview Telegram ненадёжно (на iOS ссылка с `download`
+ * молча ничего не делает), поэтому файл отправляет бот. Вне Telegram вызывать
+ * незачем — там сработает обычное скачивание, см. Settings.
+ */
+export async function exportTransactions(
+  csv: string,
+  filename: string,
+  caption: string,
+): Promise<ExportResult> {
+  if (!isBackendConfigured() || !tg.initData) return 'no_backend'
+  try {
+    const r = await post('/export', { initData: tg.initData, csv, filename, caption })
+    if (r?.ok) return 'ok'
+    if (r?.error === 'blocked') return 'blocked'
+    if (r?.error === 'too_large') return 'too_large'
+    return 'failed'
+  } catch {
+    return 'failed'
+  }
+}

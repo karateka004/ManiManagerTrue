@@ -9,7 +9,8 @@ import {
 } from '../store/transactions'
 import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
-import { setReminders } from '../lib/api'
+import { setReminders, exportTransactions } from '../lib/api'
+import { buildCsv } from '../lib/csv'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 
 // Редактор категорий — отдельным чанком, грузится по первому открытию.
@@ -492,6 +493,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
               setDemoMode(!demoMode)
             }}
           />
+          <ExportRow />
           <SettingRow
             label={t('settings.clear_all')}
             value="→"
@@ -638,6 +640,78 @@ interface RowProps {
   value: string
   onClick?: () => void
   danger?: boolean
+}
+
+/**
+ * Выгрузка операций в CSV.
+ *
+ * В Telegram файл присылает бот: скачивание прямо из webview работает не везде.
+ * В обычном браузере (и в разработке) — привычная ссылка на скачивание.
+ */
+function ExportRow() {
+  const transactions = useStore((s) => s.transactions)
+  const currency = useStore((s) => s.currency)
+  const categories = useStore(selectAllCategories)
+  const [state, setState] = useState<'idle' | 'busy' | 'ok' | 'blocked' | 'failed'>('idle')
+  const t = useT()
+  const catName = useCatName()
+
+  const value =
+    state === 'busy' ? '…' : state === 'ok' ? '✓' : state === 'blocked' ? t('settings.export_blocked') : state === 'failed' ? t('settings.export_failed') : '→'
+
+  const run = async () => {
+    if (state === 'busy' || transactions.length === 0) return
+    hapticTap()
+    setState('busy')
+
+    const csv = buildCsv(transactions, {
+      headers: [
+        t('settings.csv_date'),
+        t('settings.csv_type'),
+        t('settings.csv_category'),
+        t('settings.csv_amount'),
+        t('settings.csv_currency'),
+        t('settings.csv_note'),
+        t('settings.csv_tags'),
+      ],
+      incomeLabel: t('common.income'),
+      expenseLabel: t('common.expense'),
+      categoryName: (id) => catName(id, categories.find((c) => c.id === id)?.name ?? id),
+      fallbackCurrency: currency,
+    })
+    const filename = `koshel-${new Date().toISOString().slice(0, 10)}.csv`
+
+    if (!tg.isInTelegram) {
+      // BOM здесь дописываем сами: в Telegram это делает воркер.
+      const blob = new Blob([String.fromCharCode(0xfeff) + csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      // Ссылку обязательно вставить в документ: по отсоединённому элементу
+      // скачивание не запускается в части браузеров.
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setState('ok')
+      hapticNotify('success')
+      return
+    }
+
+    const res = await exportTransactions(csv, filename, t('settings.export_caption', { n: transactions.length }))
+    setState(res === 'ok' ? 'ok' : res === 'blocked' ? 'blocked' : 'failed')
+    hapticNotify(res === 'ok' ? 'success' : 'error')
+  }
+
+  return (
+    <SettingRow
+      label={t('settings.export')}
+      value={value}
+      onClick={transactions.length > 0 ? run : undefined}
+    />
+  )
 }
 
 function SettingRow({ label, value, onClick, danger }: RowProps) {

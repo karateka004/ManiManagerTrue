@@ -351,6 +351,9 @@ export default {
       if (url.pathname === '/data/put' && req.method === 'POST') {
         return await handleDataPut(req, env, origin)
       }
+      if (url.pathname === '/export' && req.method === 'POST') {
+        return await handleExport(req, env, origin)
+      }
       if (url.pathname === '/reminders' && req.method === 'POST') {
         return await handleReminders(req, env, origin)
       }
@@ -821,6 +824,67 @@ function slotForId(id: string, slots: number): number {
   let h = 0
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
   return h % slots
+}
+
+/* ------------------------------------------------------------------ */
+/* Выгрузка операций файлом                                            */
+/* ------------------------------------------------------------------ */
+
+/** Больше двух мегабайт — это уже не выгрузка, а попытка чем-то нас нагрузить. */
+const EXPORT_MAX_BYTES = 2 * 1024 * 1024
+
+/** Имя файла чистим до безопасного: приходит оно от клиента. */
+function safeFilename(raw: unknown): string {
+  const name = typeof raw === 'string' ? raw.replace(/[^A-Za-z0-9._-]/g, '') : ''
+  const cut = name.slice(0, 60)
+  return cut.toLowerCase().endsWith('.csv') && cut.length > 4 ? cut : 'koshel.csv'
+}
+
+/**
+ * Отправить пользователю его операции файлом в чат с ботом.
+ *
+ * Почему через бота, а не ссылкой на скачивание: в webview Telegram обычная
+ * ссылка с `download` срабатывает не везде — на iOS она молча ничего не делает.
+ * Бот у нас и так есть, и это единственный надёжный способ отдать человеку его
+ * собственные данные.
+ *
+ * Файл приходит от клиента: это данные самого пользователя, и уходят они в его
+ * же чат. Проверяем подпись initData, размер и имя файла — этого достаточно.
+ */
+async function handleExport(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; csv?: string; filename?: string; caption?: string }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'exp', user.id, 5, 3600)) return tooMany(env, origin)
+
+  const csv = typeof body.csv === 'string' ? body.csv : ''
+  if (!csv.trim()) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)
+
+  // BOM обязателен: без него Excel читает кириллицу как мусор.
+  const bytes = new TextEncoder().encode(String.fromCharCode(0xfeff) + csv)
+  if (bytes.length > EXPORT_MAX_BYTES) {
+    return json({ ok: false, error: 'too_large' }, { status: 413 }, env, origin)
+  }
+
+  const form = new FormData()
+  form.append('chat_id', String(user.id))
+  form.append('caption', typeof body.caption === 'string' ? body.caption.slice(0, 200) : '')
+  form.append('document', new Blob([bytes], { type: 'text/csv' }), safeFilename(body.filename))
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendDocument`, {
+      method: 'POST',
+      body: form,
+    })
+    const data = (await res.json()) as { ok?: boolean; description?: string }
+    if (data?.ok) return json({ ok: true }, { status: 200 }, env, origin)
+    // Бот не может писать первым: человек не запускал его или заблокировал.
+    const blocked = /bot was blocked|chat not found|can't initiate conversation/i.test(data?.description ?? '')
+    return json({ ok: false, error: blocked ? 'blocked' : 'send_failed' }, { status: 200 }, env, origin)
+  } catch (e) {
+    console.error('[worker] export failed', e)
+    return json({ ok: false, error: 'send_failed' }, { status: 200 }, env, origin)
+  }
 }
 
 /** Установить флаг напоминаний для пользователя (тумблер в приложении). */
