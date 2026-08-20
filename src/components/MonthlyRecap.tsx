@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X, TrendingDown, TrendingUp } from 'lucide-react'
 import { useStore, selectMonthlySummary } from '../store/transactions'
 import { daysIntoMonth, monthKey } from '../lib/monthly'
@@ -26,15 +26,21 @@ export function MonthlyRecap() {
   const catName = useCatName()
 
   const key = summary ? monthKey(summary.monthStart) : ''
-  const [hidden, setHidden] = useState(() => {
+  const [dismissed, setDismissed] = useState(false)
+
+  // Отметку читаем на каждом рендере, а не один раз в начальном состоянии:
+  // на первом рендере итогов может ещё не быть (стор поднимается из хранилища),
+  // и тогда сравнивать было бы не с чем — карточка показалась бы повторно.
+  const seen = useMemo(() => {
+    if (!key) return false
     try {
       return localStorage.getItem(SEEN_KEY) === key
     } catch {
       return false
     }
-  })
+  }, [key])
 
-  if (!summary || hidden) return null
+  if (!summary || dismissed || seen) return null
   // Итоги живут только в начале месяца: в двадцатых числах это уже история.
   if (daysIntoMonth(Date.now()) > SHOW_DAYS) return null
 
@@ -45,7 +51,7 @@ export function MonthlyRecap() {
     } catch {
       /* приватный режим — просто закроем до перезагрузки */
     }
-    setHidden(true)
+    setDismissed(true)
   }
 
   const delta = summary.deltaPct === null ? null : Math.round(summary.deltaPct)

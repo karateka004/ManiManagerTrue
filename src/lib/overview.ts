@@ -45,6 +45,8 @@ const NO_SPEND_MIN_DAYS = 3
 
 /** Столько раз подряд — уже не совпадение. */
 const RECUR_MIN_TIMES = 3
+/** Сколько промежутков вправе выбиваться из месячного ритма. */
+const RECUR_MAX_OUTLIERS = 1
 /** Разрыв между списаниями, дней: «раз в месяц» с запасом на плавающую дату. */
 const RECUR_MIN_GAP = 25
 const RECUR_MAX_GAP = 36
@@ -419,19 +421,25 @@ export function buildRecurring(
     if (days.length < RECUR_MIN_TIMES) continue
     const last = days[days.length - 1]
 
-    let monthly = true
+    // Один промежуток может выпасть из месячного ритма — люди записывают
+    // задним числом и с опозданием. Требовать идеального ряда нельзя: тогда
+    // запись платежа, просроченного на полтора месяца, ломала бы группу и
+    // платёж исчезал бы из панели сразу после того, как его внесли.
+    let inRange = 0
+    let outliers = 0
     let total = 0
     for (let i = 1; i < days.length; i++) {
       const step = daysBetween(days[i - 1], days[i])
       if (step < RECUR_MIN_GAP || step > RECUR_MAX_GAP) {
-        monthly = false
-        break
+        outliers += 1
+        continue
       }
+      inRange += 1
       total += step
     }
-    if (!monthly) continue
+    if (inRange < RECUR_MIN_TIMES - 1 || outliers > RECUR_MAX_OUTLIERS) continue
 
-    const gap = Math.round(total / (days.length - 1))
+    const gap = Math.round(total / inRange)
     if (daysBetween(last, todayKey) > gap + RECUR_GRACE_DAYS) continue
 
     const sep = key.lastIndexOf('|')
