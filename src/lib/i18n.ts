@@ -390,10 +390,22 @@ const DICT: Dict = {
   'ov.recurring_next': { ru: 'следующий раз ~{date}', en: 'next around {date}' },
   'ov.recurring_due': { ru: 'срок подошёл — не записано', en: 'due now — not recorded' },
   'ov.recurring_year': { ru: 'Столько уходит за год', en: 'That is a year' },
+  'ov.i.one_off.title': { ru: '{name} — {amount} за раз', en: '{name} — {amount} in one go' },
+  'ov.i.one_off.text': {
+    ru: 'Одна покупка забрала {share}% всех расходов периода',
+    en: 'A single purchase took {share}% of everything you spent',
+  },
+  'ov.i.new_cat.title': { ru: 'Новая статья: {name}', en: 'New line: {name}' },
+  'ov.i.new_cat.text': {
+    ru: 'Раньше этой категории в расходах не было. Уже {amount}',
+    en: 'This category never appeared before. Already {amount}',
+  },
+  'ov.i.no_spend.title': { ru: '{days} {word} подряд без трат', en: '{days} days in a row without spending' },
+  'ov.i.no_spend.text': { ru: 'Держите — так и растёт остаток', en: 'Keep it up — this is how the balance grows' },
   'ov.i.weekday.title': { ru: '{day} — самый дорогой день', en: '{day} is your priciest day' },
   'ov.i.weekday.text': {
-    ru: 'В среднем {avg} против {minAvg} в {minDay}',
-    en: '{avg} on average versus {minAvg} on {minDay}',
+    ru: 'В среднем {avg} против {minAvg} {minDay}',
+    en: '{avg} on average versus {minAvg} {minDay}',
   },
   'ov.i.budget_ok.title': { ru: 'Уложитесь в лимит', en: 'You will stay under the limit' },
   'ov.i.budget_ok.text': {
@@ -810,6 +822,16 @@ export function useCatName(): CatNameFunc {
   return (id, fallback) => categoryName(lang, id, fallback)
 }
 
+/** Слово «день» с правильным склонением (RU) / числом (EN). */
+export function daysWord(lang: Lang, n: number): string {
+  if (lang === 'en') return n === 1 ? 'day' : 'days'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'день'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'дня'
+  return 'дней'
+}
+
 /** Слово «категория» с правильным склонением (RU) / числом (EN). */
 export function categoriesWord(lang: Lang, n: number): string {
   if (lang === 'en') return n === 1 ? 'category' : 'categories'
@@ -835,14 +857,17 @@ export function weekdaysFull(lang: Lang): string[] {
 }
 
 /**
- * Дни недели в винительном падеже — для оборота «в понедельник». В русском
- * именительный там не годится («в среда»), поэтому нужен отдельный список;
- * в английском форма та же, но список держим парным, чтобы не ветвить вызовы.
+ * Дни недели с предлогом — для оборота «в понедельник».
+ *
+ * Предлог входит в строку, потому что он меняется вместе со словом: «во
+ * вторник», но «в среду». А падеж в русском тут винительный, именительный не
+ * годится («в среда»). В английском предлог всегда «on», но список держим
+ * парным, чтобы не ветвить вызовы.
  */
 export function weekdaysAccusative(lang: Lang): string[] {
   return lang === 'ru'
-    ? ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье']
-    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    ? ['в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу', 'в воскресенье']
+    : ['on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday']
 }
 
 /**

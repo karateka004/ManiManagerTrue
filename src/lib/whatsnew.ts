@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.39.0'
+export const APP_VERSION = '1.40.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.40.0',
+    date: '2026-08-20',
+    title: { ru: '«Что заметно» стало наблюдательнее', en: '“What stands out” got sharper' },
+    items: [
+      {
+        icon: '🧾',
+        text: {
+          ru: 'Приложение отдельно отмечает разовую крупную покупку, которая перекосила весь месяц, — чтобы скачок расходов не выглядел как изменившийся образ жизни',
+          en: 'A single large purchase that skewed the whole month is now called out separately — so a spike does not look like a changed lifestyle',
+        },
+      },
+      {
+        icon: '🌱',
+        text: {
+          ru: 'Появились ещё два наблюдения: новая статья расходов, которой раньше не было вовсе, и дни подряд, когда вы не потратили ничего',
+          en: 'Two more observations: a spending category that never appeared before, and days in a row when you spent nothing',
+        },
+      },
+    ],
+  },
   {
     version: '1.39.0',
     date: '2026-08-20',

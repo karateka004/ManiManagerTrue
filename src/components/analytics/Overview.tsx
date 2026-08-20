@@ -1,5 +1,14 @@
 import { memo, useMemo } from 'react'
-import { AlertTriangle, CalendarDays, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react'
+import {
+  AlertTriangle,
+  CalendarDays,
+  Lightbulb,
+  PiggyBank,
+  Receipt,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
 import {
   useStore,
   selectOverview,
@@ -9,7 +18,7 @@ import {
 } from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
-import { useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
+import { daysWord, useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { FlowChart } from './FlowChart'
 
@@ -264,6 +273,9 @@ function Sparkline() {
 
 const INSIGHT_ICON = {
   spike: TrendingUp,
+  one_off: Receipt,
+  new_cat: Sparkles,
+  no_spend: PiggyBank,
   weekday: CalendarDays,
   budget: Lightbulb,
   pace: Lightbulb,
@@ -286,6 +298,21 @@ function InsightRow({ insight, first }: { insight: Insight; first: boolean }) {
       color = insight.color
       title = t('ov.i.spike.title', { name: catName(insight.categoryId, insight.name), amount: money(insight.amount) })
       text = t('ov.i.spike.text', { pct: Math.round(insight.pct) })
+      break
+    case 'one_off':
+      color = insight.color
+      title = t('ov.i.one_off.title', { name: insight.name, amount: money(insight.amount) })
+      text = t('ov.i.one_off.text', { share: Math.round(insight.share) })
+      break
+    case 'new_cat':
+      color = insight.color
+      title = t('ov.i.new_cat.title', { name: catName(insight.categoryId, insight.name) })
+      text = t('ov.i.new_cat.text', { amount: money(insight.amount) })
+      break
+    case 'no_spend':
+      color = '#3CA37B'
+      title = t('ov.i.no_spend.title', { days: insight.days, word: daysWord(lang, insight.days) })
+      text = t('ov.i.no_spend.text')
       break
     case 'weekday':
       color = '#6FA8DC'

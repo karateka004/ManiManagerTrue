@@ -36,6 +36,10 @@ const TOP_CATEGORIES = 7
 const TOP_BIGGEST = 3
 /** Больше карточек наблюдений не показываем — экран перестаёт читаться. */
 const MAX_INSIGHTS = 4
+/** Доля одной покупки в расходах периода, после которой о ней стоит сказать. */
+const ONE_OFF_SHARE = 25
+/** Меньше — это просто выходные, а не заслуга. */
+const NO_SPEND_MIN_DAYS = 3
 
 /* ---------- Регулярные платежи ---------- */
 
@@ -100,6 +104,12 @@ export interface CatDelta {
 export type Insight =
   /** Категория съела заметно больше, чем обычно за такой же период. */
   | { id: string; kind: 'spike'; categoryId: string; name: string; color: string; icon: string; amount: number; pct: number }
+  /** Одна покупка забрала заметную долю всего месяца. */
+  | { id: string; kind: 'one_off'; name: string; color: string; amount: number; share: number }
+  /** Категория, которой в прошлые периоды не было вовсе. */
+  | { id: string; kind: 'new_cat'; categoryId: string; name: string; color: string; icon: string; amount: number }
+  /** Несколько дней подряд без единой траты. */
+  | { id: string; kind: 'no_spend'; days: number }
   /** Самый дорогой день недели против самого дешёвого. */
   | { id: string; kind: 'weekday'; day: number; avg: number; minDay: number; minAvg: number }
   /** Прогноз против лимита или против прошлого периода. */
@@ -259,6 +269,9 @@ export function buildOverview(input: OverviewInput): Overview {
 
   const insights = buildInsights({
     cats,
+    biggest: biggest[0] ?? null,
+    daily,
+    daysPassed,
     previous,
     byId,
     spent,
@@ -458,6 +471,11 @@ export function buildRecurring(
 
 interface InsightInput {
   cats: CatDelta[]
+  /** Самая крупная операция периода — для правила «одна покупка». */
+  biggest: Transaction | null
+  /** Расходы по дням прожитой части периода — для «дней без трат». */
+  daily: number[]
+  daysPassed: number
   previous: Transaction[][]
   byId: Map<string, Category>
   spent: number
@@ -499,6 +517,23 @@ function buildInsights(x: InsightInput): Insight[] {
     }
   }
 
+  /* 2. Одна покупка забрала заметную долю месяца. Полезно рядом со скачком
+        категории: объясняет, что месяц испортил не образ жизни, а один чек. */
+  if (x.biggest && x.spent > 0) {
+    const share = (x.biggest.amount / x.spent) * 100
+    if (share >= ONE_OFF_SHARE) {
+      const c = x.byId.get(x.biggest.categoryId)
+      out.push({
+        id: 'one_off:' + x.biggest.id,
+        kind: 'one_off',
+        name: x.biggest.note?.trim() || c?.name || x.biggest.categoryId,
+        color: c?.color ?? '#8A968F',
+        amount: x.biggest.amount,
+        share,
+      })
+    }
+  }
+
   /* 3. Самый дорогой день недели против самого дешёвого.
         Дешёвым считаем самый дешёвый ИЗ НЕПУСТЫХ: в неполном месяце какой-то
         день недели легко оказывается нулевым, и сравнение «78 € против 0 €»
@@ -531,6 +566,43 @@ function buildInsights(x: InsightInput): Insight[] {
       }
     }
   }
+
+  /* 5. Категория, которой раньше не было вовсе. Часто это разовая история
+        (переезд, лечение), и человеку полезно увидеть её отдельной строкой. */
+  if (windows.length >= 2) {
+    const totals = windows.map(totalsByCategory)
+    // Если про эту категорию уже сказано (скачок или разовая покупка) —
+    // второй карточкой повторяться незачем.
+    const told = new Set<string>()
+    for (const i of out) {
+      if (i.kind === 'spike') told.add(i.categoryId)
+      if (i.kind === 'one_off' && x.biggest) told.add(x.biggest.categoryId)
+    }
+    for (const cat of x.cats.slice(0, 3)) {
+      if (told.has(cat.categoryId)) continue
+      if (totals.some((m) => (m.get(cat.categoryId) ?? 0) > 0)) continue
+      if (cat.amount < x.spent * 0.08) continue
+      out.push({
+        id: 'new_cat:' + cat.categoryId,
+        kind: 'new_cat',
+        categoryId: cat.categoryId,
+        name: cat.name,
+        color: cat.color,
+        icon: cat.icon,
+        amount: cat.amount,
+      })
+      break
+    }
+  }
+
+  /* 6. Дни подряд без трат — единственное наблюдение, которым приятно
+        похвастаться. Считаем от последнего прожитого дня назад. */
+  let free = 0
+  for (let i = x.daysPassed - 1; i >= 0; i--) {
+    if (x.daily[i] > 0) break
+    free += 1
+  }
+  if (free >= NO_SPEND_MIN_DAYS) out.push({ id: 'no_spend', kind: 'no_spend', days: free })
 
   return out.slice(0, MAX_INSIGHTS)
 }
