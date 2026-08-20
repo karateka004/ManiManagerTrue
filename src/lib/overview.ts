@@ -70,10 +70,17 @@ export interface Recurring {
    */
   title: string
   amount: number
+  currency: Currency
   /** Сколько раз уже списывалось. */
   times: number
-  /** Ожидаемая дата следующего списания (локальная полночь). */
+  /**
+   * Когда списание ожидается. Вперёд НЕ прокручиваем: если дата уже прошла,
+   * значит очередной платёж просто ещё не записан — на этом и держится
+   * подсказка «пора записать».
+   */
   nextDay: number
+  /** Срок подошёл, а записи нет. */
+  due: boolean
 }
 
 export interface CatDelta {
@@ -138,11 +145,6 @@ export interface Overview {
   categories: CatDelta[]
   /** Сумма категорий за пределами топа — строка «Прочее» в потоке денег. */
   categoriesRest: number
-  /**
-   * Регулярные платежи. Пусто, если период не содержит сегодняшний день:
-   * это панель текущих постоянных трат, а не история.
-   */
-  recurring: Recurring[]
   biggest: Transaction[]
   insights: Insight[]
 }
@@ -152,8 +154,6 @@ export interface OverviewInput {
   current: Transaction[]
   /** Операции предыдущих периодов той же длины, свежайший первым. */
   previous: Transaction[][]
-  /** История по счёту за последний год — для поиска регулярных платежей. */
-  history: Transaction[]
   categories: Category[]
   currency: Currency
   /** Границы текущего периода в локальных полуночах. */
@@ -174,7 +174,7 @@ const sumExpense = (txs: Transaction[]) =>
   txs.reduce((acc, t) => (t.type === 'expense' ? acc + t.amount : acc), 0)
 
 export function buildOverview(input: OverviewInput): Overview {
-  const { current, previous, history, categories, currency, startKey, endKey, now, budget, budgetApplies } = input
+  const { current, previous, categories, currency, startKey, endKey, now, budget, budgetApplies } = input
 
   const spent = sumExpense(current)
   const income = current.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc), 0)
@@ -257,11 +257,6 @@ export function buildOverview(input: OverviewInput): Overview {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, TOP_BIGGEST)
 
-  // Панель постоянных трат показываем только когда период содержит сегодня:
-  // это срез текущих обязательств, а не история за выбранный месяц.
-  const isCurrent = todayKey >= startKey && todayKey < endKey
-  const recurring = isCurrent ? findRecurring(history, now, byId) : []
-
   const insights = buildInsights({
     cats,
     previous,
@@ -294,7 +289,6 @@ export function buildOverview(input: OverviewInput): Overview {
     weekday,
     categories: cats.slice(0, TOP_CATEGORIES),
     categoriesRest: cats.slice(TOP_CATEGORIES).reduce((a, c) => a + c.amount, 0),
-    recurring,
     biggest,
     insights,
   }
@@ -378,13 +372,14 @@ function buildForecast(
  *
  * Отсортированы по сумме убыв.: сверху то, что стоит дороже всего.
  */
-function findRecurring(
+export function buildRecurring(
   history: Transaction[],
   now: number,
   byId: Map<string, Category>,
+  fallbackCurrency: Currency,
 ): Recurring[] {
   const since = now - RECUR_WINDOW_DAYS * DAY_MS
-  const groups = new Map<string, { days: number[]; notes: Map<string, number> }>()
+  const groups = new Map<string, { days: number[]; notes: Map<string, number>; currency: Currency }>()
 
   for (const t of history) {
     if (t.type !== 'expense') continue
@@ -393,7 +388,7 @@ function findRecurring(
     const key = t.categoryId + '|' + Math.round(t.amount * 100)
     let g = groups.get(key)
     if (!g) {
-      g = { days: [], notes: new Map() }
+      g = { days: [], notes: new Map(), currency: t.currency ?? fallbackCurrency }
       groups.set(key, g)
     }
     g.days.push(at)
@@ -430,12 +425,8 @@ function findRecurring(
     const categoryId = key.slice(0, sep)
     const c = byId.get(categoryId)
 
-    // Дату следующего списания прокручиваем вперёд, пока она не окажется в
-    // будущем: «следующий раз ~8 августа», когда сегодня двадцатое, — бессмыслица.
     const next = new Date(last)
-    do {
-      next.setDate(next.getDate() + gap)
-    } while (+next < todayKey)
+    next.setDate(next.getDate() + gap)
 
     // Самая частая заметка группы; при равенстве — первая встреченная.
     let title = ''
@@ -455,8 +446,10 @@ function findRecurring(
       color: c?.color ?? '#8A968F',
       icon: c?.icon ?? 'other',
       amount: Number(key.slice(sep + 1)) / 100,
+      currency: group.currency,
       times: days.length,
       nextDay: +next,
+      due: +next <= todayKey,
     })
   }
 

@@ -1,6 +1,12 @@
 import { memo, useMemo } from 'react'
 import { AlertTriangle, CalendarDays, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react'
-import { useStore, selectOverview, selectAllCategories } from '../../store/transactions'
+import {
+  useStore,
+  selectOverview,
+  selectAllCategories,
+  selectRecurring,
+  selectAnalyticsCurrency,
+} from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
 import { useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
@@ -53,12 +59,7 @@ export const Overview = memo(function Overview() {
         </>
       )}
 
-      {o.recurring.length > 0 && (
-        <>
-          <SectionTitle>{t('ov.recurring')}</SectionTitle>
-          <Recurring />
-        </>
-      )}
+      <RecurringBlock />
 
       {o.biggest.length > 0 && (
         <>
@@ -366,16 +367,20 @@ function WeekRhythm() {
  * целиком; на этом выросли приложения вроде Rocket Money. Банк нам для этого
  * не нужен: повтор одинаковой суммы в одной категории виден и в ручных записях.
  */
-function Recurring() {
-  const o = useStore(selectOverview)
+function RecurringBlock() {
+  const rows = useStore(selectRecurring)
+  const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
   const catName = useCatName()
 
-  const monthly = o.recurring.reduce((a, r) => a + r.amount, 0)
+  if (rows.length === 0) return null
+  const monthly = rows.reduce((a, r) => a + r.amount, 0)
 
   return (
-    <div className="mx-4 rounded-3xl bg-surface-raised px-4 shadow-soft dark:shadow-soft-dark">
-      {o.recurring.map((r, i) => (
+    <>
+      <SectionTitle>{t('ov.recurring')}</SectionTitle>
+      <div className="mx-4 rounded-3xl bg-surface-raised px-4 shadow-soft dark:shadow-soft-dark">
+      {rows.map((r, i) => (
         <div
           key={r.id}
           className={`flex items-center gap-3 py-3 ${i ? 'border-t border-ink/[.06] dark:border-ink/[.09]' : ''}`}
@@ -390,22 +395,23 @@ function Recurring() {
             <div className="truncate text-[14px] font-semibold text-ink">
               {r.title || catName(r.categoryId, r.name)}
             </div>
-            <div className="text-[12px] text-ink-subtle">
-              {t('ov.recurring_next', { date: dayjs(r.nextDay).format('D MMMM') })}
+            <div className={`text-[12px] ${r.due ? 'font-semibold text-expense-deep dark:text-expense' : 'text-ink-subtle'}`}>
+              {r.due ? t('ov.recurring_due') : t('ov.recurring_next', { date: dayjs(r.nextDay).format('D MMMM') })}
             </div>
           </div>
           <span className="tabular shrink-0 text-[14px] font-extrabold text-ink">
-            {formatMoney(r.amount, o.currency)}
+            {formatMoney(r.amount, r.currency)}
           </span>
         </div>
       ))}
       <div className="flex items-center justify-between border-t border-ink/[.06] py-3 dark:border-ink/[.09]">
         <span className="text-[13px] font-semibold text-ink-muted">{t('ov.recurring_year')}</span>
         <span className="tabular text-[15px] font-extrabold text-ink">
-          {formatMoney(Math.round(monthly * 12), o.currency)}
+          {formatMoney(Math.round(monthly * 12), currency)}
         </span>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

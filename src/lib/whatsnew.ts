@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.36.0'
+export const APP_VERSION = '1.37.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.37.0',
+    date: '2026-08-20',
+    title: { ru: '«Пора записать»', en: '“Time to record”' },
+    items: [
+      {
+        icon: '⏰',
+        text: {
+          ru: 'Приложение само замечает, что подошёл срок постоянного платежа, а записи о нём нет — и предлагает внести его с Главной одним касанием, с той же суммой, категорией и подписью',
+          en: 'The app notices when a recurring payment is due but not recorded — and offers to add it from the Home screen in one tap, with the same amount, category and label',
+        },
+      },
+      {
+        icon: '🏷',
+        text: {
+          ru: 'Постоянные траты называются по вашей подписи к операции, а не по категории: «Аренда» и «Бензин» вместо двух одинаковых строк «Машина»',
+          en: 'Recurring payments are named by your own note rather than the category: “Rent” and “Fuel” instead of two identical “Car” rows',
+        },
+      },
+    ],
+  },
   {
     version: '1.36.0',
     date: '2026-08-20',

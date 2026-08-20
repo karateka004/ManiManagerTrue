@@ -11,7 +11,7 @@ import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
 import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
-import { buildOverview, type Overview } from '../lib/overview'
+import { buildOverview, buildRecurring, type Overview, type Recurring } from '../lib/overview'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -1698,15 +1698,12 @@ export const selectOverview: (s: State) => Overview = memo1(
 
     const windows = previousWindows(s.period, OVERVIEW_LOOKBACK)
     const previous: Transaction[][] = windows.map(() => [])
-    const historySince = Date.now() - OVERVIEW_HISTORY_DAYS * DAY_MS
-    const history: Transaction[] = []
 
     // Один проход по истории на все окна сразу: операций может быть тысячи.
     for (const t of all) {
       if (!inAccount(t)) continue
       const x = parseDay(t.date)
       if (!Number.isFinite(x)) continue
-      if (x >= historySince) history.push(t)
       for (let i = 0; i < windows.length; i++) {
         if (x >= windows[i].start && x < windows[i].end) {
           previous[i].push(t)
@@ -1718,7 +1715,6 @@ export const selectOverview: (s: State) => Overview = memo1(
     return buildOverview({
       current: selectAccountTransactions(s),
       previous,
-      history,
       categories: selectAllCategories(s),
       currency: selectAnalyticsCurrency(s),
       startKey: localDayKey(+start),
@@ -1730,6 +1726,29 @@ export const selectOverview: (s: State) => Overview = memo1(
     })
   },
   (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
+)
+
+/**
+ * Постоянные траты — то, что списывается каждый месяц одинаковой суммой.
+ *
+ * Отдельно от selectOverview и БЕЗ привязки к выбранному периоду: это срез
+ * текущих обязательств. Иначе, листая июль в Аналитике, пользователь терял бы
+ * подсказку «пора записать» на Главной.
+ */
+export const selectRecurring: (s: State) => Recurring[] = memo1(
+  (s) => {
+    const since = Date.now() - OVERVIEW_HISTORY_DAYS * DAY_MS
+    const account = s.account
+    const history: Transaction[] = []
+    for (const t of activeTransactions(s)) {
+      if (account && txCurrency(t, s) !== account) continue
+      const x = parseDay(t.date)
+      if (Number.isFinite(x) && x >= since) history.push(t)
+    }
+    const byId = new Map(selectAllCategories(s).map((c) => [c.id, c]))
+    return buildRecurring(history, Date.now(), byId, selectAnalyticsCurrency(s))
+  },
+  (s) => [activeTransactions(s), s.account, s.currency, s.customCategories],
 )
 
 export { getCategory }

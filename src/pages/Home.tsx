@@ -5,6 +5,7 @@ import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
 import { BudgetAlert } from '../components/BudgetAlert'
+import { DueRecurring } from '../components/DueRecurring'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import { Avatar } from '../components/Avatar'
 import { MenuRow } from '../components/ui/MenuRow'
@@ -59,6 +60,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
       <TodayBudget />
       <PlanningRow onOpen={openPlanning} />
       <BudgetAlert />
+      <DueRecurring />
       <CategoryList onEditTx={onEditTx} />
 
       <Suspense fallback={null}>
