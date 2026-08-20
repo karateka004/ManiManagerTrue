@@ -2,6 +2,7 @@ import { hapticSelect } from '../lib/telegram'
 import { useT } from '../lib/i18n'
 
 const TABS = [
+  { id: 'overview', label: 'ov.tab' },
   { id: 'expense', label: 'common.expense' },
   { id: 'income',  label: 'common.income' },
   { id: 'dynamics', label: 'analytics.dynamics' },
@@ -18,7 +19,7 @@ interface Props {
 export function AnalyticsTabs({ value, onChange }: Props) {
   const t = useT()
   return (
-    <div className="mx-4 mt-4 grid grid-cols-4 gap-1 rounded-full bg-surface-sunken p-1">
+    <div className="mx-4 mt-4 flex overflow-x-auto rounded-full bg-surface-sunken p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {TABS.map((tab) => {
         const active = value === tab.id
         return (
@@ -28,7 +29,7 @@ export function AnalyticsTabs({ value, onChange }: Props) {
               hapticSelect()
               onChange(tab.id)
             }}
-            className={`relative rounded-full py-2 text-[13px] font-semibold transition-colors ${
+            className={`relative shrink-0 grow basis-0 whitespace-nowrap rounded-full px-1.5 py-2 text-[12px] font-semibold transition-colors ${
               active ? 'bg-surface-raised text-ink shadow-soft dark:shadow-soft-dark' : 'text-ink-muted'
             }`}
           >

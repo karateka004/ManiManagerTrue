@@ -339,6 +339,60 @@ const DICT: Dict = {
   'analytics.subtitle': { ru: 'Куда уходят деньги', en: 'Where the money goes' },
   'analytics.by_days': { ru: 'По дням', en: 'By days' },
   'analytics.dynamics': { ru: 'Динамика', en: 'Trends' },
+
+  /* Обзор — первый сегмент Аналитики */
+  'ov.tab': { ru: 'Обзор', en: 'Overview' },
+  'ov.spent': { ru: 'Потрачено', en: 'Spent' },
+  'ov.prev_was': { ru: 'В прошлый раз — {amount}', en: 'Last time — {amount}' },
+  'ov.forecast_to': { ru: 'Выйдет к {date}', en: 'On track for {date}' },
+  'ov.limit': { ru: 'Лимит — {amount}', en: 'Limit — {amount}' },
+  'ov.spent_so_far': { ru: 'Уже потрачено {amount}', en: 'Spent so far {amount}' },
+  'ov.days_left': { ru: 'ещё {n} дн.', en: '{n} days left' },
+  'ov.insights': { ru: 'Что заметно', en: 'What stands out' },
+  'ov.where': { ru: 'Куда уходят', en: 'Where it goes' },
+  'ov.rhythm': { ru: 'Ритм недели', en: 'Weekly rhythm' },
+  'ov.biggest': { ru: 'Крупнейшие траты', en: 'Biggest expenses' },
+  'ov.as_usual': { ru: 'как обычно', en: 'as usual' },
+  'ov.empty': { ru: 'За этот период пусто', en: 'Nothing in this period' },
+  'ov.empty_hint': {
+    ru: 'Запишите первую операцию — и здесь появятся сравнения, прогноз и наблюдения',
+    en: 'Add your first entry and comparisons, a forecast and observations will appear here',
+  },
+  'ov.i.spike.title': { ru: '{name} забрала {amount}', en: '{name} took {amount}' },
+  'ov.i.spike.text': {
+    ru: 'На {pct}% больше, чем обычно за такой же период',
+    en: '{pct}% more than usual for the same period',
+  },
+  'ov.i.recurring.title': { ru: 'Повторяется каждый месяц: {amount}', en: 'Repeats every month: {amount}' },
+  'ov.i.recurring.text': {
+    ru: 'Одна и та же сумма каждый месяц в «{name}». За год — {yearly}',
+    en: 'The same amount every month in “{name}”. That is {yearly} a year',
+  },
+  'ov.i.weekday.title': { ru: '{day} — самый дорогой день', en: '{day} is your priciest day' },
+  'ov.i.weekday.text': {
+    ru: 'В среднем {avg} против {minAvg} в {minDay}',
+    en: '{avg} on average versus {minAvg} on {minDay}',
+  },
+  'ov.i.budget_ok.title': { ru: 'Уложитесь в лимит', en: 'You will stay under the limit' },
+  'ov.i.budget_ok.text': {
+    ru: 'Если держать текущий темп, в конце останется {rest}',
+    en: 'Keep this pace and {rest} will be left at the end',
+  },
+  'ov.i.budget_over.title': { ru: 'Лимит будет превышен', en: 'The limit will be exceeded' },
+  'ov.i.budget_over.text': {
+    ru: 'Если держать текущий темп, выйдете за него на {rest}',
+    en: 'Keep this pace and you will go over by {rest}',
+  },
+  'ov.i.pace_up.title': { ru: 'Темп выше обычного', en: 'Spending faster than usual' },
+  'ov.i.pace_up.text': {
+    ru: 'По этому темпу выйдет на {diff} больше, чем в прошлый раз',
+    en: 'At this pace you will spend {diff} more than last time',
+  },
+  'ov.i.pace_down.title': { ru: 'Темп ниже обычного', en: 'Spending slower than usual' },
+  'ov.i.pace_down.text': {
+    ru: 'По этому темпу выйдет на {diff} меньше, чем в прошлый раз',
+    en: 'At this pace you will spend {diff} less than last time',
+  },
   'analytics.max_per_day': { ru: 'Максимум за день:', en: 'Max per day:' },
 
   /* Графики */
@@ -749,6 +803,24 @@ export function weekdaysShort(lang: Lang): string[] {
   return lang === 'ru'
     ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+}
+
+/** Дни недели полностью, с понедельника. Для заголовков: «Суббота — самый…». */
+export function weekdaysFull(lang: Lang): string[] {
+  return lang === 'ru'
+    ? ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+}
+
+/**
+ * Дни недели в винительном падеже — для оборота «в понедельник». В русском
+ * именительный там не годится («в среда»), поэтому нужен отдельный список;
+ * в английском форма та же, но список держим парным, чтобы не ветвить вызовы.
+ */
+export function weekdaysAccusative(lang: Lang): string[] {
+  return lang === 'ru'
+    ? ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье']
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 }
 
 /**

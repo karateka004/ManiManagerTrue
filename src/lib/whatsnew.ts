@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.33.0'
+export const APP_VERSION = '1.34.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.34.0',
+    date: '2026-08-20',
+    title: { ru: 'Аналитика: вкладка «Обзор»', en: 'Analytics: the Overview tab' },
+    items: [
+      {
+        icon: '📊',
+        text: {
+          ru: 'Первый сегмент Аналитики отвечает на вопрос «это много или мало?»: сумма периода сравнивается с прошлым, а кривая по дням уходит пунктиром в прогноз до конца месяца',
+          en: 'The first Analytics segment answers “is this a lot?”: the period total is compared with the previous one, and the daily curve runs on as a dashed forecast to the end of the month',
+        },
+      },
+      {
+        icon: '💡',
+        text: {
+          ru: '«Что заметно» — наблюдения из ваших же записей: категория вышла за обычную норму, платёж повторяется каждый месяц, самый дорогой день недели, уложитесь ли вы в лимит',
+          en: '“What stands out” draws observations from your own entries: a category above its usual level, a payment repeating every month, your priciest weekday, and whether you will stay under the limit',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'Категории теперь показывают изменение к прошлому периоду, а не только проценты. Плюс ритм недели и три самые крупные траты периода',
+          en: 'Categories now show the change versus the previous period, not just percentages. Plus a weekly rhythm chart and the three biggest expenses',
+        },
+      },
+    ],
+  },
   {
     version: '1.33.0',
     date: '2026-08-20',

@@ -10,6 +10,8 @@ import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
+import { DAY_MS, localDayKey, prevDayKey } from '../lib/day'
+import { buildOverview, type Overview } from '../lib/overview'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -1464,27 +1466,6 @@ export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => [s.transactions],
 )
 
-/**
- * Метка локального календарного дня (полночь по местному времени) для epoch-ms.
- * Раньше день считался как `dayjs(t.date).format('YYYY-MM-DD')` — это создание
- * объекта-обёртки и форматирование строки НА КАЖДУЮ операцию. На тысяче записей
- * заметно, а результат тот же.
- */
-function localDayKey(at: number): number {
-  const d = new Date(at)
-  d.setHours(0, 0, 0, 0)
-  return +d
-}
-
-/** Предыдущий календарный день. Через Date, а не вычитание суток: переход на
- *  летнее время сдвигает сутки, и арифметика по миллисекундам промахнулась бы. */
-function prevDayKey(key: number): number {
-  const d = new Date(key)
-  d.setDate(d.getDate() - 1)
-  d.setHours(0, 0, 0, 0)
-  return +d
-}
-
 
 /**
  * Текущая серия дней подряд с хотя бы одной операцией. Считаем назад от сегодня;
@@ -1616,5 +1597,88 @@ export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = mem
   }
   return buckets.map(({ label, income, expense }) => ({ label, income, expense }))
 })
+
+/* ---------- Обзор (первый сегмент Аналитики) ---------- */
+
+/** Сколько прошлых периодов берём для «обычной нормы» категории. */
+const OVERVIEW_LOOKBACK = 3
+/** Глубина истории для поиска регулярных платежей. */
+const OVERVIEW_HISTORY_DAYS = 400
+
+/**
+ * Границы предыдущих периодов такой же длины, свежайший первым.
+ * Для «за всё время» предыдущего периода не существует — сравнивать не с чем.
+ */
+function previousWindows(p: Period, n: number): { start: number; end: number }[] {
+  if (p.mode === 'all') return []
+  const out: { start: number; end: number }[] = []
+
+  if (p.mode === 'range') {
+    // Произвольный диапазон сдвигаем на собственную длину.
+    const { start, end } = periodBounds(p)
+    const len = +end - +start
+    for (let i = 1; i <= n; i++) out.push({ start: +start - len * i, end: +end - len * i })
+    return out
+  }
+
+  const unit = UNIT[p.mode]
+  for (let i = 1; i <= n; i++) {
+    const anchor = dayjs(p.anchor).subtract(i, unit).format('YYYY-MM-DD')
+    const { start, end } = periodBounds({ ...p, anchor })
+    out.push({ start: +start, end: +end })
+  }
+  return out
+}
+
+/**
+ * Всё, что нужно вкладке «Обзор», одним объектом.
+ *
+ * Один селектор, а не десяток: экран показывает срез целиком, а каждая
+ * отдельная подписка — это ещё один шанс разбудить дерево. Считает он больше
+ * остальных, поэтому deps перечислены честно: без изменения данных, периода,
+ * счёта или лимита тело не выполняется вовсе.
+ */
+export const selectOverview: (s: State) => Overview = memo1(
+  (s) => {
+    const { start, end } = periodBounds(s.period)
+    const account = s.account
+    const inAccount = (t: Transaction) => !account || txCurrency(t, s) === account
+    const all = activeTransactions(s)
+
+    const windows = previousWindows(s.period, OVERVIEW_LOOKBACK)
+    const previous: Transaction[][] = windows.map(() => [])
+    const historySince = Date.now() - OVERVIEW_HISTORY_DAYS * DAY_MS
+    const history: Transaction[] = []
+
+    // Один проход по истории на все окна сразу: операций может быть тысячи.
+    for (const t of all) {
+      if (!inAccount(t)) continue
+      const x = Date.parse(t.date)
+      if (!Number.isFinite(x)) continue
+      if (x >= historySince) history.push(t)
+      for (let i = 0; i < windows.length; i++) {
+        if (x >= windows[i].start && x < windows[i].end) {
+          previous[i].push(t)
+          break
+        }
+      }
+    }
+
+    return buildOverview({
+      current: selectAccountTransactions(s),
+      previous,
+      history,
+      categories: selectAllCategories(s),
+      currency: selectAnalyticsCurrency(s),
+      startKey: localDayKey(+start),
+      endKey: localDayKey(+end),
+      now: Date.now(),
+      budget: s.monthlyBudget,
+      // Лимит месячный — на неделе или годе полоса врала бы.
+      budgetApplies: s.period.mode === 'month',
+    })
+  },
+  (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
+)
 
 export { getCategory }

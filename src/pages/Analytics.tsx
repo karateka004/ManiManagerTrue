@@ -6,6 +6,7 @@ import { DonutChartWithIcons } from '../components/DonutChartWithIcons'
 import { AnalyticsTabs, type AnalyticsTab } from '../components/AnalyticsTabs'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { TrendChart } from '../components/analytics/TrendChart'
+import { Overview } from '../components/analytics/Overview'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import {
   useStore,
@@ -19,7 +20,8 @@ import { CategoryIcon } from '../components/icons/CategoryIcon'
 import type { CategoryKind } from '../store/categories'
 
 export function AnalyticsPage() {
-  const [tab, setTab] = useState<AnalyticsTab>('expense')
+  const [tab, setTab] = useState<AnalyticsTab>('overview')
+  const isOverview = tab === 'overview'
   const isCalendar = tab === 'calendar'
   const isDynamics = tab === 'dynamics'
   const isCats = tab === 'expense' || tab === 'income'
@@ -46,11 +48,15 @@ export function AnalyticsPage() {
       </div>
 
       <AccountSwitcher />
-      {/* Период нужен только сводкам по категориям; у Динамики своя гранулярность, у Календаря — своя навигация. */}
-      {isCats && <PeriodSwitcher />}
+      {/* Период нужен сводкам по категориям и Обзору; у Динамики своя гранулярность, у Календаря — своя навигация. */}
+      {(isCats || isOverview) && <PeriodSwitcher />}
       <AnalyticsTabs value={tab} onChange={changeAnalyticsTab} />
 
-      {isCalendar ? (
+      {isOverview ? (
+        <div key="overview" className="tab-enter">
+          <Overview />
+        </div>
+      ) : isCalendar ? (
         // CSS-fade (.tab-enter, базовая непрозрачность 1) вместо framer
         // `initial:opacity 0`: иначе при незапустившейся анимации (rAF в свёрнутом
         // webview) календарь оставался невидимым — «не видно сумм за месяц».
