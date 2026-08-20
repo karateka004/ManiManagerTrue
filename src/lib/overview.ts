@@ -30,8 +30,8 @@ const MIN_DAYS_FOR_WEEKDAY = 14
  * операции за месяц рисуют «ритм» из одного столбика до потолка.
  */
 const MIN_SPENT_DAYS_FOR_WEEKDAY = 7
-/** Сколько категорий показываем в разбивке. */
-const TOP_CATEGORIES = 6
+/** Сколько категорий показываем в разбивке; остальные сворачиваются в «Прочее». */
+const TOP_CATEGORIES = 7
 /** Сколько самых дорогих операций показываем. */
 const TOP_BIGGEST = 3
 /** Больше карточек наблюдений не показываем — экран перестаёт читаться. */
@@ -111,6 +111,8 @@ export interface Overview {
   /** Средние расходы по дням недели, пн…вс. Пусто для коротких периодов. */
   weekday: number[]
   categories: CatDelta[]
+  /** Сумма категорий за пределами топа — строка «Прочее» в потоке денег. */
+  categoriesRest: number
   biggest: Transaction[]
   insights: Insight[]
 }
@@ -258,6 +260,7 @@ export function buildOverview(input: OverviewInput): Overview {
     budget: budgetApplies ? budget : 0,
     weekday,
     categories: cats.slice(0, TOP_CATEGORIES),
+    categoriesRest: cats.slice(TOP_CATEGORIES).reduce((a, c) => a + c.amount, 0),
     biggest,
     insights,
   }

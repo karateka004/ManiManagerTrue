@@ -5,6 +5,7 @@ import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
 import { useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
 import { CategoryIcon } from '../icons/CategoryIcon'
+import { FlowChart } from './FlowChart'
 
 /**
  * «Обзор» — первый сегмент Аналитики: не ещё один график, а ответ на вопрос
@@ -41,7 +42,7 @@ export const Overview = memo(function Overview() {
       {o.categories.length > 0 && (
         <>
           <SectionTitle>{t('ov.where')}</SectionTitle>
-          <Categories />
+          <FlowChart />
         </>
       )}
 
@@ -320,53 +321,6 @@ function InsightRow({ insight, first }: { insight: Insight; first: boolean }) {
         <div className="text-[14px] font-bold leading-tight text-ink">{title}</div>
         <div className="mt-0.5 text-[12.5px] leading-snug text-ink-subtle">{text}</div>
       </div>
-    </div>
-  )
-}
-
-/* ---------- Категории с изменением к прошлому периоду ---------- */
-
-function Categories() {
-  const o = useStore(selectOverview)
-  const t = useT()
-  const catName = useCatName()
-  const max = o.categories[0]?.amount || 1
-
-  return (
-    <div className="mx-4 rounded-3xl bg-surface-raised px-4 pb-4 pt-1 shadow-soft dark:shadow-soft-dark">
-      {o.categories.map((c) => {
-        const d = c.deltaPct === null ? null : Math.round(c.deltaPct)
-        return (
-          <div key={c.categoryId} className="pt-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-[14px] font-bold text-ink">{catName(c.categoryId, c.name)}</span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                {d !== null && (
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[11px] font-extrabold ${
-                      Math.abs(d) < 5
-                        ? 'bg-surface-sunken text-ink-subtle'
-                        : d > 0
-                          ? 'bg-expense-soft text-expense-deep dark:bg-expense/18 dark:text-expense'
-                          : 'bg-income-soft text-income-deep dark:bg-brand-500/18 dark:text-brand-300'
-                    }`}
-                  >
-                    {Math.abs(d) < 5 ? t('ov.as_usual') : `${d > 0 ? '+' : '−'}${Math.abs(d)}%`}
-                  </span>
-                )}
-                <span className="tabular text-[14px] font-bold text-ink">{formatMoney(c.amount, o.currency)}</span>
-              </span>
-            </div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-              <span
-                aria-hidden
-                className="block h-full rounded-full"
-                style={{ width: `${(c.amount / max) * 100}%`, background: c.color }}
-              />
-            </div>
-          </div>
-        )
-      })}
     </div>
   )
 }
