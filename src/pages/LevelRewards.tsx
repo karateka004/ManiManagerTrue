@@ -35,8 +35,11 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
           <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('lvlrew.kicker')}</div>
           <div className="text-2xl font-bold tracking-tight text-ink">{t('lvlrew.title')}</div>
         </div>
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand-100 px-2.5 py-1 text-[12px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-          {lvl.badge} {lvl.level}
+        {/* Значок уровня — тот же, что в шапке «Прогресса»: эмодзи из levels.ts
+            здесь рисовал системный шрифт и выбивался из остальных иконок. */}
+        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-100 px-2.5 py-1 text-[12px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+          <RewardBadge level={lvl.level} size={20} />
+          {lvl.level}
         </span>
       </div>
 

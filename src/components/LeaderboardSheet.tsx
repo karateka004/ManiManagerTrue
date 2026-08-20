@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, X } from 'lucide-react'
+import { Flame, Trophy, Users, X } from 'lucide-react'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
 import { getReward, RARITY } from '../lib/rewards'
@@ -248,7 +248,12 @@ function Row({
               t('level.t' + lvl)
             )}
           </span>
-          {entry.streakBest > 0 && <span className="shrink-0">· 🔥 {entry.streakBest}</span>}
+          {entry.streakBest > 0 && (
+            <span className="flex shrink-0 items-center gap-0.5">
+              ·<Flame size={11} strokeWidth={2.4} fill="currentColor" />
+              {entry.streakBest}
+            </span>
+          )}
         </div>
       </div>
       <div className="text-right">

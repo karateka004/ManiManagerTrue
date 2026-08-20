@@ -1,48 +1,60 @@
-import { type ReactNode } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { hapticTap } from '../../lib/telegram'
-import { ACCENT_CHIP, ACCENT_GLOW, type Accent } from './accent'
+import { ACCENT_RGB, type Accent } from './accent'
+import { TileScene, type Scene } from '../rewards/TileScene'
 
 interface Props {
-  icon: ReactNode
+  /** Векторная сцена на цветном поле — «обложка» плитки. */
+  scene: Scene
   title: string
-  /** Подпись/метрика под заголовком. */
+  /** Подпись под заголовком. Только ДАННЫЕ («11 дн. · рекорд 18»), не описание. */
   subtitle?: string
-  /** Бейдж в правом верхнем углу (например, счётчик / «Скоро»). */
+  /** Бейдж поверх обложки (счётчик монет, «+2», «Скоро»). */
   badge?: ReactNode
   accent?: Accent
   onClick?: () => void
-  /** Неактивная плитка-заглушка (De-Fi «Скоро»): приглушённая, не кликается. */
+  /** Неактивная плитка-заглушка: приглушённая, не кликается. */
   disabled?: boolean
 }
 
 /**
- * Бенто-плитка хаба «Прогресс»: чип-иконка сверху, заголовок снизу, атмосферная
- * подсветка в углу. Высота задана `min-h`, а не `aspect-square`: пояснительные
- * подписи под заголовками убраны, и квадрат оставлял бы под текстом пустоту.
- * `subtitle` оставлен для плиток, которым есть что показать ДАННЫМИ (не описанием).
+ * Бенто-плитка хаба «Прогресс»: сверху цветное поле с векторной сценой, снизу
+ * подпись — как обложка альбома. Пришло на смену плоскому блоку с чип-иконкой:
+ * плитки перестали быть одинаковыми прямоугольниками и стали различаться картинкой.
+ *
+ * Высота поля (106px) и сцены подобраны так, что низ сцены срезается краем поля —
+ * фигуры выглядят стоящими на земле, а не висящими. Не менять по отдельности.
  */
-export function Tile({ icon, title, subtitle, badge, accent = 'brand', onClick, disabled }: Props) {
+export function Tile({ scene, title, subtitle, badge, accent = 'brand', onClick, disabled }: Props) {
   return (
     <button
       onClick={disabled ? undefined : () => { hapticTap(); onClick?.() }}
       disabled={disabled}
-      className={`relative flex min-h-[136px] w-full flex-col justify-between overflow-hidden rounded-4xl bg-surface-raised p-4 text-left shadow-soft transition dark:shadow-soft-dark ${
+      style={{ '--tile-a': ACCENT_RGB[accent] } as CSSProperties}
+      className={`relative flex min-h-[154px] w-full flex-col overflow-hidden rounded-4xl bg-surface-raised text-left shadow-soft transition dark:shadow-soft-dark ${
         disabled ? 'opacity-55' : 'active:scale-[0.98]'
       }`}
     >
-      {/* Атмосферная подсветка в углу */}
-      <span aria-hidden className={`pointer-events-none absolute -right-7 -top-7 h-24 w-24 rounded-full blur-2xl ${ACCENT_GLOW[accent]}`} />
-
-      <div className="relative flex items-start justify-between">
-        <span className={`flex h-14 w-14 items-center justify-center rounded-3xl ${ACCENT_CHIP[accent]}`}>
-          {icon}
-        </span>
-        {badge}
+      <div className="tile-art relative h-[106px] overflow-hidden">
+        <TileScene scene={scene} />
+        {badge && <div className="absolute right-2.5 top-2.5">{badge}</div>}
       </div>
-      <div className="relative">
+      <div className="px-4 pb-4 pt-3">
         <div className="text-[16px] font-bold leading-tight text-ink">{title}</div>
         {subtitle && <div className="mt-1 text-[12px] leading-snug text-ink-subtle">{subtitle}</div>}
       </div>
     </button>
+  )
+}
+
+/**
+ * Бейдж поверх обложки. Фон плотный (surface), а не полупрозрачный: под ним
+ * может оказаться любой кусок сцены, и просвечивающая плашка сразу нечитаема.
+ */
+export function TileBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-surface-raised px-2.5 py-1 text-[11px] font-extrabold text-ink shadow-soft dark:shadow-soft-dark">
+      {children}
+    </span>
   )
 }

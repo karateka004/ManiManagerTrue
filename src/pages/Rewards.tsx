@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { CoinAmount } from '../components/rewards/CoinAmount'
 import { AnimatePresence, m } from 'framer-motion'
-import { ShoppingBag, Medal, Crown, Lock } from 'lucide-react'
+import { Flame, Lock } from 'lucide-react'
 import {
   useStore,
   selectCategoriesUsed,
@@ -22,7 +22,7 @@ import {
   type QuestSlot,
 } from '../lib/quests'
 import { useT, type TFunc } from '../lib/i18n'
-import { Tile } from '../components/ui/Tile'
+import { Tile, TileBadge } from '../components/ui/Tile'
 import { StreakTile } from '../components/rewards/StreakTile'
 import { QuestCard } from '../components/rewards/QuestCard'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
@@ -178,7 +178,8 @@ export function RewardsPage() {
               </span>
               {streak.count > 0 && (
                 <span className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold tabular">
-                  🔥 {streak.count}
+                  <Flame size={12} strokeWidth={2.4} fill="currentColor" />
+                  {streak.count}
                 </span>
               )}
             </div>
@@ -203,34 +204,24 @@ export function RewardsPage() {
       {/* Бенто-плитки 2×2: Магазин · Лидеры · Серия · De-Fi */}
       <div className="mx-4 mt-3 grid grid-cols-2 gap-3">
         <Tile
-          icon={<ShoppingBag size={26} strokeWidth={2} />}
+          scene="coins"
           title={t('shop.title')}
           accent="amber"
-          badge={
-            <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-              <CoinAmount value={coins} />
-            </span>
-          }
+          badge={<TileBadge><CoinAmount value={coins} /></TileBadge>}
           onClick={openShop}
         />
         <Tile
-          icon={<Medal size={26} strokeWidth={2} />}
+          scene="podium"
           title={t('profile.leaderboard')}
-          accent="yellow"
+          accent="sky"
           onClick={openLeaderboard}
         />
         <StreakTile />
         <Tile
-          icon={<Crown size={26} strokeWidth={2} />}
+          scene="crown"
           title={t('lvlrew.title')}
           accent="violet"
-          badge={
-            claimableTitles > 0 ? (
-              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-                +{claimableTitles}
-              </span>
-            ) : null
-          }
+          badge={claimableTitles > 0 ? <TileBadge>+{claimableTitles}</TileBadge> : null}
           onClick={() => setLevelRewardsOpen(true)}
         />
       </div>

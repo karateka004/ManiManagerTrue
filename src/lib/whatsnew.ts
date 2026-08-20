@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.32.2'
+export const APP_VERSION = '1.33.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.33.0',
+    date: '2026-08-20',
+    title: { ru: 'Плитки «Прогресса» с обложками', en: 'Progress tiles get covers' },
+    items: [
+      {
+        icon: '🎨',
+        text: {
+          ru: 'Магазин, лидеры, серия и титулы больше не одинаковые блоки: у каждой плитки своя картинка — стопка монет, подиум, пламя, корона',
+          en: 'Shop, leaderboard, streak and titles are no longer identical blocks: each tile has its own artwork — a stack of coins, a podium, a flame, a crown',
+        },
+      },
+      {
+        icon: '🩵',
+        text: {
+          ru: 'Таблица лидеров стала синей — рядом с жёлтым магазином они больше не сливаются',
+          en: 'The leaderboard turned blue so it no longer blends into the amber shop next to it',
+        },
+      },
+      {
+        icon: '🔥',
+        text: {
+          ru: 'Последние эмодзи в интерфейсе заменены на иконки: серия в шапке, значок уровня и рекорды в рейтинге',
+          en: 'The last emoji in the interface are now icons: the streak in the header, the level badge and records in the leaderboard',
+        },
+      },
+    ],
+  },
   {
     version: '1.32.0',
     date: '2026-08-19',

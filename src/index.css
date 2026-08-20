@@ -107,6 +107,18 @@
     @apply w-16 h-16 rounded-full flex items-center justify-center shadow-fab
            active:scale-95 transition-transform duration-150;
   }
+
+  /* Цветное поле обложки плитки «Прогресса». Цвет приходит из --tile-a, которую
+     ставит Tile по акценту, поэтому здесь только градиент и разная плотность по
+     теме: на тёмном фоне тот же процент читается слабее, чем на белом.
+     Через утилиты Tailwind не выразить — градиент с rgb(var() / alpha). */
+  .tile-art {
+    background: linear-gradient(150deg, rgb(var(--tile-a) / 0.30) 0%, rgb(var(--tile-a) / 0.07) 100%);
+  }
+
+  .dark .tile-art {
+    background: linear-gradient(150deg, rgb(var(--tile-a) / 0.34) 0%, rgb(var(--tile-a) / 0.08) 100%);
+  }
 }
 
 /* Появление вкладки: лёгкий fade+slide на чистом CSS.
