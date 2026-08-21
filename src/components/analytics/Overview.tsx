@@ -27,7 +27,7 @@ import { FlowChart } from './FlowChart'
  * «это много или мало?». Всё считает один селектор (см. selectOverview), здесь
  * только отрисовка — иначе каждая подписка добавляла бы шанс разбудить дерево.
  */
-export const Overview = memo(function Overview() {
+export const Overview = memo(function Overview({ onPickCategory }: { onPickCategory: (id: string) => void }) {
   const o = useStore(selectOverview)
   const t = useT()
 
@@ -57,7 +57,7 @@ export const Overview = memo(function Overview() {
       {o.categories.length > 0 && (
         <>
           <SectionTitle>{t('ov.where')}</SectionTitle>
-          <FlowChart />
+          <FlowChart onPick={onPickCategory} />
         </>
       )}
 

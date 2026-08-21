@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.40.1'
+export const APP_VERSION = '1.41.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.41.0',
+    date: '2026-08-20',
+    title: { ru: 'Карточка категории', en: 'Category card' },
+    items: [
+      {
+        icon: '🔍',
+        text: {
+          ru: 'Строка в «Потоке денег» открывается: внутри полгода столбиков по месяцам и все операции периода. Видно не только сколько ушло на категорию, но и много ли это для неё и из чего сумма сложилась',
+          en: 'A row in the money flow now opens up: six months of bars inside, plus every entry for the period. You see not just what a category cost, but whether that is a lot for it and what made up the total',
+        },
+      },
+      {
+        icon: '✏️',
+        text: {
+          ru: 'Любую операцию оттуда можно сразу открыть на правку — раньше из Аналитики это было недоступно',
+          en: 'Any entry there opens for editing right away — previously that was impossible from Analytics',
+        },
+      },
+    ],
+  },
   {
     version: '1.40.0',
     date: '2026-08-20',

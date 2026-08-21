@@ -1781,4 +1781,48 @@ export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
   (s) => [activeTransactions(s), s.customCategories],
 )
 
+/* ---------- Помесячный след категории ---------- */
+
+/** Сколько месяцев показываем в карточке категории. */
+const CATEGORY_MONTHS = 6
+
+export interface CategoryMonth {
+  /** Короткая подпись месяца («авг.»). */
+  label: string
+  amount: number
+  /** Начало месяца — ключом для React и для сортировки. */
+  start: number
+}
+
+/**
+ * Расходы категории по месяцам — «а как было раньше».
+ *
+ * Не зависит от выбранного периода: смысл именно в том, чтобы увидеть след
+ * категории за полгода, каким бы месяцем ни листали Аналитику. Счёт при этом
+ * учитывается — иначе в мультивалютном профиле сложились бы разные валюты.
+ */
+export const selectCategoryMonths: (s: State, categoryId: string) => CategoryMonth[] = memo2(
+  (s, categoryId) => {
+    const now = dayjs().startOf('month')
+    const buckets = Array.from({ length: CATEGORY_MONTHS }, (_, i) => {
+      const d = now.subtract(CATEGORY_MONTHS - 1 - i, 'month')
+      return { start: +d, end: +d.add(1, 'month'), label: d.format('MMM'), amount: 0 }
+    })
+    for (const t of activeTransactions(s)) {
+      if (t.type !== 'expense' || t.categoryId !== categoryId) continue
+      if (s.account && txCurrency(t, s) !== s.account) continue
+      const x = parseDay(t.date)
+      if (!Number.isFinite(x)) continue
+      for (const b of buckets) {
+        if (x >= b.start && x < b.end) {
+          b.amount += t.amount
+          break
+        }
+      }
+    }
+    return buckets.map(({ label, amount, start }) => ({ label, amount, start }))
+  },
+  (s, categoryId) => [activeTransactions(s), s.account, s.currency, categoryId],
+)
+
 export { getCategory }

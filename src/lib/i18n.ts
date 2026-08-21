@@ -353,6 +353,9 @@ const DICT: Dict = {
 
   /* Обзор — первый сегмент Аналитики */
   'ov.tab': { ru: 'Обзор', en: 'Overview' },
+  'cat.half_year': { ru: 'Полгода', en: 'Last six months' },
+  'cat.in_period': { ru: 'Операции периода', en: 'Entries in this period' },
+  'cat.empty': { ru: 'В этом периоде операций нет', en: 'No entries in this period' },
   'ov.spent': { ru: 'Потрачено', en: 'Spent' },
   'ov.prev_was': { ru: 'В прошлый раз — {amount}', en: 'Last time — {amount}' },
   'ov.forecast_to': { ru: 'Выйдет к {date}', en: 'On track for {date}' },

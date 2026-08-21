@@ -210,7 +210,7 @@ export default function App() {
             {tab === 'home' && (
               <HomePage onOpenProfile={openProfile} onEditTx={openEdit} onOpenSearch={openSearch} />
             )}
-            {tab === 'analytics' && <AnalyticsPage />}
+            {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
               <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />

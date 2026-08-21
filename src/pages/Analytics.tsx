@@ -7,6 +7,7 @@ import { AnalyticsTabs, type AnalyticsTab } from '../components/AnalyticsTabs'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { TrendChart } from '../components/analytics/TrendChart'
 import { Overview } from '../components/analytics/Overview'
+import { CategorySheet } from '../components/analytics/CategorySheet'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import {
   useStore,
@@ -18,9 +19,11 @@ import { formatMoney } from '../lib/format'
 import { useCatName, useT } from '../lib/i18n'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import type { CategoryKind } from '../store/categories'
+import type { Transaction } from '../store/transactions'
 
-export function AnalyticsPage() {
+export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
   const [tab, setTab] = useState<AnalyticsTab>('overview')
+  const [pickedCategory, setPickedCategory] = useState<string | null>(null)
   const isOverview = tab === 'overview'
   const isCalendar = tab === 'calendar'
   const isDynamics = tab === 'dynamics'
@@ -54,7 +57,7 @@ export function AnalyticsPage() {
 
       {isOverview ? (
         <div key="overview" className="tab-enter">
-          <Overview />
+          <Overview onPickCategory={setPickedCategory} />
         </div>
       ) : isCalendar ? (
         // CSS-fade (.tab-enter, базовая непрозрачность 1) вместо framer
@@ -115,6 +118,8 @@ export function AnalyticsPage() {
           )}
         </>
       )}
+
+      <CategorySheet categoryId={pickedCategory} onClose={() => setPickedCategory(null)} onEditTx={onEditTx} />
     </div>
   )
 }

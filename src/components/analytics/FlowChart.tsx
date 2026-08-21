@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useStore, selectOverview } from '../../store/transactions'
 import { formatMoney } from '../../lib/format'
 import { useCatName, useT } from '../../lib/i18n'
+import { hapticTap } from '../../lib/telegram'
 
 /** Высота строки категории. Лента втекает ровно в её середину, поэтому число фиксированное. */
 const ROW = 46
@@ -26,7 +27,7 @@ const MIN_RIBBON = 2.5
  * Заменяет прежний блок «По категориям»: это он и есть, только вместо полосы
  * прогресса — лента, и вдобавок видно, сколько от дохода осталось.
  */
-export function FlowChart() {
+export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) {
   const o = useStore(selectOverview)
   const t = useT()
   const catName = useCatName()
@@ -117,7 +118,14 @@ export function FlowChart() {
           {rows.map((r) => {
             const d = r.deltaPct === null ? null : Math.round(r.deltaPct)
             return (
-              <div key={r.id} className="flex items-center justify-between gap-2" style={{ height: ROW }}>
+              <button
+                key={r.id}
+                // «Прочее» — свёрнутый хвост, за ним нет одной категории
+                onClick={r.id === '__rest' ? undefined : () => { hapticTap(); onPick(r.id) }}
+                disabled={r.id === '__rest'}
+                className="flex w-full items-center justify-between gap-2 text-left active:opacity-70 disabled:active:opacity-100"
+                style={{ height: ROW }}
+              >
                 <span className="min-w-0 flex items-center gap-2">
                   <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
                   <span className="truncate text-[14px] font-bold text-ink">{r.name}</span>
@@ -138,7 +146,7 @@ export function FlowChart() {
                   )}
                   <span className="tabular text-[14px] font-bold text-ink">{formatMoney(r.amount, o.currency)}</span>
                 </span>
-              </div>
+              </button>
             )
           })}
         </div>
