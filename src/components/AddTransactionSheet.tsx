@@ -1,15 +1,21 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Calendar, Plus, ChevronDown } from 'lucide-react'
-import { useStore, selectCategoriesByKind, periodBounds, type Transaction } from '../store/transactions'
+import { Calendar, Plus, ChevronDown, Delete } from 'lucide-react'
+import {
+  useStore,
+  selectCategoriesByKind,
+  selectQuickCurrencies,
+  selectFrequent,
+  type FrequentEntry,
+  type Transaction,
+} from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
 import { formatMoney, dayjs } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
 
-const MAIN_CURRENCIES: Currency[] = ['USD', 'EUR', 'UAH']
 
 // Редактор категорий — общий ленивый чанк (тот же, что в Settings).
 const CategoryEditor = lazy(() => import('./CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
@@ -22,7 +28,32 @@ interface Props {
   editing?: Transaction | null
 }
 
+/**
+ * Стабильные пустышки для подписок закрытой шторки.
+ *
+ * После первого открытия шторка остаётся смонтированной (чтобы отыграла анимация
+ * закрытия), поэтому её подписки продолжают срабатывать. Если при закрытой шторке
+ * отдавать новые пустые массивы, компонент будет перерисовываться на КАЖДУЮ
+ * записанную операцию впустую. Одна и та же ссылка это исключает.
+ */
+const NO_TX: Transaction[] = []
+const NO_FREQUENT: FrequentEntry[] = []
+
 const OPS = ['+', '−', '×', '÷'] as const
+
+/**
+ * Раскладка клавиатуры. Раньше клавиши были просто глифами на фоне шторки — без
+ * поверхностей не видно, куда жать, а операторы отличались от цифр только цветом
+ * и сливались с ними. Теперь у каждой клавиши своя плашка, а колонка операторов
+ * выделена тоном: цифры и калькулятор читаются как две разные зоны, при этом
+ * сетка осталась 4x4 и шторка не стала выше.
+ */
+const KEYS: { k: string; kind: 'digit' | 'op' | 'back' }[] = [
+  { k: '7', kind: 'digit' }, { k: '8', kind: 'digit' }, { k: '9', kind: 'digit' }, { k: '÷', kind: 'op' },
+  { k: '4', kind: 'digit' }, { k: '5', kind: 'digit' }, { k: '6', kind: 'digit' }, { k: '×', kind: 'op' },
+  { k: '1', kind: 'digit' }, { k: '2', kind: 'digit' }, { k: '3', kind: 'digit' }, { k: '−', kind: 'op' },
+  { k: ',', kind: 'digit' }, { k: '0', kind: 'digit' }, { k: '⌫', kind: 'back' }, { k: '+', kind: 'op' },
+]
 const isOp = (ch: string) => OPS.includes(ch as (typeof OPS)[number])
 
 /** Безопасный калькулятор: + − × ÷ с приоритетом, запятая = десятичный. */
@@ -72,19 +103,25 @@ function evalExpr(expr: string): number {
 }
 
 export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: Props) {
-  // В режиме правки вид операции (расход/доход) берём из самой операции.
-  const kind: CategoryKind = editing ? editing.type : kindProp
-  const addTransaction = useStore((s) => s.addTransaction)
-  const updateTransaction = useStore((s) => s.updateTransaction)
+  // Вид операции — состояние, а не проп: сегмент в шапке переключает его прямо
+  // в открытой шторке. С пропом синхронизируется при каждом открытии (см. эффект
+  // ниже); в режиме правки стартует с типа правимой операции.
+  const [kind, setKind] = useState<CategoryKind>(kindProp)
+  const commitTransaction = useStore((s) => s.commitTransaction)
+  const track = useStore((s) => s.track)
   const removeTransaction = useStore((s) => s.removeTransaction)
   const globalCurrency = useStore((s) => s.currency)
   const lastTxCurrency = useStore((s) => s.lastTxCurrency)
-  const setLastTxCurrency = useStore((s) => s.setLastTxCurrency)
   const categories = useStore((s) => selectCategoriesByKind(s, kind))
-  const allTransactions = useStore((s) => s.transactions)
-  const period = useStore((s) => s.period)
-  const focusPeriodOn = useStore((s) => s.focusPeriodOn)
+  // Нужны только для подсказок тегов, то есть лишь при открытой шторке.
+  const allTransactions = useStore((s) => (open ? s.transactions : NO_TX))
+  // Быстрые валюты: настроенные в Settings либо подобранные по данным человека.
+  const quickCurrencies = useStore(selectQuickCurrencies)
+  // Привычные операции для повтора в один тап. Пока шторка закрыта, они не нужны —
+  // и полный проход по всем операциям тоже.
+  const frequent = useStore((st) => (open ? selectFrequent(st, kind) : NO_FREQUENT))
   const tr = useT()
+  const catName = useCatName()
 
   const todayISO = dayjs().format('YYYY-MM-DD')
   const [expr, setExpr] = useState('0')
@@ -118,6 +155,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
   useEffect(() => {
     if (!open) return
+    setKind(editing ? editing.type : kindProp)
     setCurrencyOpen(false)
     setShowMoreCurrencies(false)
     setTagDraft('')
@@ -138,7 +176,32 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
       setDate(dayjs().format('YYYY-MM-DD'))
       setTxCurrency(lastTxCurrency)
     }
-  }, [open, kind, editing]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Смена вида операции внутри шторки. Сумму, дату, заметку и теги сохраняем —
+   * человек уже их ввёл, — а категорию сбрасываем: у расходов и доходов разные
+   * списки, и старый id в новом списке не существует.
+   */
+  const switchKind = (next: CategoryKind) => {
+    if (next === kind) return
+    hapticSelect()
+    setKind(next)
+    setCategoryId('')
+  }
+
+  /**
+   * Подставить частую операцию: сумма, категория и валюта разом. Намеренно НЕ
+   * сохраняем сразу — человек должен увидеть, что подставилось, и подтвердить.
+   * Случайный тап по чипу не должен создавать запись.
+   */
+  const applyFrequent = (f: FrequentEntry) => {
+    hapticTap()
+    track('use_repeat')
+    setExpr(String(f.amount).replace('.', ','))
+    setCategoryId(f.categoryId)
+    setTxCurrency(f.currency)
+  }
 
   const press = (key: string) => {
     hapticSelect()
@@ -195,17 +258,9 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
       tags: tags.length ? tags : undefined,
       date: iso,
     }
-    if (editing) {
-      updateTransaction(editing.id, payload)
-    } else {
-      addTransaction(payload)
-      setLastTxCurrency(txCurrency)
-    }
-    // Если операция «задним числом» выпадает за текущий период просмотра —
-    // переводим период на её дату, иначе запись пропала бы из виду.
-    const x = +dayjs(iso)
-    const { start, end } = periodBounds(period)
-    if (x < +start || x >= +end) focusPeriodOn(iso)
+    // Одно изменение стора на всё сохранение: добавление/правка, запоминание
+    // валюты и сдвиг периода для операции «задним числом» (см. commitTransaction).
+    commitTransaction(payload, editing?.id ?? null)
     onClose()
   }
 
@@ -242,13 +297,28 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 py-2">
-              <span className={`pill text-sm ${
-                kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'bg-income-soft text-income-deep'
-              }`}>
-                {kind === 'expense' ? `− ${tr('common.expense_one')}` : `+ ${tr('common.income_one')}`}
-              </span>
-              <button onClick={onClose} className="text-ink-subtle text-sm font-medium active:text-ink-muted">
+            <div className="flex items-center justify-between gap-3 px-4 py-2">
+              <div className="flex items-center gap-1 rounded-full bg-surface-sunken p-1">
+                <button
+                  onClick={() => switchKind('expense')}
+                  aria-pressed={kind === 'expense'}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                    kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'text-ink-subtle'
+                  }`}
+                >
+                  − {tr('common.expense_one')}
+                </button>
+                <button
+                  onClick={() => switchKind('income')}
+                  aria-pressed={kind === 'income'}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                    kind === 'income' ? 'bg-income-soft text-income-deep' : 'text-ink-subtle'
+                  }`}
+                >
+                  + {tr('common.income_one')}
+                </button>
+              </div>
+              <button onClick={onClose} className="shrink-0 pr-2 text-sm font-medium text-ink-subtle active:text-ink-muted">
                 {tr('common.cancel')}
               </button>
             </div>
@@ -273,7 +343,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 </button>
                 {currencyOpen && (
                   <div className="flex flex-wrap justify-center gap-1.5">
-                    {MAIN_CURRENCIES.map((code) => (
+                    {quickCurrencies.map((code) => (
                       <button
                         key={code}
                         onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
@@ -292,7 +362,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                         {tr('add.more')}
                       </button>
                     )}
-                    {showMoreCurrencies && CURRENCIES.filter((c) => !MAIN_CURRENCIES.includes(c.code)).map((c) => (
+                    {showMoreCurrencies && CURRENCIES.filter((c) => !quickCurrencies.includes(c.code)).map((c) => (
                       <button
                         key={c.code}
                         onClick={() => { hapticSelect(); setTxCurrency(c.code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
@@ -307,6 +377,41 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 )}
               </div>
             </div>
+
+            {/* Повтор частых операций — только при создании: в правке подставлять
+                чужую сумму поверх редактируемой было бы неожиданно. */}
+            {!editing && frequent.length > 0 && (
+              <div className="pb-3 pt-1">
+                <div className="px-6 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+                  {tr('add.frequent')}
+                </div>
+                <div className="no-scrollbar flex gap-2 overflow-x-auto px-6">
+                  {frequent.map((f) => {
+                    const cat = categories.find((c) => c.id === f.categoryId)
+                    if (!cat) return null // категорию удалили — подсказку не показываем
+                    return (
+                      <button
+                        key={`${f.categoryId}|${f.amount}|${f.currency}`}
+                        onClick={() => applyFrequent(f)}
+                        className="flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 transition-transform active:scale-95"
+                        style={{ background: cat.color + '1F' }}
+                      >
+                        <span
+                          className="flex h-7 w-7 items-center justify-center rounded-full"
+                          style={{ background: cat.color + '2E', color: cat.color }}
+                        >
+                          <CategoryIcon id={cat.icon} size={15} />
+                        </span>
+                        <span className="text-xs font-semibold text-ink">{catName(cat.id, cat.name)}</span>
+                        <span className="tabular text-xs font-bold text-ink-muted">
+                          {formatMoney(f.amount, f.currency)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Note */}
             <div className="px-6 pb-2">
@@ -430,7 +535,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                       >
                         <CategoryIcon id={c.icon} size={20} />
                       </div>
-                      <span className="text-[10px] font-medium leading-tight text-ink-muted">{c.name}</span>
+                      <span className="text-[10px] font-medium leading-tight text-ink-muted">{catName(c.id, c.name)}</span>
                     </button>
                   )
                 })}
@@ -448,17 +553,22 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               </div>
             </div>
 
-            {/* Numpad with operators */}
-            <div className="grid grid-cols-4 gap-1 px-4 pb-2">
-              {['7','8','9','÷','4','5','6','×','1','2','3','−',',','0','⌫','+'].map((k) => (
+            {/* Клавиатура: цифры + калькулятор (см. KEYS) */}
+            <div className="grid grid-cols-4 gap-1.5 px-4 pb-2">
+              {KEYS.map(({ k, kind }) => (
                 <button
                   key={k}
                   onClick={() => press(k)}
-                  className={`rounded-2xl py-3 text-2xl font-semibold active:bg-surface-sunken ${
-                    isOp(k) ? 'text-brand-500' : 'text-ink'
+                  aria-label={kind === 'back' ? tr('common.delete') : k}
+                  className={`flex items-center justify-center rounded-2xl py-3.5 text-2xl font-semibold transition-transform active:scale-95 ${
+                    kind === 'op'
+                      ? 'bg-brand-500/[0.18] text-brand-700 active:bg-brand-500/30 dark:bg-brand-500/20 dark:text-brand-300'
+                      : kind === 'back'
+                      ? 'bg-surface-sunken text-ink-muted active:bg-surface-sunken/70'
+                      : 'bg-surface-sunken text-ink active:bg-surface-sunken/70'
                   }`}
                 >
-                  {k}
+                  {kind === 'back' ? <Delete size={22} strokeWidth={2.2} /> : k}
                 </button>
               ))}
             </div>

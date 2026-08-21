@@ -96,6 +96,12 @@ export interface LeaderEntry {
   username?: string
   xp: number
   level: number
+  /** ID надетого косметического титула (rewards.ts) — «флекс» в рейтинге. */
+  title?: string
+  /** ID надетой рамки аватара — рисуем ободок вокруг кружка игрока. */
+  frame?: string
+  /** ID надетого акцента — цвет ободка, когда рамки нет. */
+  accent?: string
   ops: number
   coins: number
   streakBest: number
@@ -117,6 +123,10 @@ export async function submitProfile(stats: {
   ops: number
   coins: number
   streakBest: number
+  /** ID надетой косметики (опционально — старый воркер поля просто игнорирует). */
+  title?: string
+  frame?: string
+  accent?: string
 }): Promise<{ ok: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/profile', { initData: tg.initData, ...stats })
@@ -159,9 +169,15 @@ export async function pullCloud(): Promise<CloudSnapshot | null> {
 export async function pushCloud(
   blob: string,
   updatedAt: number,
+  /**
+   * Разрешить сохранить снимок БЕЗ операций поверх облака, в котором они были.
+   * Ставится только когда человек сам удалил все операции в этой сессии —
+   * иначе сервер отклонит пустой снимок как защиту от потери данных.
+   */
+  allowEmpty = false,
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
-  return post('/data/put', { initData: tg.initData, blob, updatedAt })
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
 }
 
 /* ---------- Напоминания (ежедневный пуш от бота) ---------- */
@@ -193,5 +209,50 @@ export async function checkSubscription(): Promise<boolean> {
     return !!res?.subscribed
   } catch {
     return false
+  }
+}
+
+/* ---------- Персональные подарки ---------- */
+
+/**
+ * Попросить бота поздравить текущего пользователя с персональным подарком в ЛС.
+ * Сервер валидирует награды по своему whitelist и шлёт каждую один раз (дедуп в KV).
+ * Возвращает true, если запрос дошёл (в т.ч. когда всё уже было отправлено раньше).
+ */
+export async function notifyGift(rewards: string[]): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData || rewards.length === 0) return false
+  try {
+    const res = await post('/gift-notify', { initData: tg.initData, rewards })
+    return !!res?.ok
+  } catch {
+    return false
+  }
+}
+
+/* ---------- Выгрузка операций ---------- */
+
+export type ExportResult = 'ok' | 'blocked' | 'failed' | 'too_large' | 'no_backend'
+
+/**
+ * Отправить операции файлом в чат с ботом.
+ *
+ * Скачивание прямо из webview Telegram ненадёжно (на iOS ссылка с `download`
+ * молча ничего не делает), поэтому файл отправляет бот. Вне Telegram вызывать
+ * незачем — там сработает обычное скачивание, см. Settings.
+ */
+export async function exportTransactions(
+  csv: string,
+  filename: string,
+  caption: string,
+): Promise<ExportResult> {
+  if (!isBackendConfigured() || !tg.initData) return 'no_backend'
+  try {
+    const r = await post('/export', { initData: tg.initData, csv, filename, caption })
+    if (r?.ok) return 'ok'
+    if (r?.error === 'blocked') return 'blocked'
+    if (r?.error === 'too_large') return 'too_large'
+    return 'failed'
+  } catch {
+    return 'failed'
   }
 }

@@ -1,75 +1,163 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { Search, Target } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
 import { BudgetAlert } from '../components/BudgetAlert'
+import { DueRecurring } from '../components/DueRecurring'
+import { MonthlyRecap } from '../components/MonthlyRecap'
 import { AccountSwitcher } from '../components/AccountSwitcher'
-import { FabButtons } from '../components/FabButtons'
 import { Avatar } from '../components/Avatar'
-import { useStore, selectNetBalanceByCurrency, type Goal, type Transaction } from '../store/transactions'
+import { MenuRow } from '../components/ui/MenuRow'
+import {
+  useStore,
+  selectNetBalanceByCurrency,
+  selectCurrentMonthExpense,
+  selectDailyAllowance,
+  type Goal,
+  type Transaction,
+} from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
-import type { CategoryKind } from '../store/categories'
 
-// Шторка добавления операции — отдельным чанком, грузится по первому тапу FAB.
-const AddTransactionSheet = lazy(() =>
-  import('../components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
+// Планирование — та же ленивая шторка, что в Профиле (общий чанк).
+const PlanningSheet = lazy(() =>
+  import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
 
-export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
-  const [sheet, setSheet] = useState<{ open: boolean; kind: CategoryKind }>({
-    open: false,
-    kind: 'expense',
-  })
-  // Монтируем шторку только после первого открытия (чтобы анимация закрытия отыграла — держим смонтированной).
-  const [mounted, setMounted] = useState(false)
-  // Операция, которую правим (null = режим создания новой).
-  const [editing, setEditing] = useState<Transaction | null>(null)
+interface Props {
+  onOpenProfile: () => void
+  /** Открыть шторку правки операции — сама шторка живёт в App. */
+  onEditTx: (t: Transaction) => void
+  /** Открыть поиск по всей истории — шторка тоже живёт в App. */
+  onOpenSearch: () => void
+}
 
-  const openSheet = (kind: CategoryKind) => {
-    setMounted(true)
-    setEditing(null)
-    setSheet({ open: true, kind })
-  }
-
-  const openEdit = (t: Transaction) => {
-    setMounted(true)
-    setEditing(t)
-    setSheet({ open: true, kind: t.type })
+/**
+ * Главная. Обёрнута в memo намеренно: состояние шторки добавления живёт в App,
+ * и без этого каждое её открытие или закрытие перерисовывало бы весь список
+ * категорий. Пропсы приходят стабильными (useCallback в App).
+ */
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch }: Props) {
+  // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
+  const track = useStore((s) => s.track)
+  const [planningOpen, setPlanningOpen] = useState(false)
+  const seenPlanning = useRef(false)
+  if (planningOpen) seenPlanning.current = true
+  const openPlanning = () => {
+    track('open_planning')
+    setPlanningOpen(true)
   }
 
   return (
     <div className="pb-24">
-      <Header onOpenProfile={onOpenProfile} />
+      <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
+      <TodayBudget />
+      <PlanningRow onOpen={openPlanning} />
       <BudgetAlert />
-      <CategoryList onEditTx={openEdit} />
+      <MonthlyRecap />
+      <DueRecurring />
+      <CategoryList onEditTx={onEditTx} />
 
-      <FabButtons
-        onAddExpense={() => openSheet('expense')}
-        onAddIncome={() => openSheet('income')}
-      />
+      <Suspense fallback={null}>
+        {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}
+      </Suspense>
+    </div>
+  )
+})
 
-      {mounted && (
-        <Suspense fallback={null}>
-          <AddTransactionSheet
-            open={sheet.open}
-            kind={sheet.kind}
-            editing={editing}
-            onClose={() => { setSheet((s) => ({ ...s, open: false })); setEditing(null) }}
+/**
+ * Сколько ещё можно потратить сегодня.
+ *
+ * Месячный бюджет сам по себе абстрактен: «осталось 40 000 до конца месяца»
+ * ничего не говорит о сегодняшнем дне. Дневной лимит пересчитывается каждый день
+ * от ОСТАТКА (см. selectDailyAllowance), поэтому перерасход сразу ужимает
+ * завтрашний лимит, а экономия — расширяет.
+ *
+ * Показывается только когда бюджет задан — иначе на Главной висел бы пустой блок.
+ */
+function TodayBudget() {
+  const allowance = useStore(selectDailyAllowance)
+  const currency = useStore((s) => s.currency)
+  const t = useT()
+  if (!allowance) return null
+
+  const { perDay, leftToday, spentToday, daysLeft } = allowance
+  const over = leftToday < 0
+  // Копейки в дневном лимите только шумят — округляем до целых единиц валюты.
+  const money = (v: number) => formatMoney(Math.round(v), currency)
+  const ratio = perDay > 0 ? Math.min(1, spentToday / perDay) : 1
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="card px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+            {t('home.today_kicker')}
+          </span>
+          <span className="text-[11px] font-medium text-ink-subtle">
+            {t('home.today_days', { days: daysLeft })}
+          </span>
+        </div>
+
+        <div className={`mt-0.5 tabular text-lg font-bold ${over ? 'text-expense-deep' : 'text-ink'}`}>
+          {over ? t('home.today_over', { over: money(-leftToday) }) : t('home.today_left', { left: money(leftToday) })}
+        </div>
+
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+          <div
+            className={`h-full rounded-full transition-[width] duration-500 ${over ? 'bg-expense' : 'bg-brand-500'}`}
+            style={{ width: `${ratio * 100}%` }}
           />
-        </Suspense>
-      )}
+        </div>
+
+        <div className="mt-1 tabular text-[11px] text-ink-subtle">
+          {t('home.today_spent', { spent: money(spentToday), perDay: money(perDay) })}
+        </div>
+      </div>
     </div>
   )
 }
 
-function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
+/**
+ * Компактный вход в Планирование под карточкой баланса. Подсказка живая:
+ * если задан месячный бюджет — показываем остаток (или превышение), иначе
+ * зовём настроить бюджет/лимиты/цели.
+ */
+function PlanningRow({ onOpen }: { onOpen: () => void }) {
+  const t = useT()
+  const budget = useStore((s) => s.monthlyBudget)
+  const spent = useStore(selectCurrentMonthExpense)
+  const currency = useStore((s) => s.currency)
+
+  const left = budget - spent
+  const hint =
+    budget > 0
+      ? left >= 0
+        ? t('home.plan_left', { left: formatMoney(left, currency), budget: formatMoney(budget, currency) })
+        : t('home.plan_over', { over: formatMoney(-left, currency) })
+      : t('plan.subtitle')
+
+  return (
+    <div className="px-6 pb-2">
+      <MenuRow
+        icon={<Target size={20} strokeWidth={2} />}
+        title={t('plan.title')}
+        hint={hint}
+        accent="emerald"
+        onClick={onOpen}
+      />
+    </div>
+  )
+}
+
+function Header({ onOpenProfile, onOpenSearch }: { onOpenProfile: () => void; onOpenSearch: () => void }) {
   const mode = useStore((s) => s.homeHeaderMode)
   const goals = useStore((s) => s.goals)
   const currency = useStore((s) => s.currency)
@@ -87,6 +175,13 @@ function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
         </div>
+        <button
+          onClick={() => { hapticSelect(); onOpenSearch() }}
+          aria-label={t('search.open')}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+        >
+          <Search size={18} strokeWidth={2.4} />
+        </button>
         <Avatar size={40} onClick={onOpenProfile} />
       </div>
     </div>

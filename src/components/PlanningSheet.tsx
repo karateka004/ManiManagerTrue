@@ -1,31 +1,35 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2 } from 'lucide-react'
+import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2, Wand2, TrendingUp } from 'lucide-react'
+import { InvestmentsTab } from './planning/InvestmentsTab'
 import {
   useStore,
   selectCategoriesByKind,
   selectCurrentMonthExpense,
+  selectCurrentMonthExpenseByCategory,
+  selectAvgMonthlyExpenseByCategory,
   selectNetBalanceByCurrency,
   selectAnalyticsCurrency,
   selectAccounts,
   type Goal,
 } from '../store/transactions'
 import { getCurrency, type Currency } from '../lib/currencies'
-import { formatMoney } from '../lib/format'
+import { formatMoney, dayjs } from '../lib/format'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import { hapticSelect, hapticTap, hapticNotify } from '../lib/telegram'
-import { useT, type TFunc } from '../lib/i18n'
+import { useCatName, useT, type TFunc } from '../lib/i18n'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
 
-type Tab = 'budget' | 'limits' | 'goals'
+type Tab = 'limits' | 'budget' | 'goals' | 'invest'
 
 export function PlanningSheet({ open, onClose }: Props) {
   const t = useT()
-  const [tab, setTab] = useState<Tab>('budget')
+  // Лимиты — главный инструмент планирования, поэтому открываются первыми.
+  const [tab, setTab] = useState<Tab>('limits')
 
   return (
     <AnimatePresence>
@@ -66,25 +70,29 @@ export function PlanningSheet({ open, onClose }: Props) {
               </button>
             </div>
 
-            {/* Вкладки */}
+            {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет) */}
             <div className="px-4 pb-2">
               <div className="flex rounded-2xl bg-surface-sunken/60 p-1">
-                <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
-                  <Wallet size={15} strokeWidth={2.4} /> {t('plan.tab_budget')}
-                </TabButton>
                 <TabButton active={tab === 'limits'} onClick={() => { setTab('limits'); hapticSelect() }}>
-                  <SlidersHorizontal size={15} strokeWidth={2.4} /> {t('plan.tab_limits')}
+                  <SlidersHorizontal size={14} strokeWidth={2.4} /> {t('plan.tab_limits')}
+                </TabButton>
+                <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
+                  <Wallet size={14} strokeWidth={2.4} /> {t('plan.tab_budget')}
                 </TabButton>
                 <TabButton active={tab === 'goals'} onClick={() => { setTab('goals'); hapticSelect() }}>
-                  <Target size={15} strokeWidth={2.4} /> {t('plan.tab_goals')}
+                  <Target size={14} strokeWidth={2.4} /> {t('plan.tab_goals')}
+                </TabButton>
+                <TabButton active={tab === 'invest'} onClick={() => { setTab('invest'); hapticSelect() }}>
+                  <TrendingUp size={14} strokeWidth={2.4} /> {t('plan.tab_invest')}
                 </TabButton>
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-              {tab === 'budget' && <BudgetTab t={t} />}
               {tab === 'limits' && <LimitsTab t={t} />}
+              {tab === 'budget' && <BudgetTab t={t} />}
               {tab === 'goals' && <GoalsTab t={t} />}
+              {tab === 'invest' && <InvestmentsTab t={t} />}
             </div>
           </m.div>
         </>
@@ -97,13 +105,27 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-semibold transition-colors ${
+      className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition-colors ${
         active ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-subtle active:text-ink-muted'
       }`}
     >
       {children}
     </button>
   )
+}
+
+/**
+ * Сколько дней в текущем месяце ещё осталось, включая сегодня (минимум 1).
+ * Основа подсказок «можно тратить в день» и прогноза до конца месяца.
+ */
+function daysLeftInMonth(): number {
+  const now = dayjs()
+  return Math.max(1, now.daysInMonth() - now.date() + 1)
+}
+
+/** Сколько дней месяца уже прошло, включая сегодня (минимум 1) — для прогноза темпа. */
+function daysPassedInMonth(): number {
+  return Math.max(1, dayjs().date())
 }
 
 /* ---------- Бюджет ---------- */
@@ -113,7 +135,14 @@ function BudgetTab({ t }: { t: TFunc }) {
   const budget = useStore((s) => s.monthlyBudget)
   const setBudget = useStore((s) => s.setMonthlyBudget)
   const spent = useStore(selectCurrentMonthExpense)
+  const budgets = useStore((s) => s.budgets)
   const [draft, setDraft] = useState(budget > 0 ? String(budget) : '')
+
+  // Сумма всех заданных лимитов — показываем, сколько бюджета уже расписано.
+  const limitsTotal = useMemo(
+    () => Object.values(budgets).reduce((sum, v) => sum + (v > 0 ? v : 0), 0),
+    [budgets],
+  )
 
   const commit = () => {
     const n = parseFloat(draft.replace(',', '.'))
@@ -127,6 +156,12 @@ function BudgetTab({ t }: { t: TFunc }) {
   const left = Math.max(0, budget - spent)
   const sym = getCurrency(currency).symbol
   const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-brand-500'
+
+  // Темп трат: сколько можно тратить в день до конца месяца и куда придём при
+  // текущем среднедневном расходе. Это главный «навигационный» сигнал бюджета.
+  const perDay = left / daysLeftInMonth()
+  const forecast = (spent / daysPassedInMonth()) * dayjs().daysInMonth()
+  const forecastOver = budget > 0 && forecast > budget
 
   return (
     <div>
@@ -176,6 +211,68 @@ function BudgetTab({ t }: { t: TFunc }) {
           <p className="mt-2 px-1 text-[11px] leading-relaxed text-ink-subtle">{t('plan.budget_hint')}</p>
         )}
       </div>
+
+      {budget > 0 && (
+        <>
+          {/* Темп трат: сколько в день и куда придём к концу месяца */}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <InfoBox
+              label={t('plan.per_day')}
+              value={formatMoney(perDay, currency)}
+              hint={t('plan.days_left', { n: daysLeftInMonth() })}
+              tone={over ? 'bad' : 'good'}
+            />
+            <InfoBox
+              label={t('plan.forecast')}
+              value={formatMoney(forecast, currency)}
+              hint={forecastOver ? t('plan.forecast_over') : t('plan.forecast_ok')}
+              tone={forecastOver ? 'bad' : 'good'}
+            />
+          </div>
+
+          {/* Связь с лимитами: сколько бюджета уже расписано по категориям */}
+          <div className="mt-2 rounded-3xl bg-surface-sunken/60 p-3">
+            <div className="flex items-baseline justify-between text-[12px]">
+              <span className="font-semibold text-ink">{t('plan.allocated')}</span>
+              <span className="tabular font-bold text-ink">
+                {formatMoney(limitsTotal, currency)} / {formatMoney(budget, currency)}
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+              <div
+                className={`h-full rounded-full ${limitsTotal > budget ? 'bg-amber-400' : 'bg-brand-500'}`}
+                style={{ width: `${Math.min(100, budget > 0 ? (limitsTotal / budget) * 100 : 0)}%` }}
+              />
+            </div>
+            <div className="mt-1.5 text-[11px] text-ink-subtle">
+              {limitsTotal > budget
+                ? t('plan.allocated_over', { sum: formatMoney(limitsTotal - budget, currency) })
+                : t('plan.allocated_free', { sum: formatMoney(budget - limitsTotal, currency) })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Маленькая карточка-показатель (темп трат, прогноз). */
+function InfoBox({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string
+  value: string
+  hint: string
+  tone: 'good' | 'bad'
+}) {
+  return (
+    <div className="card p-3">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</div>
+      <div className={`tabular text-base font-bold ${tone === 'bad' ? 'text-expense-deep' : 'text-ink'}`}>{value}</div>
+      <div className="mt-0.5 text-[10px] leading-snug text-ink-subtle">{hint}</div>
     </div>
   )
 }
@@ -186,25 +283,119 @@ function LimitsTab({ t }: { t: TFunc }) {
   const currency = useStore((s) => s.currency)
   const budgets = useStore((s) => s.budgets)
   const setBudget = useStore((s) => s.setBudget)
+  const monthlyBudget = useStore((s) => s.monthlyBudget)
   const expenseCats = useStore((s) => selectCategoriesByKind(s, 'expense'))
+  const spentByCat = useStore(selectCurrentMonthExpenseByCategory)
+  const avgByCat = useStore(selectAvgMonthlyExpenseByCategory)
+  const catName = useCatName()
   const sym = getCurrency(currency).symbol
+
+  // Порядок: сначала категории с лимитом (самые «горячие» сверху), затем без
+  // лимита по величине среднего расхода — крупные траты просятся настроиться первыми.
+  const ordered = useMemo(() => {
+    const withLimit = expenseCats.filter((c) => (budgets[c.id] ?? 0) > 0)
+    const without = expenseCats.filter((c) => !((budgets[c.id] ?? 0) > 0))
+    withLimit.sort(
+      (a, b) => (spentByCat[b.id] ?? 0) / budgets[b.id] - (spentByCat[a.id] ?? 0) / budgets[a.id],
+    )
+    without.sort((a, b) => (avgByCat[b.id] ?? 0) - (avgByCat[a.id] ?? 0))
+    return [...withLimit, ...without]
+  }, [expenseCats, budgets, spentByCat, avgByCat])
+
+  const limitsTotal = useMemo(
+    () => Object.values(budgets).reduce((sum, v) => sum + (v > 0 ? v : 0), 0),
+    [budgets],
+  )
+  const spentUnderLimits = useMemo(
+    () =>
+      Object.entries(budgets).reduce(
+        (sum, [id, limit]) => (limit > 0 ? sum + (spentByCat[id] ?? 0) : sum),
+        0,
+      ),
+    [budgets, spentByCat],
+  )
+  const withLimitCount = Object.values(budgets).filter((v) => v > 0).length
+
+  // Категории, которым можно поставить лимит автоматически (есть история трат).
+  const autoCandidates = useMemo(
+    () => expenseCats.filter((c) => !((budgets[c.id] ?? 0) > 0) && (avgByCat[c.id] ?? 0) > 0),
+    [expenseCats, budgets, avgByCat],
+  )
+
+  const applyAll = () => {
+    hapticNotify('success')
+    for (const c of autoCandidates) setBudget(c.id, avgByCat[c.id])
+  }
 
   return (
     <div>
+      {/* Первый шаг для новичка: одна кнопка вместо десяти полей ввода */}
+      {withLimitCount === 0 && autoCandidates.length > 0 && (
+        <div className="card mb-2 p-3">
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <Wand2 size={18} strokeWidth={2.2} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink">{t('plan.limits_auto_title')}</div>
+              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-subtle">{t('plan.limits_auto_hint')}</div>
+            </div>
+          </div>
+          <button
+            onClick={applyAll}
+            className="mt-2.5 w-full rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99]"
+          >
+            {t('plan.limits_auto_apply', { n: autoCandidates.length })}
+          </button>
+        </div>
+      )}
+
+      {/* Сводка: сколько категорий под контролем и как расходуются лимиты */}
+      {withLimitCount > 0 && (
+        <div className="mb-2 rounded-3xl bg-surface-sunken/60 p-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[12px] font-semibold text-ink">
+              {t('plan.limits_covered', { n: withLimitCount })}
+            </span>
+            <span className="tabular text-[12px] font-bold text-ink">
+              {formatMoney(spentUnderLimits, currency)} / {formatMoney(limitsTotal, currency)}
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+            <div
+              className={`h-full rounded-full ${
+                spentUnderLimits > limitsTotal ? 'bg-expense' : 'bg-brand-500'
+              }`}
+              style={{ width: `${Math.min(100, limitsTotal > 0 ? (spentUnderLimits / limitsTotal) * 100 : 0)}%` }}
+            />
+          </div>
+          {monthlyBudget > 0 && limitsTotal > monthlyBudget && (
+            <div className="mt-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+              {t('plan.allocated_over', { sum: formatMoney(limitsTotal - monthlyBudget, currency) })}
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="mb-2 px-1 text-[11px] leading-relaxed text-ink-subtle">{t('plan.limits_hint')}</p>
+
       {expenseCats.length === 0 ? (
         <div className="py-10 text-center text-sm text-ink-subtle">{t('plan.limits_empty')}</div>
       ) : (
-        <div className="card divide-y divide-surface-sunken">
-          {expenseCats.map((c) => (
+        <div className="flex flex-col gap-2">
+          {ordered.map((c) => (
             <LimitRow
               key={c.id}
               icon={c.icon}
-              name={c.name}
+              name={catName(c.id, c.name)}
               color={c.color}
               value={budgets[c.id] ?? 0}
+              spent={spentByCat[c.id] ?? 0}
+              avg={avgByCat[c.id] ?? 0}
+              currency={currency}
               onChange={(v) => setBudget(c.id, v)}
               sym={sym}
+              t={t}
             />
           ))}
         </div>
@@ -213,50 +404,122 @@ function LimitsTab({ t }: { t: TFunc }) {
   )
 }
 
+/**
+ * Карточка лимита категории. Когда лимит задан — показывает прогресс расхода,
+ * остаток и сколько можно тратить в день до конца месяца. Когда не задан —
+ * предлагает поставить лимит из среднего расхода за прошлые месяцы (в один тап),
+ * потому что «какую цифру писать?» и есть главный барьер настройки лимитов.
+ */
 function LimitRow({
   icon,
   name,
   color,
   value,
+  spent,
+  avg,
+  currency,
   onChange,
   sym,
+  t,
 }: {
   icon: string
   name: string
   color: string
   value: number
+  spent: number
+  avg: number
+  currency: Currency
   onChange: (v: number) => void
   sym: string
+  t: TFunc
 }) {
   const [draft, setDraft] = useState(value > 0 ? String(value) : '')
+
+  const commit = (raw: string) => {
+    const n = parseFloat(raw.replace(',', '.'))
+    const safe = Number.isFinite(n) && n > 0 ? n : 0
+    onChange(safe)
+    setDraft(safe > 0 ? String(safe) : '')
+  }
+
+  const applyAvg = () => {
+    hapticNotify('success')
+    onChange(avg)
+    setDraft(String(avg))
+  }
+
+  const ratio = value > 0 ? spent / value : 0
+  const over = value > 0 && spent > value
+  const left = Math.max(0, value - spent)
+  const perDay = left / daysLeftInMonth()
+  const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-brand-500'
+
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
-      <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-        style={{ background: color + '22', color }}
-        aria-hidden
-      >
-        <CategoryIcon id={icon} size={18} />
+    <div className="card p-3">
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: color + '22', color }}
+          aria-hidden
+        >
+          <CategoryIcon id={icon} size={18} />
+        </div>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{name}</span>
+        <div className="flex items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-1.5">
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            placeholder="—"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(draft)}
+            className="w-20 bg-transparent text-right text-sm font-semibold text-ink placeholder:text-ink-subtle focus:outline-none tabular"
+          />
+          <span className="text-xs text-ink-subtle">{sym}</span>
+        </div>
       </div>
-      <span className="flex-1 text-sm font-medium text-ink">{name}</span>
-      <div className="flex items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-1.5">
-        <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          placeholder="—"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            const n = parseFloat(draft.replace(',', '.'))
-            const safe = Number.isFinite(n) && n > 0 ? n : 0
-            onChange(safe)
-            setDraft(safe > 0 ? String(safe) : '')
-          }}
-          className="w-20 bg-transparent text-right text-sm font-semibold text-ink placeholder:text-ink-subtle focus:outline-none tabular"
-        />
-        <span className="text-xs text-ink-subtle">{sym}</span>
-      </div>
+
+      {value > 0 ? (
+        <div className="mt-2.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+            <div
+              className={`h-full rounded-full transition-all ${barColor}`}
+              style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-baseline justify-between text-[11px]">
+            <span className="text-ink-subtle">
+              {formatMoney(spent, currency)} {t('plan.goal_of')} {formatMoney(value, currency)}
+            </span>
+            {over ? (
+              <span className="font-semibold text-expense-deep">
+                {t('plan.limit_over', { sum: formatMoney(spent - value, currency) })}
+              </span>
+            ) : (
+              <span className="font-semibold text-income-deep">
+                {t('plan.limit_per_day', { sum: formatMoney(perDay, currency) })}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        avg > 0 && (
+          /* Подсказка со средним расходом — ставится в один тап */
+          <button
+            onClick={applyAvg}
+            className="mt-2 flex w-full items-center gap-2 rounded-2xl bg-surface-sunken/70 px-3 py-2 text-left active:scale-[0.99]"
+          >
+            <Wand2 size={15} strokeWidth={2.4} className="shrink-0 text-brand-600 dark:text-brand-300" />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-ink-subtle">
+              {t('plan.limit_avg', { sum: formatMoney(avg, currency) })}
+            </span>
+            <span className="shrink-0 text-[11px] font-bold text-brand-600 dark:text-brand-300">
+              {t('plan.limit_apply')}
+            </span>
+          </button>
+        )
+      )}
     </div>
   )
 }

@@ -11,6 +11,7 @@
  */
 import { useEffect } from 'react'
 import { useStore } from '../store/transactions'
+import { categoryName } from './categoryNames'
 import { setFormatLocale } from './format'
 import { tg } from './telegram'
 
@@ -31,16 +32,30 @@ const DICT: Dict = {
   'nav.charts': { ru: 'Графики', en: 'Charts' },
   'nav.settings': { ru: 'Настройки', en: 'Settings' },
   'nav.profile': { ru: 'Профиль', en: 'Profile' },
-  'nav.rewards': { ru: 'Награды', en: 'Rewards' },
-  'rewards.kicker': { ru: 'Прогресс и награды', en: 'Progress & rewards' },
+  'nav.rewards': { ru: 'Прогресс', en: 'Progress' },
+  'nav.add': { ru: 'Добавить операцию', en: 'Add transaction' },
+  'rewards.kicker': { ru: 'Уровень и награды', en: 'Level & rewards' },
   'shop.kicker': { ru: 'Кастомизация', en: 'Customization' },
   'shop.title': { ru: 'Магазин', en: 'Shop' },
   'shop.subtitle': { ru: 'Палитры, титулы, рамки', en: 'Palettes, titles, frames' },
   'shop.featured': { ru: 'Витрина дня', en: 'Deal of the day' },
   'streak.title': { ru: 'Серия дня', en: 'Daily streak' },
-  'defi.title': { ru: 'De-Fi', en: 'De-Fi' },
-  'defi.subtitle': { ru: 'Доходность по монетам', en: 'Earn on your coins' },
-  'defi.soon': { ru: 'Скоро', en: 'Soon' },
+  'lvlrew.kicker': { ru: 'Награды', en: 'Rewards' },
+
+  'lvlrew.title': { ru: 'Титулы уровня', en: 'Level titles' },
+  'lvlrew.subtitle': { ru: 'Уникальный титул за каждый уровень', en: 'A unique title for every level' },
+  'lvlrew.hint': {
+    ru: 'Титул открывается за уровень И за рекорд ежедневной серии — заходи каждый день и забирай награду серии. Надень титул в профиль, и его увидят все в таблице лидеров.',
+    en: 'A title unlocks for your level AND your best daily streak — come back every day and claim the streak reward. Equip a title and everyone will see it on the leaderboard.',
+  },
+  'lvlrew.claim': { ru: 'Забрать', en: 'Claim' },
+  'lvlrew.locked': { ru: 'с {n} ур.', en: 'lvl {n}+' },
+  'lvlrew.locked_days': { ru: 'серия {n}', en: 'streak {n}' },
+  'lvlrew.progress': { ru: 'Получено {n} из {total}', en: 'Claimed {n} of {total}' },
+  'lvlrew.your_level': { ru: 'Твой уровень', en: 'Your level' },
+  'lvlrew.your_days': { ru: 'Рекорд серии', en: 'Best streak' },
+  'lvlrew.streak_value': { ru: '{best} · сейчас {now}', en: '{best} · now {now}' },
+  'lvlrew.days_progress': { ru: 'серия {n}/{need}', en: 'streak {n}/{need}' },
 
   /* Общие */
   'app.name': { ru: 'Кошель', en: 'Koshel' },
@@ -48,6 +63,15 @@ const DICT: Dict = {
   'common.expense': { ru: 'Расходы', en: 'Expenses' },
   'common.balance': { ru: 'Баланс', en: 'Balance' },
   'common.cancel': { ru: 'Отмена', en: 'Cancel' },
+  'common.clear': { ru: 'Очистить', en: 'Clear' },
+
+  /* Поиск по операциям */
+  'search.open': { ru: 'Поиск по операциям', en: 'Search transactions' },
+  'search.placeholder': { ru: 'Заметка, категория, тег или сумма', en: 'Note, category, tag or amount' },
+  'search.hint': { ru: 'Ищем по всей истории — не только за выбранный период', en: 'Searches your whole history, not just the selected period' },
+  'search.empty': { ru: 'Ничего не найдено', en: 'Nothing found' },
+  'search.found': { ru: 'Найдено: {n}', en: 'Found: {n}' },
+  'search.capped': { ru: 'показаны первые {n}', en: 'showing first {n}' },
   'common.save': { ru: 'Сохранить', en: 'Save' },
   'common.add': { ru: 'Добавить', en: 'Add' },
   'common.delete': { ru: 'Удалить', en: 'Delete' },
@@ -62,6 +86,12 @@ const DICT: Dict = {
   'settings.title': { ru: 'Тонкая настройка', en: 'Fine-tuning' },
   'settings.currency': { ru: 'Валюта', en: 'Currency' },
   'settings.more_currencies': { ru: 'Ещё валюты', en: 'More currencies' },
+  'settings.quick_cur': { ru: 'Быстрый выбор валют', en: 'Quick currency picks' },
+  'settings.quick_cur_pick': { ru: 'выберите валюту ниже', en: 'pick a currency below' },
+  'settings.quick_cur_hint': {
+    ru: 'Эти три валюты предлагаются при добавлении операции. Нажмите на слот, чтобы заменить.',
+    en: 'These three are offered when adding an entry. Tap a slot to replace it.',
+  },
   'settings.hide': { ru: 'Скрыть', en: 'Hide' },
   'settings.language': { ru: 'Язык', en: 'Language' },
   'settings.chart_style': { ru: 'Стиль графика', en: 'Chart style' },
@@ -100,6 +130,17 @@ const DICT: Dict = {
     ru: 'Показывает пример данных за 2 года. Ваши операции не меняются.',
     en: 'Shows 2 years of sample data. Your operations stay unchanged.',
   },
+  'settings.export': { ru: 'Выгрузить операции', en: 'Export transactions' },
+  'settings.export_caption': { ru: 'Ваши операции — {n} шт.', en: 'Your transactions — {n} in total' },
+  'settings.export_blocked': { ru: 'откройте бота', en: 'open the bot' },
+  'settings.export_failed': { ru: 'не вышло', en: 'failed' },
+  'settings.csv_date': { ru: 'Дата', en: 'Date' },
+  'settings.csv_type': { ru: 'Тип', en: 'Type' },
+  'settings.csv_category': { ru: 'Категория', en: 'Category' },
+  'settings.csv_amount': { ru: 'Сумма', en: 'Amount' },
+  'settings.csv_currency': { ru: 'Валюта', en: 'Currency' },
+  'settings.csv_note': { ru: 'Заметка', en: 'Note' },
+  'settings.csv_tags': { ru: 'Теги', en: 'Tags' },
   'settings.clear_all': { ru: 'Очистить всё', en: 'Clear everything' },
   'settings.clear_confirm': {
     ru: 'Удалить все операции? Это действие необратимо.',
@@ -172,20 +213,24 @@ const DICT: Dict = {
   'quest.received': { ru: '✓ Получено', en: '✓ Claimed' },
   'quest.claim': { ru: 'Забрать', en: 'Claim' },
   'quest.subscribe': { ru: 'Подписаться', en: 'Subscribe' },
-  'quest.locked_in': { ru: 'через {time}', en: 'in {time}' },
-  'quest.locked': { ru: 'Скоро', en: 'Soon' },
-  'quest.next_in': { ru: '✓ Получено · новое через {time}', en: '✓ Claimed · next in {time}' },
-  'quest.expires_in': { ru: '✓ Получено · исчезнет через {time}', en: '✓ Claimed · disappears in {time}' },
-  'quest.empty': { ru: 'Все задания выполнены — новые появятся совсем скоро. Загляни позже!', en: 'All quests done — new ones appear soon. Check back later!' },
+  'quest.locked_title': { ru: 'Следующее задание', en: 'Next quest' },
+  'quest.locked_desc': { ru: 'Откроется через {time}', en: 'Unlocks in {time}' },
+  /* Обратный отсчёт до открытия слота */
+  'time.hm': { ru: '{h} ч {m} мин', en: '{h} h {m} min' },
+  'time.m': { ru: '{m} мин', en: '{m} min' },
+  'time.soon': { ru: 'меньше минуты', en: 'less than a minute' },
+  'quest.empty': { ru: 'Все задания выполнены. Новые появятся с обновлениями — загляни позже!', en: 'All quests done. New ones arrive with updates — check back later!' },
+  'quest.left': { ru: 'ещё {n} впереди', en: '{n} more ahead' },
   'unit.h': { ru: 'ч', en: 'h' },
   'unit.m': { ru: 'мин', en: 'm' },
 
   /* Планирование (бюджет/лимиты/цели) */
   'plan.title': { ru: 'Планирование', en: 'Planning' },
-  'plan.subtitle': { ru: 'Бюджет, лимиты и цели', en: 'Budget, limits and goals' },
+  'plan.subtitle': { ru: 'Лимиты, бюджет, цели и активы', en: 'Limits, budget, goals and assets' },
   'plan.tab_budget': { ru: 'Бюджет', en: 'Budget' },
   'plan.tab_limits': { ru: 'Лимиты', en: 'Limits' },
   'plan.tab_goals': { ru: 'Цели', en: 'Goals' },
+  'plan.tab_invest': { ru: 'Активы', en: 'Assets' },
   'plan.budget_title': { ru: 'Общий месячный бюджет', en: 'Overall monthly budget' },
   'plan.budget_hint': {
     ru: 'Задай, сколько хочешь тратить в месяц. Прогресс считается по расходам текущего месяца.',
@@ -201,6 +246,25 @@ const DICT: Dict = {
     en: 'Per-category limits. Yellow at ≥80%, red when exceeded.',
   },
   'plan.limits_empty': { ru: 'Категории расходов появятся здесь', en: 'Expense categories will appear here' },
+  'plan.limits_covered': { ru: 'Под контролем: {n}', en: 'Under control: {n}' },
+  'plan.limits_auto_title': { ru: 'Настроить за один тап', en: 'Set up in one tap' },
+  'plan.limits_auto_hint': {
+    ru: 'Не нужно ничего придумывать: поставим лимиты по твоим средним тратам за последние месяцы. Потом любой можно поправить вручную.',
+    en: 'No need to guess: we’ll set limits from your average spending over recent months. You can adjust any of them later.',
+  },
+  'plan.limits_auto_apply': { ru: 'Настроить {n} категорий', en: 'Set up {n} categories' },
+  'plan.limit_over': { ru: 'превышен на {sum}', en: 'over by {sum}' },
+  'plan.limit_per_day': { ru: '{sum} в день', en: '{sum} a day' },
+  'plan.limit_avg': { ru: 'В среднем {sum}/мес', en: 'Avg {sum}/mo' },
+  'plan.limit_apply': { ru: 'Поставить', en: 'Set' },
+  'plan.per_day': { ru: 'Можно в день', en: 'Daily allowance' },
+  'plan.days_left': { ru: 'осталось дней: {n}', en: '{n} days left' },
+  'plan.forecast': { ru: 'Прогноз месяца', en: 'Month forecast' },
+  'plan.forecast_over': { ru: 'при этом темпе бюджет не сойдётся', en: 'at this pace you’ll overshoot' },
+  'plan.forecast_ok': { ru: 'при текущем темпе', en: 'at the current pace' },
+  'plan.allocated': { ru: 'Расписано по лимитам', en: 'Allocated to limits' },
+  'plan.allocated_free': { ru: 'Свободно: {sum}', en: 'Unallocated: {sum}' },
+  'plan.allocated_over': { ru: 'Лимиты превышают бюджет на {sum}', en: 'Limits exceed the budget by {sum}' },
   'plan.goals_hint': {
     ru: 'Копи на крупные покупки. Добавляй взносы вручную — приложение покажет прогресс.',
     en: 'Save up for big purchases. Add contributions manually and watch the progress.',
@@ -222,6 +286,41 @@ const DICT: Dict = {
     en: 'Saved = overall balance (income − expenses). Updates automatically with your transactions, no manual contributions.',
   },
   'plan.goal_synced': { ru: 'Синхронизирована с балансом', en: 'Synced with balance' },
+
+  /* Инвестиции и сбережения */
+  'inv.hint': {
+    ru: 'Здесь живут твои накопления: вклады, акции, крипта, подушка. На доходы и расходы они не влияют — это отдельная витрина капитала.',
+    en: 'Your savings live here: deposits, stocks, crypto, cash cushion. They don’t affect income or expenses — it’s a separate view of your capital.',
+  },
+  'inv.total': { ru: 'Всего накоплено', en: 'Total saved' },
+  'inv.yearly': { ru: 'Доход за год', en: 'Yearly income' },
+  'inv.add': { ru: 'Добавить актив', en: 'Add asset' },
+  'inv.name_ph': { ru: 'Напр. Вклад в банке', en: 'e.g. Bank deposit' },
+  'inv.amount_ph': { ru: 'Сумма', en: 'Amount' },
+  'inv.rate_ph': { ru: '% годовых', en: '% a year' },
+  'inv.per_year': { ru: 'годовых', en: 'a year' },
+  'inv.year_short': { ru: 'год', en: 'yr' },
+  'inv.delete_confirm': { ru: 'Удалить актив?', en: 'Delete this asset?' },
+  'inv.kind_deposit': { ru: 'Вклад', en: 'Deposit' },
+  'inv.kind_stocks': { ru: 'Акции', en: 'Stocks' },
+  'inv.kind_crypto': { ru: 'Крипта', en: 'Crypto' },
+  'inv.kind_cash': { ru: 'Подушка', en: 'Cushion' },
+  'inv.kind_other': { ru: 'Другое', en: 'Other' },
+  'inv.calc': { ru: 'Калькулятор доходности', en: 'Yield calculator' },
+  'inv.calc_hint': { ru: 'Сложный процент и APY', en: 'Compound interest and APY' },
+  'inv.calc_open': { ru: 'Открыть', en: 'Open' },
+  'inv.calc_hide': { ru: 'Скрыть', en: 'Hide' },
+  'inv.calc_amount': { ru: 'Начальная сумма', en: 'Initial amount' },
+  'inv.calc_monthly': { ru: 'Пополнение в месяц', en: 'Monthly top-up' },
+  'inv.calc_rate': { ru: 'Ставка, годовых', en: 'Rate, a year' },
+  'inv.calc_years': { ru: 'Срок, лет', en: 'Term, years' },
+  'inv.calc_result': { ru: 'Итог через срок', en: 'Result at the end' },
+  'inv.calc_invested': { ru: 'Вложено', en: 'Invested' },
+  'inv.calc_profit': { ru: 'Доход', en: 'Profit' },
+  'inv.calc_apy': {
+    ru: 'С ежемесячной капитализацией это {apy}% годовых (APY)',
+    en: 'With monthly compounding that is {apy}% a year (APY)',
+  },
 
   /* Лидерборд */
   'lb.title': { ru: 'Таблица лидеров', en: 'Leaderboard' },
@@ -251,6 +350,86 @@ const DICT: Dict = {
   'analytics.subtitle': { ru: 'Куда уходят деньги', en: 'Where the money goes' },
   'analytics.by_days': { ru: 'По дням', en: 'By days' },
   'analytics.dynamics': { ru: 'Динамика', en: 'Trends' },
+
+  /* Обзор — первый сегмент Аналитики */
+  'ov.tab': { ru: 'Обзор', en: 'Overview' },
+  'cat.half_year': { ru: 'Полгода', en: 'Last six months' },
+  'cat.in_period': { ru: 'Операции периода', en: 'Entries in this period' },
+  'cat.empty': { ru: 'В этом периоде операций нет', en: 'No entries in this period' },
+  'ov.spent': { ru: 'Потрачено', en: 'Spent' },
+  'ov.prev_was': { ru: 'В прошлый раз — {amount}', en: 'Last time — {amount}' },
+  'ov.forecast_to': { ru: 'Выйдет к {date}', en: 'On track for {date}' },
+  'ov.limit': { ru: 'Лимит — {amount}', en: 'Limit — {amount}' },
+  'ov.per_day': { ru: 'В среднем {amount} в день', en: '{amount} a day on average' },
+  'ov.mixed': { ru: 'Валюты смешаны — выберите счёт', en: 'Currencies are mixed — pick an account' },
+  'ov.days_left': { ru: 'ещё {n} дн.', en: '{n} days left' },
+  'ov.insights': { ru: 'Что заметно', en: 'What stands out' },
+  'ov.where': { ru: 'Поток денег', en: 'Money flow' },
+  'ov.flow_income': { ru: 'Доход за период', en: 'Income for the period' },
+  'ov.flow_spent': { ru: 'Потрачено', en: 'Spent' },
+  'ov.flow_rest_left': { ru: 'Осталось', en: 'Left' },
+  'ov.flow_rest': { ru: 'Прочее', en: 'Other' },
+  'ov.rhythm': { ru: 'Ритм недели', en: 'Weekly rhythm' },
+  'ov.biggest': { ru: 'Крупнейшие траты', en: 'Biggest expenses' },
+  'ov.as_usual': { ru: 'как обычно', en: 'as usual' },
+  'ov.empty': { ru: 'За этот период пусто', en: 'Nothing in this period' },
+  'ov.empty_hint': {
+    ru: 'Запишите первую операцию — и здесь появятся сравнения, прогноз и наблюдения',
+    en: 'Add your first entry and comparisons, a forecast and observations will appear here',
+  },
+  'ov.i.spike.title': { ru: '{name} забрала {amount}', en: '{name} took {amount}' },
+  'ov.i.spike.text': {
+    ru: 'На {pct}% больше, чем обычно за такой же период',
+    en: '{pct}% more than usual for the same period',
+  },
+  'ov.recurring': { ru: 'Постоянные траты', en: 'Recurring payments' },
+  'due.title': { ru: 'Пора записать', en: 'Time to record' },
+  'recap.title': { ru: 'Итоги: {month}', en: 'Recap: {month}' },
+  'recap.top': { ru: 'Больше всего', en: 'Biggest category' },
+  'recap.biggest': { ru: 'Самая крупная', en: 'Largest expense' },
+  'recap.free_days': { ru: 'Дней без трат', en: 'Days without spending' },
+  'recap.count': { ru: 'Операций', en: 'Entries' },
+  'due.record': { ru: 'Записать', en: 'Record' },
+  'ov.recurring_next': { ru: 'следующий раз ~{date}', en: 'next around {date}' },
+  'ov.recurring_due': { ru: 'срок подошёл — не записано', en: 'due now — not recorded' },
+  'ov.recurring_year': { ru: 'Столько уходит за год', en: 'That is a year' },
+  'ov.i.one_off.title': { ru: '{name} — {amount} за раз', en: '{name} — {amount} in one go' },
+  'ov.i.one_off.text': {
+    ru: 'Одна покупка забрала {share}% всех расходов периода',
+    en: 'A single purchase took {share}% of everything you spent',
+  },
+  'ov.i.new_cat.title': { ru: 'Новая статья: {name}', en: 'New line: {name}' },
+  'ov.i.new_cat.text': {
+    ru: 'Раньше этой категории в расходах не было. Уже {amount}',
+    en: 'This category never appeared before. Already {amount}',
+  },
+  'ov.i.no_spend.title': { ru: '{days} {word} подряд без трат', en: '{days} days in a row without spending' },
+  'ov.i.no_spend.text': { ru: 'Держите — так и растёт остаток', en: 'Keep it up — this is how the balance grows' },
+  'ov.i.weekday.title': { ru: '{day} — самый дорогой день', en: '{day} is your priciest day' },
+  'ov.i.weekday.text': {
+    ru: 'В среднем {avg} против {minAvg} {minDay}',
+    en: '{avg} on average versus {minAvg} {minDay}',
+  },
+  'ov.i.budget_ok.title': { ru: 'Уложитесь в лимит', en: 'You will stay under the limit' },
+  'ov.i.budget_ok.text': {
+    ru: 'Если держать текущий темп, в конце останется {rest}',
+    en: 'Keep this pace and {rest} will be left at the end',
+  },
+  'ov.i.budget_over.title': { ru: 'Лимит будет превышен', en: 'The limit will be exceeded' },
+  'ov.i.budget_over.text': {
+    ru: 'Если держать текущий темп, выйдете за него на {rest}',
+    en: 'Keep this pace and you will go over by {rest}',
+  },
+  'ov.i.pace_up.title': { ru: 'Темп выше обычного', en: 'Spending faster than usual' },
+  'ov.i.pace_up.text': {
+    ru: 'По этому темпу выйдет на {diff} больше, чем в прошлый раз',
+    en: 'At this pace you will spend {diff} more than last time',
+  },
+  'ov.i.pace_down.title': { ru: 'Темп ниже обычного', en: 'Spending slower than usual' },
+  'ov.i.pace_down.text': {
+    ru: 'По этому темпу выйдет на {diff} меньше, чем в прошлый раз',
+    en: 'At this pace you will spend {diff} less than last time',
+  },
   'analytics.max_per_day': { ru: 'Максимум за день:', en: 'Max per day:' },
 
   /* Графики */
@@ -264,6 +443,7 @@ const DICT: Dict = {
   'charts.no_data': { ru: 'Нет данных за период', en: 'No data for this period' },
 
   /* Добавление операции */
+  'add.frequent': { ru: 'Повторить', en: 'Repeat' },
   'add.more': { ru: 'Ещё', en: 'More' },
   'add.note_ph': { ru: 'Заметка (необязательно)', en: 'Note (optional)' },
   'add.today': { ru: 'Сегодня', en: 'Today' },
@@ -339,10 +519,6 @@ const DICT: Dict = {
   },
   'empty.enable_demo': { ru: 'Включить демо-режим', en: 'Enable demo mode' },
 
-  /* FAB */
-  'fab.add_expense': { ru: 'Добавить расход', en: 'Add expense' },
-  'fab.add_income': { ru: 'Добавить доход', en: 'Add income' },
-
   /* Уровень */
   'level.aria': { ru: 'Уровень и прогресс', en: 'Level and progress' },
   'level.max_short': { ru: 'макс.', en: 'max' },
@@ -362,6 +538,9 @@ const DICT: Dict = {
   'level.t5': { ru: 'Капиталист', en: 'Capitalist' },
   'level.t6': { ru: 'Магнат', en: 'Magnate' },
   'level.t7': { ru: 'Легенда', en: 'Legend' },
+  'level.t8': { ru: 'Магистр финансов', en: 'Master of Finance' },
+  'level.t9': { ru: 'Олигарх', en: 'Oligarch' },
+  'level.t10': { ru: 'Император', en: 'Emperor' },
 
   /* Рарность наград (rewards.ts) */
   'rarity.common': { ru: 'Обычная', en: 'Common' },
@@ -380,6 +559,12 @@ const DICT: Dict = {
   'reward.accent_sunset.hint': { ru: 'Тёплый оранжевый', en: 'Warm orange' },
   'reward.accent_rose.name': { ru: 'Роза', en: 'Rose' },
   'reward.accent_rose.hint': { ru: 'Яркий розовый', en: 'Vivid pink' },
+  'reward.accent_lagoon.name': { ru: 'Лагуна', en: 'Lagoon' },
+  'reward.accent_lagoon.hint': { ru: 'Бирюзовая свежесть', en: 'Turquoise freshness' },
+  'reward.accent_gold.name': { ru: 'Золотой', en: 'Golden' },
+  'reward.accent_gold.hint': { ru: 'Роскошный янтарь', en: 'Luxurious amber' },
+  'reward.accent_graphite.name': { ru: 'Графит', en: 'Graphite' },
+  'reward.accent_graphite.hint': { ru: 'Строгий монохром', en: 'Sleek monochrome' },
 
   /* Награды: титулы */
   'reward.title_newbie.name': { ru: 'Новенький', en: 'Newbie' },
@@ -392,6 +577,12 @@ const DICT: Dict = {
   'reward.title_guru.hint': { ru: 'Деньги слушаются тебя', en: 'Money obeys you' },
   'reward.title_lord.name': { ru: 'Властелин кошелька', en: 'Wallet Lord' },
   'reward.title_lord.hint': { ru: 'Вершина мастерства', en: 'Peak of mastery' },
+  'reward.title_investor.name': { ru: 'Инвестор', en: 'Investor' },
+  'reward.title_investor.hint': { ru: 'Деньги работают на тебя', en: 'Money works for you' },
+  'reward.title_shark.name': { ru: 'Акула бизнеса', en: 'Business Shark' },
+  'reward.title_shark.hint': { ru: 'В финансах — как рыба в воде', en: 'In finance like a fish in water' },
+  'reward.title_crypto.name': { ru: 'Криптомагнат', en: 'Crypto Tycoon' },
+  'reward.title_crypto.hint': { ru: 'Портфель в цифре', en: 'A fully digital portfolio' },
 
   /* Награды: рамки */
   'reward.frame_none.name': { ru: 'Без рамки', en: 'No frame' },
@@ -404,14 +595,44 @@ const DICT: Dict = {
   'reward.frame_gold.hint': { ru: 'Статусное золото', en: 'Prestigious gold' },
   'reward.frame_rainbow.name': { ru: 'Радуга', en: 'Rainbow' },
   'reward.frame_rainbow.hint': { ru: 'Переливается всеми цветами', en: 'Shimmers all colors' },
+  'reward.frame_emerald.name': { ru: 'Изумруд', en: 'Emerald' },
+  'reward.frame_emerald.hint': { ru: 'Драгоценная зелень', en: 'Precious green' },
+  'reward.frame_neon.name': { ru: 'Неон', en: 'Neon' },
+  'reward.frame_neon.hint': { ru: 'Киберпанк-свечение', en: 'Cyberpunk glow' },
+
+  /* Награды: титулы за уровень */
+  'reward.title_lvl1.name': { ru: 'Первопроходец', en: 'Pioneer' },
+  'reward.title_lvl1.hint': { ru: 'Начало пути', en: 'The journey begins' },
+  'reward.title_lvl2.name': { ru: 'Копилка', en: 'Piggy Bank' },
+  'reward.title_lvl2.hint': { ru: 'Монетка к монетке', en: 'Coin by coin' },
+  'reward.title_lvl3.name': { ru: 'Знаток монет', en: 'Coin Connoisseur' },
+  'reward.title_lvl3.hint': { ru: 'Видит цену всему', en: 'Knows the price of everything' },
+  'reward.title_lvl4.name': { ru: 'Мастер учёта', en: 'Ledger Master' },
+  'reward.title_lvl4.hint': { ru: 'Ни одной потерянной траты', en: 'Not a single expense lost' },
+  'reward.title_lvl5.name': { ru: 'Стратег', en: 'Strategist' },
+  'reward.title_lvl5.hint': { ru: 'Планирует на ходы вперёд', en: 'Plans moves ahead' },
+  'reward.title_lvl6.name': { ru: 'Кит', en: 'Whale' },
+  'reward.title_lvl6.hint': { ru: 'Крупная рыба в финансах', en: 'Big fish in finance' },
+  'reward.title_lvl7.name': { ru: 'Живая легенда', en: 'Living Legend' },
+  'reward.title_lvl7.hint': { ru: 'О тебе уже рассказывают', en: 'People already tell stories about you' },
+  'reward.title_lvl8.name': { ru: 'Финансовый маг', en: 'Money Wizard' },
+  'reward.title_lvl8.hint': { ru: 'Деньги появляются из воздуха', en: 'Money out of thin air' },
+  'reward.title_lvl9.name': { ru: 'Мидас', en: 'Midas' },
+  'reward.title_lvl9.hint': { ru: 'Всё, к чему прикасаешься, — золото', en: 'Everything you touch turns to gold' },
+  'reward.title_lvl10.name': { ru: 'Император Кошеля', en: 'Koshel Emperor' },
+  'reward.title_lvl10.hint': { ru: 'Вершина. Выше только звёзды', en: 'The summit. Only stars above' },
+
+  /* Награды: персональные подарки */
+  'reward.title_ambassador.name': { ru: 'Амбассадор', en: 'Ambassador' },
+  'reward.title_ambassador.hint': { ru: 'Особый знак от команды Кошеля', en: 'A special token from the Koshel team' },
 
   /* Задания (quests.ts) */
   'quest.first_tx.title': { ru: 'Первая операция', en: 'First operation' },
   'quest.first_tx.desc': { ru: 'Добавь первый доход или расход', en: 'Add your first income or expense' },
   'quest.see_analytics.title': { ru: 'Загляни в Аналитику', en: 'Check Analytics' },
   'quest.see_analytics.desc': { ru: 'Открой вкладку «Аналитика» внизу', en: 'Open the Analytics tab below' },
-  'quest.see_charts.title': { ru: 'Посмотри Графики', en: 'View Charts' },
-  'quest.see_charts.desc': { ru: 'Зайди во вкладку «Графики» — оцени динамику', en: 'Open the Charts tab — see the dynamics' },
+  'quest.see_charts.title': { ru: 'Посмотри динамику', en: 'View the trend' },
+  'quest.see_charts.desc': { ru: 'В Аналитике открой сегмент «Динамика»', en: 'Open the Trend segment in Analytics' },
   'quest.try_period.title': { ru: 'Переключи период', en: 'Switch period' },
   'quest.try_period.desc': { ru: 'Смени период — день / неделя / месяц', en: 'Change the period — day / week / month' },
   'quest.make_category.title': { ru: 'Своя категория', en: 'Own category' },
@@ -420,8 +641,12 @@ const DICT: Dict = {
   'quest.personalize.desc': { ru: 'Поменяй тему или акцентную палитру', en: 'Change the theme or accent palette' },
   'quest.open_planning.title': { ru: 'Открой Планирование', en: 'Open Planning' },
   'quest.open_planning.desc': { ru: 'Загляни в «Планирование» в профиле', en: 'Check Planning in your profile' },
+  'quest.use_search.title': { ru: 'Найди операцию', en: 'Find a transaction' },
+  'quest.use_search.desc': { ru: 'Нажми лупу в шапке и поищи по истории', en: 'Tap the magnifier in the header and search your history' },
+  'quest.use_repeat.title': { ru: 'Повтори трату', en: 'Repeat a spend' },
+  'quest.use_repeat.desc': { ru: 'В форме операции нажми подсказку «Повторить»', en: 'Tap a Repeat suggestion in the transaction form' },
   'quest.set_budget.title': { ru: 'Задай бюджет', en: 'Set a budget' },
-  'quest.set_budget.desc': { ru: 'Поставь общий бюджет или лимит категории', en: 'Set an overall budget or a category limit' },
+  'quest.set_budget.desc': { ru: 'Задай месячный бюджет — на Главной появится лимит на день', en: 'Set a monthly budget — a daily limit appears on Home' },
   'quest.set_goal.title': { ru: 'Поставь цель', en: 'Set a goal' },
   'quest.set_goal.desc': { ru: 'Создай накопительную цель', en: 'Create a savings goal' },
   'quest.see_leaderboard.title': { ru: 'Сравни с другими', en: 'Compare with others' },
@@ -454,7 +679,7 @@ const DICT: Dict = {
   },
   'roadpass.owned_count': { ru: 'Куплено {n} из {total} наград', en: 'Owned {n} of {total} rewards' },
   'roadpass.days_short': { ru: 'дн.', en: 'd' },
-  'roadpass.streak_record': { ru: 'Серия · рекорд {best}', en: 'Streak · best {best}' },
+  'roadpass.streak_record': { ru: 'рекорд {best}', en: 'best {best}' },
   'roadpass.claimed_today': { ru: 'Сегодня ✓', en: 'Today ✓' },
   'roadpass.to_milestone': { ru: 'До рубежа {n} дн.', en: 'To milestone: {n}d' },
   'roadpass.milestone_hit': { ru: 'рубеж {n} дн.!', en: 'milestone {n}d!' },
@@ -487,8 +712,81 @@ const DICT: Dict = {
   'intro.f_profile_d': { ru: 'Аватар вверху: уровень, задания, монеты, приглашения, отзыв', en: 'Avatar on top: level, quests, coins, invites, feedback' },
 
   /* Подпись шапки Главной */
+  /* Группы иконок в пикере категорий */
+  'icons.g_popular': { ru: 'Популярные', en: 'Popular' },
+  'icons.g_food': { ru: 'Еда и напитки', en: 'Food & drinks' },
+  'icons.g_transport': { ru: 'Транспорт и поездки', en: 'Transport & travel' },
+  'icons.g_home': { ru: 'Дом и быт', en: 'Home & utilities' },
+  'icons.g_health': { ru: 'Здоровье и спорт', en: 'Health & sport' },
+  'icons.g_fun': { ru: 'Досуг', en: 'Leisure' },
+  'icons.g_family': { ru: 'Семья и питомцы', en: 'Family & pets' },
+  'icons.g_money': { ru: 'Деньги и работа', en: 'Money & work' },
+  'icons.g_other': { ru: 'Разное', en: 'Other' },
+
+  /* История обновлений (раздел в Профиле) */
+  'changelog.title': { ru: 'Обновления', en: 'What’s new' },
+  'changelog.hint': { ru: 'Что нового в версии {v}', en: 'What’s new in v{v}' },
+  'changelog.current': { ru: 'Текущая версия {v}', en: 'Current version {v}' },
+  'changelog.new': { ru: 'Новое', en: 'New' },
+
+  /* Быстрый старт (онбординг новичка) */
+  'qs.welcome_title': { ru: 'Привет! Я «Кошель»', en: 'Hey! I’m Koshel' },
+  'qs.welcome_sub': {
+    ru: 'Помогу понять, куда уходят деньги. Начнём с малого — и уже через минуту ты увидишь первый результат.',
+    en: 'I’ll help you see where your money goes. Let’s start small — you’ll get your first insight in a minute.',
+  },
+  'qs.plan_1': { ru: 'Запишем твой доход', en: 'Add your income' },
+  'qs.plan_2': { ru: 'Добавим пару трат', en: 'Add a couple of expenses' },
+  'qs.plan_3': { ru: 'Покажу прогноз на месяц', en: 'See your month forecast' },
+  'qs.start': { ru: 'Поехали', en: 'Let’s go' },
+  'qs.takes_a_minute': { ru: 'Займёт меньше минуты', en: 'Takes less than a minute' },
+  'qs.exit_confirm': {
+    ru: 'Выйти из быстрого старта? Ты в паре шагов от первого результата.',
+    en: 'Leave the quick start? You’re a couple of steps from your first insight.',
+  },
+  'qs.income_title': { ru: 'Сколько получаешь в месяц?', en: 'How much do you earn a month?' },
+  'qs.income_sub': {
+    ru: 'Примерная сумма — этого хватит для расчёта.',
+    en: 'A rough number is enough for the math.',
+  },
+  'qs.income_source': { ru: 'Источник', en: 'Source' },
+  'qs.next': { ru: 'Дальше', en: 'Next' },
+  'qs.expense_title': { ru: 'На что потратил сегодня?', en: 'What did you spend on today?' },
+  'qs.expense_sub': {
+    ru: 'Добавь 2–3 траты — по ним посчитаем твой темп.',
+    en: 'Add 2–3 expenses — we’ll use them to gauge your pace.',
+  },
+  'qs.add_expense': { ru: 'Добавить трату', en: 'Add expense' },
+  'qs.expense_counter': { ru: 'Добавлено: {n} из 3', en: 'Added: {n} of 3' },
+  'qs.show_result': { ru: 'Показать результат', en: 'Show my result' },
+  'qs.result_title': { ru: 'Вот что получается', en: 'Here’s the picture' },
+  'qs.result_left_label': { ru: 'Останется к концу месяца', en: 'Left by month end' },
+  'qs.result_short_label': { ru: 'Не хватит к концу месяца', en: 'Short by month end' },
+  'qs.result_hint': {
+    ru: 'если каждый день тратить столько же, сколько сегодня',
+    en: 'if you spend the same amount every day',
+  },
+  'qs.spent_today': { ru: 'Траты за день', en: 'Spent today' },
+  'qs.result_advice': {
+    ru: 'Чтобы остаться в плюсе, держи планку около {sum} в день. Записывай траты — и приложение будет следить за ней за тебя.',
+    en: 'To stay in the black, keep it around {sum} a day. Log your expenses and the app will watch that line for you.',
+  },
+  'qs.finish': { ru: 'Открыть приложение', en: 'Open the app' },
+  'qs.finish_hint': {
+    ru: 'Твои операции уже сохранены. Добавляй новые кнопками + и − на главной.',
+    en: 'Your entries are saved. Add more with the + and − buttons on the home screen.',
+  },
+
   'home.cap_goal': { ru: 'Цель', en: 'Goal' },
   'home.cap_date': { ru: 'Дата', en: 'Date' },
+  'home.plan_left': { ru: 'Бюджет: осталось {left} из {budget}', en: 'Budget: {left} left of {budget}' },
+  'home.plan_over': { ru: 'Бюджет превышен на {over}', en: 'Over budget by {over}' },
+  /* Остаток на сегодня (дневной лимит из месячного бюджета) */
+  'home.today_kicker': { ru: 'На сегодня', en: 'For today' },
+  'home.today_left': { ru: 'Можно ещё {left}', en: '{left} still available' },
+  'home.today_over': { ru: 'Перерасход {over}', en: 'Over by {over}' },
+  'home.today_spent': { ru: 'Потрачено {spent} из {perDay}', en: 'Spent {spent} of {perDay}' },
+  'home.today_days': { ru: 'осталось дней: {days}', en: '{days} days left' },
 
   /* Плашка демо-режима */
   'demo.banner': { ru: 'Демо-режим: показаны примерные данные', en: 'Demo mode: sample data shown' },
@@ -516,6 +814,27 @@ export function useT(): TFunc {
   return (key, vars) => translate(lang, key, vars)
 }
 
+export type CatNameFunc = (id: string, fallback: string) => string
+
+/**
+ * Хук названия категории: встроенные переводятся, пользовательские остаются
+ * такими, какими их назвали. `fallback` — поле `name` из категории.
+ */
+export function useCatName(): CatNameFunc {
+  const lang = useStore((s) => s.lang)
+  return (id, fallback) => categoryName(lang, id, fallback)
+}
+
+/** Слово «день» с правильным склонением (RU) / числом (EN). */
+export function daysWord(lang: Lang, n: number): string {
+  if (lang === 'en') return n === 1 ? 'day' : 'days'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'день'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'дня'
+  return 'дней'
+}
+
 /** Слово «категория» с правильным склонением (RU) / числом (EN). */
 export function categoriesWord(lang: Lang, n: number): string {
   if (lang === 'en') return n === 1 ? 'category' : 'categories'
@@ -531,6 +850,27 @@ export function weekdaysShort(lang: Lang): string[] {
   return lang === 'ru'
     ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+}
+
+/** Дни недели полностью, с понедельника. Для заголовков: «Суббота — самый…». */
+export function weekdaysFull(lang: Lang): string[] {
+  return lang === 'ru'
+    ? ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+}
+
+/**
+ * Дни недели с предлогом — для оборота «в понедельник».
+ *
+ * Предлог входит в строку, потому что он меняется вместе со словом: «во
+ * вторник», но «в среду». А падеж в русском тут винительный, именительный не
+ * годится («в среда»). В английском предлог всегда «on», но список держим
+ * парным, чтобы не ветвить вызовы.
+ */
+export function weekdaysAccusative(lang: Lang): string[] {
+  return lang === 'ru'
+    ? ['в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу', 'в воскресенье']
+    : ['on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday']
 }
 
 /**

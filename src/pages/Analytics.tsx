@@ -6,6 +6,8 @@ import { DonutChartWithIcons } from '../components/DonutChartWithIcons'
 import { AnalyticsTabs, type AnalyticsTab } from '../components/AnalyticsTabs'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { TrendChart } from '../components/analytics/TrendChart'
+import { Overview } from '../components/analytics/Overview'
+import { CategorySheet } from '../components/analytics/CategorySheet'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import {
   useStore,
@@ -14,12 +16,15 @@ import {
   selectAnalyticsCurrency,
 } from '../store/transactions'
 import { formatMoney } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import type { CategoryKind } from '../store/categories'
+import type { Transaction } from '../store/transactions'
 
-export function AnalyticsPage() {
-  const [tab, setTab] = useState<AnalyticsTab>('expense')
+export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
+  const [tab, setTab] = useState<AnalyticsTab>('overview')
+  const [pickedCategory, setPickedCategory] = useState<string | null>(null)
+  const isOverview = tab === 'overview'
   const isCalendar = tab === 'calendar'
   const isDynamics = tab === 'dynamics'
   const isCats = tab === 'expense' || tab === 'income'
@@ -30,6 +35,7 @@ export function AnalyticsPage() {
   const chartStyle = useStore((s) => s.chartStyle)
   const track = useStore((s) => s.track)
   const t = useT()
+  const catName = useCatName()
 
   // Открытие «Динамики» = бывший заход на вкладку «Графики» (квест see_charts).
   const changeAnalyticsTab = (next: AnalyticsTab) => {
@@ -45,11 +51,15 @@ export function AnalyticsPage() {
       </div>
 
       <AccountSwitcher />
-      {/* Период нужен только сводкам по категориям; у Динамики своя гранулярность, у Календаря — своя навигация. */}
-      {isCats && <PeriodSwitcher />}
+      {/* Период нужен сводкам по категориям и Обзору; у Динамики своя гранулярность, у Календаря — своя навигация. */}
+      {(isCats || isOverview) && <PeriodSwitcher />}
       <AnalyticsTabs value={tab} onChange={changeAnalyticsTab} />
 
-      {isCalendar ? (
+      {isOverview ? (
+        <div key="overview" className="tab-enter">
+          <Overview onPickCategory={setPickedCategory} />
+        </div>
+      ) : isCalendar ? (
         // CSS-fade (.tab-enter, базовая непрозрачность 1) вместо framer
         // `initial:opacity 0`: иначе при незапустившейся анимации (rAF в свёрнутом
         // webview) календарь оставался невидимым — «не видно сумм за месяц».
@@ -87,7 +97,7 @@ export function AnalyticsPage() {
               <CategoryIcon id={c.icon} size={22} />
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-ink">{c.name}</div>
+              <div className="font-semibold text-ink">{catName(c.categoryId, c.name)}</div>
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
                 <m.div
                   initial={{ width: 0 }}
@@ -108,6 +118,8 @@ export function AnalyticsPage() {
           )}
         </>
       )}
+
+      <CategorySheet categoryId={pickedCategory} onClose={() => setPickedCategory(null)} onEditTx={onEditTx} />
     </div>
   )
 }
@@ -119,16 +131,22 @@ function DailyBars({ data }: { data: { day: string; amount: number }[] }) {
 
   return (
     <div className="card p-4">
-      <div className="flex items-end justify-between gap-1 h-32">
+      {/* items-stretch, а не items-end: высота столбика задана процентом, а процент
+          считается от РОДИТЕЛЯ С ВЫСОТОЙ. При items-end колонка сжималась по
+          содержимому, проценты разрешались в auto — и все столбики оставались
+          ровно min-h-[3px], то есть график был плоским. */}
+      <div className="flex h-32 items-stretch justify-between gap-1">
         {data.slice(-14).map((d, i) => (
           // min-w-0 — чтобы 14 колонок ужимались под ширину карточки и не распирали строку на 320px
           <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <m.div
-              initial={{ height: 0 }}
-              animate={{ height: `${(d.amount / max) * 100}%` }}
-              transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
-              className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
-            />
+            <div className="flex w-full flex-1 items-end">
+              <m.div
+                initial={{ height: 0 }}
+                animate={{ height: `${(d.amount / max) * 100}%` }}
+                transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
+                className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
+              />
+            </div>
             {/* только число дня (DD) — «DD.MM» не влезает в узкую колонку на 320px */}
             <span className="w-full truncate text-center text-[9px] text-ink-subtle">{d.day.slice(0, 2)}</span>
           </div>

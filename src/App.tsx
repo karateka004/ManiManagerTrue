@@ -1,14 +1,16 @@
-import { Component, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { TabBar, type Tab } from './components/TabBar'
 import { HomePage } from './pages/Home'
-import { useStore } from './store/transactions'
+import { useStore, type Transaction } from './store/transactions'
 import { useTheme, useAccent } from './lib/useTheme'
 import { useFormatLocale, useT } from './lib/i18n'
 import { tg, hapticTap } from './lib/telegram'
-import { isBackendConfigured, parseRefParam, registerReferral, submitProfile } from './lib/api'
+import { isBackendConfigured, notifyGift, parseRefParam, registerReferral, submitProfile } from './lib/api'
 import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
+import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
+import type { CategoryKind } from './store/categories'
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
 // Импорты вынесены в функции, чтобы их же переиспользовать для префетча (прогрева).
@@ -16,12 +18,20 @@ const importAnalytics = () => import('./pages/Analytics')
 const importRewards = () => import('./pages/Rewards')
 const importProfile = () => import('./pages/Profile')
 const importSettings = () => import('./pages/Settings')
+// Шторка операции — теперь главное действие приложения («+» есть на каждой вкладке),
+// поэтому её чанк греем вместе со вкладками: первое открытие иначе стоит заметную паузу.
+const importAddSheet = () => import('./components/AddTransactionSheet')
 
 const AnalyticsPage = lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage })))
 const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage })))
 const ProfilePage = lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage })))
 const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage })))
 const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({ default: m.IntroOverlay })))
+// Шторка операции живёт на уровне App, а не Главной: «плюс» в нижней панели
+// доступен с любой вкладки. Отдельный чанк, грузится по первому открытию.
+const AddTransactionSheet = lazy(() => importAddSheet().then((m) => ({ default: m.AddTransactionSheet })))
+// Поиск — отдельный чанк: нужен не каждому запуску, греть его заранее незачем.
+const SearchSheet = lazy(() => import('./components/SearchSheet').then((m) => ({ default: m.SearchSheet })))
 
 /**
  * Прогрев чанков вкладок в простое: качаем их заранее, чтобы первый переход
@@ -37,6 +47,7 @@ function usePrefetchTabs() {
       importRewards().catch(swallow)
       importProfile().catch(swallow)
       importSettings().catch(swallow)
+      importAddSheet().catch(swallow)
     }
     const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
     if (ric) {
@@ -79,6 +90,33 @@ function useRegisterOnLaunch() {
       ops: s.transactions.length,
       coins: s.coins,
       streakBest: s.streak.best,
+      title: s.equipped.title,
+      frame: s.equipped.frame,
+      accent: s.equipped.accent,
+    }).catch(() => {})
+  }, [])
+}
+
+/**
+ * Персональные подарки от команды (PERSONAL_GIFTS в rewards.ts): при запуске
+ * в Telegram выдаём адресату его награды. grantReward идемпотентен, поэтому
+ * повторные запуски безопасны.
+ */
+function useGrantPersonalGifts() {
+  useEffect(() => {
+    const u = tg.user
+    if (!u) return
+    const gifts = giftsFor(u.id, u.username)
+    if (gifts.length === 0) return
+    const grant = useStore.getState().grantReward
+    for (const rewardId of gifts) grant(rewardId)
+
+    // Поздравление от бота в ЛС — один раз (сервер дедупит по KV, локальный флаг
+    // просто экономит запрос при следующих запусках).
+    const KEY = 'koshel:giftNotified'
+    if (localStorage.getItem(KEY) === gifts.join(',')) return
+    notifyGift(gifts).then((ok) => {
+      if (ok) localStorage.setItem(KEY, gifts.join(','))
     }).catch(() => {})
   }, [])
 }
@@ -100,16 +138,57 @@ export default function App() {
   useFormatLocale()
   useReferralCapture()
   useRegisterOnLaunch()
+  useGrantPersonalGifts()
   useCloudSync()
   usePrefetchTabs()
   const [tab, setTab] = useState<Tab>('home')
   const track = useStore((s) => s.track)
 
+  // Шторка операции: «+» в панели создаёт новую, тап по строке на Главной —
+  // правит существующую. Монтируем только после первого открытия и больше не
+  // размонтируем, чтобы отыграла анимация закрытия.
+  const [sheet, setSheet] = useState<{ open: boolean; kind: CategoryKind }>({ open: false, kind: 'expense' })
+  const [sheetMounted, setSheetMounted] = useState(false)
+  const [editing, setEditing] = useState<Transaction | null>(null)
+
+  const openAdd = useCallback(() => {
+    setSheetMounted(true)
+    setEditing(null)
+    setSheet({ open: true, kind: 'expense' })
+  }, [])
+
+  const openEdit = useCallback((t: Transaction) => {
+    setSheetMounted(true)
+    setEditing(t)
+    setSheet({ open: true, kind: t.type })
+  }, [])
+
+  // Поиск по всей истории. Монтируем только после первого открытия.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchMounted, setSearchMounted] = useState(false)
+  const openSearch = useCallback(() => {
+    setSearchMounted(true)
+    setSearchOpen(true)
+  }, [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+
+  const closeSheet = useCallback(() => {
+    setSheet((s) => ({ ...s, open: false }))
+    setEditing(null)
+  }, [])
+
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
-  const changeTab = (next: Tab) => {
-    if (next === 'analytics') track('visit_analytics')
-    setTab(next)
-  }
+  const changeTab = useCallback(
+    (next: Tab) => {
+      if (next === 'analytics') track('visit_analytics')
+      setTab(next)
+    },
+    [track],
+  )
+
+  const openProfile = useCallback(() => changeTab('profile'), [changeTab])
+  const openSettings = useCallback(() => changeTab('settings'), [changeTab])
+  const openRewards = useCallback(() => changeTab('rewards'), [changeTab])
 
   return (
     <div className="min-h-screen" style={{ paddingTop: 'var(--safe-top)' }}>
@@ -128,22 +207,38 @@ export default function App() {
       <div key={tab} className="tab-enter">
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
-            {tab === 'home' && <HomePage onOpenProfile={() => changeTab('profile')} />}
-            {tab === 'analytics' && <AnalyticsPage />}
+            {tab === 'home' && (
+              <HomePage onOpenProfile={openProfile} onEditTx={openEdit} onOpenSearch={openSearch} />
+            )}
+            {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
             {tab === 'rewards' && <RewardsPage />}
             {tab === 'profile' && (
-              <ProfilePage
-                onOpenSettings={() => changeTab('settings')}
-                onOpenRewards={() => changeTab('rewards')}
-              />
+              <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />
             )}
-            {tab === 'settings' && <SettingsPage onBack={() => changeTab('profile')} />}
+            {tab === 'settings' && <SettingsPage onBack={openProfile} />}
           </Suspense>
         </ChunkErrorBoundary>
       </div>
 
       {/* На «Настройках» подсвечиваем Профиль (у настроек нет своей вкладки). */}
-      <TabBar value={tab === 'settings' ? 'profile' : tab} onChange={changeTab} />
+      <TabBar value={tab === 'settings' ? 'profile' : tab} onChange={changeTab} onAdd={openAdd} />
+
+      {sheetMounted && (
+        <Suspense fallback={null}>
+          <AddTransactionSheet
+            open={sheet.open}
+            kind={sheet.kind}
+            editing={editing}
+            onClose={closeSheet}
+          />
+        </Suspense>
+      )}
+
+      {searchMounted && (
+        <Suspense fallback={null}>
+          <SearchSheet open={searchOpen} onClose={closeSearch} onEditTx={openEdit} />
+        </Suspense>
+      )}
 
       <Suspense fallback={null}>
         <IntroOverlay />

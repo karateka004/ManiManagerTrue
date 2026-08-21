@@ -57,6 +57,10 @@ interface LeaderEntry {
   username?: string
   xp: number
   level: number
+  /** ID надетой косметики (каталог на клиенте; здесь — просто строки). */
+  title?: string
+  frame?: string
+  accent?: string
   ops: number
   coins: number
   streakBest: number
@@ -69,6 +73,63 @@ interface LeaderEntry {
 /** Ключ и лимит размера таблицы лидеров в KV. */
 const LB_KEY = 'leaderboard'
 const LB_MAX = 500
+
+/* ---------- Потолок XP: рейтинг не должен верить числу из тела запроса ---------- */
+
+/**
+ * Клиент сам присылает свой XP, и раньше воркер принимал любое число до
+ * миллиарда: одного запроса из консоли хватало, чтобы навсегда занять первое
+ * место. Теперь значение режется потолком, выведенным из данных, которые сервер
+ * знает сам: числа операций в облачном блобе и своего счётчика рефералов.
+ *
+ * Константы обязаны совпадать с клиентскими — при изменении правил начисления
+ * поправить и здесь, иначе честные игроки упрутся в потолок.
+ */
+const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
+const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
+const XP_ALL_QUESTS = 1385 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP)
+/**
+ * Запас на XP от ежедневной серии (src/lib/streak.ts: 2 XP в день плюс 20/40/100
+ * на рубежах 7/14/30). Величина не фиксированная — она копится со временем,
+ * поэтому считаем от рекорда серии из блоба самого игрока.
+ *
+ * Множитель 4 — на то, что серию можно набирать заново много раз, а рекорд при
+ * этом не растёт. Слагаемое 600 — запас на рубежи и на игрока, у которого рекорд
+ * ещё нулевой. Потолок обязан быть щедрым: заниженный отнимает прогресс у
+ * честного человека, а это хуже, чем оставить накрутчику немного простора.
+ */
+const XP_PER_STREAK_DAY = 2
+const STREAK_REBUILD_FACTOR = 4
+const XP_STREAK_BASE = 600
+/**
+ * Запас на операции, записанные ПОСЛЕ последней выгрузки в облако: профиль
+ * уходит при запуске, а блоб мог отстать на несколько записей. Потолок не должен
+ * задевать честного человека, поэтому небольшой люфт закладываем намеренно.
+ */
+const XP_GRACE = 30 * XP_PER_TRANSACTION
+/** Сколько операций принимаем на веру, если облачного блоба ещё нет (первый запуск). */
+const OPS_WITHOUT_BLOB = 500
+/**
+ * Абсолютный предел, применяемый ко ВСЕМ записям рейтинга при каждой записи —
+ * заодно подрезает значения, накрученные до появления проверки. Честному игроку
+ * столько не набрать: это порядка 16 000 операций.
+ */
+/**
+ * Абсолютный предел на ОДНУ присланную величину — заслон от значения вроде 1e9.
+ * Уже сохранённые результаты не трогаем: накопленный прогресс сохраняется как есть.
+ */
+const HARD_MAX_XP = 200_000
+const HARD_MAX_COINS = 200_000
+
+/** Пороги уровней — копия LEVELS из src/lib/levels.ts. */
+const LEVEL_MIN_XP = [0, 60, 180, 400, 750, 1300, 2200, 3500, 5200, 7500]
+
+/** Уровень считаем из XP сами, а не берём из тела запроса. */
+function levelForXp(xp: number): number {
+  let level = 1
+  for (let i = 0; i < LEVEL_MIN_XP.length; i++) if (xp >= LEVEL_MIN_XP[i]) level = i + 1
+  return level
+}
 
 /** Безопасное неотрицательное целое из недоверенного ввода. */
 function clampInt(x: unknown): number {
@@ -128,6 +189,18 @@ function toHex(buf: ArrayBuffer): string {
  * Возвращает пользователя, если подпись валидна, иначе null.
  * Алгоритм из доков Telegram: «Validating data received via the Mini App».
  */
+/**
+ * Сравнение строк за постоянное время. Обычное `!==` выходит на первом же
+ * несовпавшем символе, и по времени ответа подпись теоретически подбирается
+ * побайтово. Разница в длине не секрет, её проверяем сразу.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 async function verifyInitData(initData: string, botTokenRaw: string): Promise<TgUser | null> {
   if (!initData) return null
   const botToken = botTokenRaw.trim() // секрет мог прийти с \r\n при задании через пайп
@@ -143,7 +216,7 @@ async function verifyInitData(initData: string, botTokenRaw: string): Promise<Tg
 
   const secretKey = await hmac(new TextEncoder().encode('WebAppData'), botToken)
   const computed = toHex(await hmac(secretKey, dataCheckString))
-  if (computed !== hash) return null
+  if (!timingSafeEqual(computed, hash)) return null
 
   // защита от старых данных (24 часа)
   const authDate = Number(params.get('auth_date') ?? 0)
@@ -278,11 +351,17 @@ export default {
       if (url.pathname === '/data/put' && req.method === 'POST') {
         return await handleDataPut(req, env, origin)
       }
+      if (url.pathname === '/export' && req.method === 'POST') {
+        return await handleExport(req, env, origin)
+      }
       if (url.pathname === '/reminders' && req.method === 'POST') {
         return await handleReminders(req, env, origin)
       }
       if (url.pathname === '/check-sub' && req.method === 'POST') {
         return await handleCheckSub(req, env, origin)
+      }
+      if (url.pathname === '/gift-notify' && req.method === 'POST') {
+        return await handleGiftNotify(req, env, origin)
       }
       if (url.pathname === '/admin/test' && req.method === 'POST') {
         return await handleAdminTest(req, env, origin)
@@ -430,6 +509,9 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     ops?: number
     coins?: number
     streakBest?: number
+    title?: string
+    frame?: string
+    accent?: string
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -438,20 +520,66 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
 
+  // Читаем рейтинг заранее: прежняя запись нужна, чтобы потолок не опустил
+  // уже достигнутый результат. Ниже map переприсваивается при обрезке до LB_MAX.
+  let map = await readLeaderboard(env)
+  const previousEntry = map[String(user.id)]
+
+  // Число операций — из облачного блоба этого пользователя: он пишется другим
+  // эндпоинтом и служит здесь независимым источником правды. Блоба может не быть
+  // при самом первом запуске — тогда принимаем присланное, но с жёстким лимитом.
+  const blobRaw = await env.REFERRALS.get(`${DATA_PREFIX}${user.id}`)
+  let blobOps = -1
+  let streakBest = 0
+  if (blobRaw) {
+    try {
+      const stored = JSON.parse(blobRaw) as { blob?: unknown }
+      if (typeof stored?.blob === 'string') {
+        blobOps = blobTxCount(stored.blob)
+        streakBest = Math.max(0, blobStreakBest(stored.blob))
+      }
+    } catch {
+      /* битая запись — считаем, что блоба нет */
+    }
+  }
+  const ops = blobOps >= 0 ? blobOps : Math.min(clampInt(body.ops), OPS_WITHOUT_BLOB)
+  const streakXp = streakBest * XP_PER_STREAK_DAY * STREAK_REBUILD_FACTOR + XP_STREAK_BASE
+
+  // Потолок: операции + рефералы + все задания + серия + запас на несинхронизированное.
+  const maxXp =
+    ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + streakXp + XP_GRACE
+  const capped = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
+
+  // Косметика — недоверенные строки: только кап длины, клиент валидирует id по каталогу.
+  const cosmetic = (x: unknown): string | undefined =>
+    typeof x === 'string' && x ? x.slice(0, 40) : undefined
+  const title = cosmetic(body.title)
+  const frame = cosmetic(body.frame)
+  const accent = cosmetic(body.accent)
+
+  // Потолок только НЕ ПУСКАЕТ выше положенного, но никогда не опускает уже
+  // достигнутое: если облачный блоб отстал или пропал, честный игрок не должен
+  // потерять позицию. Накрутке это не помогает — поднять значение всё равно
+  // можно только до потолка.
+  const previousXp = clampInt(previousEntry?.xp)
+  const xp = Math.max(capped, previousXp)
+
   const entry: LeaderEntry = {
     id: user.id,
     name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Без имени',
     username: user.username,
-    xp: clampInt(body.xp),
-    level: clampInt(body.level),
-    ops: clampInt(body.ops),
-    coins: clampInt(body.coins),
-    streakBest: clampInt(body.streakBest),
+    xp,
+    level: levelForXp(xp), // уровень выводим из XP, а не принимаем от клиента
+    title,
+    frame,
+    accent,
+    ops,
+    coins: Math.min(clampInt(body.coins), HARD_MAX_COINS),
+    streakBest: Math.min(clampInt(body.streakBest), 3650), // 10 лет — заведомо выше реального
     refs,
     at: Date.now(),
   }
 
-  let map = await readLeaderboard(env)
   map[String(user.id)] = entry
 
   // Не даём KV-значению разрастаться: держим топ по XP (но себя сохраняем всегда).
@@ -477,7 +605,9 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
   const map = await readLeaderboard(env)
   const all = Object.values(map)
   const myId = String(user.id)
-  const TOP = 50
+  // Топ, отдаваемый клиенту. 100 — чтобы при нынешней базе (<100 активных)
+  // в списке были видны все, а не только первые 50.
+  const TOP = 100
 
   // Собирает доску для заданной сортировки: топ + позиция вызывающего.
   const board = (sorted: LeaderEntry[]) => {
@@ -519,6 +649,36 @@ const DATA_PREFIX = 'data:'
 /** Потолок размера блоба (символов) — защита от разрастания значения KV. */
 const MAX_BLOB = 2_000_000
 
+/**
+ * Сколько операций в persist-блобе приложения. Нужно, чтобы «пустой» снимок не
+ * затирал сохранённые данные (сбой загрузки на новом устройстве).
+ * -1 — блоб не разобрать: тогда по нему не судим и сохраняем как обычно.
+ */
+function blobTxCount(blob: string): number {
+  try {
+    const parsed = JSON.parse(blob) as { state?: { transactions?: unknown[] } }
+    const list = parsed?.state?.transactions
+    return Array.isArray(list) ? list.length : -1
+  } catch {
+    return -1
+  }
+}
+
+/**
+ * Рекорд ежедневной серии из блоба. Нужен для потолка XP: за серию тоже даётся
+ * опыт, и без этого слагаемого потолок со временем задушил бы честного игрока.
+ * -1 — блоб не разобрать.
+ */
+function blobStreakBest(blob: string): number {
+  try {
+    const parsed = JSON.parse(blob) as { state?: { streak?: { best?: unknown } } }
+    const best = Number(parsed?.state?.streak?.best)
+    return Number.isFinite(best) && best >= 0 ? Math.min(Math.floor(best), 3650) : 0
+  } catch {
+    return -1
+  }
+}
+
 /** Безопасная epoch-ms метка из недоверенного ввода (clampInt тут не годится — режет до 1e9). */
 function parseUpdatedAt(x: unknown): number {
   const n = Math.floor(Number(x))
@@ -549,6 +709,7 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     initData?: string
     blob?: string
     updatedAt?: number
+    allowEmpty?: boolean
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -583,9 +744,19 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   // Защита от гонок между устройствами: не перезаписываем более новую версию старой.
   if (existing.value) {
     try {
-      const prev = JSON.parse(existing.value) as { updatedAt?: number }
+      const prev = JSON.parse(existing.value) as { updatedAt?: number; blob?: string }
       if (typeof prev.updatedAt === 'number' && prev.updatedAt > updatedAt) {
         return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
+      }
+      // Последний рубеж против потери данных: снимок БЕЗ операций не затирает
+      // сохранённый С операциями. Клиент присылает allowEmpty только когда
+      // человек сам удалил всё — тогда пустой снимок законен.
+      if (!body.allowEmpty && typeof prev.blob === 'string') {
+        const prevTx = blobTxCount(prev.blob)
+        const nextTx = blobTxCount(blob)
+        if (nextTx === 0 && prevTx > 0) {
+          return json({ ok: true, skipped: true, reason: 'empty_guard' }, { status: 200 }, env, origin)
+        }
       }
     } catch {
       /* битое значение — перезапишем */
@@ -655,6 +826,67 @@ function slotForId(id: string, slots: number): number {
   return h % slots
 }
 
+/* ------------------------------------------------------------------ */
+/* Выгрузка операций файлом                                            */
+/* ------------------------------------------------------------------ */
+
+/** Больше двух мегабайт — это уже не выгрузка, а попытка чем-то нас нагрузить. */
+const EXPORT_MAX_BYTES = 2 * 1024 * 1024
+
+/** Имя файла чистим до безопасного: приходит оно от клиента. */
+function safeFilename(raw: unknown): string {
+  const name = typeof raw === 'string' ? raw.replace(/[^A-Za-z0-9._-]/g, '') : ''
+  const cut = name.slice(0, 60)
+  return cut.toLowerCase().endsWith('.csv') && cut.length > 4 ? cut : 'koshel.csv'
+}
+
+/**
+ * Отправить пользователю его операции файлом в чат с ботом.
+ *
+ * Почему через бота, а не ссылкой на скачивание: в webview Telegram обычная
+ * ссылка с `download` срабатывает не везде — на iOS она молча ничего не делает.
+ * Бот у нас и так есть, и это единственный надёжный способ отдать человеку его
+ * собственные данные.
+ *
+ * Файл приходит от клиента: это данные самого пользователя, и уходят они в его
+ * же чат. Проверяем подпись initData, размер и имя файла — этого достаточно.
+ */
+async function handleExport(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; csv?: string; filename?: string; caption?: string }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'exp', user.id, 5, 3600)) return tooMany(env, origin)
+
+  const csv = typeof body.csv === 'string' ? body.csv : ''
+  if (!csv.trim()) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)
+
+  // BOM обязателен: без него Excel читает кириллицу как мусор.
+  const bytes = new TextEncoder().encode(String.fromCharCode(0xfeff) + csv)
+  if (bytes.length > EXPORT_MAX_BYTES) {
+    return json({ ok: false, error: 'too_large' }, { status: 413 }, env, origin)
+  }
+
+  const form = new FormData()
+  form.append('chat_id', String(user.id))
+  form.append('caption', typeof body.caption === 'string' ? body.caption.slice(0, 200) : '')
+  form.append('document', new Blob([bytes], { type: 'text/csv' }), safeFilename(body.filename))
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendDocument`, {
+      method: 'POST',
+      body: form,
+    })
+    const data = (await res.json()) as { ok?: boolean; description?: string }
+    if (data?.ok) return json({ ok: true }, { status: 200 }, env, origin)
+    // Бот не может писать первым: человек не запускал его или заблокировал.
+    const blocked = /bot was blocked|chat not found|can't initiate conversation/i.test(data?.description ?? '')
+    return json({ ok: false, error: blocked ? 'blocked' : 'send_failed' }, { status: 200 }, env, origin)
+  } catch (e) {
+    console.error('[worker] export failed', e)
+    return json({ ok: false, error: 'send_failed' }, { status: 200 }, env, origin)
+  }
+}
+
 /** Установить флаг напоминаний для пользователя (тумблер в приложении). */
 async function handleReminders(req: Request, env: Env, origin: string | null): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: boolean }
@@ -693,6 +925,54 @@ async function handleCheckSub(req: Request, env: Env, origin: string | null): Pr
     subscribed = false
   }
   return json({ ok: true, subscribed }, { status: 200 }, env, origin)
+}
+
+/* ------------------------------------------------------------------ */
+/* Персональные подарки: поздравление от бота                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Тексты поздравлений по id награды. Сервер шлёт ТОЛЬКО известные награды —
+ * произвольный текст с клиента отправить нельзя.
+ */
+const GIFT_MESSAGES: Record<string, string> = {
+  title_ambassador:
+    '🎁 <b>Персональная награда от команды Кошеля</b>\n\n' +
+    'Тебе вручён легендарный титул <b>«Амбассадор»</b> — особый знак за преданность приложению. ' +
+    'Он уже у тебя в профиле и виден всем в таблице лидеров.\n\nСпасибо, что ты с нами! 💚',
+}
+
+/**
+ * Поздравление получателю персонального подарка. Вызывается приложением в момент
+ * выдачи (см. useGrantPersonalGifts): личность берём из проверенной подписи
+ * initData — чужому человеку сообщение не уйдёт, численный id заранее не нужен.
+ * Дедуп в KV (`giftmsg:<id>:<rewardId>`, бессрочно) — каждый подарок поздравляем один раз.
+ */
+async function handleGiftNotify(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; rewards?: unknown }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'gift', user.id, 5, 60)) return tooMany(env, origin)
+
+  const rewards = Array.isArray(body.rewards)
+    ? body.rewards.filter((r): r is string => typeof r === 'string').slice(0, 10)
+    : []
+
+  let sent = 0
+  for (const rewardId of rewards) {
+    const text = GIFT_MESSAGES[rewardId]
+    if (!text) continue // неизвестная награда — молча пропускаем
+    const dedupKey = `giftmsg:${user.id}:${rewardId}`
+    if (await env.REFERRALS.get(dedupKey)) continue
+    const r = await sendMessage(env, user.id, text, {
+      inline_keyboard: [[{ text: '👑 Открыть Кошель', web_app: { url: APP_URL } }]],
+    })
+    if (r.ok) {
+      await env.REFERRALS.put(dedupKey, '1')
+      sent++
+    }
+  }
+  return json({ ok: true, sent }, { status: 200 }, env, origin)
 }
 
 /**

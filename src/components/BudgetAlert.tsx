@@ -3,7 +3,7 @@ import { m, AnimatePresence } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { useStore, selectExceededBudgets, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
-import { useT } from '../lib/i18n'
+import { useCatName, useT } from '../lib/i18n'
 import { hapticNotify } from '../lib/telegram'
 
 /**
@@ -16,6 +16,7 @@ export function BudgetAlert() {
   const periodKey = useStore((s) => `${s.period.mode}:${s.period.anchor}`)
   const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
+  const catName = useCatName()
   const warned = useRef<string | null>(null)
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export function BudgetAlert() {
               <div className="mt-0.5 text-xs leading-relaxed text-ink-muted">
                 {[...over, ...warn].slice(0, 3).map((b, i, arr) => (
                   <span key={b.categoryId}>
-                    <span className="font-semibold" style={{ color: b.color }}>{b.name}</span>
+                    <span className="font-semibold" style={{ color: b.color }}>{catName(b.categoryId, b.name)}</span>
                     {' '}
                     <span className="tabular">
                       {formatMoney(b.spent, currency)} / {formatMoney(b.limit, currency)}

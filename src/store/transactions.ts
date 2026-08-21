@@ -6,9 +6,13 @@ import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
 import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice, discountedPrice } from '../lib/rewards'
+import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
+import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
+import { buildOverview, buildRecurring, type Overview, type Recurring } from '../lib/overview'
+import { buildMonthlySummary, previousMonthBounds, type MonthlySummary } from '../lib/monthly'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -17,6 +21,26 @@ function initialLang(): Lang {
 }
 
 /** Накопительная цель (для вкладки «Цели» в планировании). */
+/**
+ * Актив в разделе «Инвестиции и сбережения»: вклад, брокерский счёт, крипта,
+ * подушка на чёрный день. Учитывается отдельно от операций — на доходы/расходы
+ * и бюджеты не влияет, это витрина накопленного капитала.
+ */
+export interface Investment {
+  id: string
+  title: string
+  /** Вложенная сумма. */
+  amount: number
+  /** Ожидаемая годовая доходность, % (0 — для подушки/сейфа). */
+  rate: number
+  /** Тип актива — только для иконки и группировки. */
+  kind: InvestmentKind
+  currency: Currency
+  createdAt: number
+}
+
+export type InvestmentKind = 'deposit' | 'stocks' | 'crypto' | 'cash' | 'other'
+
 export interface Goal {
   id: string
   title: string
@@ -110,6 +134,13 @@ interface State {
   monthlyBudget: number
   /** Накопительные цели. */
   goals: Goal[]
+  /** Инвестиции и сбережения (витрина капитала, на бюджеты не влияет). */
+  investments: Investment[]
+  /**
+   * Валюты быстрого выбора в форме операции (до 3).
+   * Пустой массив = подобрать автоматически по данным (`selectQuickCurrencies`).
+   */
+  quickCurrencies: Currency[]
   /** Содержимое шапки «Главной»: дата или прогресс к цели. */
   homeHeaderMode: HomeHeaderMode
   /** Выбранная цель для шапки (если homeHeaderMode === 'goal'). */
@@ -140,6 +171,13 @@ interface State {
 interface Actions {
   addTransaction: (t: Omit<Transaction, 'id'>) => void
   updateTransaction: (id: string, patch: Partial<Omit<Transaction, 'id'>>) => void
+  /**
+   * Записать операцию из формы одним изменением стора. `editingId` = null —
+   * создание новой, иначе правка существующей. См. реализацию: раньше форма
+   * дёргала три действия подряд, и одно сохранение стоило три полных прохода
+   * подписчиков и три записи на диск.
+   */
+  commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => void
   removeTransaction: (id: string) => void
   setPeriodMode: (mode: PeriodMode) => void
   shiftPeriod: (delta: number) => void
@@ -171,6 +209,12 @@ interface Actions {
   updateGoal: (id: string, patch: Partial<Pick<Goal, 'title' | 'target' | 'saved' | 'icon' | 'syncBalance' | 'currency'>>) => void
   /** Удалить цель. */
   removeGoal: (id: string) => void
+  /** Добавить актив в «Инвестиции и сбережения». */
+  addInvestment: (i: { title: string; amount: number; rate?: number; kind?: InvestmentKind; currency?: Currency }) => void
+  /** Изменить актив. */
+  updateInvestment: (id: string, patch: Partial<Pick<Investment, 'title' | 'amount' | 'rate' | 'kind' | 'currency'>>) => void
+  /** Удалить актив. */
+  removeInvestment: (id: string) => void
   /** Внести взнос в цель (delta может быть отрицательным). */
   contributeGoal: (id: string, delta: number) => void
   /** Задать содержимое шапки «Главной». */
@@ -201,6 +245,11 @@ interface Actions {
    * Возвращает начисленную награду или null, если сегодня уже забирали.
    */
   claimDailyStreak: () => { coins: number; xp: number; milestone: number } | null
+  /**
+   * Задать валюту быстрого выбора в слот 0..2. Первый вызов фиксирует текущий
+   * автоподбор, дальше правится только выбранный слот.
+   */
+  setQuickCurrency: (slot: number, code: Currency) => void
   /** Надеть косметическую награду (акцент/титул/рамка). */
   equipReward: (kind: 'accent' | 'title' | 'frame', id: string) => void
   /**
@@ -210,6 +259,12 @@ interface Actions {
    */
   buyReward: (id: string, priceOverride?: number) => boolean
   /**
+   * Выдать награду бесплатно (титул за уровень / персональный подарок).
+   * Идемпотентно; для source='level' проверяет достижение уровня.
+   * Возвращает true, если награда добавлена в owned.
+   */
+  grantReward: (id: string) => boolean
+  /**
    * Сверить число рефералов с уже оплаченными и доначислить фикс-награду
    * (REF_REWARD) за новых. Идемпотентно: повторный вызов с тем же count — no-op.
    */
@@ -217,6 +272,27 @@ interface Actions {
 }
 
 const cuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/** Запасные валюты, если у человека ещё нет операций в разных валютах. */
+const FALLBACK_QUICK: Currency[] = ['USD', 'EUR', 'UAH']
+
+/**
+ * Автоподбор быстрых валют: сначала та, что выбрана в настройках, затем те,
+ * что реально встречаются в операциях, затем запасные. Так у человека с одной
+ * рублёвой валютой в форме сразу рубль, а не чужие USD/EUR/UAH.
+ */
+function quickCurrenciesOf(s: State): Currency[] {
+  const list: Currency[] = [s.currency]
+  for (const t of s.transactions) {
+    if (t.currency && !list.includes(t.currency)) list.push(t.currency)
+    if (list.length >= 3) break
+  }
+  for (const c of FALLBACK_QUICK) {
+    if (list.length >= 3) break
+    if (!list.includes(c)) list.push(c)
+  }
+  return list.slice(0, 3)
+}
 
 /** Фикс-награда за каждого присоединившегося реферала. */
 export const REF_REWARD = { xp: 25, coins: 10 } as const
@@ -234,6 +310,189 @@ const UNIT: Record<Exclude<PeriodMode, 'all' | 'range'>, dayjs.ManipulateType> =
   week: 'week',
   month: 'month',
   year: 'year',
+}
+
+/* ---------- Нормализация данных при загрузке ---------- */
+
+/**
+ * localStorage целиком доступен пользователю: снимок можно испортить руками или
+ * получить битым после сбоя записи. Раньше он попадал в приложение как есть — и
+ * мог уронить экран, а через облачный синк уехать на другие устройства.
+ *
+ * Главный принцип здесь — НЕ ТЕРЯТЬ данные. Числа чиним (зажимаем в разумные
+ * границы), контейнеры не того типа заменяем пустыми, а выбрасываем только те
+ * операции, с которыми экран всё равно не отрисуется: без id, без категории,
+ * с нечисловой суммой. Всё остальное проходит как есть.
+ *
+ * Локальную накрутку монет это не предотвращает (данные принадлежат человеку) —
+ * от неё защищает потолок XP на воркере, см. handleProfile.
+ */
+const MAX_MONEY = 1e15
+
+function clampNumber(x: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(x)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+function isUsableTransaction(t: unknown): boolean {
+  if (!t || typeof t !== 'object') return false
+  const x = t as Record<string, unknown>
+  return (
+    typeof x.id === 'string' &&
+    (x.type === 'income' || x.type === 'expense') &&
+    typeof x.categoryId === 'string' &&
+    typeof x.date === 'string' &&
+    Number.isFinite(Number(x.amount))
+  )
+}
+
+/** Куда девать операции удалённой категории — «Прочее» своего вида. */
+const FALLBACK_CATEGORY = { income: 'other_in', expense: 'other' } as const
+
+function sanitizePersisted(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {}
+  const s = { ...(raw as Record<string, unknown>) }
+
+  if (Array.isArray(s.transactions)) {
+    // Категории, которые вообще существуют: встроенные плюс пользовательские.
+    // Удаление пользовательской категории раньше оставляло операции сиротами:
+    // из кольца они пропадали (там перебор идёт ПО категориям), а сумма в
+    // центре их всё равно включала — проценты не сходились в сто.
+    const known = new Set(DEFAULT_CATEGORIES.map((c) => c.id))
+    if (Array.isArray(s.customCategories)) {
+      for (const c of s.customCategories as { id?: unknown }[]) if (typeof c?.id === 'string') known.add(c.id)
+    }
+    s.transactions = (s.transactions as unknown[])
+      .filter(isUsableTransaction)
+      .map((t) => {
+        const x = t as Record<string, unknown>
+        const amount = clampNumber(x.amount, 0, MAX_MONEY, 0)
+        const categoryId = known.has(x.categoryId as string)
+          ? x.categoryId
+          : x.type === 'income'
+            ? FALLBACK_CATEGORY.income
+            : FALLBACK_CATEGORY.expense
+        return amount === x.amount && categoryId === x.categoryId ? x : { ...x, amount, categoryId }
+      })
+  } else if (s.transactions !== undefined) {
+    s.transactions = []
+  }
+
+  // Контейнеры: если тип не тот, приложение упадёт на первом же .map/.filter.
+  for (const key of ['customCategories', 'goals', 'investments', 'owned', 'quickCurrencies', 'claimedQuests']) {
+    if (s[key] !== undefined && !Array.isArray(s[key])) s[key] = []
+  }
+  for (const key of ['budgets', 'events', 'questClaims']) {
+    const v = s[key]
+    if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) s[key] = {}
+  }
+
+  // Поля-объекты, порча которых не роняет приложение, но даёт пустой экран или
+  // бросок при обращении к полю. Удаляем ключ — merge подставит значение по
+  // умолчанию из текущего состояния.
+  const PERIOD_MODES = ['day', 'week', 'month', 'year', 'all', 'range']
+  const period = s.period as Record<string, unknown> | null | undefined
+  if (
+    period !== undefined &&
+    (!period ||
+      typeof period !== 'object' ||
+      Array.isArray(period) ||
+      typeof period.mode !== 'string' ||
+      !PERIOD_MODES.includes(period.mode) ||
+      typeof period.anchor !== 'string')
+  ) {
+    delete s.period
+  }
+  for (const key of ['equipped', 'streak']) {
+    const v = s[key]
+    if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) delete s[key]
+  }
+
+  // Счётчики прогресса: отрицательные и нечисловые ломают арифметику уровней.
+  if (s.coins !== undefined) s.coins = clampNumber(s.coins, 0, 1e9, 0)
+  if (s.bonusXp !== undefined) s.bonusXp = clampNumber(s.bonusXp, 0, 1e9, 0)
+  if (s.rewardedReferrals !== undefined) s.rewardedReferrals = clampNumber(s.rewardedReferrals, 0, 1e9, 0)
+  if (s.monthlyBudget !== undefined) s.monthlyBudget = clampNumber(s.monthlyBudget, 0, MAX_MONEY, 0)
+
+  return s
+}
+
+/* ---------- Отложенная запись persist ---------- */
+
+/**
+ * Хранилище для persist с отложенной записью.
+ *
+ * zustand по умолчанию сериализует весь стор в localStorage на КАЖДОЕ изменение,
+ * синхронно и в главном потоке. При сотнях операций блоб весит сотни килобайт, и
+ * несколько изменений подряд превращаются в несколько полных сериализаций.
+ *
+ * Здесь запись откладывается на PERSIST_DELAY, а изменения внутри окна просто
+ * заменяют то, что будет записано. Это троттлинг, а НЕ debounce: окно не
+ * продлевается новыми изменениями, поэтому задержка записи ограничена сверху и
+ * поток непрерывных правок не может отложить запись бесконечно.
+ *
+ * Риск потерять последние правки при закрытии закрыт принудительным сбросом на
+ * visibilitychange/pagehide (ниже) и вызовом flushPersist() из облачного синка.
+ */
+const PERSIST_DELAY = 400
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+let persistPending: { name: string; value: string } | null = null
+
+function writePersist(): void {
+  persistTimer = null
+  const pending = persistPending
+  persistPending = null
+  if (!pending) return
+  try {
+    localStorage.setItem(pending.name, pending.value)
+  } catch {
+    /* приватный режим или кончилось место — данные остаются в памяти */
+  }
+}
+
+/**
+ * Немедленно записать отложенное. Вызывать перед чтением блоба напрямую из
+ * localStorage (облачный синк) и перед выгрузкой страницы.
+ */
+export function flushPersist(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  writePersist()
+}
+
+const throttledStorage = {
+  getItem: (name: string): string | null => {
+    // Ещё не записанное значение свежее того, что лежит на диске.
+    if (persistPending && persistPending.name === name) return persistPending.value
+    try {
+      return localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    persistPending = { name, value }
+    if (!persistTimer) persistTimer = setTimeout(writePersist, PERSIST_DELAY)
+  },
+  removeItem: (name: string): void => {
+    if (persistPending && persistPending.name === name) persistPending = null
+    try {
+      localStorage.removeItem(name)
+    } catch {
+      /* нечего удалять */
+    }
+  },
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPersist()
+  })
+  window.addEventListener('pagehide', flushPersist)
 }
 
 export const useStore = create<State & Actions>()(
@@ -259,6 +518,8 @@ export const useStore = create<State & Actions>()(
       questClaims: {},
       monthlyBudget: 0,
       goals: [],
+      investments: [],
+      quickCurrencies: [],
       homeHeaderMode: 'date',
       homeHeaderGoalId: null,
       events: {},
@@ -273,6 +534,26 @@ export const useStore = create<State & Actions>()(
         })),
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
+
+      commitTransaction: (t, editingId) =>
+        set((s) => {
+          const patch: Partial<State> = {}
+          if (editingId) {
+            patch.transactions = s.transactions.map((x) => (x.id === editingId ? { ...x, ...t } : x))
+          } else {
+            patch.transactions = [{ ...t, id: cuid() }, ...s.transactions]
+            if (t.currency) patch.lastTxCurrency = t.currency
+          }
+          // Операция «задним числом» может выпасть за текущий период просмотра —
+          // тогда сдвигаем период на её дату, иначе запись пропала бы из виду.
+          const x = parseDay(t.date)
+          const { start, end } = periodBounds(s.period)
+          if (x < +start || x >= +end) {
+            const next = focusedPeriod(s.period, t.date)
+            if (next) patch.period = next
+          }
+          return patch
+        }),
 
       setPeriodMode: (mode) =>
         set((s) => {
@@ -295,12 +576,8 @@ export const useStore = create<State & Actions>()(
         set(() => ({ period: { mode: 'range', anchor: todayISO(), rangeStart: start, rangeEnd: end } })),
       focusPeriodOn: (dateISO) =>
         set((s) => {
-          const p = s.period
-          if (p.mode === 'all') return {} // «За всё время» и так показывает всё
-          const anchor = dayjs(dateISO).format('YYYY-MM-DD')
-          // Для диапазона переключаемся на месяц нужной даты — иначе операция «потеряется».
-          if (p.mode === 'range') return { period: { mode: 'month', anchor } }
-          return { period: { ...p, anchor } }
+          const next = focusedPeriod(s.period, dateISO)
+          return next ? { period: next } : {}
         }),
 
       setCurrency: (c) => set({ currency: c }),
@@ -327,9 +604,22 @@ export const useStore = create<State & Actions>()(
         set((s) => {
           const nextBudgets = { ...s.budgets }
           delete nextBudgets[id]
+          // Операции удалённой категории переносим в «Прочее». Иначе они
+          // остаются сиротами: в кольце их не видно (перебор идёт по
+          // существующим категориям), а в общей сумме они есть.
+          const orphaned = s.transactions.some((t) => t.categoryId === id)
           return {
             customCategories: s.customCategories.filter((c) => c.id !== id),
             budgets: nextBudgets,
+            ...(orphaned
+              ? {
+                  transactions: s.transactions.map((t) =>
+                    t.categoryId === id
+                      ? { ...t, categoryId: t.type === 'income' ? FALLBACK_CATEGORY.income : FALLBACK_CATEGORY.expense }
+                      : t,
+                  ),
+                }
+              : {}),
           }
         }),
 
@@ -371,12 +661,50 @@ export const useStore = create<State & Actions>()(
           // Если удалили цель, выбранную для шапки — сбрасываем выбор.
           homeHeaderGoalId: s.homeHeaderGoalId === id ? null : s.homeHeaderGoalId,
         })),
+
+      addInvestment: ({ title, amount, rate, kind, currency }) =>
+        set((s) => ({
+          investments: [
+            ...s.investments,
+            {
+              id: 'inv_' + cuid(),
+              title: title.trim() || 'Актив',
+              amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+              rate: Number.isFinite(rate ?? 0) && (rate ?? 0) >= 0 ? (rate ?? 0) : 0,
+              kind: kind ?? 'deposit',
+              currency: currency ?? s.currency,
+              createdAt: Date.now(),
+            },
+          ],
+          events: bumpEvent(s.events, 'add_investment'),
+        })),
+
+      updateInvestment: (id, patch) =>
+        set((s) => ({
+          investments: s.investments.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+        })),
+
+      removeInvestment: (id) =>
+        set((s) => ({ investments: s.investments.filter((i) => i.id !== id) })),
       contributeGoal: (id, delta) =>
         set((s) => ({
           goals: s.goals.map((g) =>
             g.id === id ? { ...g, saved: Math.max(0, Math.round((g.saved + delta) * 100) / 100) } : g,
           ),
         })),
+      setQuickCurrency: (slot, code) =>
+        set((s) => {
+          // Пока список пуст, он вычисляется автоматически — фиксируем то, что
+          // человек уже видит, и правим один слот, а не сбрасываем всё.
+          const base = s.quickCurrencies.length > 0 ? [...s.quickCurrencies] : quickCurrenciesOf(s)
+          if (slot < 0 || slot > 2) return {}
+          base[slot] = code
+          // Дубликаты не нужны: если валюта уже стоит в другом слоте — меняем их местами.
+          const twin = base.findIndex((c, i) => c === code && i !== slot)
+          if (twin >= 0) base[twin] = s.quickCurrencies[slot] ?? quickCurrenciesOf(s)[slot]
+          return { quickCurrencies: base.slice(0, 3) }
+        }),
+
       setHomeHeaderMode: (mode) => set({ homeHeaderMode: mode }),
       setHomeHeaderGoalId: (id) => set({ homeHeaderGoalId: id }),
 
@@ -416,7 +744,8 @@ export const useStore = create<State & Actions>()(
         const s = get()
         if (s.owned.includes(id)) return false
         const r = getReward(id)
-        if (!r) return false
+        // Уровневые и подарочные награды за монеты не продаются.
+        if (!r || r.source) return false
         const base = rewardPrice(r)
         // Скидку из UI зажимаем в [скидка дня, полная цена] — защита от подмены.
         const price =
@@ -425,6 +754,22 @@ export const useStore = create<State & Actions>()(
             : base
         if (s.coins < price) return false
         set({ owned: [...s.owned, id], coins: Math.max(0, s.coins - price) })
+        return true
+      },
+
+      grantReward: (id) => {
+        const s = get()
+        if (s.owned.includes(id)) return false
+        const r = getReward(id)
+        if (!r || !r.source) return false
+        // Титул за уровень — только если выполнены оба условия: уровень и рекорд
+        // ежедневной серии (streak.best) — та же «Серия дня», что на хабе наград.
+        if (r.source === 'level') {
+          const lvl = levelFor(computeXp(s.transactions.length, s.bonusXp)).level
+          if (lvl < r.unlockLevel) return false
+          if (r.unlockDays && s.streak.best < r.unlockDays) return false
+        }
+        set({ owned: [...s.owned, id] })
         return true
       },
 
@@ -442,8 +787,10 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 13,
-      storage: createJSONStorage(() => localStorage),
+      version: 16,
+      storage: createJSONStorage(() => throttledStorage),
+      // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
+      merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
       migrate: (persisted: any, version) => {
         // v1 хранил selectedMonth — переносим на period
         if (persisted && version < 2) {
@@ -512,6 +859,14 @@ export const useStore = create<State & Actions>()(
         if (persisted && version < 13) {
           if (typeof persisted.remindersEnabled !== 'boolean') persisted.remindersEnabled = true
         }
+        // v14: раздел «Инвестиции и сбережения»
+        if (persisted && version < 14) {
+          if (!Array.isArray(persisted.investments)) persisted.investments = []
+        }
+        // v16: быстрый выбор валют в форме операции (пусто = автоподбор по данным)
+        if (persisted && version < 16) {
+          if (!Array.isArray(persisted.quickCurrencies)) persisted.quickCurrencies = []
+        }
         return persisted
       },
     },
@@ -519,6 +874,18 @@ export const useStore = create<State & Actions>()(
 )
 
 /* ---------- Период ---------- */
+
+/**
+ * Период, сдвинутый так, чтобы указанная дата в него попала.
+ * `null` — сдвигать не нужно (режим «За всё время» и так показывает всё).
+ */
+function focusedPeriod(p: Period, dateISO: string): Period | null {
+  if (p.mode === 'all') return null
+  const anchor = dayjs(dateISO).format('YYYY-MM-DD')
+  // Для диапазона переключаемся на месяц нужной даты — иначе операция «потеряется».
+  if (p.mode === 'range') return { mode: 'month', anchor }
+  return { ...p, anchor }
+}
 
 export function periodBounds(p: Period): { start: Dayjs; end: Dayjs } {
   if (p.mode === 'all') {
@@ -551,33 +918,149 @@ export function periodLabel(p: Period): string {
   }
 }
 
-/* ---------- Селекторы (мемоизация по ссылке state через WeakMap) ---------- */
+/* ---------- Селекторы ---------- */
 
-function memo1<R>(fn: (s: State) => R): (s: State) => R {
-  const cache = new WeakMap<State, R>()
+/*
+ * Как устроена мемоизация и зачем именно так.
+ *
+ * Раньше результат кэшировался в WeakMap по ссылке на объект состояния. Но
+ * zustand создаёт НОВЫЙ объект состояния на каждое изменение, поэтому кэш
+ * промахивался всегда: любое изменение (хоть смена темы) заставляло селекторы
+ * строить новые массивы, `useStore` видел новую ссылку и будил все подписанные
+ * компоненты. Отсюда полная перерисовка дерева на каждую записанную операцию.
+ *
+ * Теперь два уровня защиты:
+ *
+ *  1. `deps` (не обязателен) — если перечисленные зависимости не изменились,
+ *     тело селектора вообще не выполняется. Экономит вычисления.
+ *  2. СОХРАНЕНИЕ ССЫЛКИ — после пересчёта результат сравнивается с предыдущим,
+ *     и при совпадении по содержимому отдаётся СТАРАЯ ссылка. Компонент не
+ *     перерисовывается.
+ *
+ * Второй уровень важнее и надёжнее первого: он не зависит от того, правильно ли
+ * перечислены зависимости. Даже если `deps` где-то указаны неполно или вовсе
+ * отсутствуют, селектор всё равно честно пересчитается — устаревшие данные
+ * показать невозможно. `deps` — только оптимизация поверх.
+ */
+
+/** Совпадают ли списки зависимостей (поэлементно, по ссылке). */
+function sameDeps(a: readonly unknown[] | undefined, b: readonly unknown[]): boolean {
+  if (!a || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false
+  return true
+}
+
+/** Равенство объектов по собственным полям (один уровень). */
+function sameFields(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  const ka = Object.keys(a as object)
+  const kb = Object.keys(b as object)
+  if (ka.length !== kb.length) return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  for (const k of ka) if (!Object.is(ra[k], rb[k])) return false
+  return true
+}
+
+/**
+ * Одинаков ли результат селектора по содержимому.
+ *
+ * Глубина — два уровня, и этого ровно хватает: массивы транзакций состоят из тех
+ * же самых объектов (сравнение по ссылке отрабатывает сразу), а агрегаты
+ * категорий каждый раз собираются заново, но из тех же значений — их сравниваем
+ * по полям. Глубже не идём, чтобы стоимость сравнения оставалась линейной.
+ */
+function sameResult(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!sameFields(a[i], b[i])) return false
+    return true
+  }
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  // Словарь вида { RUB: { income, expense, balance } } — значения тоже сравниваем
+  // по полям, иначе вложенные объекты всегда «разные» и ссылка не переиспользуется.
+  const ka = Object.keys(a as object)
+  const kb = Object.keys(b as object)
+  if (ka.length !== kb.length) return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  for (const k of ka) if (!sameFields(ra[k], rb[k])) return false
+  return true
+}
+
+function memo1<R>(fn: (s: State) => R, deps?: (s: State) => readonly unknown[]): (s: State) => R {
+  let lastState: State | undefined
+  let lastDeps: readonly unknown[] | undefined
+  let last: R
+  let filled = false
+
   return (s) => {
-    const hit = cache.get(s)
-    if (hit !== undefined) return hit
-    const result = fn(s)
-    cache.set(s, result)
-    return result
+    if (filled) {
+      if (lastState === s) return last
+      if (deps) {
+        const d = deps(s)
+        if (sameDeps(lastDeps, d)) {
+          lastState = s
+          return last
+        }
+        lastDeps = d
+      }
+    } else if (deps) {
+      lastDeps = deps(s)
+    }
+    const next = fn(s)
+    lastState = s
+    if (filled && sameResult(last, next)) return last
+    last = next
+    filled = true
+    return last
   }
 }
 
-function memo2<P, R>(fn: (s: State, p: P) => R): (s: State, p: P) => R {
-  const cache = new WeakMap<State, Map<P, R>>()
+/**
+ * То же для селекторов с параметром. Кэш — обычный Map по параметру: значения
+ * параметров у нас перечислимы и их немного (вид операции, id категории,
+ * гранулярность), так что расти ему некуда.
+ */
+function memo2<P, R>(
+  fn: (s: State, p: P) => R,
+  deps?: (s: State, p: P) => readonly unknown[],
+): (s: State, p: P) => R {
+  interface Entry {
+    state?: State
+    deps?: readonly unknown[]
+    value: R
+    filled: boolean
+  }
+  const cache = new Map<P, Entry>()
+
   return (s, p) => {
-    let inner = cache.get(s)
-    if (inner) {
-      const hit = inner.get(p)
-      if (hit !== undefined) return hit
-    } else {
-      inner = new Map()
-      cache.set(s, inner)
+    let e = cache.get(p)
+    if (!e) {
+      e = { value: undefined as R, filled: false }
+      cache.set(p, e)
     }
-    const result = fn(s, p)
-    inner.set(p, result)
-    return result
+    if (e.filled) {
+      if (e.state === s) return e.value
+      if (deps) {
+        const d = deps(s, p)
+        if (sameDeps(e.deps, d)) {
+          e.state = s
+          return e.value
+        }
+        e.deps = d
+      }
+    } else if (deps) {
+      e.deps = deps(s, p)
+    }
+    const next = fn(s, p)
+    e.state = s
+    if (e.filled && sameResult(e.value, next)) return e.value
+    e.value = next
+    e.filled = true
+    return e.value
   }
 }
 
@@ -586,29 +1069,37 @@ function memo2<P, R>(fn: (s: State, p: P) => R): (s: State, p: P) => R {
  * демо-режим, иначе реальные данные пользователя. Профиль/уровни/задания
  * читают `s.transactions` напрямую и демо не затрагивает их.
  */
-export const activeTransactions: (s: State) => Transaction[] = memo1((s) =>
-  s.demoMode ? demoTransactions() : s.transactions,
+export const activeTransactions: (s: State) => Transaction[] = memo1(
+  (s) => (s.demoMode ? demoTransactions() : s.transactions),
+  (s) => [s.demoMode, s.transactions],
 )
 
 /** Все категории: встроенные + пользовательские. */
-export const selectAllCategories: (s: State) => Category[] = memo1((s) => [
-  ...DEFAULT_CATEGORIES,
-  ...s.customCategories,
-])
-
-export const selectCategoriesByKind: (s: State, kind: CategoryKind) => Category[] = memo2((s, kind) =>
-  selectAllCategories(s).filter((c) => c.kind === kind),
+export const selectAllCategories: (s: State) => Category[] = memo1(
+  (s) => [...DEFAULT_CATEGORIES, ...s.customCategories],
+  (s) => [s.customCategories],
 )
 
-export const selectPeriodTransactions: (s: State) => Transaction[] = memo1((s) => {
-  const { start, end } = periodBounds(s.period)
-  const lo = +start
-  const hi = +end
-  return activeTransactions(s).filter((t) => {
-    const x = +dayjs(t.date)
-    return x >= lo && x < hi
-  })
-})
+export const selectCategoriesByKind: (s: State, kind: CategoryKind) => Category[] = memo2(
+  (s, kind) => selectAllCategories(s).filter((c) => c.kind === kind),
+  (s) => [selectAllCategories(s)],
+)
+
+export const selectPeriodTransactions: (s: State) => Transaction[] = memo1(
+  (s) => {
+    const { start, end } = periodBounds(s.period)
+    const lo = +start
+    const hi = +end
+    // parseDay, а не dayjs(): цикл идёт по всем операциям, а dayjs создаёт
+    // объект-обёртку на каждый вызов. И не Date.parse — он разбирает дату без
+    // времени как полночь UTC, см. [[lib/day]].
+    return activeTransactions(s).filter((t) => {
+      const x = parseDay(t.date)
+      return x >= lo && x < hi
+    })
+  },
+  (s) => [activeTransactions(s), s.period],
+)
 
 export function selectBalance(s: State): number {
   const month = selectPeriodTransactions(s)
@@ -633,11 +1124,15 @@ export const selectAccounts: (s: State) => Currency[] = memo1((s) => {
  * только операции этой валюты, иначе все (прежнее поведение). База для всех
  * аналитических агрегатов (диаграмма / категории / по дням).
  */
-export const selectAccountTransactions: (s: State) => Transaction[] = memo1((s) => {
-  const txs = selectPeriodTransactions(s)
-  if (!s.account) return txs
-  return txs.filter((t) => txCurrency(t, s) === s.account)
-})
+export const selectAccountTransactions: (s: State) => Transaction[] = memo1(
+  (s) => {
+    const txs = selectPeriodTransactions(s)
+    if (!s.account) return txs
+    return txs.filter((t) => txCurrency(t, s) === s.account)
+  },
+  // s.currency — потому что txCurrency подставляет её операциям без своей валюты.
+  (s) => [selectPeriodTransactions(s), s.account, s.currency],
+)
 
 /** Валюта для подписей в Аналитике: выбранный счёт или глобальная. */
 export function selectAnalyticsCurrency(s: State): Currency {
@@ -840,9 +1335,153 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
   return activeTransactions(s)
     .filter((t) => t.type === 'expense')
     .reduce((sum, t) => {
-      const x = +dayjs(t.date)
+      const x = parseDay(t.date)
       return x >= start && x < end ? sum + t.amount : sum
     }, 0)
+})
+
+/**
+ * Расход текущего календарного месяца в разрезе категорий — основа вкладки
+ * «Лимиты». Не зависит от выбранного периода просмотра (лимиты всегда месячные).
+ */
+/* ---------- Быстрый повтор частых операций ---------- */
+
+export interface FrequentEntry {
+  categoryId: string
+  amount: number
+  currency: Currency
+  /** Сколько раз такая пара встретилась в окне — по нему и сортируем. */
+  count: number
+}
+
+/** Окно поиска привычек и порог, ниже которого пара — просто случайная запись. */
+const FREQUENT_WINDOW_DAYS = 90
+const FREQUENT_MIN_COUNT = 2
+const FREQUENT_MAX = 4
+
+/**
+ * Частые операции: пары «категория + сумма», которые человек записывает
+ * регулярно (кофе, метро, обед). Нужны для повтора в один тап — самый частый
+ * сценарий в трекере расходов.
+ *
+ * Совпадение суммы требуется точное: привычные траты обычно круглые, а нестрогое
+ * сравнение давало бы мусорные подсказки. Пары, встретившиеся один раз, не
+ * показываем — это не привычка.
+ *
+ * Берём `s.transactions`, а не `activeTransactions`: подсказки должны отражать
+ * реальные привычки человека. В демо-режиме их просто не будет, и это честнее,
+ * чем предлагать повторить выдуманную операцию.
+ *
+ * Окно считается от `Date.now()` на момент пересчёта; результат кэшируется до
+ * следующего изменения операций. За сессию граница окна не сдвигается заметно.
+ */
+export const selectFrequent: (s: State, kind: CategoryKind) => FrequentEntry[] = memo2(
+  (s, kind) => {
+    const since = Date.now() - FREQUENT_WINDOW_DAYS * 864e5
+    const map = new Map<string, FrequentEntry & { last: number }>()
+    for (const t of s.transactions) {
+      if (t.type !== kind) continue
+      const at = parseDay(t.date)
+      if (!Number.isFinite(at) || at < since) continue
+      const cur = t.currency ?? s.currency
+      const key = `${t.categoryId}|${t.amount}|${cur}`
+      const hit = map.get(key)
+      if (hit) {
+        hit.count += 1
+        if (at > hit.last) hit.last = at
+      } else {
+        map.set(key, { categoryId: t.categoryId, amount: t.amount, currency: cur, count: 1, last: at })
+      }
+    }
+    return [...map.values()]
+      .filter((e) => e.count >= FREQUENT_MIN_COUNT)
+      .sort((a, b) => b.count - a.count || b.last - a.last)
+      .slice(0, FREQUENT_MAX)
+      .map(({ categoryId, amount, currency, count }) => ({ categoryId, amount, currency, count }))
+  },
+  (s) => [s.transactions, s.currency],
+)
+
+/* ---------- Остаток на сегодня ---------- */
+
+export interface DailyAllowance {
+  /** Сколько можно тратить в день, чтобы уложиться в остаток месяца. */
+  perDay: number
+  /** Сколько ещё можно потратить сегодня (может быть отрицательным). */
+  leftToday: number
+  spentToday: number
+  daysLeft: number
+}
+
+/**
+ * Дневной лимит из месячного бюджета. Пересчитывается каждый день от ОСТАТКА
+ * бюджета, а не делит бюджет поровну изначально: перерасход сегодня ужимает
+ * завтрашний лимит, экономия — расширяет. Это и делает подсказку живой.
+ *
+ * `null`, когда месячный бюджет не задан — тогда показывать нечего.
+ */
+export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
+  (s) => {
+    if (!(s.monthlyBudget > 0)) return null
+    const now = dayjs()
+    const monthStart = +now.startOf('month')
+    const monthEnd = +now.startOf('month').add(1, 'month')
+    const dayStart = +now.startOf('day')
+
+    let spentMonth = 0
+    let spentToday = 0
+    for (const t of activeTransactions(s)) {
+      if (t.type !== 'expense') continue
+      const at = parseDay(t.date)
+      if (at < monthStart || at >= monthEnd) continue
+      spentMonth += t.amount
+      if (at >= dayStart) spentToday += t.amount
+    }
+
+    // Сегодняшний день тоже считается оставшимся — иначе в последний день месяца
+    // получилось бы деление на ноль.
+    const daysLeft = Math.max(1, now.daysInMonth() - now.date() + 1)
+    const perDay = Math.max(0, (s.monthlyBudget - spentMonth + spentToday) / daysLeft)
+    return { perDay, leftToday: perDay - spentToday, spentToday, daysLeft }
+  },
+  (s) => [activeTransactions(s), s.monthlyBudget],
+)
+
+export const selectCurrentMonthExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
+  const start = +dayjs().startOf('month')
+  const end = +dayjs().startOf('month').add(1, 'month')
+  const out: Record<string, number> = {}
+  for (const t of activeTransactions(s)) {
+    if (t.type !== 'expense') continue
+    const x = parseDay(t.date)
+    if (x < start || x >= end) continue
+    out[t.categoryId] = (out[t.categoryId] ?? 0) + t.amount
+  }
+  return out
+})
+
+/** За сколько последних ПОЛНЫХ месяцев считаем средний расход категории. */
+const AVG_MONTHS = 3
+
+/**
+ * Средний месячный расход по категориям за последние `AVG_MONTHS` полных месяцев.
+ * Текущий месяц исключён — он ещё не закончился и занижал бы среднее.
+ * Нужен для подсказки «поставить лимит из среднего»: главный барьер при
+ * настройке лимитов — не знать, какую цифру вписать.
+ */
+export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
+  const start = +dayjs().startOf('month').subtract(AVG_MONTHS, 'month')
+  const end = +dayjs().startOf('month')
+  const sums: Record<string, number> = {}
+  for (const t of activeTransactions(s)) {
+    if (t.type !== 'expense') continue
+    const x = parseDay(t.date)
+    if (x < start || x >= end) continue
+    sums[t.categoryId] = (sums[t.categoryId] ?? 0) + t.amount
+  }
+  const out: Record<string, number> = {}
+  for (const [id, sum] of Object.entries(sums)) out[id] = Math.round(sum / AVG_MONTHS)
+  return out
 })
 
 /* ---------- Метрики для финансовых заданий ---------- */
@@ -855,29 +1494,48 @@ export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
 /** Сколько различных категорий использовано (для задания «5 разных категорий»). */
 export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => new Set(s.transactions.map((t) => t.categoryId)).size,
+  (s) => [s.transactions],
 )
+
 
 /**
  * Текущая серия дней подряд с хотя бы одной операцией. Считаем назад от сегодня;
  * если за сегодня записей ещё нет — стартуем со вчера (день не «закрыт»).
  * Для задания «веди учёт N дней подряд».
  */
-export const selectLogDayStreak: (s: State) => number = memo1((s) => {
-  const days = new Set(s.transactions.map((t) => dayjs(t.date).format('YYYY-MM-DD')))
-  if (days.size === 0) return 0
-  let cursor = dayjs()
-  if (!days.has(cursor.format('YYYY-MM-DD'))) cursor = cursor.subtract(1, 'day')
-  let streak = 0
-  while (days.has(cursor.format('YYYY-MM-DD'))) {
-    streak += 1
-    cursor = cursor.subtract(1, 'day')
-  }
-  return streak
-})
+export const selectLogDayStreak: (s: State) => number = memo1(
+  (s) => {
+    const days = new Set<number>()
+    for (const t of s.transactions) {
+      const at = parseDay(t.date)
+      if (Number.isFinite(at)) days.add(at)
+    }
+    if (days.size === 0) return 0
+
+    // Серия считается от сегодня; если сегодня записи нет — от вчера, иначе
+    // вечерний заход до первой траты обнулял бы честную серию.
+    let cursor = localDayKey(Date.now())
+    if (!days.has(cursor)) cursor = prevDayKey(cursor)
+    let streak = 0
+    while (days.has(cursor)) {
+      streak += 1
+      cursor = prevDayKey(cursor)
+    }
+    return streak
+  },
+  (s) => [s.transactions],
+)
 
 /** Сколько накопительных целей полностью достигнуто (для задания «достигни цели»). */
+/** Валюты быстрого выбора в форме: заданные вручную либо подобранные по данным. */
+export const selectQuickCurrencies: (s: State) => Currency[] = memo1((s) =>
+  s.quickCurrencies.length > 0 ? s.quickCurrencies.slice(0, 3) : quickCurrenciesOf(s),
+)
+
 export const selectGoalsReached: (s: State) => number = memo1(
   (s) => s.goals.filter((g) => g.target > 0 && goalSavedAmount(s, g) >= g.target).length,
+  // Цели с syncBalance читают баланс по валютам — он и стоит в зависимостях.
+  (s) => [s.goals, selectNetBalanceByCurrency(s), s.currency],
 )
 
 /**
@@ -885,29 +1543,45 @@ export const selectGoalsReached: (s: State) => number = memo1(
  * (по реальным операциям) больше нуля и укладывается в бюджет; иначе 0.
  * Для задания «удержи месяц в пределах бюджета».
  */
-export const selectBudgetMonthKept: (s: State) => number = memo1((s) => {
-  if (s.monthlyBudget <= 0) return 0
-  const start = +dayjs().startOf('month')
-  const end = +dayjs().startOf('month').add(1, 'month')
-  const spent = s.transactions
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => {
-      const x = +dayjs(t.date)
-      return x >= start && x < end ? sum + t.amount : sum
-    }, 0)
-  return spent > 0 && spent <= s.monthlyBudget ? 1 : 0
-})
+export const selectBudgetMonthKept: (s: State) => number = memo1(
+  (s) => {
+    if (s.monthlyBudget <= 0) return 0
+    const start = +dayjs().startOf('month')
+    const end = +dayjs().startOf('month').add(1, 'month')
+    let spent = 0
+    for (const t of s.transactions) {
+      if (t.type !== 'expense') continue
+      const x = parseDay(t.date)
+      if (x >= start && x < end) spent += t.amount
+    }
+    return spent > 0 && spent <= s.monthlyBudget ? 1 : 0
+  },
+  (s) => [s.transactions, s.monthlyBudget],
+)
 
+/**
+ * Расходы по дням периода, по возрастанию даты.
+ *
+ * Ключ — метка дня (число), а НЕ подпись «ДД.ММ»: раньше сортировка шла по
+ * строке, и на периоде, пересекающем границу месяца, порядок ломался —
+ * «01.08» вставало перед «29.07». А `DailyBars` берёт последние 14 записей
+ * по порядку массива, то есть показывал не те дни.
+ */
 function dailyExpense(txs: Transaction[]): { day: string; amount: number }[] {
-  const month = txs.filter((t) => t.type === 'expense')
-  const map = new Map<string, number>()
-  for (const t of month) {
-    const day = dayjs(t.date).format('DD.MM')
-    map.set(day, (map.get(day) ?? 0) + t.amount)
+  const map = new Map<number, number>()
+  for (const t of txs) {
+    if (t.type !== 'expense') continue
+    const key = parseDay(t.date)
+    if (!Number.isFinite(key)) continue
+    map.set(key, (map.get(key) ?? 0) + t.amount)
   }
+  const pad = (n: number) => String(n).padStart(2, '0')
   return [...map.entries()]
-    .map(([day, amount]) => ({ day, amount }))
-    .sort((a, b) => (a.day < b.day ? -1 : 1))
+    .sort((a, b) => a[0] - b[0])
+    .map(([key, amount]) => {
+      const d = new Date(key)
+      return { day: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`, amount }
+    })
 }
 
 export const selectDailyExpense: (s: State) => { day: string; amount: number }[] = memo1((s) =>
@@ -930,6 +1604,8 @@ export interface TrendBucket {
 }
 
 const TREND_COUNT: Record<TrendGranularity, number> = { day: 14, week: 12, month: 12, year: 5 }
+/** Меньше корзин на графике не оставляем, даже если данных совсем немного. */
+const TREND_MIN_BUCKETS = 4
 
 function trendLabel(d: Dayjs, g: TrendGranularity): string {
   switch (g) {
@@ -959,13 +1635,194 @@ export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = mem
     // иначе (s.account === null, «Все») суммы смешивались бы — но тогда и
     // форматируем по глобальной валюте (selectAnalyticsCurrency), как раньше.
     if (s.account && txCurrency(t, s) !== s.account) continue
-    const x = +dayjs(t.date)
+    const x = parseDay(t.date)
     const b = buckets.find((bk) => x >= bk.start && x < bk.end)
     if (!b) continue
     if (t.type === 'income') b.income += t.amount
     else b.expense += t.amount
   }
-  return buckets.map(({ label, income, expense }) => ({ label, income, expense }))
+  // Пустое прошлое не рисуем: у нового пользователя из двенадцати месяцев
+  // одиннадцать были бы нулевыми, и график выглядел бы поломанным. Оставляем
+  // минимум четыре корзины, чтобы не схлопнуть его в один столбик.
+  const firstActive = buckets.findIndex((b) => b.income > 0 || b.expense > 0)
+  const visible = firstActive > 0 ? buckets.slice(Math.min(firstActive, buckets.length - TREND_MIN_BUCKETS)) : buckets
+
+  return visible.map(({ label, income, expense }) => ({ label, income, expense }))
 })
+
+/* ---------- Обзор (первый сегмент Аналитики) ---------- */
+
+/** Сколько прошлых периодов берём для «обычной нормы» категории. */
+const OVERVIEW_LOOKBACK = 3
+/** Глубина истории для поиска регулярных платежей. */
+const OVERVIEW_HISTORY_DAYS = 400
+
+/**
+ * Границы предыдущих периодов такой же длины, свежайший первым.
+ * Для «за всё время» предыдущего периода не существует — сравнивать не с чем.
+ */
+function previousWindows(p: Period, n: number): { start: number; end: number }[] {
+  if (p.mode === 'all') return []
+  const out: { start: number; end: number }[] = []
+
+  if (p.mode === 'range') {
+    // Произвольный диапазон сдвигаем на собственную длину.
+    const { start, end } = periodBounds(p)
+    const len = +end - +start
+    for (let i = 1; i <= n; i++) out.push({ start: +start - len * i, end: +end - len * i })
+    return out
+  }
+
+  const unit = UNIT[p.mode]
+  for (let i = 1; i <= n; i++) {
+    const anchor = dayjs(p.anchor).subtract(i, unit).format('YYYY-MM-DD')
+    const { start, end } = periodBounds({ ...p, anchor })
+    out.push({ start: +start, end: +end })
+  }
+  return out
+}
+
+/**
+ * Всё, что нужно вкладке «Обзор», одним объектом.
+ *
+ * Один селектор, а не десяток: экран показывает срез целиком, а каждая
+ * отдельная подписка — это ещё один шанс разбудить дерево. Считает он больше
+ * остальных, поэтому deps перечислены честно: без изменения данных, периода,
+ * счёта или лимита тело не выполняется вовсе.
+ */
+export const selectOverview: (s: State) => Overview = memo1(
+  (s) => {
+    const { start, end } = periodBounds(s.period)
+    const account = s.account
+    const inAccount = (t: Transaction) => !account || txCurrency(t, s) === account
+    const all = activeTransactions(s)
+
+    const windows = previousWindows(s.period, OVERVIEW_LOOKBACK)
+    const previous: Transaction[][] = windows.map(() => [])
+
+    // Один проход по истории на все окна сразу: операций может быть тысячи.
+    for (const t of all) {
+      if (!inAccount(t)) continue
+      const x = parseDay(t.date)
+      if (!Number.isFinite(x)) continue
+      for (let i = 0; i < windows.length; i++) {
+        if (x >= windows[i].start && x < windows[i].end) {
+          previous[i].push(t)
+          break
+        }
+      }
+    }
+
+    return buildOverview({
+      current: selectAccountTransactions(s),
+      previous,
+      categories: selectAllCategories(s),
+      currency: selectAnalyticsCurrency(s),
+      startKey: localDayKey(+start),
+      endKey: localDayKey(+end),
+      now: Date.now(),
+      budget: s.monthlyBudget,
+      // Лимит месячный — на неделе или годе полоса врала бы.
+      budgetApplies: s.period.mode === 'month',
+    })
+  },
+  (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
+)
+
+/**
+ * Постоянные траты — то, что списывается каждый месяц одинаковой суммой.
+ *
+ * Отдельно от selectOverview и БЕЗ привязки к выбранному периоду: это срез
+ * текущих обязательств. Иначе, листая июль в Аналитике, пользователь терял бы
+ * подсказку «пора записать» на Главной.
+ */
+export const selectRecurring: (s: State) => Recurring[] = memo1(
+  (s) => {
+    const since = Date.now() - OVERVIEW_HISTORY_DAYS * DAY_MS
+    const account = s.account
+    const history: Transaction[] = []
+    for (const t of activeTransactions(s)) {
+      if (account && txCurrency(t, s) !== account) continue
+      const x = parseDay(t.date)
+      if (Number.isFinite(x) && x >= since) history.push(t)
+    }
+    const byId = new Map(selectAllCategories(s).map((c) => [c.id, c]))
+    return buildRecurring(history, Date.now(), byId, selectAnalyticsCurrency(s))
+  },
+  (s) => [activeTransactions(s), s.account, s.currency, s.customCategories],
+)
+
+/**
+ * Итоги прошедшего месяца — для карточки на Главной.
+ *
+ * Считаются по всем операциям, без учёта выбранного счёта и периода: это
+ * ретроспектива, а не срез, и она не должна меняться от того, что человек
+ * листает Аналитику.
+ */
+export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
+  (s) => {
+    const { start, end, prevStart } = previousMonthBounds(Date.now())
+    const month: Transaction[] = []
+    const prev: Transaction[] = []
+    for (const t of activeTransactions(s)) {
+      const x = parseDay(t.date)
+      if (!Number.isFinite(x)) continue
+      if (x >= start && x < end) month.push(t)
+      else if (x >= prevStart && x < start) prev.push(t)
+    }
+    return buildMonthlySummary({
+      month,
+      prev,
+      categories: selectAllCategories(s),
+      monthStart: start,
+      monthEnd: end,
+    })
+  },
+  (s) => [activeTransactions(s), s.customCategories],
+)
+
+/* ---------- Помесячный след категории ---------- */
+
+/** Сколько месяцев показываем в карточке категории. */
+const CATEGORY_MONTHS = 6
+
+export interface CategoryMonth {
+  /** Короткая подпись месяца («авг.»). */
+  label: string
+  amount: number
+  /** Начало месяца — ключом для React и для сортировки. */
+  start: number
+}
+
+/**
+ * Расходы категории по месяцам — «а как было раньше».
+ *
+ * Не зависит от выбранного периода: смысл именно в том, чтобы увидеть след
+ * категории за полгода, каким бы месяцем ни листали Аналитику. Счёт при этом
+ * учитывается — иначе в мультивалютном профиле сложились бы разные валюты.
+ */
+export const selectCategoryMonths: (s: State, categoryId: string) => CategoryMonth[] = memo2(
+  (s, categoryId) => {
+    const now = dayjs().startOf('month')
+    const buckets = Array.from({ length: CATEGORY_MONTHS }, (_, i) => {
+      const d = now.subtract(CATEGORY_MONTHS - 1 - i, 'month')
+      return { start: +d, end: +d.add(1, 'month'), label: d.format('MMM'), amount: 0 }
+    })
+    for (const t of activeTransactions(s)) {
+      if (t.type !== 'expense' || t.categoryId !== categoryId) continue
+      if (s.account && txCurrency(t, s) !== s.account) continue
+      const x = parseDay(t.date)
+      if (!Number.isFinite(x)) continue
+      for (const b of buckets) {
+        if (x >= b.start && x < b.end) {
+          b.amount += t.amount
+          break
+        }
+      }
+    }
+    return buckets.map(({ label, amount, start }) => ({ label, amount, start }))
+  },
+  (s, categoryId) => [activeTransactions(s), s.account, s.currency, categoryId],
+)
 
 export { getCategory }

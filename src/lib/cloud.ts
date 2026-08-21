@@ -18,7 +18,7 @@
  * Вне Telegram (обычный браузер, превью) синк выключен — приложение работает
  * локально, как раньше.
  */
-import { useStore } from '../store/transactions'
+import { useStore, flushPersist } from '../store/transactions'
 import { pullCloud, pushCloud, isBackendConfigured } from './api'
 import { tg } from './telegram'
 
@@ -73,25 +73,64 @@ function isValidBlob(blob: unknown): blob is string {
   }
 }
 
+/**
+ * Сколько операций в persist-блобе. Ключевая величина для защиты от потери
+ * данных: «пустой» снимок не должен затирать облако с операциями.
+ * -1 — блоб не разобрать (не судим по нему).
+ */
+function txCount(blob: string | null): number {
+  if (!blob) return 0
+  try {
+    const parsed = JSON.parse(blob) as { state?: { transactions?: unknown[] } }
+    const list = parsed?.state?.transactions
+    return Array.isArray(list) ? list.length : -1
+  } catch {
+    return -1
+  }
+}
+
 let started = false
 /** Пока принимаем облако — не пушим (иначе тут же отправили бы только что скачанное). */
 let adopting = false
 let pushTimer: ReturnType<typeof setTimeout> | null = null
+/** Сколько операций было в облаке на старте сессии (для защиты от затирания). */
+let cloudTxAtStart = 0
+/**
+ * Были ли в этой сессии данные локально. Если были и исчезли — значит человек
+ * сам всё удалил, и пустой снимок отправлять законно. Если приложение
+ * стартовало пустым при непустом облаке — это сбой загрузки, пуш запрещён.
+ */
+let hadDataThisSession = false
 
 function schedulePush(): void {
   if (adopting) return
+  // Флаг «данные в этой сессии были» берём из стора в памяти, а не из блоба:
+  // этот код выполняется на КАЖДОЕ изменение стора, а разбор блоба на сотнях
+  // операций — сотни килобайт JSON.parse за тап. Проверяем только пока флаг
+  // не взведён — дальше он всё равно не меняется.
+  if (!hadDataThisSession && useStore.getState().transactions.length > 0) {
+    hadDataThisSession = true
+  }
   if (pushTimer) clearTimeout(pushTimer)
   pushTimer = setTimeout(flushPush, PUSH_DEBOUNCE)
 }
 
 async function flushPush(): Promise<void> {
   pushTimer = null
+  flushPersist() // на диске должен лежать актуальный снимок, а не отложенный
   const blob = readBlob()
   if (!blob) return
+
+  // Страховка от потери данных: не отправляем снимок без операций поверх
+  // облака, в котором они были, — если только человек сам их не удалил.
+  const local = txCount(blob)
+  const emptyOverData = local === 0 && cloudTxAtStart > 0 && !hadDataThisSession
+  if (emptyOverData) return
+
   const updatedAt = Date.now()
   setLocalUpdatedAt(updatedAt)
   try {
-    await pushCloud(blob, updatedAt)
+    await pushCloud(blob, updatedAt, local === 0 && hadDataThisSession)
   } catch {
     /* офлайн — отправим при следующем изменении */
   }
@@ -114,19 +153,41 @@ export async function initCloudSync(): Promise<void> {
   if (!isBackendConfigured() || !tg.isInTelegram || !tg.initData) return
   started = true
 
+  // Скачивание облака отделено от остальной логики: если оно не удалось, мы НЕ
+  // знаем, что там лежит, и потому не имеем права ничего отправлять в этой
+  // сессии — иначе пустой старт затрёт нормальные данные. Работаем локально,
+  // синхронизируемся при следующем запуске.
+  let cloud: Awaited<ReturnType<typeof pullCloud>>
   try {
-    const cloud = await pullCloud()
-    const localAt = getLocalUpdatedAt()
+    cloud = await pullCloud()
+  } catch {
+    return
+  }
 
-    if (cloud && isValidBlob(cloud.blob) && cloud.updatedAt > localAt) {
+  try {
+    const localAt = getLocalUpdatedAt()
+    flushPersist() // читаем блоб напрямую — сначала дожидаемся отложенной записи
+    const localTx = txCount(readBlob())
+    const cloudTx = cloud && isValidBlob(cloud.blob) ? txCount(cloud.blob) : 0
+    cloudTxAtStart = Math.max(0, cloudTx)
+    hadDataThisSession = localTx > 0
+
+    // Принимаем облако, если оно новее ЛИБО если локально пусто, а в облаке есть
+    // операции (спасает новое устройство с «залипшей» локальной меткой времени).
+    const cloudNewer = !!cloud && cloud.updatedAt > localAt
+    const localEmpty = localTx === 0 && cloudTx > 0
+
+    if (cloud && isValidBlob(cloud.blob) && (cloudNewer || localEmpty)) {
       // Облако новее и блоб валиден — принимаем его.
       adopting = true
+      flushPersist() // отложенная запись не должна «догнать» и затереть облако
       const prev = readBlob() // снимок локального ДО перезаписи (для отката)
       try {
         localStorage.setItem(PERSIST_KEY, cloud.blob)
         // rehydrate перечитает storage, прогонит миграции и обновит стор.
         await useStore.persist.rehydrate()
         setLocalUpdatedAt(cloud.updatedAt)
+        if (cloudTx > 0) hadDataThisSession = true
       } catch {
         // Применить не удалось — откатываемся на прежние локальные данные, не теряем их.
         try {
@@ -141,8 +202,9 @@ export async function initCloudSync(): Promise<void> {
       }
     } else {
       // Локальные данные новее (или облака ещё нет) — заливаем их как базу.
+      // Пустым локальным состоянием непустое облако не перезаписываем.
       const blob = readBlob()
-      if (blob) {
+      if (blob && !(localTx === 0 && cloudTx > 0)) {
         const updatedAt = localAt || Date.now()
         setLocalUpdatedAt(updatedAt)
         pushCloud(blob, updatedAt).catch(() => {})
