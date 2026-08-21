@@ -11,6 +11,7 @@ import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
 import { setReminders, exportTransactions } from '../lib/api'
 import { buildCsv } from '../lib/csv'
+import { parseTransactionsCsv, type ParsedRow } from '../lib/csvImport'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 
 // Редактор категорий — отдельным чанком, грузится по первому открытию.
@@ -494,6 +495,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
             }}
           />
           <ExportRow />
+          <ImportRow />
           <SettingRow
             label={t('settings.clear_all')}
             value="→"
@@ -711,6 +713,81 @@ function ExportRow() {
       value={value}
       onClick={transactions.length > 0 ? run : undefined}
     />
+  )
+}
+
+/**
+ * Загрузка операций из CSV.
+ *
+ * В два касания, без отдельного окна подтверждения: сначала файл разбирается и
+ * строка показывает, что нашлось, вторым касанием операции добавляются. Молча
+ * вливать чужой файл в историю нельзя, а полноценная шторка предпросмотра здесь
+ * была бы тяжелее самой задачи.
+ */
+function ImportRow() {
+  const categories = useStore(selectAllCategories)
+  const currency = useStore((s) => s.currency)
+  const importTransactions = useStore((s) => s.importTransactions)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [pending, setPending] = useState<{ rows: ParsedRow[]; skipped: number } | null>(null)
+  const [done, setDone] = useState<{ added: number; duplicates: number } | null>(null)
+  const t = useT()
+  const catName = useCatName()
+
+  const pick = () => {
+    hapticTap()
+    setDone(null)
+    inputRef.current?.click()
+  }
+
+  const read = async (file: File) => {
+    const text = await file.text()
+    const res = parseTransactionsCsv(text, {
+      categories,
+      categoryName: (c) => catName(c.id, c.name),
+      fallbackCurrency: currency,
+    })
+    if (res.rows.length === 0) {
+      setPending(null)
+      setDone({ added: 0, duplicates: 0 })
+      hapticNotify('error')
+      return
+    }
+    setPending(res)
+    hapticNotify('warning')
+  }
+
+  const commit = () => {
+    if (!pending) return
+    hapticNotify('success')
+    setDone(importTransactions(pending.rows))
+    setPending(null)
+  }
+
+  const value = pending
+    ? t('settings.import_found', { n: pending.rows.length })
+    : done
+      ? done.added > 0
+        ? t('settings.import_added', { n: done.added })
+        : t('settings.import_none')
+      : '→'
+
+  return (
+    <>
+      <SettingRow label={pending ? t('settings.import_confirm') : t('settings.import')} value={value} onClick={pending ? commit : pick} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,text/csv,text/plain"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          // Сбрасываем значение: иначе повторный выбор того же файла не сработает.
+          e.target.value = ''
+          if (f) void read(f)
+        }}
+      />
+    </>
   )
 }
 

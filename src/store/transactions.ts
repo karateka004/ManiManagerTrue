@@ -13,6 +13,7 @@ import { tg } from '../lib/telegram'
 import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
 import { buildOverview, buildRecurring, type Overview, type Recurring } from '../lib/overview'
 import { buildMonthlySummary, previousMonthBounds, type MonthlySummary } from '../lib/monthly'
+import { dedupeKey } from '../lib/csvImport'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -179,6 +180,12 @@ interface Actions {
    */
   commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => void
   removeTransaction: (id: string) => void
+  /**
+   * Добавить операции из файла. Только ДОБАВЛЯЕТ и никогда не заменяет: файл
+   * может оказаться чужим, подменять им историю было бы разрушительно.
+   * Повторы (тот же день, сумма, категория и заметка) пропускаются.
+   */
+  importTransactions: (rows: Omit<Transaction, 'id'>[]) => { added: number; duplicates: number }
   setPeriodMode: (mode: PeriodMode) => void
   shiftPeriod: (delta: number) => void
   setRange: (start: string, end: string) => void
@@ -532,6 +539,25 @@ export const useStore = create<State & Actions>()(
         set((s) => ({
           transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         })),
+      importTransactions: (rows) => {
+        const existing = new Set(get().transactions.map(dedupeKey))
+        const fresh: Transaction[] = []
+        let duplicates = 0
+        for (const r of rows) {
+          const key = dedupeKey(r)
+          if (existing.has(key)) {
+            duplicates += 1
+            continue
+          }
+          existing.add(key)
+          // Сумму подрезаем здесь же: нормализация при загрузке сработает только
+          // в следующий запуск, а мусорное число сломает арифметику сразу.
+          fresh.push({ ...r, amount: clampNumber(r.amount, 0, MAX_MONEY, 0), id: cuid() })
+        }
+        if (fresh.length) set((s) => ({ transactions: [...fresh, ...s.transactions] }))
+        return { added: fresh.length, duplicates }
+      },
+
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
 

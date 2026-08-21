@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.41.0'
+export const APP_VERSION = '1.42.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.42.0',
+    date: '2026-08-20',
+    title: { ru: 'Загрузка операций из файла', en: 'Import from a file' },
+    items: [
+      {
+        icon: '📥',
+        text: {
+          ru: 'Встречное к выгрузке: настройки принимают CSV — и наш собственный, и чужой. Разделитель, названия колонок и формат даты определяются сами, суммы с минусом читаются как расходы',
+          en: 'The counterpart to export: settings now accept a CSV — ours or someone else’s. The delimiter, column names and date format are detected automatically, and negative amounts read as expenses',
+        },
+      },
+      {
+        icon: '🛡',
+        text: {
+          ru: 'Загрузка только добавляет и никогда не заменяет историю. Повторы отсеиваются, поэтому один и тот же файл можно загрузить дважды без последствий, а неразобранные строки просто пропускаются',
+          en: 'Import only adds and never replaces your history. Duplicates are filtered out, so loading the same file twice is harmless, and rows that cannot be read are simply skipped',
+        },
+      },
+    ],
+  },
   {
     version: '1.41.0',
     date: '2026-08-20',
