@@ -154,9 +154,11 @@ const DICT: Dict = {
   'settings.guide': { ru: 'Гайд по приложению', en: 'App guide' },
   'settings.guide_hint': { ru: 'Все функции и как ими пользоваться', en: 'All features and how to use them' },
   'settings.about': { ru: 'О приложении', en: 'About' },
+  // Формулировка про хранение обязана быть точной: облачная копия появилась
+  // позже, а текст утверждал, что данные никуда не уходят.
   'settings.about_text': {
-    ru: 'Кошель — это простой трекер расходов и доходов в Telegram. Данные хранятся локально на устройстве.',
-    en: 'Koshel is a simple income & expense tracker inside Telegram. Data is stored locally on your device.',
+    ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона.',
+    en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone.',
   },
   'settings.in_telegram': { ru: 'Запущено внутри Telegram:', en: 'Running inside Telegram:' },
   'settings.income_cats': { ru: 'доход', en: 'income' },
