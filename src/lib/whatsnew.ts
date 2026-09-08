@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.44.0'
+export const APP_VERSION = '1.45.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.45.0',
+    date: '2026-09-08',
+    title: { ru: 'Планирование на виду, крипта в активах', en: 'Planning up front, crypto in assets' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Планирование на Главной стало картой с четырьмя входами — лимиты, бюджет, цели и активы открываются сразу на своей вкладке, а рядом видно, что уже настроено',
+          en: 'Planning on Home is now a card with four entries — limits, budget, goals and assets open straight on their own tab, with what you already set up visible next to each',
+        },
+      },
+      {
+        icon: '₿',
+        text: {
+          ru: 'У актива можно выбрать валюту, а тип и валюту уже заведённого — поменять прямо в карточке. Крипту записываем оценкой в фиате: курсов в приложении нет, зато вклад наконец виден целиком',
+          en: 'An asset now has a currency picker, and the type and currency of an existing one can be changed right in its card. Crypto is recorded as an estimated fiat value — there are no exchange rates in the app, but your holdings finally show up',
+        },
+      },
+      {
+        icon: '📅',
+        text: {
+          ru: '«На сегодня», динамика, обзор и постоянные траты считают одну валюту. Раньше гривневые операции прибавлялись к евро, месячный расход выходил больше бюджета и дневной лимит показывал ноль',
+          en: 'The daily allowance, trend, overview and recurring payments all count a single currency. Entries in another currency used to be added to the total, pushing monthly spending over budget and zeroing out the daily limit',
+        },
+      },
+    ],
+  },
   {
     version: '1.44.0',
     date: '2026-09-08',

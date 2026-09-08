@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { Search, Target } from 'lucide-react'
+import { Search, Target, ChevronRight, SlidersHorizontal, Wallet, TrendingUp } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
@@ -9,7 +9,6 @@ import { DueRecurring } from '../components/DueRecurring'
 import { MonthlyRecap } from '../components/MonthlyRecap'
 import { AccountSwitcher } from '../components/AccountSwitcher'
 import { Avatar } from '../components/Avatar'
-import { MenuRow } from '../components/ui/MenuRow'
 import {
   useStore,
   selectNetBalanceByCurrency,
@@ -28,6 +27,7 @@ import type { Currency } from '../lib/currencies'
 const PlanningSheet = lazy(() =>
   import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
+type PlanTab = 'limits' | 'budget' | 'goals' | 'invest'
 
 interface Props {
   onOpenProfile: () => void
@@ -46,10 +46,12 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
+  const [planningTab, setPlanningTab] = useState<PlanTab>('limits')
   const seenPlanning = useRef(false)
   if (planningOpen) seenPlanning.current = true
-  const openPlanning = () => {
+  const openPlanning = (tab: PlanTab = 'limits') => {
     track('open_planning')
+    setPlanningTab(tab)
     setPlanningOpen(true)
   }
 
@@ -60,14 +62,16 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
       <PeriodSwitcher />
       <BalanceCard />
       <TodayBudget />
-      <PlanningRow onOpen={openPlanning} />
+      <PlanningCard onOpen={openPlanning} />
       <BudgetAlert />
       <MonthlyRecap />
       <DueRecurring />
       <CategoryList onEditTx={onEditTx} />
 
       <Suspense fallback={null}>
-        {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}
+        {seenPlanning.current && (
+          <PlanningSheet open={planningOpen} initialTab={planningTab} onClose={() => setPlanningOpen(false)} />
+        )}
       </Suspense>
     </div>
   )
@@ -127,17 +131,26 @@ function TodayBudget() {
 }
 
 /**
- * Компактный вход в Планирование под карточкой баланса. Подсказка живая:
- * если задан месячный бюджет — показываем остаток (или превышение), иначе
- * зовём настроить бюджет/лимиты/цели.
+ * Планирование на Главной. Раньше это была одна строка-ссылка, и раздел терялся:
+ * увидеть, что там вообще есть, можно было только открыв шторку. Теперь это карта
+ * с четырьмя входами и живыми числами — каждый ведёт сразу на свою вкладку.
+ *
+ * Суммы показываем ТОЛЬКО в валюте выбранного счёта: курсов в приложении нет,
+ * складывать евро с гривнами нечем (то же правило, что в аналитике).
  */
-function PlanningRow({ onOpen }: { onOpen: () => void }) {
+function PlanningCard({ onOpen }: { onOpen: (tab: PlanTab) => void }) {
   const t = useT()
   const budget = useStore((s) => s.monthlyBudget)
   const spent = useStore(selectCurrentMonthExpense)
+  const budgets = useStore((s) => s.budgets)
+  const goals = useStore((s) => s.goals)
+  const investments = useStore((s) => s.investments)
   const currency = useStore(selectAnalyticsCurrency)
 
   const left = budget - spent
+  const limitsSet = Object.values(budgets).filter((v) => v > 0).length
+  const invested = investments.reduce((sum, i) => (i.currency === currency ? sum + i.amount : sum), 0)
+
   const hint =
     budget > 0
       ? left >= 0
@@ -145,16 +158,78 @@ function PlanningRow({ onOpen }: { onOpen: () => void }) {
         : t('home.plan_over', { over: formatMoney(-left, currency) })
       : t('plan.subtitle')
 
+  const money = (v: number) => formatMoney(Math.round(v), currency)
+
   return (
     <div className="px-6 pb-2">
-      <MenuRow
-        icon={<Target size={20} strokeWidth={2} />}
-        title={t('plan.title')}
-        hint={hint}
-        accent="emerald"
-        onClick={onOpen}
-      />
+      <div className="card p-3">
+        <button
+          onClick={() => { hapticSelect(); onOpen('limits') }}
+          className="flex w-full items-center gap-3 text-left"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+            <Target size={19} strokeWidth={2.2} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">{t('plan.title')}</span>
+            <span className="block truncate text-[11px] text-ink-subtle">{hint}</span>
+          </span>
+          <ChevronRight size={18} className="shrink-0 text-ink-subtle" />
+        </button>
+
+        <div className="mt-2.5 grid grid-cols-2 gap-2">
+          <PlanChip
+            icon={<SlidersHorizontal size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_limits')}
+            value={limitsSet > 0 ? t('home.plan_limits_n', { n: limitsSet }) : t('home.plan_setup')}
+            onClick={() => onOpen('limits')}
+          />
+          <PlanChip
+            icon={<Wallet size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_budget')}
+            value={budget > 0 ? money(budget) : t('home.plan_setup')}
+            onClick={() => onOpen('budget')}
+          />
+          <PlanChip
+            icon={<Target size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_goals')}
+            value={goals.length > 0 ? t('home.plan_goals_n', { n: goals.length }) : t('home.plan_setup')}
+            onClick={() => onOpen('goals')}
+          />
+          <PlanChip
+            icon={<TrendingUp size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_invest')}
+            value={invested > 0 ? money(invested) : t('home.plan_setup')}
+            onClick={() => onOpen('invest')}
+          />
+        </div>
+      </div>
     </div>
+  )
+}
+
+function PlanChip({
+  icon,
+  label,
+  value,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={() => { hapticSelect(); onClick() }}
+      className="flex min-w-0 items-center gap-2 rounded-2xl bg-surface-sunken/70 px-2.5 py-2 text-left active:scale-[0.98]"
+    >
+      <span className="shrink-0 text-ink-subtle">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">{label}</span>
+        <span className="block truncate tabular text-[12px] font-bold text-ink">{value}</span>
+      </span>
+    </button>
   )
 }
 

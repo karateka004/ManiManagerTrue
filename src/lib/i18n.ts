@@ -308,6 +308,11 @@ const DICT: Dict = {
   'inv.per_year': { ru: 'годовых', en: 'a year' },
   'inv.year_short': { ru: 'год', en: 'yr' },
   'inv.delete_confirm': { ru: 'Удалить актив?', en: 'Delete this asset?' },
+  'inv.edit': { ru: 'Изменить тип и валюту', en: 'Change type and currency' },
+  'inv.crypto_hint': {
+    ru: 'Курсов в приложении нет — запишите примерную стоимость в валюте, которую выберете ниже. Обновлять можно вручную в любой момент.',
+    en: 'The app has no exchange rates — record an estimated value in the currency you pick below. You can update it manually any time.',
+  },
   'inv.kind_deposit': { ru: 'Вклад', en: 'Deposit' },
   'inv.kind_stocks': { ru: 'Акции', en: 'Stocks' },
   'inv.kind_crypto': { ru: 'Крипта', en: 'Crypto' },
@@ -788,6 +793,9 @@ const DICT: Dict = {
   'home.cap_date': { ru: 'Дата', en: 'Date' },
   'home.plan_left': { ru: 'Бюджет: осталось {left} из {budget}', en: 'Budget: {left} left of {budget}' },
   'home.plan_over': { ru: 'Бюджет превышен на {over}', en: 'Over budget by {over}' },
+  'home.plan_setup': { ru: 'Задать', en: 'Set up' },
+  'home.plan_limits_n': { ru: '{n} шт.', en: '{n} set' },
+  'home.plan_goals_n': { ru: '{n} шт.', en: '{n} set' },
   /* Остаток на сегодня (дневной лимит из месячного бюджета) */
   'home.today_kicker': { ru: 'На сегодня', en: 'For today' },
   'home.today_left': { ru: 'Можно ещё {left}', en: '{left} still available' },

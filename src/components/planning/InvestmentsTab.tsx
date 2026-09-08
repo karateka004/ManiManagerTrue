@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Plus, Trash2, Calculator, TrendingUp, Landmark, Bitcoin, PiggyBank, LineChart, Wallet } from 'lucide-react'
-import { useStore, type Investment, type InvestmentKind } from '../../store/transactions'
+import { Plus, Trash2, Calculator, TrendingUp, Landmark, Bitcoin, PiggyBank, LineChart, Wallet, Pencil } from 'lucide-react'
+import {
+  useStore,
+  selectAccounts,
+  selectAnalyticsCurrency,
+  type Investment,
+  type InvestmentKind,
+} from '../../store/transactions'
 import { getCurrency, type Currency } from '../../lib/currencies'
 import { formatMoney } from '../../lib/format'
 import { hapticSelect, hapticTap, hapticNotify } from '../../lib/telegram'
@@ -18,6 +24,67 @@ const KIND_META: Record<InvestmentKind, { icon: typeof Landmark; color: string }
 const KINDS: InvestmentKind[] = ['deposit', 'stocks', 'crypto', 'cash', 'other']
 
 /**
+ * Валюты на выбор: текущая по умолчанию + основные + те, что уже встречаются
+ * в операциях. Тот же набор, что в форме цели, — чтобы не заводить два разных
+ * списка валют в одном разделе.
+ */
+function useCurrencyOptions(defaultCur: Currency): Currency[] {
+  const accounts = useStore(selectAccounts)
+  return [...new Set<Currency>([defaultCur, 'USD', 'EUR', 'UAH', ...accounts])]
+}
+
+/** Ряд чипов выбора валюты. */
+function CurrencyChips({
+  options,
+  value,
+  onChange,
+}: {
+  options: Currency[]
+  value: Currency
+  onChange: (c: Currency) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((code) => (
+        <button
+          key={code}
+          onClick={() => { onChange(code); hapticSelect() }}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+            value === code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+          }`}
+        >
+          {getCurrency(code).symbol} {code}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Ряд чипов выбора типа актива. */
+function KindChips({ value, onChange, t }: { value: InvestmentKind; onChange: (k: InvestmentKind) => void; t: TFunc }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {KINDS.map((k) => {
+        const meta = KIND_META[k]
+        const active = value === k
+        return (
+          <button
+            key={k}
+            onClick={() => { onChange(k); hapticSelect() }}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+              active ? 'text-white' : 'bg-surface-sunken text-ink-muted'
+            }`}
+            style={active ? { background: meta.color } : undefined}
+          >
+            {t('inv.kind_' + k)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
  * «Инвестиции и сбережения»: витрина капитала (вклады, акции, крипта, подушка)
  * + калькулятор сложного процента. На доходы/расходы и бюджеты не влияет —
  * это отдельный контур «сколько у меня накоплено и как оно растёт».
@@ -25,6 +92,9 @@ const KINDS: InvestmentKind[] = ['deposit', 'stocks', 'crypto', 'cash', 'other']
 export function InvestmentsTab({ t }: { t: TFunc }) {
   const investments = useStore((s) => s.investments)
   const globalCurrency = useStore((s) => s.currency)
+  // Новый актив предлагаем в валюте выбранного счёта, а не в глобальной:
+  // человек смотрит на евровый счёт — значит и вклад скорее в евро.
+  const defaultCurrency = useStore(selectAnalyticsCurrency)
   const addInvestment = useStore((s) => s.addInvestment)
 
   const [adding, setAdding] = useState(false)
@@ -104,7 +174,7 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
       {adding ? (
         <AddInvestmentForm
           t={t}
-          defaultCurrency={globalCurrency}
+          defaultCurrency={defaultCurrency}
           onCancel={() => setAdding(false)}
           onSubmit={(v) => {
             addInvestment(v)
@@ -155,7 +225,11 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
 function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
   const updateInvestment = useStore((s) => s.updateInvestment)
   const removeInvestment = useStore((s) => s.removeInvestment)
+  const curOptions = useCurrencyOptions(item.currency)
   const [amountDraft, setAmountDraft] = useState(String(item.amount))
+  // Тип и валюту заводят на глаз и часто ошибаются («вписал на вклад, а это крипта»).
+  // Чтобы не приходилось удалять и заводить заново — правка прямо в карточке.
+  const [editing, setEditing] = useState(false)
   const meta = KIND_META[item.kind] ?? KIND_META.other
   const Icon = meta.icon
   const yearly = (item.amount * item.rate) / 100
@@ -190,10 +264,28 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
             {item.rate > 0 && ` · ${item.rate}% ${t('inv.per_year')}`}
           </div>
         </div>
+        <button
+          onClick={() => { hapticTap(); setEditing((v) => !v) }}
+          className={`shrink-0 ${editing ? 'text-brand-600 dark:text-brand-300' : 'text-ink-subtle'}`}
+          aria-label={t('inv.edit')}
+        >
+          <Pencil size={16} />
+        </button>
         <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep" aria-label={t('common.delete')}>
           <Trash2 size={17} />
         </button>
       </div>
+
+      {editing && (
+        <div className="mt-2 flex flex-col gap-2 rounded-2xl bg-surface-sunken/60 p-2.5">
+          <KindChips value={item.kind} onChange={(k) => updateInvestment(item.id, { kind: k })} t={t} />
+          <CurrencyChips
+            options={curOptions}
+            value={item.currency}
+            onChange={(c) => updateInvestment(item.id, { currency: c })}
+          />
+        </div>
+      )}
 
       <div className="mt-2 flex items-center gap-2">
         <div className="flex flex-1 items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-2">
@@ -235,6 +327,8 @@ function AddInvestmentForm({
   const [amount, setAmount] = useState('')
   const [rate, setRate] = useState('')
   const [kind, setKind] = useState<InvestmentKind>('deposit')
+  const [cur, setCur] = useState<Currency>(defaultCurrency)
+  const curOptions = useCurrencyOptions(defaultCurrency)
   const amountNum = parseFloat(amount.replace(',', '.'))
   const valid = title.trim().length > 0 && Number.isFinite(amountNum) && amountNum > 0
 
@@ -243,24 +337,17 @@ function AddInvestmentForm({
       <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('inv.add')}</div>
 
       {/* Тип актива */}
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {KINDS.map((k) => {
-          const meta = KIND_META[k]
-          const active = kind === k
-          return (
-            <button
-              key={k}
-              onClick={() => { setKind(k); hapticSelect() }}
-              className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
-                active ? 'text-white' : 'bg-surface-sunken text-ink-muted'
-              }`}
-              style={active ? { background: meta.color } : undefined}
-            >
-              {t('inv.kind_' + k)}
-            </button>
-          )
-        })}
+      <div className="mb-2">
+        <KindChips value={kind} onChange={setKind} t={t} />
       </div>
+
+      {/* Курсов в приложении нет — крипту и прочие непересчитываемые активы
+          записываем оценкой в фиате, иначе их некуда положить вообще. */}
+      {kind === 'crypto' && (
+        <p className="mb-2 rounded-2xl bg-surface-sunken/60 px-3 py-2 text-[11px] leading-relaxed text-ink-subtle">
+          {t('inv.crypto_hint')}
+        </p>
+      )}
 
       <input
         value={title}
@@ -290,6 +377,11 @@ function AddInvestmentForm({
         />
       </div>
 
+      {/* Валюта актива */}
+      <div className="mb-2">
+        <CurrencyChips options={curOptions} value={cur} onChange={setCur} />
+      </div>
+
       <div className="flex gap-2">
         <button
           onClick={() => {
@@ -300,7 +392,7 @@ function AddInvestmentForm({
               amount: amountNum,
               rate: Number.isFinite(r) && r > 0 ? r : 0,
               kind,
-              currency: defaultCurrency,
+              currency: cur,
             })
           }}
           disabled={!valid}

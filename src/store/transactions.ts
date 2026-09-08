@@ -1463,8 +1463,12 @@ export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
 
     let spentMonth = 0
     let spentToday = 0
+    // Бюджет задан в одной валюте — значит и расход по нему считаем в ней же.
+    // Без этого фильтра гривны прибавлялись к евро, месячный расход выходил
+    // больше бюджета, и дневной лимит схлопывался в ноль.
+    const cur = s.account ?? s.currency
     for (const t of activeTransactions(s)) {
-      if (t.type !== 'expense') continue
+      if (t.type !== 'expense' || txCurrency(t, s) !== cur) continue
       const at = parseDay(t.date)
       if (at < monthStart || at >= monthEnd) continue
       spentMonth += t.amount
@@ -1668,11 +1672,12 @@ export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = mem
     const start = d.startOf(unit)
     return { start: +start, end: +start.add(1, unit), label: trendLabel(d, g), income: 0, expense: 0 }
   })
+  // Счёт = валюта. Складывать разные валюты нечем (курсов в приложении нет),
+  // поэтому без выбранного счёта считаем основную валюту — ту же, в которой
+  // подписан график (selectAnalyticsCurrency).
+  const cur = s.account ?? s.currency
   for (const t of activeTransactions(s)) {
-    // Счёт = валюта: в режиме выбранного счёта берём только его валюту,
-    // иначе (s.account === null, «Все») суммы смешивались бы — но тогда и
-    // форматируем по глобальной валюте (selectAnalyticsCurrency), как раньше.
-    if (s.account && txCurrency(t, s) !== s.account) continue
+    if (txCurrency(t, s) !== cur) continue
     const x = parseDay(t.date)
     const b = buckets.find((bk) => x >= bk.start && x < bk.end)
     if (!b) continue
@@ -1731,8 +1736,11 @@ function previousWindows(p: Period, n: number): { start: number; end: number }[]
 export const selectOverview: (s: State) => Overview = memo1(
   (s) => {
     const { start, end } = periodBounds(s.period)
-    const account = s.account
-    const inAccount = (t: Transaction) => !account || txCurrency(t, s) === account
+    // Одна валюта, как и везде: текущий период уже отфильтрован
+    // selectAccountTransactions, и прошлые окна должны считаться так же —
+    // иначе сравнение «стало/было» складывало бы разные валюты.
+    const cur = s.account ?? s.currency
+    const inAccount = (t: Transaction) => txCurrency(t, s) === cur
     const all = activeTransactions(s)
 
     const windows = previousWindows(s.period, OVERVIEW_LOOKBACK)
@@ -1777,10 +1785,12 @@ export const selectOverview: (s: State) => Overview = memo1(
 export const selectRecurring: (s: State) => Recurring[] = memo1(
   (s) => {
     const since = Date.now() - OVERVIEW_HISTORY_DAYS * DAY_MS
-    const account = s.account
+    // Одна валюта: подписка в евро и подписка в гривнах — разные обязательства,
+    // и суммы у них несопоставимы (курсов в приложении нет).
+    const cur = s.account ?? s.currency
     const history: Transaction[] = []
     for (const t of activeTransactions(s)) {
-      if (account && txCurrency(t, s) !== account) continue
+      if (txCurrency(t, s) !== cur) continue
       const x = parseDay(t.date)
       if (Number.isFinite(x) && x >= since) history.push(t)
     }
@@ -1849,9 +1859,10 @@ export const selectCategoryMonths: (s: State, categoryId: string) => CategoryMon
       const d = now.subtract(CATEGORY_MONTHS - 1 - i, 'month')
       return { start: +d, end: +d.add(1, 'month'), label: d.format('MMM'), amount: 0 }
     })
+    const cur = s.account ?? s.currency
     for (const t of activeTransactions(s)) {
       if (t.type !== 'expense' || t.categoryId !== categoryId) continue
-      if (s.account && txCurrency(t, s) !== s.account) continue
+      if (txCurrency(t, s) !== cur) continue
       const x = parseDay(t.date)
       if (!Number.isFinite(x)) continue
       for (const b of buckets) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2, Wand2, TrendingUp } from 'lucide-react'
 import { InvestmentsTab } from './planning/InvestmentsTab'
@@ -22,14 +22,23 @@ import { useCatName, useT, type TFunc } from '../lib/i18n'
 interface Props {
   open: boolean
   onClose: () => void
+  /** С какой вкладки открыть. Нужен для быстрых входов с Главной. */
+  initialTab?: PlanTab
 }
 
-type Tab = 'limits' | 'budget' | 'goals' | 'invest'
+export type PlanTab = 'limits' | 'budget' | 'goals' | 'invest'
+type Tab = PlanTab
 
-export function PlanningSheet({ open, onClose }: Props) {
+export function PlanningSheet({ open, onClose, initialTab }: Props) {
   const t = useT()
   // Лимиты — главный инструмент планирования, поэтому открываются первыми.
-  const [tab, setTab] = useState<Tab>('limits')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'limits')
+
+  // Шторка остаётся смонтированной после закрытия (чтобы отыграла exit-анимация),
+  // поэтому нужную вкладку выставляем в момент открытия, а не только при монтировании.
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab)
+  }, [open, initialTab])
 
   return (
     <AnimatePresence>
