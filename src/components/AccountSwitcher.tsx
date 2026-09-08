@@ -2,36 +2,46 @@ import { useEffect, type ReactNode } from 'react'
 import { useStore, selectAccounts } from '../store/transactions'
 import { getCurrency, type Currency } from '../lib/currencies'
 import { hapticSelect } from '../lib/telegram'
-import { useT } from '../lib/i18n'
 
 /**
  * Переключатель «счёта» = валюты. Каждая валюта в данных — отдельный счёт.
- * «Все» (account === null) показывает сводный вид (суммы по валютам
- * складываются как есть). Выбор конкретного счёта делает суммы корректными
- * (без смешивания валют). Состояние общее (`store.account`) для Главной и
- * Аналитики — пользователь смотрит «один счёт» во всём приложении.
- * Прячется, если валюта одна — переключать нечего.
+ *
+ * Сводного вида «Все» здесь нет намеренно: складывать гривны с евро нечем —
+ * курсов в приложении не хранится, а одна цифра под разными значками врёт.
+ * Поэтому в каждый момент показывается ровно одна валюта; невыбранное
+ * состояние (account === null) означает основную валюту из настроек.
+ *
+ * Состояние общее (`store.account`) для Главной и Аналитики — пользователь
+ * смотрит «один счёт» во всём приложении. Прячется, если валюта одна.
  */
 export function AccountSwitcher() {
   const accounts = useStore(selectAccounts)
   const account = useStore((s) => s.account)
+  const currency = useStore((s) => s.currency)
   const setAccount = useStore((s) => s.setAccount)
-  const t = useT()
 
-  // Если выбранный счёт исчез из данных (удалили операции) — сбрасываем на «Все».
   useEffect(() => {
-    if (account && !accounts.includes(account)) setAccount(null)
-  }, [account, accounts, setAccount])
+    // Выбранный счёт исчез из данных (удалили операции) — возвращаемся к основной валюте.
+    if (account && !accounts.includes(account)) {
+      setAccount(null)
+      return
+    }
+    // Валют стало больше одной, а счёт не выбран — проставляем явно, иначе
+    // чип показывал бы одну валюту, а карточка баланса — сразу все.
+    if (!account && accounts.length > 1) {
+      setAccount(accounts.includes(currency) ? currency : accounts[0])
+    }
+  }, [account, accounts, currency, setAccount])
 
   if (accounts.length < 2) return null
 
-  const pick = (c: Currency | null) => { hapticSelect(); setAccount(c) }
+  // Невыбранное состояние показываем как основную валюту — она и считается.
+  const shown = account ?? currency
 
   return (
     <div className="mx-6 mb-1 mt-1 flex flex-wrap gap-1.5">
-      <Chip active={account === null} onClick={() => pick(null)}>{t('account.all')}</Chip>
       {accounts.map((c) => (
-        <Chip key={c} active={account === c} onClick={() => pick(c)}>
+        <Chip key={c} active={shown === c} onClick={() => { hapticSelect(); setAccount(c) }}>
           {getCurrency(c).symbol} {c}
         </Chip>
       ))}

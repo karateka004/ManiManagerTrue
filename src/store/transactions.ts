@@ -1153,8 +1153,12 @@ export const selectAccounts: (s: State) => Currency[] = memo1((s) => {
 export const selectAccountTransactions: (s: State) => Transaction[] = memo1(
   (s) => {
     const txs = selectPeriodTransactions(s)
-    if (!s.account) return txs
-    return txs.filter((t) => txCurrency(t, s) === s.account)
+    // Всегда одна валюта. Раньше при невыбранном счёте возвращались операции
+    // всех валют, и агрегаты складывали гривны с евро, подписывая результат
+    // одним значком. Курсов в приложении нет, складывать нечем — поэтому без
+    // выбранного счёта считаем основную валюту.
+    const cur = s.account ?? s.currency
+    return txs.filter((t) => txCurrency(t, s) === cur)
   },
   // s.currency — потому что txCurrency подставляет её операциям без своей валюты.
   (s) => [selectPeriodTransactions(s), s.account, s.currency],

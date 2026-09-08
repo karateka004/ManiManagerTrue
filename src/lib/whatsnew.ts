@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.42.1'
+export const APP_VERSION = '1.43.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.43.0',
+    date: '2026-09-08',
+    title: { ru: 'Валюты больше не смешиваются', en: 'Currencies no longer mixed' },
+    items: [
+      {
+        icon: '💱',
+        text: {
+          ru: 'Раньше при нескольких валютах суммы складывались в одну кучу и подписывались одним значком — гривны показывались как евро. Теперь всё считается строго по одной валюте',
+          en: 'With several currencies the app used to add them up and label the result with one symbol. Now every total is counted in a single currency',
+        },
+      },
+      {
+        icon: '🔀',
+        text: {
+          ru: 'Переключатель счетов показывает валюты без сводного «Все»: складывать валюты нечем — курсов приложение не хранит',
+          en: 'The account switcher lists currencies without an “All” view: there is nothing to add them with — the app stores no exchange rates',
+        },
+      },
+    ],
+  },
   {
     version: '1.42.0',
     date: '2026-08-20',

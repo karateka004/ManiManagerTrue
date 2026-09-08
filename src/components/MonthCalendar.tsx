@@ -52,7 +52,8 @@ export function MonthCalendar() {
     const lo = +month.startOf('month')
     const hi = +month.endOf('month')
     for (const t of transactions) {
-      if (account && (t.currency ?? globalCurrency) !== account) continue
+      // Строго одна валюта: суммы разных валют в одной клетке несопоставимы.
+      if ((t.currency ?? globalCurrency) !== currency) continue
       // parseDay вместо dayjs: цикл идёт по всем операциям, а dayjs создаёт
       // объект-обёртку на каждый вызов. И не Date.parse — он читает дату без
       // времени как полночь UTC, см. [[lib/day]].
@@ -70,7 +71,7 @@ export function MonthCalendar() {
       map.set(d, cur)
     }
     return { byDay: map, totals }
-  }, [transactions, month, account, globalCurrency])
+  }, [transactions, month, currency, globalCurrency])
 
   const daysInMonth = month.daysInMonth()
   // Смещение первого дня (неделя с понедельника).
