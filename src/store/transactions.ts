@@ -1362,8 +1362,11 @@ export const selectExceededBudgets: (s: State) => BudgetStatus[] = memo1((s) =>
 export const selectCurrentMonthExpense: (s: State) => number = memo1((s) => {
   const start = +dayjs().startOf('month')
   const end = +dayjs().startOf('month').add(1, 'month')
+  // Строго одна валюта: бюджет задан в конкретной валюте, и складывать
+  // с ним операции в другой — то же самое, что складывать метры с литрами.
+  const cur = s.account ?? s.currency
   return activeTransactions(s)
-    .filter((t) => t.type === 'expense')
+    .filter((t) => t.type === 'expense' && txCurrency(t, s) === cur)
     .reduce((sum, t) => {
       const x = parseDay(t.date)
       return x >= start && x < end ? sum + t.amount : sum
@@ -1474,15 +1477,18 @@ export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
     const perDay = Math.max(0, (s.monthlyBudget - spentMonth + spentToday) / daysLeft)
     return { perDay, leftToday: perDay - spentToday, spentToday, daysLeft }
   },
-  (s) => [activeTransactions(s), s.monthlyBudget],
+  // account/currency — считаем в валюте отображения, при переключении пересчитываем.
+  (s) => [activeTransactions(s), s.monthlyBudget, s.account, s.currency],
 )
 
 export const selectCurrentMonthExpenseByCategory: (s: State) => Record<string, number> = memo1((s) => {
   const start = +dayjs().startOf('month')
   const end = +dayjs().startOf('month').add(1, 'month')
   const out: Record<string, number> = {}
+  // Лимит стоит в одной валюте — значит и расход по нему считаем в ней же.
+  const cur = s.account ?? s.currency
   for (const t of activeTransactions(s)) {
-    if (t.type !== 'expense') continue
+    if (t.type !== 'expense' || txCurrency(t, s) !== cur) continue
     const x = parseDay(t.date)
     if (x < start || x >= end) continue
     out[t.categoryId] = (out[t.categoryId] ?? 0) + t.amount
@@ -1503,8 +1509,10 @@ export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, num
   const start = +dayjs().startOf('month').subtract(AVG_MONTHS, 'month')
   const end = +dayjs().startOf('month')
   const sums: Record<string, number> = {}
+  // Подсказка ставит лимит в валюте отображения — среднее считаем по ней же.
+  const cur = s.account ?? s.currency
   for (const t of activeTransactions(s)) {
-    if (t.type !== 'expense') continue
+    if (t.type !== 'expense' || txCurrency(t, s) !== cur) continue
     const x = parseDay(t.date)
     if (x < start || x >= end) continue
     sums[t.categoryId] = (sums[t.categoryId] ?? 0) + t.amount
@@ -1524,7 +1532,7 @@ export const selectAvgMonthlyExpenseByCategory: (s: State) => Record<string, num
 /** Сколько различных категорий использовано (для задания «5 разных категорий»). */
 export const selectCategoriesUsed: (s: State) => number = memo1(
   (s) => new Set(s.transactions.map((t) => t.categoryId)).size,
-  (s) => [s.transactions],
+  (s) => [s.transactions, s.account, s.currency],
 )
 
 
@@ -1785,16 +1793,19 @@ export const selectRecurring: (s: State) => Recurring[] = memo1(
 /**
  * Итоги прошедшего месяца — для карточки на Главной.
  *
- * Считаются по всем операциям, без учёта выбранного счёта и периода: это
- * ретроспектива, а не срез, и она не должна меняться от того, что человек
- * листает Аналитику.
+ * Не зависят от выбранного ПЕРИОДА: это ретроспектива, а не срез, и она не
+ * должна меняться от того, что человек листает Аналитику. А вот валюта
+ * учитывается — иначе в мультивалютном профиле итог складывал бы гривны с
+ * евро и подписывал результат одним значком.
  */
 export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
   (s) => {
     const { start, end, prevStart } = previousMonthBounds(Date.now())
     const month: Transaction[] = []
     const prev: Transaction[] = []
+    const cur = s.account ?? s.currency
     for (const t of activeTransactions(s)) {
+      if (txCurrency(t, s) !== cur) continue
       const x = parseDay(t.date)
       if (!Number.isFinite(x)) continue
       if (x >= start && x < end) month.push(t)
@@ -1808,7 +1819,7 @@ export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
       monthEnd: end,
     })
   },
-  (s) => [activeTransactions(s), s.customCategories],
+  (s) => [activeTransactions(s), s.customCategories, s.account, s.currency],
 )
 
 /* ---------- Помесячный след категории ---------- */

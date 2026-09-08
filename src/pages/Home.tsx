@@ -15,6 +15,7 @@ import {
   selectNetBalanceByCurrency,
   selectCurrentMonthExpense,
   selectDailyAllowance,
+  selectAnalyticsCurrency,
   type Goal,
   type Transaction,
 } from '../store/transactions'
@@ -84,7 +85,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
  */
 function TodayBudget() {
   const allowance = useStore(selectDailyAllowance)
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
   if (!allowance) return null
 
@@ -134,7 +135,7 @@ function PlanningRow({ onOpen }: { onOpen: () => void }) {
   const t = useT()
   const budget = useStore((s) => s.monthlyBudget)
   const spent = useStore(selectCurrentMonthExpense)
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
 
   const left = budget - spent
   const hint =

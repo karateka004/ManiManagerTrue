@@ -131,7 +131,7 @@ function daysPassedInMonth(): number {
 /* ---------- Бюджет ---------- */
 
 function BudgetTab({ t }: { t: TFunc }) {
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
   const budget = useStore((s) => s.monthlyBudget)
   const setBudget = useStore((s) => s.setMonthlyBudget)
   const spent = useStore(selectCurrentMonthExpense)
@@ -280,7 +280,7 @@ function InfoBox({
 /* ---------- Лимиты по категориям ---------- */
 
 function LimitsTab({ t }: { t: TFunc }) {
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
   const budgets = useStore((s) => s.budgets)
   const setBudget = useStore((s) => s.setBudget)
   const monthlyBudget = useStore((s) => s.monthlyBudget)

@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.43.0'
+export const APP_VERSION = '1.44.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,27 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.44.0',
+    date: '2026-09-08',
+    title: { ru: 'Планирование и итоги — тоже по одной валюте', en: 'Planning and recaps: one currency too' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Лимиты, бюджет и подсказка «в среднем за месяц» больше не приплюсовывают операции в другой валюте: лимит стоит в конкретной валюте, значит и расход по нему считается в ней',
+          en: 'Limits, budget and the “monthly average” hint no longer add up entries in another currency: a limit is set in one currency, so its spending is counted in that one',
+        },
+      },
+      {
+        icon: '🗓',
+        text: {
+          ru: 'Итоги прошлого месяца считаются по выбранной валюте — раньше сумма подписывалась евро, а самая крупная трата внутри могла оказаться в гривнах',
+          en: 'The previous month recap follows the selected currency — the total used to be labelled in euros while the largest expense inside could be in another currency',
+        },
+      },
+    ],
+  },
   {
     version: '1.43.0',
     date: '2026-09-08',

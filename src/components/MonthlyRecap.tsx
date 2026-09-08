@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { X, TrendingDown, TrendingUp } from 'lucide-react'
-import { useStore, selectMonthlySummary } from '../store/transactions'
+import { useStore, selectMonthlySummary, selectAnalyticsCurrency } from '../store/transactions'
 import { daysIntoMonth, monthKey } from '../lib/monthly'
 import { dayjs, formatMoney } from '../lib/format'
 import { useCatName, useT } from '../lib/i18n'
@@ -21,7 +21,7 @@ const SHOW_DAYS = 10
  */
 export function MonthlyRecap() {
   const summary = useStore(selectMonthlySummary)
-  const currency = useStore((s) => s.currency)
+  const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
   const catName = useCatName()
 
