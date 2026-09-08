@@ -17,7 +17,7 @@
 import type { Transaction } from '../store/transactions'
 import type { Category } from '../store/categories'
 import type { Currency } from './currencies'
-import { DAY_MS, daysBetween, localDayKey, parseDay } from './day'
+import { DAY_MS, daysBetween, localDayKey, nextDayKey, parseDay } from './day'
 
 /** Период длиннее — не строим разбивку по дням и прогноз (режим «за всё время»). */
 const MAX_DAILY_DAYS = 400
@@ -177,6 +177,11 @@ export interface OverviewInput {
   budget: number
   /** Лимит имеет смысл только для месячного периода. */
   budgetApplies: boolean
+  /**
+   * Период без настоящих границ — «за всё время». Окно тогда сужается до самих
+   * данных, см. buildOverview.
+   */
+  openEnded?: boolean
 }
 
 /** День операции как локальная полночь. */
@@ -186,7 +191,30 @@ const sumExpense = (txs: Transaction[]) =>
   txs.reduce((acc, t) => (t.type === 'expense' ? acc + t.amount : acc), 0)
 
 export function buildOverview(input: OverviewInput): Overview {
-  const { current, previous, categories, currency, startKey, endKey, now, budget, budgetApplies } = input
+  const { current, previous, categories, currency, now, budget, budgetApplies, openEnded } = input
+
+  /* ---------- Окно периода ----------
+     «За всё время» — это границы 1970…2100, а не дни, в которые человек жил.
+     Считать по ним нельзя: расход в день делился бы на двадцать тысяч дней,
+     разбивки по дням для такого окна нет вовсе (MAX_DAILY_DAYS), а цикл «дней
+     подряд без трат» читал пустой массив и насчитывал их с 1970 года. Сужаем
+     окно до самих данных: от первой операции до последней (но не раньше, чем
+     до сегодня — иначе «сегодня» оказался бы за границей периода). */
+  let startKey = input.startKey
+  let endKey = input.endKey
+  if (openEnded) {
+    const todayKey = localDayKey(now)
+    let first = Infinity
+    let last = -Infinity
+    for (const t of current) {
+      const d = txDay(t)
+      if (!Number.isFinite(d)) continue
+      if (d < first) first = d
+      if (d > last) last = d
+    }
+    startKey = first === Infinity ? todayKey : Math.min(first, todayKey)
+    endKey = nextDayKey(last === -Infinity ? todayKey : Math.max(last, todayKey))
+  }
 
   const spent = sumExpense(current)
   const income = current.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc), 0)
@@ -605,12 +633,16 @@ function buildInsights(x: InsightInput): Insight[] {
 
   /* 6. Дни подряд без трат — единственное наблюдение, которым приятно
         похвастаться. Считаем от последнего прожитого дня назад. */
-  let free = 0
-  for (let i = x.daysPassed - 1; i >= 0; i--) {
-    if (x.daily[i] > 0) break
-    free += 1
+  // Без разбивки по дням (слишком длинное окно) считать нечего: чтение пустого
+  // массива давало бы «столько дней без трат, сколько длится период».
+  if (x.daily.length > 0) {
+    let free = 0
+    for (let i = Math.min(x.daysPassed, x.daily.length) - 1; i >= 0; i--) {
+      if (x.daily[i] > 0) break
+      free += 1
+    }
+    if (free >= NO_SPEND_MIN_DAYS) out.push({ id: 'no_spend', kind: 'no_spend', days: free })
   }
-  if (free >= NO_SPEND_MIN_DAYS) out.push({ id: 'no_spend', kind: 'no_spend', days: free })
 
   return out.slice(0, MAX_INSIGHTS)
 }

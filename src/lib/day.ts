@@ -29,6 +29,14 @@ export function prevDayKey(key: number): number {
   return +d
 }
 
+/** Следующий календарный день. Через Date по той же причине, что и prevDayKey. */
+export function nextDayKey(key: number): number {
+  const d = new Date(key)
+  d.setDate(d.getDate() + 1)
+  d.setHours(0, 0, 0, 0)
+  return +d
+}
+
 /**
  * Сколько календарных дней прошло от `fromKey` до `key`. Округление, а не
  * усечение: в сутки перевода часов между двумя полуночами не ровно 24 часа.

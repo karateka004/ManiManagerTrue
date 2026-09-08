@@ -97,10 +97,17 @@ function Hero() {
   const down = (delta ?? 0) < 0
   // Подпись прогноза — последний день периода, а не его граница (граница = полночь следующего)
   const lastDay = dayjs(o.endKey).subtract(1, 'day').format('D MMMM')
+  // Нижний отступ шапки даёт то, что идёт под ней (кривая или прогноз). Если под
+  // числом ничего нет — сумма упиралась бы в край карточки, и она выглядела
+  // съехавшей вверх; тогда отступ ставим сами. Условие кривой — ровно то же,
+  // что внутри Sparkline: на одной точке линию не построить, и раньше блок
+  // «рендерился», не рисуя ничего.
+  const hasSpark = Math.min(o.daily.length, o.daysPassed) + o.forecast.length >= 2
+  const hasBelow = hasSpark || o.forecast.length > 0
 
   return (
     <div className="mx-4 mt-3 overflow-hidden rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
-      <div className="px-5 pt-4">
+      <div className={`px-5 pt-4 ${hasBelow ? '' : 'pb-4'}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{t('ov.spent')}</div>
@@ -141,7 +148,7 @@ function Hero() {
         )}
       </div>
 
-      {o.daily.length > 0 && <Sparkline />}
+      {hasSpark && <Sparkline />}
 
       {o.forecast.length > 0 && (
         <div className="border-t border-ink/[.07] px-5 py-4 dark:border-ink/10">

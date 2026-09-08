@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.45.0'
+export const APP_VERSION = '1.45.1'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.45.1',
+    date: '2026-09-08',
+    title: { ru: 'Обзор «за всё время» считает по вашим дням', en: 'The all-time overview counts your days' },
+    items: [
+      {
+        icon: '🐷',
+        text: {
+          ru: 'Больше нет «20 705 дней подряд без трат»: в режиме «за всё время» приложение отсчитывало дни от 1970 года. Теперь окно сужается до реальных данных — от первой операции до сегодня, и наблюдения считаются по ним',
+          en: 'No more “20,705 days in a row without spending”: in all-time mode the app counted days from 1970. The window now narrows to the real data — from your first entry to today — and the insights follow it',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'В «за всё время» появились кривая расходов по дням и ритм недели — раньше окно было слишком длинным, и приложение их не строило',
+          en: 'All-time mode now draws the daily spending curve and the week rhythm — the window used to be too long for the app to build them',
+        },
+      },
+      {
+        icon: '📐',
+        text: {
+          ru: 'Карточка «Потрачено» больше не выглядит съехавшей: без кривой и прогноза сумма упиралась в нижний край',
+          en: 'The “Spent” card no longer looks off-centre: without a curve or forecast the amount used to sit flush against the bottom edge',
+        },
+      },
+    ],
+  },
   {
     version: '1.45.0',
     date: '2026-09-08',

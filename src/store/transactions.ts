@@ -1770,6 +1770,8 @@ export const selectOverview: (s: State) => Overview = memo1(
       budget: s.monthlyBudget,
       // Лимит месячный — на неделе или годе полоса врала бы.
       budgetApplies: s.period.mode === 'month',
+      // «За всё время» — окно 1970…2100, реальных границ у него нет.
+      openEnded: s.period.mode === 'all',
     })
   },
   (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
