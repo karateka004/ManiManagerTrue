@@ -136,7 +136,7 @@ export const ADMIN_HTML = `<!doctype html>
   .step .pc{font-size:12px;color:var(--ink-subtle);font-weight:700;min-width:44px;text-align:right}
   .track{height:10px;border-radius:99px;background:var(--sunken);overflow:hidden}
   .fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand-deep),var(--brand-soft));transition:width .5s cubic-bezier(.16,1,.3,1)}
-  .drop{font-size:11px;color:var(--rose);font-weight:600}
+  .drop{font-size:11.5px;color:var(--rose);font-weight:600;margin-top:6px}
 
   /* ---------- Полосы (разделы, распределения) ---------- */
   .bar{display:grid;grid-template-columns:178px 1fr auto;align-items:center;gap:12px;padding:7px 0;font-size:13px}
@@ -155,21 +155,72 @@ export const ADMIN_HTML = `<!doctype html>
     .bar .bl{grid-column:1/-1;white-space:normal}
   }
 
+  /* ---------- Список вместо таблицы (телефон) ----------
+     Таблица из семи колонок в экране шириной 430 px превращается в полосу,
+     которую надо возить пальцем вбок, и половина данных всё равно за краем.
+     На узком экране те же данные раскладываем строками сверху вниз. */
+  .lst{display:flex;flex-direction:column}
+  .li{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+  .li:first-child{border-top:0;padding-top:0}
+  .li .body{flex:1;min-width:0}
+  .li .l1{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .li .l1 .nm{font-weight:700;font-size:15px}
+  .li .l2{margin-top:3px;font-size:13px;color:var(--ink-muted);line-height:1.45}
+  .li .l2 b{color:var(--ink);font-weight:700}
+  .li .side{text-align:right;font-weight:800;font-size:15px;white-space:nowrap}
+  .li .side small{display:block;font-weight:600;font-size:11px;color:var(--ink-subtle);margin-top:2px}
+
+  /* Пояснения свёрнуты: мелкий серый абзац под каждым блоком — это стена текста,
+     которую всё равно не читают, а место она занимает на каждом экране. */
+  .expl{margin-top:12px}
+  .expl summary{
+    cursor:pointer;list-style:none;font-size:12px;font-weight:700;color:var(--ink-subtle);
+    display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;background:var(--sunken);
+  }
+  .expl summary::-webkit-details-marker{display:none}
+  .expl summary::after{content:'?';font-weight:800;opacity:.7}
+  .expl[open] summary::after{content:'×'}
+  .expl .body{margin-top:9px;font-size:12.5px;line-height:1.55;color:var(--ink-muted)}
+
+  .sortsel{
+    height:38px;padding:0 12px;border-radius:99px;border:1px solid var(--line);
+    background:var(--sunken);color:var(--ink);font:700 12px Manrope,sans-serif;
+  }
+
   /* Узкий экран: дашборд смотрят и с телефона, поэтому подписи кнопок прячем,
      а ряды сегментов делаем прокручиваемыми — страница не должна ехать вбок. */
-  .segs{max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .segs{max-width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+  /* На телефоне ряд фильтров переносим: спрятанный за боковой прокруткой фильтр
+     всё равно что отсутствует — о нём не догадаться. */
+  @media(max-width:700px){ .segs{flex-wrap:wrap;overflow-x:visible} }
   .segs::-webkit-scrollbar{display:none}
   .segs button{flex:none}
   .brand{white-space:nowrap}
   .cardhead{flex-wrap:wrap}
-  @media(max-width:640px){
+  @media(max-width:700px){
     header{gap:8px}
     .iconbtn .lb{display:none}
     .iconbtn{padding:0 11px}
     .brand{font-size:15px}
-    .wrap{padding:16px 12px 60px}
+    .wrap{padding:14px 12px 56px}
     .card{border-radius:20px;padding:14px}
-    .stat .v{font-size:28px}
+    /* Четыре карточки в столбик — это четыре экрана до первого содержательного
+       блока. В два столбца они занимают два ряда и читаются одним взглядом. */
+    .g4{grid-template-columns:1fr 1fr;gap:10px}
+    .stat .v{font-size:26px;margin-top:6px}
+    .stat .k{font-size:9.5px;letter-spacing:.07em}
+    .stat .s{font-size:11.5px;margin-top:6px;gap:4px}
+    .section{margin:24px 2px 10px;font-size:10.5px}
+    .section i{display:none}
+    .note{font-size:12px}
+    .cardhead h3{font-size:15px}
+    .cardhead .hint{display:none}
+    .step .lb{font-size:13.5px}
+    .step .nm{font-size:16px}
+    .banner{padding:12px 14px;border-radius:16px}
+  }
+  @media(max-width:400px){
+    .g4{grid-template-columns:1fr}
   }
 
   /* ---------- Таблицы ---------- */
@@ -245,6 +296,12 @@ export const ADMIN_HTML = `<!doctype html>
   .err{color:var(--rose);font-size:12px;min-height:17px;margin-top:11px;font-weight:600}
   #dash{display:none}
   .loading{opacity:.5;transition:opacity .2s}
+  .spin{
+    display:inline-block;width:12px;height:12px;margin-right:7px;vertical-align:-1px;
+    border:2px solid var(--line);border-top-color:var(--brand);border-radius:99px;
+    animation:sp .7s linear infinite;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -298,8 +355,11 @@ export const ADMIN_HTML = `<!doctype html>
       <div class="toolbar">
         <input class="search" id="q" placeholder="Поиск по имени или @нику" />
         <div class="segs" id="people-segs"></div>
+        <div id="people-sort"></div>
       </div>
+      <div id="people-list"></div>
       <div class="scroll"><table id="people-table"></table></div>
+      <div id="people-more"></div>
       <div class="note" id="people-note" style="margin-top:12px"></div>
     </div>
 
@@ -314,14 +374,13 @@ export const ADMIN_HTML = `<!doctype html>
 
     <div class="section">Топы</div>
     <div class="grid g2">
-      <div class="card"><div class="cardhead"><h3>По XP</h3></div><div class="scroll"><table id="top-xp"></table></div></div>
-      <div class="card"><div class="cardhead"><h3>По приглашениям</h3></div><div class="scroll"><table id="top-refs"></table></div></div>
+      <div class="card"><div class="cardhead"><h3>По XP</h3></div><div class="scroll" id="top-xp"></div></div>
+      <div class="card"><div class="cardhead"><h3>По приглашениям</h3></div><div class="scroll" id="top-refs"></div></div>
     </div>
 
     <div class="foot">
       <div class="note" id="coverage"></div>
       <div class="spacer"></div>
-      <button class="iconbtn" id="backfill"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 21h16"/></svg>Дозаполнить карточки</button>
       <div class="note" id="updated"></div>
     </div>
   </div>
@@ -329,9 +388,11 @@ export const ADMIN_HTML = `<!doctype html>
 <script>
 (function(){
   var KEY='koshel_admin_key', THEME='koshel_admin_theme';
-  var D=null, range=30, metric='growth', pfilter='all', psort='lastSeen', pdir=-1;
+  var D=null, range=30, metric='growth', pfilter='all', psort='lastSeen', pdir=-1, pcap=20;
 
   var $=function(id){ return document.getElementById(id); };
+  /** Телефон и узкое окно: таблицы уступают место спискам, график — своей высоте. */
+  function isNarrow(){ return window.innerWidth < 700; }
   function esc(s){ s=String(s==null?'':s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function nf(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
   function kf(n){ n=Number(n)||0; return n>=10000 ? Math.round(n/1000)+'к' : nf(n); }
@@ -423,11 +484,14 @@ export const ADMIN_HTML = `<!doctype html>
       var lost='';
       if(i>0){
         var prev=f[i-1].users, d=prev-s.users;
-        if(d>0 && prev>0) lost='<span class="drop">−'+nf(d)+' ('+pc((d/prev)*100)+')</span>';
+        if(d>0 && prev>0) lost='отсеялось '+nf(d)+' · '+pc((d/prev)*100)+' от предыдущего шага';
       }
-      html+='<div class="step"><div class="top"><span class="lb">'+esc(s.label)+'</span>'+lost
+      // Потеря шага стоит отдельной строкой под полосой: втиснутая рядом с
+      // названием, она ломала строку пополам на узком экране.
+      html+='<div class="step"><div class="top"><span class="lb">'+esc(s.label)+'</span>'
         +'<span class="nm tabular">'+nf(s.users)+'</span><span class="pc tabular">'+pc(share)+'</span></div>'
-        +'<div class="track"><div class="fill" style="width:'+Math.max(1,share).toFixed(1)+'%"></div></div></div>';
+        +'<div class="track"><div class="fill" style="width:'+Math.max(1,share).toFixed(1)+'%"></div></div>'
+        +(lost?'<div class="drop">'+lost+'</div>':'')+'</div>';
     }
     $('funnel').innerHTML=html;
   }
@@ -448,12 +512,16 @@ export const ADMIN_HTML = `<!doctype html>
         +'<div class="bt"><div class="bf" style="width:'+Math.max(1,w).toFixed(1)+'%;background:'+r2.c+'"></div></div>'
         +'<div class="bn tabular">'+nf(r2.n)+' · '+pc(w)+'</div></div>';
     });
-    html+='<div class="note" style="margin-top:14px">Вернулись хотя бы раз после дня регистрации: <b style="color:var(--ink)">'
-      +pc(r.returnedPct)+'</b> ('+nf(r.returned)+' из '+nf(r.base)+'). '
-      +'Это не D1: у нас есть только дата последнего визита, поэтому считаем «зашёл ещё в какой-то другой день», а не «на следующий».</div>';
-    html+='<div class="note" style="margin-top:8px">Задали бюджет, лимит или цель: <b style="color:var(--ink)">'+nf(D.planned||0)
-      +'</b> · заблокировали бота: <b style="color:var(--ink)">'+nf(u.blocked)
-      +'</b> · выключили напоминания: <b style="color:var(--ink)">'+nf(u.remindersOff)+'</b></div>';
+    var ink=function(x){ return '<b style="color:var(--ink)">'+x+'</b>'; };
+    html+='<div class="note" style="margin-top:14px">Вернулись хотя бы раз: '+ink(pc(r.returnedPct))
+      +' ('+nf(r.returned)+' из '+nf(r.base)+')<br>'
+      +'Задали бюджет или цель: '+ink(nf(D.planned||0))
+      +' · заблокировали бота: '+ink(nf(u.blocked))
+      +' · выключили напоминания: '+ink(nf(u.remindersOff))+'</div>';
+    html+=expl('Почему не D1',
+      'У нас есть только дата последнего визита, а не журнал всех заходов. Поэтому считаем «зашёл ещё в '
+      +'какой-то другой день», а не «на следующий день после регистрации». Число получается чуть добрее '
+      +'настоящего D1, зато не выдумано.');
     $('lifecycle').innerHTML=html;
   }
 
@@ -504,7 +572,13 @@ export const ADMIN_HTML = `<!doctype html>
       $('chart-note').innerHTML='';
       return;
     }
-    var W=880,H=190,padL=34,padR=10,padT=14,padB=24;
+    /* viewBox строим по фактической ширине блока. Фиксированный viewBox с
+       равномерным масштабированием на телефоне схлопывал график до 80 пикселей
+       высоты — вместо кривой получалась полоска. */
+    var host0=$('chart');
+    var W=Math.max(280, Math.round((host0 && host0.clientWidth) || 880));
+    var narrow=isNarrow();
+    var H=narrow?220:200, padL=narrow?28:34, padR=8, padT=14, padB=narrow?26:24;
     var max=1,i,j;
     for(i=0;i<hist.length;i++) for(j=0;j<conf.series.length;j++){
       var v=Number(hist[i][conf.series[j].key])||0; if(v>max) max=v;
@@ -529,6 +603,10 @@ export const ADMIN_HTML = `<!doctype html>
     // сетка и подписи оси
     for(var gi=0;gi*ax.step<=max+0.001;gi++){
       var gv=Math.round(ax.step*gi), gy=Y(ax.step*gi);
+      if(narrow && gi%2===1 && ax.max>4){
+        svg+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--line)" stroke-width="1"/>';
+        continue;
+      }
       svg+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--line)" stroke-width="1"/>';
       svg+='<text x="4" y="'+(gy+4)+'" fill="var(--ink-subtle)" font-size="10" font-family="Manrope">'+gv+'</text>';
     }
@@ -556,9 +634,9 @@ export const ADMIN_HTML = `<!doctype html>
     }
 
     // подписи дат: первая, средняя, последняя
-    var marks=[0,Math.floor((n-1)/2),n-1];
+    var marks=narrow?[0,n-1]:[0,Math.floor((n-1)/2),n-1];
     for(i=0;i<marks.length;i++){
-      var mi=marks[i], anchor=i===0?'start':(i===2?'end':'middle');
+      var mi=marks[i], anchor=i===0?'start':(i===marks.length-1?'end':'middle');
       svg+='<text x="'+X(mi).toFixed(1)+'" y="'+(H-6)+'" fill="var(--ink-subtle)" font-size="10" font-family="Manrope" text-anchor="'+anchor+'">'
         +esc(hist[mi].date.slice(5).split('-').reverse().join('.'))+'</text>';
     }
@@ -606,21 +684,40 @@ export const ADMIN_HTML = `<!doctype html>
   function renderCohorts(){
     var c=D.cohorts||[];
     if(!c.length){ $('cohorts').innerHTML='<div class="empty">нет данных</div>'; return; }
-    var html='<table><thead><tr><th>Неделя</th><th class="r">Пришло</th><th class="r">Записали операцию</th>'
-      +'<th class="r">Живы сейчас</th><th style="width:34%">Дошли до операции</th></tr></thead><tbody>';
-    for(var i=c.length-1;i>=0;i--){
-      var r=c[i], act=r.joined?(r.activated/r.joined)*100:0;
-      var note=r.approx>0?' <span class="tag est" title="у стольких людей дата регистрации оценочная">≈'+r.approx+'</span>':'';
-      html+='<tr><td><b>'+esc(r.week.split('-').reverse().join('.'))+'</b>'+note+'</td>'
-        +'<td class="r tabular">'+nf(r.joined)+'</td>'
-        +'<td class="r tabular">'+nf(r.activated)+'</td>'
-        +'<td class="r tabular">'+nf(r.alive)+'</td>'
-        +'<td><div class="track"><div class="fill" style="width:'+Math.max(1,act).toFixed(1)+'%"></div></div></td></tr>';
+    var html='';
+    if(isNarrow()){
+      html+='<div class="lst">';
+      for(var i=c.length-1;i>=0;i--){
+        var r=c[i], act=r.joined?(r.activated/r.joined)*100:0;
+        var est=r.approx>0?' <span class="tag est">≈'+r.approx+'</span>':'';
+        html+='<div class="li"><div class="body">'
+          +'<div class="l1"><span class="nm">'+esc(r.week.split('-').reverse().slice(0,2).join('.'))+'</span>'+est+'</div>'
+          +'<div class="l2">'+(r.joined
+              ? 'пришло <b>'+nf(r.joined)+'</b> · записали <b>'+nf(r.activated)+'</b> · живы <b>'+nf(r.alive)+'</b>'
+              : 'никто не пришёл')+'</div>'
+          +(r.joined?'<div class="track" style="margin-top:7px"><div class="fill" style="width:'
+              +Math.max(1,act).toFixed(1)+'%"></div></div>':'')
+          +'</div></div>';
+      }
+      html+='</div>';
+    } else {
+      html+='<table><thead><tr><th>Неделя</th><th class="r">Пришло</th><th class="r">Записали операцию</th>'
+        +'<th class="r">Живы сейчас</th><th style="width:34%">Дошли до операции</th></tr></thead><tbody>';
+      for(var j=c.length-1;j>=0;j--){
+        var r2=c[j], act2=r2.joined?(r2.activated/r2.joined)*100:0;
+        var note=r2.approx>0?' <span class="tag est" title="у стольких людей дата регистрации оценочная">≈'+r2.approx+'</span>':'';
+        html+='<tr><td><b>'+esc(r2.week.split('-').reverse().join('.'))+'</b>'+note+'</td>'
+          +'<td class="r tabular">'+nf(r2.joined)+'</td>'
+          +'<td class="r tabular">'+nf(r2.activated)+'</td>'
+          +'<td class="r tabular">'+nf(r2.alive)+'</td>'
+          +'<td><div class="track"><div class="fill" style="width:'+Math.max(1,act2).toFixed(1)+'%"></div></div></td></tr>';
+      }
+      html+='</tbody></table>';
     }
-    html+='</tbody></table>';
-    html+='<div class="note" style="margin-top:12px">Последние 8 недель. «Живы сейчас» — заходили за последние 7 дней. '
-      +'«≈» — столько человек в когорте с оценочной датой регистрации: они появились раньше, чем мы начали её записывать, '
-      +'и попали в неделю по первому известному следу.</div>';
+    html+=expl('Как читать когорты',
+      'Последние 8 недель. Строка — неделя, на которой человек пришёл. «Живы» — заходили за последние 7 дней. '
+      +'Полоса — доля тех, кто дошёл до первой операции. «≈» — столько человек в когорте с оценочной датой '
+      +'регистрации: они появились раньше, чем мы начали её записывать.');
     $('cohorts').innerHTML=html;
   }
 
@@ -634,6 +731,11 @@ export const ADMIN_HTML = `<!doctype html>
     { key:'xp', label:'XP', r:true },
     { key:'refs', label:'Привёл', r:true }
   ];
+  /** Свёрнутое пояснение. Развернёт тот, кому оно нужно; остальным не мешает. */
+  function expl(title, body){
+    return '<details class="expl"><summary>'+esc(title)+'</summary><div class="body">'+body+'</div></details>';
+  }
+
   function statusOf(p){
     var d=(Date.now()-p.lastSeen)/DAY;
     if(d<=7) return 'a'; if(d<=30) return 's'; return 'c';
@@ -657,49 +759,96 @@ export const ADMIN_HTML = `<!doctype html>
       return ((Number(av)||0)-(Number(bv)||0))*pdir;
     });
 
-    var head='<thead><tr>'+PCOLS.map(function(c){
-      return '<th class="sortable '+(c.r?'r ':'')+(psort===c.key?'on':'')+'" data-k="'+c.key+'">'+esc(c.label)
-        +(psort===c.key?(pdir<0?' ↓':' ↑'):'')+'</th>';
-    }).join('')+'</tr></thead>';
-
-    var rows=list.slice(0,200).map(function(p){
-      var initial=esc((p.name||'?').trim().charAt(0).toUpperCase()||'?');
-      var st=statusOf(p);
-      var tags=(p.fromRef?' <span class="tag ref">по ссылке</span>':'')+(p.blocked?' <span class="tag blk">заблокировал</span>':'');
-      var lastTx = p.lastTx===undefined || p.lastTx===null
-        ? (p.hasCard?'нет операций':'—')
-        : ago(p.lastTx*DAY);
-      return '<tr><td><div class="who"><div class="ava'+(p.ops>0?'':' off')+'">'+initial+'</div>'
-        +'<div style="min-width:0"><div class="nm">'+esc(p.name)+tags+'</div>'
-        +(p.username?'<div class="un">@'+esc(p.username)+'</div>':'')+'</div></div></td>'
-        +'<td class="r tabular" title="'+esc(new Date(p.firstSeen).toLocaleString('ru-RU'))+'">'+(p.approx?'≈ ':'')+dstr(p.firstSeen)+'</td>'
-        +'<td class="r tabular"><span class="sdot '+st+'"></span>'+ago(p.lastSeen)+'</td>'
-        +'<td class="r tabular"><b>'+nf(p.ops)+'</b></td>'
-        +'<td class="r tabular">'+esc(lastTx)+'</td>'
-        +'<td class="r tabular">'+kf(p.xp)+'</td>'
-        +'<td class="r tabular">'+(p.refs?nf(p.refs):'—')+'</td></tr>';
-    }).join('');
-
-    $('people-table').innerHTML=head+'<tbody>'+(rows||'<tr><td colspan="7" class="empty">никого не нашлось</td></tr>')+'</tbody>';
-    $('people-note').innerHTML='Показано '+nf(Math.min(list.length,200))+' из '+nf(list.length)
-      +' (в базе '+nf(all.length)+'). «≈» у даты — регистрация оценочная: человек появился раньше, чем мы начали её записывать. '
-      +'«Последняя запись» — дата последней операции, она честнее «был», потому что открыть приложение можно и не записав ничего.';
-
-    var ths=$('people-table').querySelectorAll('th.sortable');
-    for(var i=0;i<ths.length;i++){
-      ths[i].onclick=function(){
-        var k=this.getAttribute('data-k');
-        if(psort===k) pdir=-pdir; else { psort=k; pdir=k==='name'?1:-1; }
-        renderPeople();
+    // Двести карточек в столбик — полтора десятка экранов пролистывания ради
+    // хвоста, который никому не нужен. На телефоне показываем начало списка.
+    var cap=isNarrow()?pcap:200;
+    var shown=list.slice(0,cap);
+    function person(p){
+      return {
+        initial: esc((p.name||'?').trim().charAt(0).toUpperCase()||'?'),
+        st: statusOf(p),
+        tags: (p.fromRef?' <span class="tag ref">по ссылке</span>':'')+(p.blocked?' <span class="tag blk">заблокировал</span>':''),
+        lastTx: (p.lastTx===undefined||p.lastTx===null) ? (p.hasCard?'нет операций':'—') : ago(p.lastTx*DAY),
+        // Для строки списка фраза собирается целиком: «запись нет операций» —
+        // не по-русски, а прочерк рядом со словом «запись» ничего не сообщает.
+        txPhrase: (p.lastTx===undefined||p.lastTx===null) ? '' : ' · последняя ' + ago(p.lastTx*DAY)
       };
     }
+
+    if(isNarrow()){
+      // Телефон: те же данные строками сверху вниз. Сортировка — родным
+      // селектом, он на iOS открывается привычным колесом.
+      var opts=PCOLS.filter(function(c){ return c.key!=='name' }).map(function(c){
+        return '<option value="'+c.key+'"'+(psort===c.key?' selected':'')+'>'+esc(c.label)+'</option>';
+      }).join('');
+      $('people-sort').innerHTML='<select class="sortsel" id="psort">'+opts+'</select>';
+      var sel=$('psort');
+      if(sel) sel.onchange=function(){ psort=this.value; pdir=-1; renderPeople(); };
+
+      var items=shown.map(function(p){
+        var v=person(p);
+        return '<div class="li"><div class="ava'+(p.ops>0?'':' off')+'">'+v.initial+'</div>'
+          +'<div class="body"><div class="l1"><span class="nm">'+esc(p.name)+'</span>'
+          +(p.username?'<span class="un">@'+esc(p.username)+'</span>':'')+v.tags+'</div>'
+          +'<div class="l2"><b>'+nf(p.ops)+'</b> оп.'+v.txPhrase
+          +(p.refs?' · привёл <b>'+nf(p.refs)+'</b>':'')+'</div>'
+          +'<div class="l2"><span class="sdot '+v.st+'"></span>был '+ago(p.lastSeen)
+          +' · пришёл '+(p.approx?'≈':'')+dstr(p.firstSeen)+'</div></div></div>';
+      }).join('');
+      $('people-table').innerHTML='';
+      $('people-list').innerHTML=items?'<div class="lst">'+items+'</div>':'<div class="empty">никого не нашлось</div>';
+    } else {
+      $('people-sort').innerHTML='';
+      $('people-list').innerHTML='';
+      var head='<thead><tr>'+PCOLS.map(function(c){
+        return '<th class="sortable '+(c.r?'r ':'')+(psort===c.key?'on':'')+'" data-k="'+c.key+'">'+esc(c.label)
+          +(psort===c.key?(pdir<0?' ↓':' ↑'):'')+'</th>';
+      }).join('')+'</tr></thead>';
+
+      var rows=shown.map(function(p){
+        var v=person(p);
+        return '<tr><td><div class="who"><div class="ava'+(p.ops>0?'':' off')+'">'+v.initial+'</div>'
+          +'<div style="min-width:0"><div class="nm">'+esc(p.name)+v.tags+'</div>'
+          +(p.username?'<div class="un">@'+esc(p.username)+'</div>':'')+'</div></div></td>'
+          +'<td class="r tabular" title="'+esc(new Date(p.firstSeen).toLocaleString('ru-RU'))+'">'+(p.approx?'≈ ':'')+dstr(p.firstSeen)+'</td>'
+          +'<td class="r tabular"><span class="sdot '+v.st+'"></span>'+ago(p.lastSeen)+'</td>'
+          +'<td class="r tabular"><b>'+nf(p.ops)+'</b></td>'
+          +'<td class="r tabular">'+esc(v.lastTx)+'</td>'
+          +'<td class="r tabular">'+kf(p.xp)+'</td>'
+          +'<td class="r tabular">'+(p.refs?nf(p.refs):'—')+'</td></tr>';
+      }).join('');
+
+      $('people-table').innerHTML=head+'<tbody>'+(rows||'<tr><td colspan="7" class="empty">никого не нашлось</td></tr>')+'</tbody>';
+      var ths=$('people-table').querySelectorAll('th.sortable');
+      for(var i=0;i<ths.length;i++){
+        ths[i].onclick=function(){
+          var k=this.getAttribute('data-k');
+          if(psort===k) pdir=-pdir; else { psort=k; pdir=k==='name'?1:-1; }
+          renderPeople();
+        };
+      }
+    }
+
+    var more = shown.length < list.length
+      ? '<button class="iconbtn" id="pmore" style="margin-top:12px">Показать ещё '
+        + nf(Math.min(20, list.length-shown.length)) + '</button>'
+      : '';
+    $('people-more').innerHTML=more;
+    var mb=$('pmore');
+    if(mb) mb.onclick=function(){ pcap+=20; renderPeople(); };
+
+    $('people-note').innerHTML='Показано '+nf(shown.length)+' из '+nf(list.length)+' (в базе '+nf(all.length)+')'
+      + expl('Что значат пометки',
+          '«≈» у даты — регистрация оценочная: человек появился раньше, чем мы начали её записывать. '
+          + '«Запись» — дата последней операции. Она честнее, чем «был»: открыть приложение можно и не записав ничего. '
+          + 'Точка слева: зелёная — заходил за неделю, жёлтая — от недели до месяца, серая — дольше месяца.');
   }
 
   /* ---------- Разделы ---------- */
   function renderSections(){
     var s=D.sections||[], total=D.users.total||1, max=1;
     for(var i=0;i<s.length;i++) if(s[i].users>max) max=s[i].users;
-    if(!s.length){ $('sections').innerHTML='<div class="empty">карточки ещё не собраны — нажмите «Дозаполнить карточки» внизу</div>'; return; }
+    if(!s.length){ $('sections').innerHTML='<div class="empty">данные ещё собираются</div>'; return; }
     var html='<div class="cardhead"><h3>Что открывают</h3><div class="hint">сплошная часть — те, кто заходил за 30 дней</div></div>';
     for(i=0;i<s.length;i++){
       var r=s[i], w=(r.users/max)*100, wa=(r.active/max)*100;
@@ -751,21 +900,43 @@ export const ADMIN_HTML = `<!doctype html>
 
   /* ---------- Топы ---------- */
   function renderTops(){
-    var xp=D.topXp||[], html='<thead><tr><th>Пользователь</th><th class="r">Ур.</th><th class="r">XP</th><th class="r">Опер.</th></tr></thead><tbody>';
+    var narrow=isNarrow();
+    function ava(e){ return '<div class="ava">'+esc((e.name||'?').charAt(0).toUpperCase())+'</div>'; }
+    var xp=D.topXp||[], rf=D.topRefs||[], html;
+
+    if(narrow){
+      html=xp.map(function(e){
+        return '<div class="li">'+ava(e)+'<div class="body"><div class="l1"><span class="nm">'+esc(e.name)+'</span>'
+          +(e.username?'<span class="un">@'+esc(e.username)+'</span>':'')+'</div>'
+          +'<div class="l2">уровень '+(e.level||0)+' · '+nf(e.ops||0)+' оп.</div></div>'
+          +'<div class="side">'+kf(e.xp)+'<small>XP</small></div></div>';
+      }).join('');
+      $('top-xp').innerHTML=html?'<div class="lst">'+html+'</div>':'<div class="empty">нет данных</div>';
+
+      html=rf.map(function(e){
+        return '<div class="li">'+ava(e)+'<div class="body"><div class="l1"><span class="nm">'+esc(e.name)+'</span>'
+          +(e.username?'<span class="un">@'+esc(e.username)+'</span>':'')+'</div></div>'
+          +'<div class="side">'+nf(e.refs||0)+'<small>друзей</small></div></div>';
+      }).join('');
+      $('top-refs').innerHTML=html?'<div class="lst">'+html+'</div>':'<div class="empty">пока никто не приглашал</div>';
+      return;
+    }
+
+    html='<table><thead><tr><th>Пользователь</th><th class="r">Ур.</th><th class="r">XP</th><th class="r">Опер.</th></tr></thead><tbody>';
     html+=xp.map(function(e){
-      return '<tr><td><div class="who"><div class="ava">'+esc((e.name||'?').charAt(0).toUpperCase())+'</div><div style="min-width:0">'
+      return '<tr><td><div class="who">'+ava(e)+'<div style="min-width:0">'
         +'<div class="nm">'+esc(e.name)+'</div>'+(e.username?'<div class="un">@'+esc(e.username)+'</div>':'')+'</div></div></td>'
         +'<td class="r tabular">'+(e.level||0)+'</td><td class="r tabular">'+kf(e.xp)+'</td><td class="r tabular">'+nf(e.ops||0)+'</td></tr>';
     }).join('')||'<tr><td colspan="4" class="empty">нет данных</td></tr>';
-    $('top-xp').innerHTML=html+'</tbody>';
+    $('top-xp').innerHTML=html+'</tbody></table>';
 
-    var rf=D.topRefs||[]; html='<thead><tr><th>Пользователь</th><th class="r">Привёл</th></tr></thead><tbody>';
+    html='<table><thead><tr><th>Пользователь</th><th class="r">Привёл</th></tr></thead><tbody>';
     html+=rf.map(function(e){
-      return '<tr><td><div class="who"><div class="ava">'+esc((e.name||'?').charAt(0).toUpperCase())+'</div><div style="min-width:0">'
+      return '<tr><td><div class="who">'+ava(e)+'<div style="min-width:0">'
         +'<div class="nm">'+esc(e.name)+'</div>'+(e.username?'<div class="un">@'+esc(e.username)+'</div>':'')+'</div></div></td>'
         +'<td class="r tabular"><b>'+nf(e.refs||0)+'</b></td></tr>';
     }).join('')||'<tr><td colspan="2" class="empty">пока никто не приглашал</td></tr>';
-    $('top-refs').innerHTML=html+'</tbody>';
+    $('top-refs').innerHTML=html+'</tbody></table>';
   }
 
   /* ---------- Сборка ---------- */
@@ -776,18 +947,20 @@ export const ADMIN_HTML = `<!doctype html>
     paintBanner();
 
     var cov=D.coverage||{};
-    var txt='Разрезы по разделам и настройкам считаются по карточкам: собраны у <b style="color:var(--ink)">'+nf(cov.withCard)
-      +'</b> из '+nf(cov.cloudKeys)+' синхронизированных ('+pc(cov.pct)+').';
-    if(cov.launchOnly>0) txt+=' Ещё '+nf(cov.launchOnly)+' чел. только запускали приложение и ни разу не синхронизировались — про них известны лишь запуск и XP.';
-    txt+=' Карточка появляется сама при заходе в приложение; давно не заходивших дозаполняет кнопка (по 12 за нажатие).';
-    if(D.backfill) txt+=' <b style="color:var(--ink)">Последний проход: заполнено '+nf(D.backfill.filled)+(D.backfill.done?', база пройдена целиком.':'.')+'</b>';
-    $('coverage').innerHTML=txt;
+    $('coverage').innerHTML=expl('Откуда берутся эти числа',
+      'Данные собираются сами: когда человек открывает приложение, воркер запоминает про него несколько '
+      +'чисел — сколько операций, когда была последняя, какие разделы открывал, как настроено. Денежных '
+      +'сумм среди них нет и не будет. Сейчас такие данные есть по <b>'+nf(cov.withCard)+'</b> из '
+      +nf(cov.cloudKeys)+' синхронизированных'
+      +(cov.launchOnly>0 ? '; ещё '+nf(cov.launchOnly)+' чел. только запускали приложение и ни разу не '
+        +'синхронизировались — про них известны лишь запуск и XP' : '')
+      +'. Отставших дашборд добирает сам при открытии.');
     $('updated').textContent='обновлено '+new Date(D.generatedAt||Date.now()).toLocaleString('ru-RU');
   }
   function segsAll(){
     segs('metric-segs',METRIC_SEGS,metric,function(k){ metric=k; renderChart(); segsAll(); });
     segs('range-segs',RANGE_SEGS,range,function(k){ range=k; renderChart(); segsAll(); });
-    segs('people-segs',PEOPLE_SEGS,pfilter,function(k){ pfilter=k; renderPeople(); segsAll(); });
+    segs('people-segs',PEOPLE_SEGS,pfilter,function(k){ pfilter=k; pcap=20; renderPeople(); segsAll(); });
   }
 
   /* ---------- Загрузка ---------- */
@@ -814,7 +987,7 @@ export const ADMIN_HTML = `<!doctype html>
     $('dash').className='wrap loading';
     fetchStats(opts).then(function(d){
       $('dash').className='wrap';
-      if(d){ D=d; showDash(); render(); }
+      if(d){ D=d; showDash(); render(); autoBackfill(); }
     });
   }
 
@@ -823,50 +996,48 @@ export const ADMIN_HTML = `<!doctype html>
    * сколько помещается под потолок подзапросов. Заставлять человека нажимать кнопку
    * восемь раз подряд незачем — крутим порции сами, пока база не пройдена целиком.
    */
-  var bfBusy=false, bfMsg='';
-  function runBackfill(){
-    if(bfBusy) return;
-    bfBusy=true; bfMsg='Собираю карточки…'; paintBanner();
+  var bfBusy=false, bfDone=false, bfMsg='';
+
+  /**
+   * Карточки собираются сами. Порция за запрос ограничена потолком подзапросов
+   * Worker, поэтому крутим порции по кругу — но это забота страницы, а не
+   * человека: он открыл дашборд, чтобы смотреть, а не нажимать кнопки.
+   */
+  function autoBackfill(){
+    if(bfBusy || bfDone) return;
+    var cov=(D&&D.coverage)||{};
+    if(((cov.cloudKeys||0)-(cov.withCard||0))<=0){ bfDone=true; return; }
+    bfBusy=true; bfMsg='собираю данные'; paintBanner();
     var filled=0, rounds=0;
     function step(){
       rounds++;
       fetchStats({backfill:true}).then(function(d){
-        if(!d){ bfBusy=false; bfMsg='Не получилось — попробуйте ещё раз'; paintBanner(); return }
+        if(!d){ bfBusy=false; bfDone=true; bfMsg=''; paintBanner(); return; }
         var bf=d.backfill||{};
         filled+=bf.filled||0;
-        // Порция без единого просмотренного ключа означает, что двигаться дальше
-        // некуда; потолок кругов — страховка от бесконечного цикла.
+        // Порция без просмотренных ключей означает, что двигаться больше некуда;
+        // потолок кругов — страховка от бесконечного цикла.
         if(bf.done || !bf.scanned || rounds>=40){
-          bfBusy=false;
-          bfMsg=filled>0 ? ('Готово: собрано карточек — '+filled) : 'Всё уже собрано';
+          bfBusy=false; bfDone=true; bfMsg='';
           D=d; render(); return;
         }
-        bfMsg='Собрано '+filled+'…';
-        D=d; render();
-        step();
+        bfMsg='собираю данные'; D=d; render(); step();
       });
     }
     step();
   }
 
+  /** Тонкая строка состояния. Пока идёт сбор — предупреждает, что числа ещё растут. */
   function paintBanner(){
     var cov=(D&&D.coverage)||{}, host=$('cov-banner');
     if(!host) return;
     var missing=(cov.cloudKeys||0)-(cov.withCard||0);
-    if(!missing && !bfMsg){ host.innerHTML=''; return; }
-    var txt = missing
-      ? 'Карточки собраны у <b>'+nf(cov.withCard)+'</b> из '+nf(cov.cloudKeys)+'. '
-        + 'Пока их нет, занижены: «записывают операции», последний шаг воронки, разделы и настройки. '
-        + 'Сбор идёт порциями и ничего не меняет в данных людей.'
-      : 'Карточки собраны у всех, кто синхронизировался.';
-    // Кнопка нужна только пока есть что собирать: предлагать действие, которое
-    // ничего не сделает, — верный способ заставить человека жать её впустую.
-    var btn = missing
-      ? '<button id="bf-go"'+(bfBusy?' disabled':'')+'>'+(bfBusy?'Собираю…':'Собрать карточки')+'</button>'
-      : '';
-    host.innerHTML='<div class="banner"><div class="txt">'+txt
-      +(bfMsg?' <b>'+esc(bfMsg)+'</b>':'')+'</div>'+btn+'</div>';
-    var go=$('bf-go'); if(go) go.onclick=runBackfill;
+    if(!missing && !bfBusy){ host.innerHTML=''; return; }
+    host.innerHTML='<div class="banner"><div class="txt">'
+      +(bfBusy?'<span class="spin"></span>':'')
+      +'Собраны данные по <b>'+nf(cov.withCard)+'</b> из '+nf(cov.cloudKeys)+' человек. '
+      +'Пока идёт сбор, «записывают операции», разделы и настройки занижены.'
+      +'</div></div>';
   }
 
   function doLogin(){
@@ -885,8 +1056,17 @@ export const ADMIN_HTML = `<!doctype html>
   $('login-pass').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
   $('logout').onclick=function(){ try{ sessionStorage.removeItem(KEY); }catch(e){} showLogin(); };
   $('refresh').onclick=function(){ load(); };
-  $('backfill').onclick=runBackfill;
-  $('q').addEventListener('input',function(){ if(D) renderPeople(); });
+  $('q').addEventListener('input',function(){ pcap=20; if(D) renderPeople(); });
+
+  // Поворот телефона меняет режим вёрстки (список ↔ таблица) и ширину графика,
+  // поэтому после изменения размера перерисовываем целиком.
+  var rt=null, lastW=window.innerWidth;
+  window.addEventListener('resize',function(){
+    if(window.innerWidth===lastW) return;
+    lastW=window.innerWidth;
+    clearTimeout(rt);
+    rt=setTimeout(function(){ if(D) render(); },180);
+  });
 
   load();
 })();
