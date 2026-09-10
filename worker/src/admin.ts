@@ -213,6 +213,21 @@ export const ADMIN_HTML = `<!doctype html>
   .note{color:var(--ink-subtle);font-size:11px;line-height:1.6}
   .foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}
 
+  /* Пока карточки не собраны, часть чисел на странице занижена. Говорить об этом
+     сноской в самом низу — значит дать человеку сначала поверить в неверные цифры. */
+  .banner{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px;
+    background:var(--amber-tint);border:1px solid var(--line);border-radius:20px;padding:14px 16px;
+  }
+  .banner .txt{flex:1;min-width:200px;font-size:13px;line-height:1.5}
+  .banner b{color:var(--ink)}
+  .banner button{
+    height:38px;padding:0 16px;border-radius:99px;border:0;background:var(--brand);color:#fff;
+    font:800 13px Manrope,sans-serif;cursor:pointer;white-space:nowrap;
+  }
+  .banner button:hover{background:var(--brand-deep)}
+  .banner button[disabled]{opacity:.6;cursor:default}
+
   /* ---------- Вход ---------- */
   #login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;
     background:linear-gradient(180deg,var(--grad-top) 0%,var(--grad-bottom) 40%)}
@@ -254,6 +269,7 @@ export const ADMIN_HTML = `<!doctype html>
     </header>
 
     <div class="grid g4" id="hero"></div>
+    <div id="cov-banner"></div>
 
     <div class="section">Активация <i>сколько людей доходят до пользы</i></div>
     <div class="grid g2">
@@ -271,6 +287,7 @@ export const ADMIN_HTML = `<!doctype html>
       </div>
       <div class="chartwrap"><div id="chart"></div><div class="tip" id="tip"></div></div>
       <div class="legend" id="legend"></div>
+      <div class="note" id="chart-note" style="margin-top:10px"></div>
     </div>
 
     <div class="section">Когорты <i>кто пришёл на неделе и что с ними стало</i></div>
@@ -375,12 +392,16 @@ export const ADMIN_HTML = `<!doctype html>
 
   /* ---------- Верхние карточки ---------- */
   function renderHero(){
-    var u=D.users, a=D.active, n=D.newUsers;
+    var u=D.users, a=D.active, n=D.newUsers, hasCards=((D.coverage||{}).withCard||0)>0;
     var cards=[
       { k:'Всего людей', v:nf(u.total), cls:'',
         s:'по приглашению '+nf(u.fromRef)+' · сами '+nf(u.organic) },
-      { k:'Записывают операции', v:nf(a.writers7), cls:'brand',
-        s:'за 30 дней '+nf(a.writers30)+' · всего с операциями '+nf(u.withOps)+' ('+pc(u.withOpsPct)+')' },
+      // Число считается по карточкам. Пока их нет, честнее прочерк, чем ноль:
+      // ноль читается как «никто не пишет», а это неправда.
+      { k:'Записывают операции', v:hasCards?nf(a.writers7):'—', cls:'brand',
+        s:hasCards
+          ? 'за 30 дней '+nf(a.writers30)+' · всего с операциями '+nf(u.withOps)+' ('+pc(u.withOpsPct)+')'
+          : 'нужны карточки · всего с операциями '+nf(u.withOps)+' ('+pc(u.withOpsPct)+')' },
       { k:'Заходили за 7 дней', v:nf(a.wau), cls:'',
         s:'сегодня '+nf(a.dau)+' · за 30 дней '+nf(a.mau)+' · липкость '+pc(a.stickiness) },
       { k:'Новых за 7 дней', v:nf(n.d7), cls:'amber', pill:delta(n.d7,n.prev7),
@@ -480,6 +501,7 @@ export const ADMIN_HTML = `<!doctype html>
     if(hist.length<2){
       $('chart').innerHTML='<div class="empty">История копится со дня установки снимков — нужно хотя бы двое суток.</div>';
       $('legend').innerHTML='';
+      $('chart-note').innerHTML='';
       return;
     }
     var W=880,H=190,padL=34,padR=10,padT=14,padB=24;
@@ -547,6 +569,16 @@ export const ADMIN_HTML = `<!doctype html>
     $('legend').innerHTML=conf.series.map(function(s2){
       return '<span><b style="background:'+s2.color+'"></b>'+esc(s2.label)+'</span>';
     }).join('');
+
+    /* Старые снимки делались по прежним определениям: «всего» считалось по одним
+       только облачным ключам, а «записывали» не считалось вовсе. Молча показать
+       ступеньку на стыке — значит заставить гадать, что случилось в тот день. */
+    var legacy=null;
+    for(i=0;i<hist.length;i++) if(hist[i].writers===undefined) legacy=hist[i].date;
+    $('chart-note').innerHTML = legacy
+      ? 'Снимки по '+esc(legacy.split('-').reverse().join('.'))+' включительно сделаны по прежним определениям '
+        + '(«всего» — только синхронизированные, «записывали» не считалось). На стыке возможна ступенька.'
+      : '';
 
     // подсказка по наведению
     var host=$('chart'), tip=$('tip'), svgEl=host.querySelector('svg'), cross=host.querySelector('#cross');
@@ -741,6 +773,7 @@ export const ADMIN_HTML = `<!doctype html>
     renderHero(); renderFunnel(); renderLifecycle();
     segsAll();
     renderChart(); renderCohorts(); renderPeople(); renderSections(); renderSettings(); renderTops();
+    paintBanner();
 
     var cov=D.coverage||{};
     var txt='Разрезы по разделам и настройкам считаются по карточкам: собраны у <b style="color:var(--ink)">'+nf(cov.withCard)
@@ -758,12 +791,12 @@ export const ADMIN_HTML = `<!doctype html>
   }
 
   /* ---------- Загрузка ---------- */
-  function load(opts){
+  /** Один запрос статистики. Возвращает данные или null, если показывать нечего. */
+  function fetchStats(opts){
     var key=null;
     try{ key=sessionStorage.getItem(KEY); }catch(e){}
-    if(!key){ showLogin(); return; }
-    $('dash').className='wrap loading';
-    fetch('/admin/stats',{
+    if(!key){ showLogin(); return Promise.resolve(null); }
+    return fetch('/admin/stats',{
       method:'POST',
       headers:{'X-Admin-Key':key,'Content-Type':'application/json'},
       body:JSON.stringify(opts||{})
@@ -773,12 +806,67 @@ export const ADMIN_HTML = `<!doctype html>
         if(res.status===429){ showLogin('Слишком много попыток, подождите минуту'); return null; }
         return res.json();
       })
-      .then(function(d){
-        $('dash').className='wrap';
-        if(d && d.ok){ D=d; showDash(); render(); }
-        else if(d){ showLogin('Сервер ответил ошибкой'); }
-      })
-      .catch(function(){ $('dash').className='wrap'; showLogin('Ошибка сети'); });
+      .then(function(d){ return (d && d.ok) ? d : null; })
+      .catch(function(){ return null; });
+  }
+
+  function load(opts){
+    $('dash').className='wrap loading';
+    fetchStats(opts).then(function(d){
+      $('dash').className='wrap';
+      if(d){ D=d; showDash(); render(); }
+    });
+  }
+
+  /*
+   * Дозаполнение идёт порциями: за один запрос воркер обрабатывает столько ключей,
+   * сколько помещается под потолок подзапросов. Заставлять человека нажимать кнопку
+   * восемь раз подряд незачем — крутим порции сами, пока база не пройдена целиком.
+   */
+  var bfBusy=false, bfMsg='';
+  function runBackfill(){
+    if(bfBusy) return;
+    bfBusy=true; bfMsg='Собираю карточки…'; paintBanner();
+    var filled=0, rounds=0;
+    function step(){
+      rounds++;
+      fetchStats({backfill:true}).then(function(d){
+        if(!d){ bfBusy=false; bfMsg='Не получилось — попробуйте ещё раз'; paintBanner(); return }
+        var bf=d.backfill||{};
+        filled+=bf.filled||0;
+        // Порция без единого просмотренного ключа означает, что двигаться дальше
+        // некуда; потолок кругов — страховка от бесконечного цикла.
+        if(bf.done || !bf.scanned || rounds>=40){
+          bfBusy=false;
+          bfMsg=filled>0 ? ('Готово: собрано карточек — '+filled) : 'Всё уже собрано';
+          D=d; render(); return;
+        }
+        bfMsg='Собрано '+filled+'…';
+        D=d; render();
+        step();
+      });
+    }
+    step();
+  }
+
+  function paintBanner(){
+    var cov=(D&&D.coverage)||{}, host=$('cov-banner');
+    if(!host) return;
+    var missing=(cov.cloudKeys||0)-(cov.withCard||0);
+    if(!missing && !bfMsg){ host.innerHTML=''; return; }
+    var txt = missing
+      ? 'Карточки собраны у <b>'+nf(cov.withCard)+'</b> из '+nf(cov.cloudKeys)+'. '
+        + 'Пока их нет, занижены: «записывают операции», последний шаг воронки, разделы и настройки. '
+        + 'Сбор идёт порциями и ничего не меняет в данных людей.'
+      : 'Карточки собраны у всех, кто синхронизировался.';
+    // Кнопка нужна только пока есть что собирать: предлагать действие, которое
+    // ничего не сделает, — верный способ заставить человека жать её впустую.
+    var btn = missing
+      ? '<button id="bf-go"'+(bfBusy?' disabled':'')+'>'+(bfBusy?'Собираю…':'Собрать карточки')+'</button>'
+      : '';
+    host.innerHTML='<div class="banner"><div class="txt">'+txt
+      +(bfMsg?' <b>'+esc(bfMsg)+'</b>':'')+'</div>'+btn+'</div>';
+    var go=$('bf-go'); if(go) go.onclick=runBackfill;
   }
 
   function doLogin(){
@@ -797,7 +885,7 @@ export const ADMIN_HTML = `<!doctype html>
   $('login-pass').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
   $('logout').onclick=function(){ try{ sessionStorage.removeItem(KEY); }catch(e){} showLogin(); };
   $('refresh').onclick=function(){ load(); };
-  $('backfill').onclick=function(){ load({backfill:true}); };
+  $('backfill').onclick=runBackfill;
   $('q').addEventListener('input',function(){ if(D) renderPeople(); });
 
   load();
