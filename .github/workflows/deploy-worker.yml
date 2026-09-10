@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
 
@@ -45,7 +45,7 @@ jobs:
 
       - name: Проверка типов
         working-directory: worker
-        run: npx tsc --noEmit -p tsconfig.json
+        run: npm run lint
 
       # Без токена деплоить нечем. Валить сборку красным не за что — это не
       # поломка кода, поэтому просто предупреждаем и выходим.
