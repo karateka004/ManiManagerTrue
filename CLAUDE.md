@@ -24,6 +24,12 @@ Zustand 5 (persist + migrate) + framer-motion 11 (LazyMotion) + dayjs (ru locale
 
 Worker (из папки `worker/`):
 - `npx wrangler deploy` — задеплоить воркер
+- **Деплой с телефона:** GitHub → Actions → «Деплой воркера» → Run workflow
+  (`.github/workflows/deploy-worker.yml`). Нужен секрет репозитория `CLOUDFLARE_API_TOKEN`
+  (шаблон токена «Edit Cloudflare Workers»), плюс `CLOUDFLARE_ACCOUNT_ID`, если у токена
+  доступ к нескольким аккаунтам. Кнопка Run workflow появляется только когда файл
+  воркфлоу есть в ветке `main`; до этого деплой запускается пушем в ветку разработки
+  или кнопкой Re-run на прогоне.
 - `npx wrangler tail` — живые логи
 - Секрет токена бота: создать `worker/_secrets.json` `{ "BOT_TOKEN": "..." }`,
   `npx wrangler secret bulk _secrets.json`, **сразу удалить файл**.
