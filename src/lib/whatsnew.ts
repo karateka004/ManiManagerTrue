@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.45.1'
+export const APP_VERSION = '1.46.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,41 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.46.0',
+    date: '2026-09-11',
+    title: { ru: 'Записывайте траты сообщением боту', en: 'Record expenses by texting the bot' },
+    items: [
+      {
+        icon: '💬',
+        text: {
+          ru: 'Напишите боту «кофе 300» — трата записана. Больше не нужно открывать приложение, жать «+», набирать сумму и выбирать категорию: одно сообщение вместо шести действий',
+          en: 'Text the bot “coffee 300” and the expense is recorded. No more opening the app, tapping “+”, typing the amount and picking a category: one message instead of six steps',
+        },
+      },
+      {
+        icon: '🗣️',
+        text: {
+          ru: 'Бот понимает обычную речь: «вчера продукты 1200», «кроссовки 3500 и пиво 180», «отдал за квартиру полтинник». И отвечает на вопросы — «сколько я потратил сегодня»',
+          en: 'The bot understands plain speech: “groceries 1200 yesterday”, “sneakers 3500 and beer 180”. It also answers questions like “how much did I spend today”',
+        },
+      },
+      {
+        icon: '🔁',
+        text: {
+          ru: 'Записи из чата появляются в приложении при следующем открытии. Под каждой — «Отменить» и «Не та категория», если бот ошибся',
+          en: 'Entries from the chat appear in the app the next time you open it. Each one has “Undo” and “Wrong category” in case the bot got it wrong',
+        },
+      },
+      {
+        icon: '🔒',
+        text: {
+          ru: 'Разбирает сообщения Google Gemini: туда уходит текст сообщения и итоги по суммам, но не список ваших операций. Подробнее — в гайде, раздел «Приватность»',
+          en: 'Messages are parsed by Google Gemini: the message text and your totals are sent, but not the list of your entries. See the guide, “Privacy”',
+        },
+      },
+    ],
+  },
   {
     version: '1.45.1',
     date: '2026-09-08',

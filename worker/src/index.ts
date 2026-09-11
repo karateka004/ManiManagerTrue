@@ -1,34 +1,43 @@
 /**
  * Кошель — Cloudflare Worker (бэкенд для бота).
  *
- * Делает две вещи, которые статичное приложение не может само:
- *   1. /feedback — принимает отзыв из мини-аппа и шлёт его тебе в ЛС бота.
- *   2. /referral + /stats — учёт реферальных приглашений в KV.
+ * Делает то, чего статичное приложение не может само:
+ *   1. /tg/webhook — принимает сообщения боту: «кофе 300» становится операцией.
+ *   2. /inbox/* — очередь таких операций до ближайшего открытия приложения.
+ *   3. /feedback — принимает отзыв из мини-аппа и шлёт его тебе в ЛС бота.
+ *   4. /referral + /stats — учёт реферальных приглашений в KV.
+ *   5. /data/* — облачная копия данных пользователя.
  *
- * Безопасность: каждый запрос обязан содержать `initData` — подписанную
+ * Безопасность: запросы из мини-аппа обязаны содержать `initData` — подписанную
  * строку от Telegram WebApp. Воркер проверяет HMAC-подпись ботовым токеном,
  * поэтому подделать пользователя нельзя. Токен бота наружу не выходит.
+ * Вебхук защищён отдельным секретом в заголовке (см. handleTgWebhook).
  *
- * Секреты (выставляются через `wrangler secret put`):
- *   BOT_TOKEN      — токен @TrueManiManager_Bot из BotFather
- *   OWNER_CHAT_ID  — твой numeric chat_id (куда падают отзывы)
+ * Секреты (выставляются через `wrangler secret bulk`, см. CLAUDE.md):
+ *   BOT_TOKEN         — токен @TrueManiManager_Bot из BotFather
+ *   TG_WEBHOOK_SECRET — свой секрет вебхука (его же Telegram шлёт в заголовке)
+ *   GEMINI_API_KEY    — ключ разбора сообщений (необязателен: без него работают правила)
+ *   ADMIN_KEY         — ключ owner-ручек
  *
  * KV namespace (биндинг в wrangler.toml): REFERRALS
  */
 
 import { ADMIN_HTML } from './admin'
+import type { Env } from './env'
+import { APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
+import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
+import { isRateLimited } from './limits'
+import {
+  escapeHtml,
+  getWebhookInfo,
+  sendMessage,
+  setChatMenuButton,
+  setMyCommands,
+  setWebhook,
+  type TgUpdate,
+} from './tg'
 
-export interface Env {
-  BOT_TOKEN: string
-  OWNER_CHAT_ID: string
-  REFERRALS: KVNamespace
-  /** Через запятую: разрешённые Origin (по умолчанию *). */
-  ALLOWED_ORIGINS?: string
-  /** Режим ежедневной рассылки напоминаний: 'off' | 'owner' | 'all' (по умолчанию 'off'). */
-  REMINDERS_MODE?: string
-  /** Секрет для owner-only ручного триггера теста напоминаний (/admin/test). */
-  ADMIN_KEY?: string
-}
+export type { Env }
 
 interface TgUser {
   id: number
@@ -243,35 +252,8 @@ async function verifyInitData(initData: string, botTokenRaw: string): Promise<Tg
 /* ------------------------------------------------------------------ */
 /* Telegram Bot API                                                   */
 /* ------------------------------------------------------------------ */
-
-/**
- * Шлёт сообщение от бота. `replyMarkup` — опциональная inline-клавиатура.
- * Возвращает `{ ok, status }` из ответа Telegram: status=403 означает, что бот
- * заблокирован пользователем (или аккаунт удалён) — вызывающий может отписать его.
- */
-async function sendMessage(
-  env: Env,
-  chatId: string | number,
-  text: string,
-  replyMarkup?: unknown,
-): Promise<{ ok: boolean; status: number }> {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-      }),
-    })
-    return { ok: res.ok, status: res.status }
-  } catch {
-    return { ok: false, status: 0 }
-  }
-}
+/* Вызовы Bot API живут в src/tg.ts — их стало больше, чем уместно держать
+   в файле с маршрутами (правка сообщения, ответ на кнопку, регистрация вебхука). */
 
 function userLabel(u: TgUser): string {
   const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Без имени'
@@ -279,33 +261,10 @@ function userLabel(u: TgUser): string {
   return `${escapeHtml(name)}${escapeHtml(handle)} [id ${u.id}]`
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 /* ------------------------------------------------------------------ */
 /* Анти-абуз: rate limiting + чтение initData                          */
 /* ------------------------------------------------------------------ */
-
-/**
- * Простой rate-limit на KV-счётчиках: возвращает true, если лимит уже превышен.
- * Ключ живёт `ttlSec` (минимум KV — 60 c) — окно примерно фиксированной длины.
- * Атомарности нет, но для анти-спама/анти-DDoS достаточно (Worker per-isolate
- * однопоточен). Считаем по проверенному `user.id`, поэтому аноним сюда не доходит.
- */
-async function isRateLimited(
-  env: Env,
-  scope: string,
-  id: string | number,
-  limit: number,
-  ttlSec: number,
-): Promise<boolean> {
-  const key = `rl:${scope}:${id}`
-  const cur = Number((await env.REFERRALS.get(key)) ?? '0')
-  if (cur >= limit) return true
-  await env.REFERRALS.put(key, String(cur + 1), { expirationTtl: ttlSec })
-  return false
-}
+/* Сам ограничитель — в src/limits.ts: им пользуется и бот. */
 
 function tooMany(env: Env, origin: string | null): Response {
   return json({ ok: false, error: 'rate_limited' }, { status: 429 }, env, origin)
@@ -338,6 +297,17 @@ export default {
     }
 
     try {
+      // Вебхук — первым: это самый частый запрос к воркеру, и он единственный
+      // приходит не из мини-аппа, а от Telegram (со своей проверкой доступа).
+      if (url.pathname === '/tg/webhook' && req.method === 'POST') {
+        return await handleTgWebhook(req, env)
+      }
+      if (url.pathname === '/inbox/get' && req.method === 'POST') {
+        return await handleInboxGet(req, env, origin)
+      }
+      if (url.pathname === '/inbox/ack' && req.method === 'POST') {
+        return await handleInboxAck(req, env, origin)
+      }
       if (url.pathname === '/feedback' && req.method === 'POST') {
         return await handleFeedback(req, env, origin)
       }
@@ -373,6 +343,9 @@ export default {
       }
       if (url.pathname === '/admin/test' && req.method === 'POST') {
         return await handleAdminTest(req, env, origin)
+      }
+      if (url.pathname === '/admin/webhook' && req.method === 'POST') {
+        return await handleAdminWebhook(req, env, origin)
       }
       if (url.pathname === '/admin' && req.method === 'GET') {
         return new Response(ADMIN_HTML, {
@@ -934,6 +907,99 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
 }
 
 /* ------------------------------------------------------------------ */
+/* Бот: приём сообщений и очередь входящих                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Вебхук Telegram.
+ *
+ * Доверие держится на секрете, который знают только Telegram и мы: он задан в
+ * setWebhook и приходит в заголовке каждого обновления. Секрет не выставлен —
+ * вебхук закрыт наглухо, и это правильный отказ: принимать «обновления» от кого
+ * угодно означало бы, что записать операцию любому нашему пользователю может
+ * любой, кто знает его numeric id.
+ */
+async function handleTgWebhook(req: Request, env: Env): Promise<Response> {
+  const secret = env.TG_WEBHOOK_SECRET ?? ''
+  const got = req.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? ''
+  if (!secret || !timingSafeEqual(got, secret)) {
+    return new Response('forbidden', { status: 403 })
+  }
+
+  const update = (await req.json().catch(() => null)) as TgUpdate | null
+  if (update) {
+    try {
+      await handleTgUpdate(update, env)
+    } catch (e) {
+      // Полную ошибку видно в `wrangler tail`.
+      console.error('[bot] обновление не обработано', e)
+    }
+  }
+  // Кроме чужого секрета отвечаем 200 всегда: на любой другой ответ Telegram
+  // начнёт повторять доставку, и одно непонятое сообщение превратится в поток.
+  return new Response('ok', { status: 200 })
+}
+
+/**
+ * Owner-only регистрация вебхука — чтобы это делалось с телефона, а не из
+ * консоли. Защита та же, что у /admin/test: секрет в заголовке X-Admin-Key.
+ * Адрес вебхука берём из самого запроса, чтобы не держать копию домена в коде.
+ */
+async function handleAdminWebhook(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const key = req.headers.get('X-Admin-Key') ?? ''
+  if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) {
+    return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
+  }
+  if (!env.TG_WEBHOOK_SECRET) {
+    return json({ ok: false, error: 'no_webhook_secret' }, { status: 400 }, env, origin)
+  }
+
+  const target = `${new URL(req.url).origin}/tg/webhook`
+  // Накопившуюся очередь сбрасываем: Telegram хранит недоставленные обновления
+  // сутки, и среди них наверняка есть «привет» тем, кому бот никогда не отвечал.
+  // Записать это сейчас как операции значило бы внести человеку то, чего он не ждёт.
+  const set = await setWebhook(env, target, env.TG_WEBHOOK_SECRET, true)
+  // Заодно обустраиваем сам чат: список команд для синей кнопки «Меню» и вход в
+  // приложение слева от поля ввода. Это настройки бота, а не воркера, — их надо
+  // выставить один раз, и логично делать это там же, где регистрируется вебхук.
+  const commands = await setMyCommands(env, BOT_COMMANDS)
+  const menu = await setChatMenuButton(env, 'Кошель', APP_URL)
+  const info = await getWebhookInfo(env)
+  return json({ ok: set.ok, url: target, set: set.body, commands, menu, info }, { status: 200 }, env, origin)
+}
+
+/** Отдать приложению операции, записанные через бота и ещё не забранные. */
+async function handleInboxGet(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'inbox', user.id, 60, 60)) return tooMany(env, origin)
+
+  const inbox = await readInbox(env, user.id)
+  return json({ ok: true, items: inbox.items }, { status: 200 }, env, origin)
+}
+
+/**
+ * Подтверждение приёма: приложение записало эти операции у себя, из очереди их
+ * можно убрать. Именно по списку id, а не «очистить всё» — человек мог написать
+ * боту ровно в ту секунду, пока приложение сливало входящие.
+ */
+async function handleInboxAck(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; ids?: unknown }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'inbox', user.id, 60, 60)) return tooMany(env, origin)
+
+  const ids = Array.isArray(body.ids)
+    ? body.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_INBOX)
+    : []
+  if (ids.length === 0) return json({ ok: true, removed: 0 }, { status: 200 }, env, origin)
+
+  const { removed, left } = await dropFromInbox(env, user.id, ids)
+  return json({ ok: true, removed: removed.length, left }, { status: 200 }, env, origin)
+}
+
+/* ------------------------------------------------------------------ */
 /* Ежедневные напоминания (cron)                                       */
 /* ------------------------------------------------------------------ */
 /*
@@ -944,21 +1010,27 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
  * заблокирован»). Дедуп за сутки — `notified:<id>`. Рубильник выката — REMINDERS_MODE.
  */
 
-/** URL мини-аппа для кнопки «Открыть» (публичный, не секрет). */
-const APP_URL = 'https://karateka004.github.io/ManiManagerTrue/'
-/** Набор текстов напоминаний — ротация по дню (см. pickReminderText). */
+/**
+ * Набор текстов напоминаний — ротация по дню (см. pickReminderText).
+ *
+ * Раньше напоминание звало открыть приложение — то есть напоминало пойти и
+ * совершить ровно то трудное действие, из-за которого трекеры и забрасывают.
+ * Теперь оно зовёт написать в этот же чат: ответить на него стоит одного
+ * сообщения, не выходя из переписки.
+ *
+ * Кнопки у напоминания больше нет намеренно. Нажатием нельзя написать сообщение
+ * за человека, а кнопка «Открыть Кошель» под текстом «напиши сюда» тянула бы
+ * обратно туда, откуда мы уходим.
+ */
 const REMINDER_TEXTS = [
-  'Есть ли транзакции сегодня? 👀\nЗапиши, пока не забыл — это займёт 10 секунд.',
-  'Как прошёл день с деньгами? 💸\nОтметь траты, чтобы ничего не потерялось.',
-  'Минутка на финансы 🧾\nВнеси сегодняшние операции в Кошель.',
-  'Не забудь записать траты за день ✍️\nПотом сложнее вспомнить.',
-  'Сколько ушло сегодня? 🤔\nЗагляни в Кошель и отметь.',
-  'Вечерний чек-ин 🌙\nДобавь сегодняшние доходы и расходы.',
-  'Деньги любят учёт 📊\nЗапиши, на что потратил сегодня.',
+  'Что сегодня потратил? Напиши сюда одним сообщением — например: кофе 300',
+  'Запиши траты, пока помнишь. Хватит одной строки: такси 450',
+  'Как прошёл день с деньгами? Напиши прямо сюда: продукты 1200',
+  'Не откладывай — потом сложнее вспомнить. Напиши, например: обед 350',
+  'Сколько ушло сегодня? Ответь этим сообщением: кофе 300',
+  'Вечерний чек-ин. Напиши сюда, что потратил: аптека 480',
+  'Деньги любят учёт. Одно сообщение — и записано: бензин 2500',
 ]
-const REMINDER_BUTTON = {
-  inline_keyboard: [[{ text: '📝 Открыть Кошель', web_app: { url: APP_URL } }]],
-}
 /** Сколько держим метку «уже слали сегодня» (20 ч — переживает один суточный цикл). */
 const NOTIFIED_TTL_SEC = 72000
 /** Сдвиг МСК от UTC (у МСК нет перехода на летнее время). */
@@ -1148,10 +1220,10 @@ async function handleGiftNotify(req: Request, env: Env, origin: string | null): 
  */
 async function handleAdminTest(req: Request, env: Env, origin: string | null): Promise<Response> {
   const key = req.headers.get('X-Admin-Key') ?? ''
-  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) {
+  if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) {
     return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
   }
-  const r = await sendMessage(env, env.OWNER_CHAT_ID, pickReminderText(Date.now()), REMINDER_BUTTON)
+  const r = await sendMessage(env, env.OWNER_CHAT_ID, pickReminderText(Date.now()))
   return json({ ok: r.ok, status: r.status }, { status: 200 }, env, origin)
 }
 
@@ -1169,7 +1241,7 @@ async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
 
   // Тестовый режим: только владельцу и один раз в день (на первом часу окна).
   if (mode === 'owner') {
-    if (currentSlot === 0) await sendMessage(env, env.OWNER_CHAT_ID, text, REMINDER_BUTTON)
+    if (currentSlot === 0) await sendMessage(env, env.OWNER_CHAT_ID, text)
     return
   }
 
@@ -1206,7 +1278,7 @@ async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
       // 3) Уже слали сегодня?
       if (await env.REFERRALS.get(`notified:${id}`)) continue
 
-      const r = await sendMessage(env, id, text, REMINDER_BUTTON)
+      const r = await sendMessage(env, id, text)
       if (r.ok) {
         await env.REFERRALS.put(`notified:${id}`, '1', { expirationTtl: NOTIFIED_TTL_SEC })
       } else if (r.status === 403) {
@@ -1543,7 +1615,7 @@ function weekStartMsk(ms: number): number {
 /** Админ-API: агрегированная аналитика. Защита — секрет ADMIN_KEY + лёгкий IP-rate-limit. */
 async function handleAdminStats(req: Request, env: Env, origin: string | null): Promise<Response> {
   const key = req.headers.get('X-Admin-Key') ?? ''
-  if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) {
+  if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) {
     return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
   }
   const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown'

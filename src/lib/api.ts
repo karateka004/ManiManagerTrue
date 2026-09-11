@@ -7,6 +7,7 @@
  *    приложение продолжает работать как раньше.
  */
 import { tg } from './telegram'
+import { CURRENCIES, type Currency } from './currencies'
 
 export const WORKER_URL = 'https://koshel-worker.karateka004.workers.dev'
 
@@ -178,6 +179,65 @@ export async function pushCloud(
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
+}
+
+/* ---------- Входящие: операции, записанные сообщением боту ---------- */
+
+/**
+ * Операция, записанная через бота и ещё не перенесённая в приложение.
+ *
+ * Лежит в облаке ОТДЕЛЬНО от блоба (ключ `inbox:<id>`), а не внутри него.
+ * Причина в том, что синхронизация — last-write-wins по времени, и приложение
+ * отправляет свой блоб целиком: запиши бот прямо в блоб, открытое приложение
+ * затёрло бы его запись своим следующим пушем, молча.
+ */
+export interface InboxEntry {
+  /** Идентификатор транспорта: им же подтверждается приём. */
+  id: string
+  type: 'income' | 'expense'
+  amount: number
+  currency?: Currency
+  categoryId: string
+  note?: string
+  date: string
+}
+
+const CURRENCY_CODES = new Set<string>(CURRENCIES.map((c) => c.code))
+
+/**
+ * Записи приходят из сети и попадают прямо в деньги человека, поэтому каждое
+ * поле проверяем здесь, а не надеемся на сервер: сломанная сумма испортила бы
+ * всю аналитику, а неизвестный код валюты выпал бы из подсчётов.
+ */
+function isUsableEntry(x: unknown): x is InboxEntry {
+  const e = x as InboxEntry | null
+  if (!e || typeof e.id !== 'string') return false
+  if (e.type !== 'income' && e.type !== 'expense') return false
+  if (typeof e.amount !== 'number' || !Number.isFinite(e.amount) || e.amount <= 0) return false
+  if (typeof e.categoryId !== 'string' || !e.categoryId) return false
+  if (typeof e.date !== 'string' || !e.date) return false
+  if (e.currency !== undefined && !CURRENCY_CODES.has(e.currency)) return false
+  if (e.note !== undefined && typeof e.note !== 'string') return false
+  return true
+}
+
+/** Забрать операции, записанные через бота. Пусто — их нет или бэкенд недоступен. */
+export async function pullInbox(): Promise<InboxEntry[]> {
+  if (!isBackendConfigured() || !tg.initData) return []
+  const res = await post('/inbox/get', { initData: tg.initData })
+  const items = res?.ok && Array.isArray(res.items) ? res.items : []
+  return items.filter(isUsableEntry)
+}
+
+/**
+ * Подтвердить приём: эти записи уже в сторе, из очереди их можно убрать.
+ * Подтверждаем по id, а не «очистить всё»: человек мог написать боту ровно в ту
+ * секунду, пока шёл слив, и очистка целиком съела бы новую запись.
+ */
+export async function ackInbox(ids: string[]): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData || ids.length === 0) return false
+  const res = await post('/inbox/ack', { initData: tg.initData, ids })
+  return !!res?.ok
 }
 
 /* ---------- Напоминания (ежедневный пуш от бота) ---------- */

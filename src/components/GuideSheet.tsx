@@ -152,10 +152,14 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
       {
         id: 'privacy',
         icon: <Lock size={18} strokeWidth={2.2} />,
+        // Формулировка обязана быть точной. Здесь дважды успевало устареть:
+        // сначала появилась облачная копия, потом запись сообщением боту, а
+        // текст всё ещё обещал, что операции не покидают устройство.
         title: 'Приватность',
         items: [
-          'Все операции хранятся только в твоём браузере на устройстве.',
-          'Сервер их не видит — он нужен лишь для отзывов, рефералов и таблицы лидеров.',
+          'Операции хранятся на устройстве и в облаке за твоим Telegram-аккаунтом — чтобы не пропасть при смене телефона.',
+          'В таблицу лидеров уходит только геймификация: XP, уровень, монеты. Сумм там нет.',
+          'Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для этого в Google Gemini уходит текст сообщения и итоги — суммы за день, неделю и месяц, бюджет, расход по категориям. Сам список операций с датами и заметками не уходит.',
         ],
       },
     ],
@@ -281,8 +285,9 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
         icon: <Lock size={18} strokeWidth={2.2} />,
         title: 'Privacy',
         items: [
-          'All operations are stored only in your browser on your device.',
-          'The server never sees them — it is used only for feedback, referrals and the leaderboard.',
+          'Entries live on your device and in the cloud behind your Telegram account, so they survive a change of phone.',
+          'Only gamification goes to the leaderboard: XP, level, coins. No amounts.',
+          'You can just write to the bot: it records expenses and answers questions about your money. For that, Google Gemini receives the message text and your totals — daily, weekly and monthly sums, budget, spending per category. The list of individual entries with dates and notes is not sent.',
         ],
       },
     ],

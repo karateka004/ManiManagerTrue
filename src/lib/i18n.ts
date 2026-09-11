@@ -155,10 +155,11 @@ const DICT: Dict = {
   'settings.guide_hint': { ru: 'Все функции и как ими пользоваться', en: 'All features and how to use them' },
   'settings.about': { ru: 'О приложении', en: 'About' },
   // Формулировка про хранение обязана быть точной: облачная копия появилась
-  // позже, а текст утверждал, что данные никуда не уходят.
+  // позже, а текст утверждал, что данные никуда не уходят. Теперь появился ещё
+  // и разбор сообщения боту — о нём тоже надо сказать прямо, а не умолчать.
   'settings.about_text': {
-    ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона.',
-    en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone.',
+    ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона. Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для этого в Google Gemini уходит текст сообщения и итоги по суммам; список самих операций — нет.',
+    en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone. You can write to the bot in plain words: it records expenses and answers questions about your money. For that, Google Gemini receives the message text and your totals; the list of entries itself is not sent.',
   },
   'settings.in_telegram': { ru: 'Запущено внутри Telegram:', en: 'Running inside Telegram:' },
   'settings.income_cats': { ru: 'доход', en: 'income' },

@@ -6,11 +6,12 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "lint": "tsc --noEmit && node scripts/check-admin-js.mjs && node scripts/check-categories.mjs"
+    "lint": "tsc --noEmit && node scripts/check-admin-js.mjs && node scripts/check-categories.mjs && node scripts/check-currencies.mjs && node scripts/test-entry.mjs && node --import ./scripts/ts-resolve.mjs scripts/test-reply.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240924.0",
     "typescript": "^5.6.0",
     "wrangler": "^3.78.0"
-  }
+  },
+  "type": "module"
 }

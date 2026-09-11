@@ -19,7 +19,7 @@
  * локально, как раньше.
  */
 import { useStore, flushPersist } from '../store/transactions'
-import { pullCloud, pushCloud, isBackendConfigured } from './api'
+import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud } from './api'
 import { tg } from './telegram'
 
 /** Ключ persist-стора (см. `name` в store/transactions.ts). */
@@ -28,6 +28,16 @@ const PERSIST_KEY = 'finance-mini-app:v1'
 const META_KEY = 'koshel:cloudMeta'
 /** Пауза перед пушем после последнего изменения. */
 const PUSH_DEBOUNCE = 1500
+/**
+ * Идентификаторы уже перенесённых записей бота. Нужны на один узкий случай:
+ * операции добавлены в стор, а подтверждение приёма не дошло (связь оборвалась).
+ * Без этого списка следующий запуск записал бы их второй раз.
+ */
+const INBOX_DONE_KEY = 'koshel:inboxDone'
+/** Дальше помнить незачем: неподтверждённых записей столько не накапливается. */
+const INBOX_DONE_MAX = 100
+/** Как часто перепроверять входящие при возврате в приложение. */
+const INBOX_RECHECK_MS = 30_000
 
 function getLocalUpdatedAt(): number {
   try {
@@ -144,6 +154,78 @@ function flushNow(): void {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Входящие от бота                                                    */
+/* ------------------------------------------------------------------ */
+
+function readDone(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(INBOX_DONE_KEY) || '[]')
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeDone(ids: string[]): void {
+  try {
+    localStorage.setItem(INBOX_DONE_KEY, JSON.stringify(ids.slice(-INBOX_DONE_MAX)))
+  } catch {
+    /* приватный режим / нет места — переживём, повтор маловероятен */
+  }
+}
+
+let lastInboxAt = 0
+
+/**
+ * Перенести в стор операции, записанные сообщением боту.
+ *
+ * Записываем через `commitTransaction`, а не подменой массива: стор — источник
+ * правды, и в этом действии живёт ещё и сдвиг периода просмотра на дату
+ * операции. Запись «вчера продукты 1200» иначе попала бы в стор, но исчезла бы
+ * с глаз, если человек смотрит на сегодняшний день.
+ *
+ * Порядок важен: сначала записать, потом подтвердить приём. Обратный порядок
+ * терял бы операции при обрыве связи, а этот в худшем случае принесёт их
+ * дважды — от чего и страхует список уже применённых id.
+ */
+async function mergeInbox(): Promise<void> {
+  lastInboxAt = Date.now()
+  let items
+  try {
+    items = await pullInbox()
+  } catch {
+    return // офлайн — заберём при следующем открытии
+  }
+  if (items.length === 0) return
+
+  const done = readDone()
+  const fresh = items.filter((e) => !done.has(e.id))
+  const commit = useStore.getState().commitTransaction
+  for (const e of fresh) {
+    commit(
+      {
+        type: e.type,
+        amount: e.amount,
+        currency: e.currency,
+        categoryId: e.categoryId,
+        note: e.note,
+        date: e.date,
+      },
+      null,
+    )
+  }
+
+  writeDone([...done, ...fresh.map((e) => e.id)])
+  try {
+    // Подтверждаем ВСЕ пришедшие, включая те, что уже применяли раньше: иначе
+    // однажды неподтверждённая запись осталась бы в очереди навсегда.
+    await ackInbox(items.map((e) => e.id))
+  } catch {
+    /* не подтвердилось — подтвердим при следующем сливе, повтор отсечёт done */
+  }
+}
+
 /**
  * Инициализация синка: тянем облако, решаем кто новее, подписываемся на изменения.
  * Идемпотентна (запускается один раз). Безопасна вне Telegram — просто выходит.
@@ -217,9 +299,22 @@ export async function initCloudSync(): Promise<void> {
   // Любое изменение стора → отложенный пуш.
   useStore.subscribe(() => schedulePush())
 
+  // Записи из бота забираем ПОСЛЕ того, как разобрались с облаком: принятие
+  // облачного снимка перечитывает storage целиком (rehydrate) и стёрло бы всё,
+  // что мы добавили до него. Подписка на изменения уже стоит, поэтому
+  // перенесённые операции сами уедут в облако ближайшим пушем.
+  await mergeInbox()
+
   // Не теряем последние правки при сворачивании/закрытии мини-аппа.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushNow()
+    if (document.visibilityState === 'hidden') {
+      flushNow()
+      return
+    }
+    // Вернулись в приложение — возможно, человек тем временем написал боту.
+    // Webview при этом не перезапускается, и без этой проверки запись ждала бы
+    // до следующего холодного старта.
+    if (Date.now() - lastInboxAt > INBOX_RECHECK_MS) void mergeInbox()
   })
   window.addEventListener('pagehide', flushNow)
 }

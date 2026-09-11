@@ -20,6 +20,10 @@ export const CURRENCIES = [
   { code: 'INR', symbol: '₹',  name: 'Рупия',       locale: 'en-IN' },
   { code: 'BYN', symbol: 'Br', name: 'Бел. рубль',  locale: 'ru-BY' },
   { code: 'RUB', symbol: '₽',  name: 'Рубль',       locale: 'ru-RU' },
+  // Злотый появился вместе с записью через бота: разбор сообщения умеет узнать
+  // «zł» и «злотых», а валюты, которой нет в этом списке, операция получить не
+  // может — она выпала бы из всех подсчётов (фильтр по коду валюты).
+  { code: 'PLN', symbol: 'zł', name: 'Злотый',      locale: 'pl-PL' },
 ] as const
 
 export type Currency = (typeof CURRENCIES)[number]['code']
