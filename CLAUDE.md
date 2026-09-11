@@ -17,6 +17,13 @@ Zustand 5 (persist + migrate) + framer-motion 11 (LazyMotion) + dayjs (ru locale
 
 ## Команды
 Фронтенд (из корня):
+- **Деплой с телефона:** GitHub → Actions → «Деплой приложения» → Run workflow
+  (`.github/workflows/deploy-app.yml`). Секрет не нужен — пуш в ветку `gh-pages`
+  делается встроенным токеном Actions (`permissions: contents: write`). Срабатывает
+  сам на каждый пуш в `main`; с веток разработки НЕ выкатывается (фронтенд видят все
+  пользователи). Прогон зеленеет только когда Pages реально начал отдавать новый
+  бандл, а не когда закончился git push. Кнопка Run workflow появляется после того,
+  как файл воркфлоу попадёт в `main`.
 - `npm run dev` — Vite dev-сервер на :5173
 - `npm run lint` — `tsc --noEmit` (проверка типов, без сборки)
 - `npm run build` — `tsc -b && vite build` в `dist/`
