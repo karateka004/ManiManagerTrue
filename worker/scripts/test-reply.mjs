@@ -41,6 +41,7 @@ function ctx(over = {}) {
     ops: 0,
     balance: 0,
     byCategory: [],
+    todayByCategory: [],
     pending: 0,
     ...over,
   }
@@ -59,7 +60,10 @@ const CASES = [
     name: 'бюджет задан — дневной остаток в цитате',
     ops: [op()],
     ctx: ctx({ monthlyBudget: 18000, spentMonth: 260, spentToday: 260, daysLeft: 20 }),
-    want: ['<b>Кафе · 300 ₴</b>', '<blockquote>На сегодня осталось 640 ₴ из 900 ₴</blockquote>'],
+    want: [
+      '<b>Кафе · 300 ₴</b>',
+      '<blockquote><code>███░░░░░░░</code>  осталось 640 ₴ из 900 ₴</blockquote>',
+    ],
   },
   {
     name: 'бюджета нет — расход за сегодня',
@@ -71,7 +75,10 @@ const CASES = [
     name: 'перебор — честно про перебор, а не «осталось 0»',
     ops: [op()],
     ctx: ctx({ monthlyBudget: 18000, spentMonth: 1140, spentToday: 1140, daysLeft: 20 }),
-    want: ['<b>Кафе · 300 ₴</b>', '<blockquote>Дневной лимит 900 ₴, перебор на 240 ₴</blockquote>'],
+    want: [
+      '<b>Кафе · 300 ₴</b>',
+      '<blockquote><code>██████████</code>  перебор на 240 ₴ от 900 ₴</blockquote>',
+    ],
   },
   {
     name: 'доход отличается знаком плюс',
@@ -167,8 +174,125 @@ for (const c of CASES) {
   }
 }
 
+/* ---------- Полоса расхода ---------- */
+
+const BAR_CASES = [
+  { used: 0, limit: 900, want: '░░░░░░░░░░', name: 'ничего не потрачено — полоса пустая' },
+  { used: 20, limit: 900, want: '█░░░░░░░░░', name: 'потрачено чуть-чуть — одна клетка, а не пусто' },
+  { used: 450, limit: 900, want: '█████░░░░░', name: 'половина лимита' },
+  { used: 900, limit: 900, want: '██████████', name: 'лимит ровно исчерпан' },
+  { used: 1400, limit: 900, want: '██████████', name: 'перебор — полоса не вылезает за десять клеток' },
+  { used: 300, limit: 0, want: '', name: 'бюджета нет — полосы нет' },
+]
+
+for (const c of BAR_CASES) {
+  const got = __test.budgetBar(c.used, c.limit)
+  if (got !== c.want) {
+    failed++
+    console.error(`✗ полоса: ${c.name}\n  ждали «${c.want}», получили «${got}»`)
+  }
+}
+
+/* ---------- Сводка дня ---------- */
+
+const TODAY_CASES = [
+  {
+    name: 'пусто — предлагаем записать, а не показываем пустую табличку',
+    ctx: ctx(),
+    want: 'Сегодня записей нет. Напиши, например: кофе 300',
+  },
+  {
+    name: 'одна категория — без итоговой черты',
+    ctx: ctx({ spentToday: 300, todayByCategory: [{ id: 'cafe', sum: 300 }] }),
+    want: ['<b>Сегодня</b>', '<pre>Кафе   300 ₴</pre>'].join('\n'),
+  },
+  {
+    name: 'несколько категорий — колонки выровнены, снизу итог',
+    ctx: ctx({
+      spentToday: 1950,
+      todayByCategory: [
+        { id: 'food', sum: 1200 },
+        { id: 'clothes', sum: 450 },
+        { id: 'cafe', sum: 300 },
+      ],
+    }),
+    want: [
+      '<b>Сегодня</b>',
+      '<pre>Еда     1 200 ₴',
+      'Одежда    450 ₴',
+      'Кафе      300 ₴',
+      '───────────────',
+      'Итого   1 950 ₴</pre>',
+    ].join('\n'),
+  },
+  {
+    name: 'с бюджетом — под табличкой полоса и остаток',
+    ctx: ctx({
+      monthlyBudget: 18000,
+      spentMonth: 260,
+      spentToday: 260,
+      daysLeft: 20,
+      todayByCategory: [{ id: 'cafe', sum: 260 }],
+    }),
+    want: [
+      '<b>Сегодня</b>',
+      '<pre>Кафе   260 ₴</pre>',
+      '<blockquote><code>███░░░░░░░</code>  осталось 640 ₴ из 900 ₴</blockquote>',
+    ].join('\n'),
+  },
+]
+
+for (const c of TODAY_CASES) {
+  const got = norm(__test.todayReply(c.ctx))
+  if (got !== c.want) {
+    failed++
+    console.error(`✗ сводка дня: ${c.name}\n  ждали:\n${c.want}\n  получили:\n${got}\n`)
+  }
+}
+
+/* ---------- Выделение главного числа в ответе модели ---------- */
+
+const ANSWER_CASES = [
+  {
+    name: 'сумма с разрядами и значком',
+    answer: 'Потрачено сегодня 1 240 ₴, это на 340 ₴ больше, чем вчера.',
+    want: 'Потрачено сегодня <b>1 240 ₴</b>, это на 340 ₴ больше, чем вчера.',
+  },
+  {
+    name: 'сумма без разрядов',
+    answer: 'На кафе ушло 4200 ₴.',
+    want: 'На кафе ушло <b>4200 ₴</b>.',
+  },
+  {
+    name: 'число без валюты тоже выделяется',
+    answer: 'Всего записано 412 операции.',
+    want: 'Всего записано <b>412</b> операции.',
+  },
+  {
+    name: 'числа нет — текст не трогаем',
+    answer: 'Таких данных у меня нет.',
+    want: 'Таких данных у меня нет.',
+  },
+  {
+    name: 'разметка модели экранируется, а не исполняется',
+    answer: '<b>100 ₴</b> & всё',
+    want: '&lt;b&gt;<b>100 ₴</b>&lt;/b&gt; &amp; всё',
+  },
+]
+
+for (const c of ANSWER_CASES) {
+  const got = norm(__test.answerReply(c.answer))
+  const want = norm(c.want)
+  if (got !== want) {
+    failed++
+    console.error(`✗ ответ модели: ${c.name}\n  ждали:  ${want}\n  получили: ${got}`)
+  }
+}
+
 if (failed) {
-  console.error(`test-reply: ${failed} из ${CASES.length} ответов собраны не так`)
+  console.error(`test-reply: ${failed} проверок не прошли`)
   process.exit(1)
 }
-console.log(`test-reply: ${CASES.length} ответов собраны как ожидалось`)
+console.log(
+  `test-reply: ${CASES.length} ответов, ${BAR_CASES.length} полос, ${TODAY_CASES.length} сводок, ${ANSWER_CASES.length} ответов модели — всё как ожидалось`,
+)

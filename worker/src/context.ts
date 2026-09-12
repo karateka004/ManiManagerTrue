@@ -131,6 +131,8 @@ export interface UserContext {
   balance: number
   /** Расходы месяца по категориям, от большей к меньшей (id → сумма). */
   byCategory: { id: string; sum: number }[]
+  /** То же за сегодня — для сводки дня, которую бот печатает сам, без модели. */
+  todayByCategory: { id: string; sum: number }[]
   /** Сколько записей уже ждёт слива (нужно, чтобы вовремя сказать о переполнении). */
   pending: number
 }
@@ -174,6 +176,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     ops: 0,
     balance: 0,
     byCategory: [],
+    todayByCategory: [],
     pending: 0,
   }
 
@@ -210,6 +213,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
   const sameCurrency = (c: unknown): boolean => (typeof c === 'string' ? c === cur : true)
 
   const perCategory = new Map<string, number>()
+  const perCategoryToday = new Map<string, number>()
   for (const t of txs) {
     if (!sameCurrency(t?.currency)) continue
     const amount = Number(t?.amount)
@@ -232,15 +236,20 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     } else if (ym.y === prev.y && ym.m === prev.m) {
       ctx.spentPrevMonth += amount
     }
-    if (day === today) ctx.spentToday += amount
+    if (day === today) {
+      ctx.spentToday += amount
+      const id = typeof t?.categoryId === 'string' ? t.categoryId : 'other'
+      perCategoryToday.set(id, (perCategoryToday.get(id) ?? 0) + amount)
+    }
     if (day === today - 1) ctx.spentYesterday += amount
     // «За неделю» — последние семь суток, включая сегодняшние: так это слово и
     // понимают в разговоре, а не «с понедельника».
     if (day > today - 7 && day <= today) ctx.spentWeek += amount
   }
-  ctx.byCategory = [...perCategory]
-    .map(([id, sum]) => ({ id, sum }))
-    .sort((a, b) => b.sum - a.sum)
+  const sorted = (m: Map<string, number>) =>
+    [...m].map(([id, sum]) => ({ id, sum })).sort((a, b) => b.sum - a.sum)
+  ctx.byCategory = sorted(perCategory)
+  ctx.todayByCategory = sorted(perCategoryToday)
 
   // Входящие — это уже записанные операции, которых приложение ещё не видело.
   // Не учесть их значило бы показать остаток, который человек только что сам изменил.
@@ -290,7 +299,13 @@ function addEntryToContext(
     else ctx.byCategory.push({ id: e.categoryId, sum: e.amount })
     ctx.byCategory.sort((a, b) => b.sum - a.sum)
   }
-  if (day === today) ctx.spentToday += e.amount
+  if (day === today) {
+    ctx.spentToday += e.amount
+    const row = ctx.todayByCategory.find((c) => c.id === e.categoryId)
+    if (row) row.sum += e.amount
+    else ctx.todayByCategory.push({ id: e.categoryId, sum: e.amount })
+    ctx.todayByCategory.sort((a, b) => b.sum - a.sum)
+  }
   if (day === today - 1) ctx.spentYesterday += e.amount
   if (day > today - 7 && day <= today) ctx.spentWeek += e.amount
 }

@@ -55,6 +55,7 @@ export const APP_URL = 'https://karateka004.github.io/ManiManagerTrue/'
 
 /** Команды для синей кнопки «Меню». Их мало намеренно: с ботом говорят словами. */
 export const BOT_COMMANDS = [
+  { command: 'today', description: 'Сводка дня' },
   { command: 'start', description: 'Как записывать траты' },
   { command: 'help', description: 'Примеры и что я понимаю' },
 ]
@@ -106,27 +107,35 @@ const START_HOW = [
 const FIRST_RECORD_HINT =
   'Это первая запись. Задай месячный бюджет в приложении — тогда вместо «потрачено» я буду говорить, сколько осталось на сегодня.'
 
+/*
+ * Справка — одна сворачиваемая цитата. Развёрнутый список примеров занимает
+ * два экрана, а нужен он один раз: `expandable` даёт короткий блок с «Развернуть»
+ * вместо простыни, и это единственная в чате замена аккордеону.
+ */
 const HELP = [
   '<b>Как писать</b>',
+  'Напиши сумму и на что — остальное разберу сам.',
+  '<blockquote expandable>Сумма и слово — в любом порядке:',
+  'кофе 300',
+  '300 такси',
   '',
-  'Сумма и слово — в любом порядке:',
-  '<blockquote>кофе 300',
-  '300 такси</blockquote>',
   'Знак задаёт направление, расход — по умолчанию:',
-  '<blockquote>-1200 аптека',
-  '+50000 зарплата</blockquote>',
+  '-1200 аптека',
+  '+50000 зарплата',
+  '',
   'Валюта — если она не основная:',
-  '<blockquote>обед 12 €',
-  'такси 450 грн</blockquote>',
+  'обед 12 €',
+  'такси 450 грн',
+  '',
   'День и несколько трат сразу:',
-  '<blockquote>вчера продукты 1200',
-  'кроссовки 3500 и пиво 180</blockquote>',
-  '<b>Что можно спросить</b>',
-  '<blockquote>сколько я потратил сегодня',
+  'вчера продукты 1200',
+  'кроссовки 3500 и пиво 180',
+  '',
+  'Можно спрашивать:',
+  'сколько я потратил сегодня',
   'на что больше всего ушло в этом месяце',
   'сколько осталось до конца месяца</blockquote>',
-  'Под записью есть «Отменить» и «Не та категория».',
-  'Записи появятся в приложении, когда откроешь его.',
+  'Под записью — «Отменить» и «Не та категория». Сводка дня — /today.',
 ].join('\n')
 
 const NO_AMOUNT = 'Не нашёл сумму. Напиши, например: кофе 300 — или спроси, сколько потрачено.'
@@ -221,6 +230,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
   if (text.startsWith('/')) {
     const cmd = text.slice(1).split(/[\s@]/)[0].toLowerCase()
     if (cmd === 'start') await sendMessage(env, userId, START, startKeyboard)
+    else if (cmd === 'today') await sendToday(env, userId)
     else await sendMessage(env, userId, HELP, openKeyboard)
     return
   }
@@ -237,7 +247,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
   // Человек спросил, а не записал. Текст пишет модель, но строго по итогам,
   // которые посчитали мы, — выдумывать числа ей нечем.
   if (outcome?.intent === 'answer' && outcome.answer) {
-    await sendMessage(env, userId, escapeHtml(outcome.answer))
+    await sendMessage(env, userId, answerReply(outcome.answer))
     return
   }
 
@@ -329,9 +339,67 @@ async function recordOps(
 /* ------------------------------------------------------------------ */
 /* Ответ                                                               */
 /* ------------------------------------------------------------------ */
+/*
+ * ЧТО ВООБЩЕ ДОСТУПНО В СООБЩЕНИИ БОТА. Ни таблиц, ни шрифтов, ни цветов, ни
+ * размеров в Bot API нет. Есть: жирный, курсив, подчёркивание, зачёркнутый,
+ * спойлер, ссылка, `моноширинный`, блок кода и цитата (в том числе
+ * сворачиваемая). Всё «оформление» здесь собрано ровно из этого:
+ *
+ *   - моноширинный блок — единственный способ выровнять колонки, то есть
+ *     единственная настоящая табличка;
+ *   - блочные символы в моноширинном — единственная настоящая полоса прогресса;
+ *   - цитата — единственная линия-разделитель;
+ *   - контраст жирного и обычного — вся иерархия.
+ *
+ * Поэтому дисциплина важнее приёмов: одинаковые вещи выглядят одинаково везде,
+ * и ни одного эмодзи.
+ */
 
 function nameOf(ctx: UserContext, id: string): string {
   return ctx.categories.find((c) => c.id === id)?.name ?? 'Прочее'
+}
+
+/** Клеток в полосе. Десять — влезает в строку на узком экране и делится на глаз. */
+const BAR_CELLS = 10
+
+/**
+ * Полоса израсходованного дневного лимита.
+ *
+ * Заполненную клетку показываем при любом ненулевом расходе: пустая полоса
+ * сразу после записи читалась бы как «трату не учли».
+ */
+function budgetBar(used: number, limit: number): string {
+  if (!(limit > 0)) return ''
+  const share = Math.min(1, Math.max(0, used / limit))
+  const filled = used > 0 ? Math.max(1, Math.round(share * BAR_CELLS)) : 0
+  return '█'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)
+}
+
+/**
+ * Сводка дня моноширинной табличкой: категории слева, суммы выровнены справа.
+ *
+ * Считает воркер, не модель: список операций человека наружу не уходит, а
+ * сложить свои же числа мы умеем и без чужой помощи.
+ */
+function todayTable(ctx: UserContext): string {
+  const cur = ctx.currency
+  const rows = ctx.todayByCategory.map(
+    (c) => [nameOf(ctx, c.id).slice(0, 14), formatMoney(c.sum, cur)] as const,
+  )
+  if (rows.length === 0) return ''
+
+  const nameW = Math.max(...rows.map((r) => r[0].length), 5)
+  const sumW = Math.max(...rows.map((r) => r[1].length), formatMoney(ctx.spentToday, cur).length)
+  // Выравниваем ДО экранирования: у «&amp;» длина строки уже не равна ширине.
+  const line = (name: string, sum: string) => `${name.padEnd(nameW)}  ${sum.padStart(sumW)}`
+
+  const body = rows.map(([n, s]) => line(n, s))
+  // Итог отделяем чертой только когда строк больше одной — иначе это черта
+  // между числом и тем же числом.
+  if (rows.length > 1) {
+    body.push('─'.repeat(nameW + 2 + sumW), line('Итого', formatMoney(ctx.spentToday, cur)))
+  }
+  return `<pre>${escapeHtml(body.join('\n'))}</pre>`
 }
 
 /**
@@ -383,6 +451,55 @@ function recordReply(ops: ParsedOp[], ctx: UserContext, now: number): string {
 }
 
 /**
+ * Денежное значение внутри обычного текста: число с разрядами через пробел,
+ * необязательными копейками и необязательным значком валюты.
+ */
+const MONEY_IN_TEXT =
+  /\d+(?:[\u0020\u00a0\u202f]\d{3})*(?:[.,]\d{1,2})?(?:[\u0020\u00a0\u202f]?(?:[₴$€£¥₸₺₽₹]|zł|Br))?/u
+
+/**
+ * Ответ модели на вопрос.
+ *
+ * Разметку модели не доверяем — её текст экранируется целиком, — поэтому главное
+ * число выделяем сами, по первому денежному значению в уже экранированной
+ * строке. В промпте есть правило ставить его первым. Так ответ на вопрос
+ * выглядит из того же материала, что и ответ на запись: жирная суть, обычный
+ * текст вокруг.
+ */
+function answerReply(answer: string): string {
+  const escaped = escapeHtml(answer)
+  const m = escaped.match(MONEY_IN_TEXT)
+  if (!m || m.index === undefined) return escaped
+  return `${escaped.slice(0, m.index)}<b>${m[0]}</b>${escaped.slice(m.index + m[0].length)}`
+}
+
+/** Сводка дня — командой /today. Считаем сами: список операций наружу не уходит. */
+async function sendToday(env: Env, userId: number): Promise<void> {
+  const now = Date.now()
+  const ctx = await loadContext(env, userId, now)
+  await sendMessage(env, userId, todayReply(ctx), openKeyboard)
+}
+
+function todayReply(ctx: UserContext): string {
+  const table = todayTable(ctx)
+  if (!table) return 'Сегодня записей нет. Напиши, например: кофе 300'
+
+  const lines = ['<b>Сегодня</b>', table]
+  const left = allowance(ctx)
+  if (left) {
+    const perDay = Math.round(left.perDay)
+    const today = Math.round(left.leftToday)
+    const bar = `<code>${budgetBar(ctx.spentToday, left.perDay)}</code>  `
+    lines.push(
+      today >= 0
+        ? `<blockquote>${bar}осталось ${formatMoney(today, ctx.currency)} из ${formatMoney(perDay, ctx.currency)}</blockquote>`
+        : `<blockquote>${bar}перебор на ${formatMoney(-today, ctx.currency)} от ${formatMoney(perDay, ctx.currency)}</blockquote>`,
+    )
+  }
+  return lines.join('\n')
+}
+
+/**
  * Вторая строка ответа — то, ради чего вообще стоит отвечать: сколько осталось.
  *
  * Для дохода дневной остаток не считается (он строится только из расходов), и
@@ -409,10 +526,13 @@ function summaryLine(ops: ParsedOp[], ctx: UserContext, now: number): string | n
 
   const perDay = Math.round(left.perDay)
   const today = Math.round(left.leftToday)
+  // Полоса впереди текста: сначала видно, сколько лимита съедено, и только
+  // потом читаются числа. Одного взгляда хватает, чтения не требуется.
+  const bar = `<code>${budgetBar(ctx.spentToday, left.perDay)}</code>  `
   if (today >= 0) {
-    return `На сегодня осталось ${formatMoney(today, cur)} из ${formatMoney(perDay, cur)}`
+    return `${bar}осталось ${formatMoney(today, cur)} из ${formatMoney(perDay, cur)}`
   }
-  return `Дневной лимит ${formatMoney(perDay, cur)}, перебор на ${formatMoney(-today, cur)}`
+  return `${bar}перебор на ${formatMoney(-today, cur)} от ${formatMoney(perDay, cur)}`
 }
 
 /* ------------------------------------------------------------------ */
@@ -582,4 +702,4 @@ async function pickCategory(q: TgCallbackQuery, env: Env, userId: number, rest: 
 }
 
 /** Экспорт для тестов ответов без сети. */
-export const __test = { recordReply, summaryLine, opTitle, opDetail }
+export const __test = { recordReply, summaryLine, opTitle, opDetail, todayReply, answerReply, budgetBar }
