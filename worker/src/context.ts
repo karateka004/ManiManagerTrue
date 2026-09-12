@@ -123,8 +123,20 @@ export interface UserContext {
   spentWeek: number
   spentMonth: number
   spentPrevMonth: number
+  /**
+   * Расходы прошлого месяца за ТЕ ЖЕ первые дни, что уже прошли в этом.
+   *
+   * Без этого числа любое сравнение месяцев — враньё: двенадцать дней сентября
+   * против полного августа всегда дают «расходы упали», даже когда человек
+   * тратит больше прежнего.
+   */
+  spentPrevSameDays: number
   incomeMonth: number
+  incomePrevMonth: number
+  incomePrevSameDays: number
   daysLeft: number
+  /** Сколько дней месяца уже прошло — без этого «больше, чем в прошлом месяце» врёт. */
+  daysPassed: number
   /** Операций всего — чтобы отличить «ничего не тратил» от «ничего не записано». */
   ops: number
   /** Доходы минус расходы за всё время: то, что человек называет «сколько у меня». */
@@ -133,6 +145,13 @@ export interface UserContext {
   byCategory: { id: string; sum: number }[]
   /** То же за сегодня — для сводки дня, которую бот печатает сам, без модели. */
   todayByCategory: { id: string; sum: number }[]
+  /**
+   * Расходы по категориям за прошлый месяц — за те же первые дни, что и
+   * `byCategory`. Нужны, чтобы ответ объяснял причину («расходы упали за счёт
+   * доставки»), а не просто называл итог. Без второй точки сравнивать нечего, и
+   * любое «стало меньше» было бы выдумкой.
+   */
+  prevByCategory: { id: string; sum: number }[]
   /** Сколько записей уже ждёт слива (нужно, чтобы вовремя сказать о переполнении). */
   pending: number
 }
@@ -171,12 +190,17 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     spentWeek: 0,
     spentMonth: 0,
     spentPrevMonth: 0,
+    spentPrevSameDays: 0,
     incomeMonth: 0,
+    incomePrevMonth: 0,
+    incomePrevSameDays: 0,
     daysLeft: daysLeftInMonth(today),
+    daysPassed: new Date(today * DAY_MS).getUTCDate(),
     ops: 0,
     balance: 0,
     byCategory: [],
     todayByCategory: [],
+    prevByCategory: [],
     pending: 0,
   }
 
@@ -214,6 +238,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
 
   const perCategory = new Map<string, number>()
   const perCategoryToday = new Map<string, number>()
+  const perCategoryPrev = new Map<string, number>()
   for (const t of txs) {
     if (!sameCurrency(t?.currency)) continue
     const amount = Number(t?.amount)
@@ -222,23 +247,34 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     if (!Number.isFinite(day)) continue
     const ym = yearMonth(day)
     const thisMonth = ym.y === y && ym.m === m
+    const prevMonth = ym.y === prev.y && ym.m === prev.m
+    // Число месяца нужно, чтобы сравнивать сопоставимые отрезки: прошлый месяц
+    // берём не целиком, а по то же число, которое идёт сейчас.
+    const sameDaysAgo = prevMonth && new Date(day * DAY_MS).getUTCDate() <= ctx.daysPassed
     ctx.ops++
     if (t?.type === 'income') {
       ctx.balance += amount
       if (thisMonth) ctx.incomeMonth += amount
+      else if (prevMonth) {
+        ctx.incomePrevMonth += amount
+        if (sameDaysAgo) ctx.incomePrevSameDays += amount
+      }
       continue
     }
     ctx.balance -= amount
+    const id = typeof t?.categoryId === 'string' ? t.categoryId : 'other'
     if (thisMonth) {
       ctx.spentMonth += amount
-      const id = typeof t?.categoryId === 'string' ? t.categoryId : 'other'
       perCategory.set(id, (perCategory.get(id) ?? 0) + amount)
-    } else if (ym.y === prev.y && ym.m === prev.m) {
+    } else if (prevMonth) {
       ctx.spentPrevMonth += amount
+      if (sameDaysAgo) {
+        ctx.spentPrevSameDays += amount
+        perCategoryPrev.set(id, (perCategoryPrev.get(id) ?? 0) + amount)
+      }
     }
     if (day === today) {
       ctx.spentToday += amount
-      const id = typeof t?.categoryId === 'string' ? t.categoryId : 'other'
       perCategoryToday.set(id, (perCategoryToday.get(id) ?? 0) + amount)
     }
     if (day === today - 1) ctx.spentYesterday += amount
@@ -250,6 +286,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     [...m].map(([id, sum]) => ({ id, sum })).sort((a, b) => b.sum - a.sum)
   ctx.byCategory = sorted(perCategory)
   ctx.todayByCategory = sorted(perCategoryToday)
+  ctx.prevByCategory = sorted(perCategoryPrev)
 
   // Входящие — это уже записанные операции, которых приложение ещё не видело.
   // Не учесть их значило бы показать остаток, который человек только что сам изменил.

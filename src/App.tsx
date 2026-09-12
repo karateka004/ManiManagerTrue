@@ -32,6 +32,8 @@ const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({
 const AddTransactionSheet = lazy(() => importAddSheet().then((m) => ({ default: m.AddTransactionSheet })))
 // Поиск — отдельный чанк: нужен не каждому запуску, греть его заранее незачем.
 const SearchSheet = lazy(() => import('./components/SearchSheet').then((m) => ({ default: m.SearchSheet })))
+// Ассистент — отдельный чанк: экран нужен не каждому и не в первую секунду.
+const AssistantSheet = lazy(() => import('./components/AssistantSheet').then((m) => ({ default: m.AssistantSheet })))
 
 /**
  * Прогрев чанков вкладок в простое: качаем их заранее, чтобы первый переход
@@ -172,6 +174,15 @@ export default function App() {
   }, [])
   const closeSearch = useCallback(() => setSearchOpen(false), [])
 
+  // Ассистент: вопросы про свои деньги. Монтируем так же — по первому открытию.
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantMounted, setAssistantMounted] = useState(false)
+  const openAssistant = useCallback(() => {
+    setAssistantMounted(true)
+    setAssistantOpen(true)
+  }, [])
+  const closeAssistant = useCallback(() => setAssistantOpen(false), [])
+
   const closeSheet = useCallback(() => {
     setSheet((s) => ({ ...s, open: false }))
     setEditing(null)
@@ -208,7 +219,12 @@ export default function App() {
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
             {tab === 'home' && (
-              <HomePage onOpenProfile={openProfile} onEditTx={openEdit} onOpenSearch={openSearch} />
+              <HomePage
+                onOpenProfile={openProfile}
+                onEditTx={openEdit}
+                onOpenSearch={openSearch}
+                onOpenAssistant={openAssistant}
+              />
             )}
             {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
             {tab === 'rewards' && <RewardsPage />}
@@ -231,6 +247,12 @@ export default function App() {
             editing={editing}
             onClose={closeSheet}
           />
+        </Suspense>
+      )}
+
+      {assistantMounted && (
+        <Suspense fallback={null}>
+          <AssistantSheet open={assistantOpen} onClose={closeAssistant} />
         </Suspense>
       )}
 

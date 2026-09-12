@@ -153,6 +153,40 @@ const DICT: Dict = {
   },
   'settings.guide': { ru: 'Гайд по приложению', en: 'App guide' },
   'settings.guide_hint': { ru: 'Все функции и как ими пользоваться', en: 'All features and how to use them' },
+  /* Ассистент: вопросы про свои деньги прямо в приложении */
+  'ai.title': { ru: 'Ассистент', en: 'Assistant' },
+  'ai.open': { ru: 'Открыть ассистента', en: 'Open assistant' },
+  'ai.intro': {
+    ru: 'Спросите про свои деньги обычными словами — отвечу по вашим записям.',
+    en: 'Ask about your money in plain words — I answer from your entries.',
+  },
+  'ai.placeholder': { ru: 'Спросите про деньги', en: 'Ask about your money' },
+  'ai.send': { ru: 'Спросить', en: 'Ask' },
+  'ai.q1': { ru: 'Как у меня сейчас с финансами?', en: 'How are my finances right now?' },
+  'ai.q2': { ru: 'На что уходит больше всего?', en: 'Where does most of it go?' },
+  'ai.q3': { ru: 'Сколько осталось на сегодня?', en: 'How much is left for today?' },
+  'ai.q4': { ru: 'Почему изменились расходы?', en: 'Why did my spending change?' },
+  'ai.err_quota': {
+    ru: 'На сегодня вопросы закончились — отвечу завтра.',
+    en: 'No more questions for today — I will answer again tomorrow.',
+  },
+  'ai.err_unavailable': {
+    ru: 'Не получилось ответить. Попробуйте ещё раз.',
+    en: 'Could not answer. Please try again.',
+  },
+  'ai.err_unclear': {
+    ru: 'Не понял вопрос. Спросите про траты, доходы или остаток.',
+    en: 'I did not get that. Ask about spending, income or what is left.',
+  },
+  'ai.err_record': {
+    ru: 'Похоже на трату. Записать её быстрее кнопкой «+» — или сообщением боту.',
+    en: 'That looks like an expense. Adding it is faster with “+” — or by texting the bot.',
+  },
+  // Строка обязана оставаться правдой: меняешь объём отправляемого — правь и здесь.
+  'ai.privacy': {
+    ru: 'Отвечает Google Gemini по итогам ваших сумм. Список операций не отправляется.',
+    en: 'Answers come from Google Gemini using your totals. The list of entries is not sent.',
+  },
   'settings.about': { ru: 'О приложении', en: 'About' },
   // Формулировка про хранение обязана быть точной: облачная копия появилась
   // позже, а текст утверждал, что данные никуда не уходят. Теперь появился ещё

@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { Search, Target, ChevronRight, SlidersHorizontal, Wallet, TrendingUp } from 'lucide-react'
+import { Search, Sparkles, Target, ChevronRight, SlidersHorizontal, Wallet, TrendingUp } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
@@ -35,6 +35,8 @@ interface Props {
   onEditTx: (t: Transaction) => void
   /** Открыть поиск по всей истории — шторка тоже живёт в App. */
   onOpenSearch: () => void
+  /** Открыть ассистента: вопросы про свои деньги. */
+  onOpenAssistant: () => void
 }
 
 /**
@@ -42,7 +44,7 @@ interface Props {
  * и без этого каждое её открытие или закрытие перерисовывало бы весь список
  * категорий. Пропсы приходят стабильными (useCallback в App).
  */
-export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch }: Props) {
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch, onOpenAssistant }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -57,7 +59,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
 
   return (
     <div className="pb-24">
-      <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} />
+      <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} onOpenAssistant={onOpenAssistant} />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
@@ -233,7 +235,15 @@ function PlanChip({
   )
 }
 
-function Header({ onOpenProfile, onOpenSearch }: { onOpenProfile: () => void; onOpenSearch: () => void }) {
+function Header({
+  onOpenProfile,
+  onOpenSearch,
+  onOpenAssistant,
+}: {
+  onOpenProfile: () => void
+  onOpenSearch: () => void
+  onOpenAssistant: () => void
+}) {
   const mode = useStore((s) => s.homeHeaderMode)
   const goals = useStore((s) => s.goals)
   const currency = useStore((s) => s.currency)
@@ -251,6 +261,15 @@ function Header({ onOpenProfile, onOpenSearch }: { onOpenProfile: () => void; on
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
         </div>
+        {/* Ассистент стоит первым и в брендовом тоне: это вход в новое, а поиск
+            рядом — привычный инструмент, за которым и так приходят осознанно. */}
+        <button
+          onClick={() => { hapticSelect(); onOpenAssistant() }}
+          aria-label={t('ai.open')}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+        >
+          <Sparkles size={18} strokeWidth={2.4} />
+        </button>
         <button
           onClick={() => { hapticSelect(); onOpenSearch() }}
           aria-label={t('search.open')}

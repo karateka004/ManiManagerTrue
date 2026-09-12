@@ -24,7 +24,7 @@
 
 import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
-import { APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
+import { answerQuestion, APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
 import { isRateLimited } from './limits'
 import {
@@ -301,6 +301,9 @@ export default {
       // приходит не из мини-аппа, а от Telegram (со своей проверкой доступа).
       if (url.pathname === '/tg/webhook' && req.method === 'POST') {
         return await handleTgWebhook(req, env)
+      }
+      if (url.pathname === '/ask' && req.method === 'POST') {
+        return await handleAsk(req, env, origin)
       }
       if (url.pathname === '/inbox/get' && req.method === 'POST') {
         return await handleInboxGet(req, env, origin)
@@ -966,6 +969,26 @@ async function handleAdminWebhook(req: Request, env: Env, origin: string | null)
   const menu = await setChatMenuButton(env, 'Кошель', APP_URL)
   const info = await getWebhookInfo(env)
   return json({ ok: set.ok, url: target, set: set.body, commands, menu, info }, { status: 200 }, env, origin)
+}
+
+/**
+ * Ассистент в мини-аппе: вопрос про свои деньги — ответ по своим же итогам.
+ *
+ * Считает и отвечает тот же код, что в чате (bot.ts → answerQuestion): одна
+ * логика, одна выжимка, одна квота. Личность — из проверенной подписи initData,
+ * поэтому чужие числа сюда попасть не могут.
+ */
+async function handleAsk(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'ask', user.id, 20, 60)) return tooMany(env, origin)
+
+  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 500) : ''
+  if (!text) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)
+
+  const res = await answerQuestion(env, user.id, text)
+  return json(res, { status: 200 }, env, origin)
 }
 
 /** Отдать приложению операции, записанные через бота и ещё не забранные. */

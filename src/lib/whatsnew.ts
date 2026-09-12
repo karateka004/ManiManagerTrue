@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.46.0'
+export const APP_VERSION = '1.47.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,34 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.47.0',
+    date: '2026-09-12',
+    title: { ru: 'Ассистент: спросите про свои деньги', en: 'Assistant: ask about your money' },
+    items: [
+      {
+        icon: '✨',
+        text: {
+          ru: 'На Главной появилась кнопка ассистента. Спросите обычными словами — «как у меня сейчас с финансами», «на что уходит больше всего» — и получите ответ по своим записям',
+          en: 'An assistant button appeared on Home. Ask in plain words — “how are my finances”, “where does most of it go” — and get an answer from your own entries',
+        },
+      },
+      {
+        icon: '📊',
+        text: {
+          ru: 'Ответ объясняет, а не просто называет сумму: насколько расходы изменились к прошлому месяцу и за счёт какой категории. Сравнение честное — за столько же прошедших дней, а не полный месяц против неполного',
+          en: 'The answer explains rather than just states a number: how spending changed versus last month and which category drove it. The comparison is fair — the same number of elapsed days, not a full month against a partial one',
+        },
+      },
+      {
+        icon: '🔒',
+        text: {
+          ru: 'Наружу уходит только вопрос и итоги по суммам. Список операций с датами и заметками не отправляется — об этом написано прямо на экране ассистента',
+          en: 'Only your question and your totals leave the app. The list of entries with dates and notes is not sent — it says so right on the assistant screen',
+        },
+      },
+    ],
+  },
   {
     version: '1.46.0',
     date: '2026-09-11',

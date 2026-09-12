@@ -473,6 +473,34 @@ function answerReply(answer: string): string {
   return `${escaped.slice(0, m.index)}<b>${m[0]}</b>${escaped.slice(m.index + m[0].length)}`
 }
 
+/**
+ * Ответ ассистента для мини-аппа.
+ *
+ * Тот же разбор и та же выжимка, что в чате, — второй промпт завёлся бы своей
+ * жизнью и однажды начал бы отвечать иначе на тот же вопрос. Отличие одно:
+ * записывать отсюда нельзя. В приложении для этого есть форма, а запись,
+ * ушедшая в очередь и появившаяся «когда-нибудь потом», сбивала бы с толку
+ * именно там, где операции видно сразу.
+ */
+export async function answerQuestion(
+  env: Env,
+  userId: number,
+  text: string,
+): Promise<{ ok: boolean; answer?: string; error?: string }> {
+  // Квота общая с чатом: платим-то мы за то же самое, и разводить два счётчика
+  // значит разрешить потратить дневной лимит дважды.
+  if (await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400)) {
+    return { ok: false, error: 'quota' }
+  }
+  const now = Date.now()
+  const ctx = await loadContext(env, userId, now)
+  const out = await askGemini(text, ctx, env, now)
+  if (!out) return { ok: false, error: 'unavailable' }
+  if (out.intent === 'answer' && out.answer) return { ok: true, answer: out.answer }
+  if (out.intent === 'record' && out.ops.length > 0) return { ok: false, error: 'looks_like_record' }
+  return { ok: false, error: 'unclear' }
+}
+
 /** Сводка дня — командой /today. Считаем сами: список операций наружу не уходит. */
 async function sendToday(env: Env, userId: number): Promise<void> {
   const now = Date.now()

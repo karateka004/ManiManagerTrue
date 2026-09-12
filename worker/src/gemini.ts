@@ -124,14 +124,19 @@ function buildFacts(ctx: UserContext, nowMs: number): string {
   // UAH», а соседнее сообщение бота — «1 240 ₴», и в одном чате получается два
   // разных способа писать деньги.
   const money = (n: number) => formatMoney(Math.round(n), ctx.currency)
+  const month = monthName(mskDay(nowMs))
+  const days = ctx.daysPassed
+
   const lines = [
     'Итоги по деньгам:',
     `- потрачено сегодня: ${money(ctx.spentToday)}`,
     `- потрачено вчера: ${money(ctx.spentYesterday)}`,
     `- потрачено за последние 7 дней: ${money(ctx.spentWeek)}`,
-    `- потрачено за ${monthName(mskDay(nowMs))}: ${money(ctx.spentMonth)}`,
-    `- потрачено за прошлый месяц: ${money(ctx.spentPrevMonth)}`,
-    `- доходы за этот месяц: ${money(ctx.incomeMonth)}`,
+    `- потрачено за ${month} (прошло дней: ${days}): ${money(ctx.spentMonth)}` +
+      compare(ctx.spentMonth, ctx.spentPrevSameDays, money, days),
+    `- доходы за ${month}: ${money(ctx.incomeMonth)}` +
+      compare(ctx.incomeMonth, ctx.incomePrevSameDays, money, days),
+    `- прошлый месяц целиком: расходы ${money(ctx.spentPrevMonth)}, доходы ${money(ctx.incomePrevMonth)}`,
     `- доходы минус расходы за всё время: ${money(ctx.balance)}`,
     `- всего записано операций: ${ctx.ops}`,
   ]
@@ -154,7 +159,65 @@ function buildFacts(ctx: UserContext, nowMs: number): string {
       .join(', ')
     lines.push(`- расходы этого месяца по категориям: ${top}`)
   }
+
+  const movers = topMovers(ctx, name, money)
+  if (movers) lines.push(`- сильнее всего изменилось к прошлому месяцу (за те же ${days} дней): ${movers}`)
+
   return lines.join('\n')
+}
+
+/**
+ * Готовое сравнение двух чисел словами.
+ *
+ * Проценты считаем МЫ. Модели арифметику доверять нельзя: она охотно напишет
+ * правдоподобный процент, которого нет в данных, а это уже не оговорка, а
+ * выдуманный факт о чужих деньгах.
+ *
+ * Сравниваем только сопоставимые отрезки — столько же дней прошлого месяца.
+ * Первого числа сравнивать не с чем, и лучше промолчать, чем делить на ноль.
+ */
+function compare(now: number, before: number, money: (n: number) => string, days: number): string {
+  if (before <= 0 || days < 3) return ''
+  const delta = Math.round(((now - before) / before) * 100)
+  const word = delta === 0 ? 'столько же' : delta > 0 ? `на ${delta}% больше` : `на ${-delta}% меньше`
+  return ` — ${word}, чем за те же ${days} дней прошлого месяца (${money(before)})`
+}
+
+/** Сколько категорий-движителей показываем. Три — это уже объяснение, а не список. */
+const MOVERS = 3
+
+/**
+ * Категории, которые сильнее всего изменились к прошлому месяцу. Именно они
+ * превращают ответ «расходы упали» в ответ «расходы упали за счёт доставки» —
+ * то есть в объяснение, ради которого вопрос и задавали.
+ */
+function topMovers(
+  ctx: UserContext,
+  name: Map<string, string>,
+  money: (n: number) => string,
+): string {
+  if (ctx.daysPassed < 3 || ctx.prevByCategory.length === 0) return ''
+  const before = new Map(ctx.prevByCategory.map((c) => [c.id, c.sum]))
+  const after = new Map(ctx.byCategory.map((c) => [c.id, c.sum]))
+
+  const rows: { id: string; delta: number; was: number; now: number }[] = []
+  for (const id of new Set([...before.keys(), ...after.keys()])) {
+    const was = before.get(id) ?? 0
+    const nowSum = after.get(id) ?? 0
+    if (was === nowSum) continue
+    rows.push({ id, delta: nowSum - was, was, now: nowSum })
+  }
+  if (rows.length === 0) return ''
+
+  return rows
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, MOVERS)
+    .map((r) => {
+      const sign = r.delta > 0 ? '+' : '−'
+      const share = r.was > 0 ? `, ${Math.round((Math.abs(r.delta) / r.was) * 100)}%` : ''
+      return `${name.get(r.id) ?? r.id} ${sign}${money(Math.abs(r.delta))} (было ${money(r.was)}, стало ${money(r.now)}${share})`
+    })
+    .join('; ')
 }
 
 function buildSystem(ctx: UserContext, nowMs: number): string {
@@ -182,9 +245,13 @@ function buildSystem(ctx: UserContext, nowMs: number): string {
     '',
     'Правила для answer:',
     '- Отвечай ТОЛЬКО по фактам ниже. Числа, которых там нет, не называй и не оценивай — скажи, что таких данных у тебя нет.',
-    '- Коротко: одно-два предложения. Это чат, а не отчёт.',
+    '- На конкретный вопрос («сколько потратил сегодня») — одно-два предложения. Это чат, а не отчёт.',
+    '- На общий вопрос («как у меня с деньгами», «разбери мои траты», «как дела») — короткий разбор из трёх-четырёх строк: сколько потрачено и заработано, как это изменилось и ЗА СЧЁТ ЧЕГО. Каждую мысль с новой строки, пустая строка между ними.',
     '- Главное число ставь в ответе ПЕРВЫМ: оно выделяется автоматически, и порядок слов решает, что человек увидит сразу.',
-    '- Если в фактах есть число, от которого ответ становится полезнее (расход вчера, за прошлый месяц, дневной лимит, доля категории), добавь ОДНО такое сравнение. Одно, не больше — перечисление всех чисел никто не читает.',
+    '- Проценты и сравнения В ФАКТАХ УЖЕ ПОСЧИТАНЫ — бери их словами оттуда. Сам не считай: свой процент будет правдоподобным и неверным.',
+    '- Изменение всегда объясняй категорией из строки «сильнее всего изменилось», если она есть: «расходы ниже за счёт доставки» полезнее, чем «расходы ниже».',
+    '- Названия категорий НЕ склоняй — пиши их в кавычках как есть: «за счёт «Развлечений»» неверно, «за счёт категории «Развлечения» (−7 500 ₴)» верно. В приложении категория подписана именно так, и склонённое название выглядит опечаткой.',
+    '- Перечитай ответ перед выдачей: опечаток и лишних букв быть не должно.',
     '- Без вступлений вроде «Конечно!» и «Отличный вопрос», без эмодзи, без восклицаний.',
     '- Суммы копируй из фактов как есть, вместе со значком валюты. Сам их не переписывай и не пересчитывай.',
     '- Про перерасход так и говори «перерасход», а не «осталось минус столько-то».',

@@ -181,6 +181,36 @@ export async function pushCloud(
   return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
 }
 
+/* ---------- Ассистент: вопросы про свои деньги ---------- */
+
+/** Почему ответа нет. Каждой причине в интерфейсе соответствует свой текст. */
+export type AskError = 'quota' | 'unavailable' | 'unclear' | 'looks_like_record'
+
+export type AskResult = { ok: true; answer: string } | { ok: false; error: AskError }
+
+const ASK_ERRORS: AskError[] = ['quota', 'unavailable', 'unclear', 'looks_like_record']
+
+/**
+ * Спросить ассистента про свои деньги.
+ *
+ * Считает и отвечает воркер по итогам этого пользователя — те же числа, что
+ * показывает приложение. Наружу уходит только текст вопроса и выжимка по
+ * суммам; список операций не отправляется.
+ */
+export async function askAssistant(text: string): Promise<AskResult> {
+  if (!isBackendConfigured() || !tg.initData) return { ok: false, error: 'unavailable' }
+  try {
+    const res = await post('/ask', { initData: tg.initData, text })
+    if (res?.ok && typeof res.answer === 'string' && res.answer.trim()) {
+      return { ok: true, answer: res.answer }
+    }
+    const code = typeof res?.error === 'string' ? res.error : ''
+    return { ok: false, error: ASK_ERRORS.includes(code as AskError) ? (code as AskError) : 'unavailable' }
+  } catch {
+    return { ok: false, error: 'unavailable' }
+  }
+}
+
 /* ---------- Входящие: операции, записанные сообщением боту ---------- */
 
 /**
