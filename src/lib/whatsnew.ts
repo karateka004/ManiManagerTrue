@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.21.0'
+export const APP_VERSION = '1.47.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,699 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.47.0',
+    date: '2026-09-12',
+    title: { ru: 'Ассистент: спросите про свои деньги', en: 'Assistant: ask about your money' },
+    items: [
+      {
+        icon: '✨',
+        text: {
+          ru: 'На Главной появилась кнопка ассистента. Спросите обычными словами — «как у меня сейчас с финансами», «на что уходит больше всего» — и получите ответ по своим записям',
+          en: 'An assistant button appeared on Home. Ask in plain words — “how are my finances”, “where does most of it go” — and get an answer from your own entries',
+        },
+      },
+      {
+        icon: '📊',
+        text: {
+          ru: 'Ответ объясняет, а не просто называет сумму: насколько расходы изменились к прошлому месяцу и за счёт какой категории. Сравнение честное — за столько же прошедших дней, а не полный месяц против неполного',
+          en: 'The answer explains rather than just states a number: how spending changed versus last month and which category drove it. The comparison is fair — the same number of elapsed days, not a full month against a partial one',
+        },
+      },
+      {
+        icon: '🔒',
+        text: {
+          ru: 'Наружу уходит только вопрос и итоги по суммам. Список операций с датами и заметками не отправляется — об этом написано прямо на экране ассистента',
+          en: 'Only your question and your totals leave the app. The list of entries with dates and notes is not sent — it says so right on the assistant screen',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.46.0',
+    date: '2026-09-11',
+    title: { ru: 'Записывайте траты сообщением боту', en: 'Record expenses by texting the bot' },
+    items: [
+      {
+        icon: '💬',
+        text: {
+          ru: 'Напишите боту «кофе 300» — трата записана. Больше не нужно открывать приложение, жать «+», набирать сумму и выбирать категорию: одно сообщение вместо шести действий',
+          en: 'Text the bot “coffee 300” and the expense is recorded. No more opening the app, tapping “+”, typing the amount and picking a category: one message instead of six steps',
+        },
+      },
+      {
+        icon: '🗣️',
+        text: {
+          ru: 'Бот понимает обычную речь: «вчера продукты 1200», «кроссовки 3500 и пиво 180», «отдал за квартиру полтинник». И отвечает на вопросы — «сколько я потратил сегодня»',
+          en: 'The bot understands plain speech: “groceries 1200 yesterday”, “sneakers 3500 and beer 180”. It also answers questions like “how much did I spend today”',
+        },
+      },
+      {
+        icon: '🔁',
+        text: {
+          ru: 'Записи из чата появляются в приложении при следующем открытии. Под каждой — «Отменить» и «Не та категория», если бот ошибся',
+          en: 'Entries from the chat appear in the app the next time you open it. Each one has “Undo” and “Wrong category” in case the bot got it wrong',
+        },
+      },
+      {
+        icon: '🔒',
+        text: {
+          ru: 'Разбирает сообщения Google Gemini: туда уходит текст сообщения и итоги по суммам, но не список ваших операций. Подробнее — в гайде, раздел «Приватность»',
+          en: 'Messages are parsed by Google Gemini: the message text and your totals are sent, but not the list of your entries. See the guide, “Privacy”',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.45.1',
+    date: '2026-09-08',
+    title: { ru: 'Обзор «за всё время» считает по вашим дням', en: 'The all-time overview counts your days' },
+    items: [
+      {
+        icon: '🐷',
+        text: {
+          ru: 'Больше нет «20 705 дней подряд без трат»: в режиме «за всё время» приложение отсчитывало дни от 1970 года. Теперь окно сужается до реальных данных — от первой операции до сегодня, и наблюдения считаются по ним',
+          en: 'No more “20,705 days in a row without spending”: in all-time mode the app counted days from 1970. The window now narrows to the real data — from your first entry to today — and the insights follow it',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'В «за всё время» появились кривая расходов по дням и ритм недели — раньше окно было слишком длинным, и приложение их не строило',
+          en: 'All-time mode now draws the daily spending curve and the week rhythm — the window used to be too long for the app to build them',
+        },
+      },
+      {
+        icon: '📐',
+        text: {
+          ru: 'Карточка «Потрачено» больше не выглядит съехавшей: без кривой и прогноза сумма упиралась в нижний край',
+          en: 'The “Spent” card no longer looks off-centre: without a curve or forecast the amount used to sit flush against the bottom edge',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.45.0',
+    date: '2026-09-08',
+    title: { ru: 'Планирование на виду, крипта в активах', en: 'Planning up front, crypto in assets' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Планирование на Главной стало картой с четырьмя входами — лимиты, бюджет, цели и активы открываются сразу на своей вкладке, а рядом видно, что уже настроено',
+          en: 'Planning on Home is now a card with four entries — limits, budget, goals and assets open straight on their own tab, with what you already set up visible next to each',
+        },
+      },
+      {
+        icon: '₿',
+        text: {
+          ru: 'У актива можно выбрать валюту, а тип и валюту уже заведённого — поменять прямо в карточке. Крипту записываем оценкой в фиате: курсов в приложении нет, зато вклад наконец виден целиком',
+          en: 'An asset now has a currency picker, and the type and currency of an existing one can be changed right in its card. Crypto is recorded as an estimated fiat value — there are no exchange rates in the app, but your holdings finally show up',
+        },
+      },
+      {
+        icon: '📅',
+        text: {
+          ru: '«На сегодня», динамика, обзор и постоянные траты считают одну валюту. Раньше гривневые операции прибавлялись к евро, месячный расход выходил больше бюджета и дневной лимит показывал ноль',
+          en: 'The daily allowance, trend, overview and recurring payments all count a single currency. Entries in another currency used to be added to the total, pushing monthly spending over budget and zeroing out the daily limit',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.44.0',
+    date: '2026-09-08',
+    title: { ru: 'Планирование и итоги — тоже по одной валюте', en: 'Planning and recaps: one currency too' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Лимиты, бюджет и подсказка «в среднем за месяц» больше не приплюсовывают операции в другой валюте: лимит стоит в конкретной валюте, значит и расход по нему считается в ней',
+          en: 'Limits, budget and the “monthly average” hint no longer add up entries in another currency: a limit is set in one currency, so its spending is counted in that one',
+        },
+      },
+      {
+        icon: '🗓',
+        text: {
+          ru: 'Итоги прошлого месяца считаются по выбранной валюте — раньше сумма подписывалась евро, а самая крупная трата внутри могла оказаться в гривнах',
+          en: 'The previous month recap follows the selected currency — the total used to be labelled in euros while the largest expense inside could be in another currency',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.43.0',
+    date: '2026-09-08',
+    title: { ru: 'Валюты больше не смешиваются', en: 'Currencies no longer mixed' },
+    items: [
+      {
+        icon: '💱',
+        text: {
+          ru: 'Раньше при нескольких валютах суммы складывались в одну кучу и подписывались одним значком — гривны показывались как евро. Теперь всё считается строго по одной валюте',
+          en: 'With several currencies the app used to add them up and label the result with one symbol. Now every total is counted in a single currency',
+        },
+      },
+      {
+        icon: '🔀',
+        text: {
+          ru: 'Переключатель счетов показывает валюты без сводного «Все»: складывать валюты нечем — курсов приложение не хранит',
+          en: 'The account switcher lists currencies without an “All” view: there is nothing to add them with — the app stores no exchange rates',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.42.0',
+    date: '2026-08-20',
+    title: { ru: 'Загрузка операций из файла', en: 'Import from a file' },
+    items: [
+      {
+        icon: '📥',
+        text: {
+          ru: 'Встречное к выгрузке: настройки принимают CSV — и наш собственный, и чужой. Разделитель, названия колонок и формат даты определяются сами, суммы с минусом читаются как расходы',
+          en: 'The counterpart to export: settings now accept a CSV — ours or someone else’s. The delimiter, column names and date format are detected automatically, and negative amounts read as expenses',
+        },
+      },
+      {
+        icon: '🛡',
+        text: {
+          ru: 'Загрузка только добавляет и никогда не заменяет историю. Повторы отсеиваются, поэтому один и тот же файл можно загрузить дважды без последствий, а неразобранные строки просто пропускаются',
+          en: 'Import only adds and never replaces your history. Duplicates are filtered out, so loading the same file twice is harmless, and rows that cannot be read are simply skipped',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.41.0',
+    date: '2026-08-20',
+    title: { ru: 'Карточка категории', en: 'Category card' },
+    items: [
+      {
+        icon: '🔍',
+        text: {
+          ru: 'Строка в «Потоке денег» открывается: внутри полгода столбиков по месяцам и все операции периода. Видно не только сколько ушло на категорию, но и много ли это для неё и из чего сумма сложилась',
+          en: 'A row in the money flow now opens up: six months of bars inside, plus every entry for the period. You see not just what a category cost, but whether that is a lot for it and what made up the total',
+        },
+      },
+      {
+        icon: '✏️',
+        text: {
+          ru: 'Любую операцию оттуда можно сразу открыть на правку — раньше из Аналитики это было недоступно',
+          en: 'Any entry there opens for editing right away — previously that was impossible from Analytics',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.40.0',
+    date: '2026-08-20',
+    title: { ru: '«Что заметно» стало наблюдательнее', en: '“What stands out” got sharper' },
+    items: [
+      {
+        icon: '🧾',
+        text: {
+          ru: 'Приложение отдельно отмечает разовую крупную покупку, которая перекосила весь месяц, — чтобы скачок расходов не выглядел как изменившийся образ жизни',
+          en: 'A single large purchase that skewed the whole month is now called out separately — so a spike does not look like a changed lifestyle',
+        },
+      },
+      {
+        icon: '🌱',
+        text: {
+          ru: 'Появились ещё два наблюдения: новая статья расходов, которой раньше не было вовсе, и дни подряд, когда вы не потратили ничего',
+          en: 'Two more observations: a spending category that never appeared before, and days in a row when you spent nothing',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.39.0',
+    date: '2026-08-20',
+    title: { ru: 'Итоги месяца', en: 'Monthly recap' },
+    items: [
+      {
+        icon: '🗓',
+        text: {
+          ru: 'В начале месяца на Главной появляется карточка с итогами прошедшего: сумма и изменение, крупнейшая категория, самая большая трата, число операций и дни, когда вы не потратили ничего',
+          en: 'At the start of a month the Home screen shows a recap of the previous one: the total and its change, the biggest category, the largest expense, how many entries you made and the days you spent nothing',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.38.0',
+    date: '2026-08-20',
+    title: { ru: 'Выгрузка операций', en: 'Export your transactions' },
+    items: [
+      {
+        icon: '📄',
+        text: {
+          ru: 'В настройках появилась выгрузка: бот присылает в чат файл со всеми вашими операциями — датой, категорией, суммой, валютой, заметкой и тегами. Открывается в Excel и Google Таблицах как есть',
+          en: 'Settings now offer an export: the bot sends you a file with all your transactions — date, category, amount, currency, note and tags. Opens in Excel and Google Sheets as is',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.37.0',
+    date: '2026-08-20',
+    title: { ru: '«Пора записать»', en: '“Time to record”' },
+    items: [
+      {
+        icon: '⏰',
+        text: {
+          ru: 'Приложение само замечает, что подошёл срок постоянного платежа, а записи о нём нет — и предлагает внести его с Главной одним касанием, с той же суммой, категорией и подписью',
+          en: 'The app notices when a recurring payment is due but not recorded — and offers to add it from the Home screen in one tap, with the same amount, category and label',
+        },
+      },
+      {
+        icon: '🏷',
+        text: {
+          ru: 'Постоянные траты называются по вашей подписи к операции, а не по категории: «Аренда» и «Бензин» вместо двух одинаковых строк «Машина»',
+          en: 'Recurring payments are named by your own note rather than the category: “Rent” and “Fuel” instead of two identical “Car” rows',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.36.0',
+    date: '2026-08-20',
+    title: { ru: 'Поток денег и постоянные траты', en: 'Money flow and recurring payments' },
+    items: [
+      {
+        icon: '🌊',
+        text: {
+          ru: 'В «Обзоре» появился поток денег: полоса делит доход на потраченное и остаток, а ниже расходы веером растекаются по категориям — видно, куда именно ушёл месяц',
+          en: 'The Overview now shows a money flow: a bar splits income into spent and left over, and below it expenses fan out into categories — you see exactly where the month went',
+        },
+      },
+      {
+        icon: '🔁',
+        text: {
+          ru: 'Блок «Постоянные траты» собирает всё, что списывается каждый месяц одинаковой суммой — аренду, связь, подписки, — показывает дату следующего списания и главное: сколько это стоит за год',
+          en: 'A “Recurring payments” block gathers everything charged the same amount every month — rent, mobile, subscriptions — with the next expected date and, above all, what it costs you in a year',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.35.0',
+    date: '2026-08-20',
+    title: { ru: 'Разбор Аналитики по косточкам', en: 'Analytics, debugged' },
+    items: [
+      {
+        icon: '📉',
+        text: {
+          ru: 'График «По дням» был плоским: столбики всегда рисовались в три пикселя. Теперь он показывает настоящую картину, и дни идут по порядку даже на неделе, которая переходит из месяца в месяц',
+          en: 'The “By day” chart was flat — every bar was drawn three pixels tall. It now shows the real picture, and days stay in order even for a week that crosses into the next month',
+        },
+      },
+      {
+        icon: '🕓',
+        text: {
+          ru: 'Операции за первое число месяца могли выпадать из него — в часовых поясах западнее Гринвича день считался неверно. Исправлено во всей аналитике, включая календарь',
+          en: 'Entries dated the first of the month could fall out of it — the day was computed wrongly west of Greenwich. Fixed across all analytics, the calendar included',
+        },
+      },
+      {
+        icon: '🔮',
+        text: {
+          ru: 'Прогноз перестал раздуваться от записей будущим числом: аренда, отмеченная вперёд, теперь считается один раз, а темп берётся только по прожитым дням',
+          en: 'The forecast no longer inflates from entries dated ahead: rent marked in advance counts once, and the pace comes only from days already lived',
+        },
+      },
+      {
+        icon: '🗂',
+        text: {
+          ru: 'Удаление своей категории больше не теряет её операции: они переезжают в «Прочее» и остаются видны в кольце',
+          en: 'Deleting your own category no longer loses its entries: they move to “Other” and stay visible in the ring',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.34.0',
+    date: '2026-08-20',
+    title: { ru: 'Аналитика: вкладка «Обзор»', en: 'Analytics: the Overview tab' },
+    items: [
+      {
+        icon: '📊',
+        text: {
+          ru: 'Первый сегмент Аналитики отвечает на вопрос «это много или мало?»: сумма периода сравнивается с прошлым, а кривая по дням уходит пунктиром в прогноз до конца месяца',
+          en: 'The first Analytics segment answers “is this a lot?”: the period total is compared with the previous one, and the daily curve runs on as a dashed forecast to the end of the month',
+        },
+      },
+      {
+        icon: '💡',
+        text: {
+          ru: '«Что заметно» — наблюдения из ваших же записей: категория вышла за обычную норму, платёж повторяется каждый месяц, самый дорогой день недели, уложитесь ли вы в лимит',
+          en: '“What stands out” draws observations from your own entries: a category above its usual level, a payment repeating every month, your priciest weekday, and whether you will stay under the limit',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'Категории теперь показывают изменение к прошлому периоду, а не только проценты. Плюс ритм недели и три самые крупные траты периода',
+          en: 'Categories now show the change versus the previous period, not just percentages. Plus a weekly rhythm chart and the three biggest expenses',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.33.0',
+    date: '2026-08-20',
+    title: { ru: 'Плитки «Прогресса» с обложками', en: 'Progress tiles get covers' },
+    items: [
+      {
+        icon: '🎨',
+        text: {
+          ru: 'Магазин, лидеры, серия и титулы больше не одинаковые блоки: у каждой плитки своя картинка — стопка монет, подиум, пламя, корона',
+          en: 'Shop, leaderboard, streak and titles are no longer identical blocks: each tile has its own artwork — a stack of coins, a podium, a flame, a crown',
+        },
+      },
+      {
+        icon: '🩵',
+        text: {
+          ru: 'Таблица лидеров стала синей — рядом с жёлтым магазином они больше не сливаются',
+          en: 'The leaderboard turned blue so it no longer blends into the amber shop next to it',
+        },
+      },
+      {
+        icon: '🔥',
+        text: {
+          ru: 'Последние эмодзи в интерфейсе заменены на иконки: серия в шапке, значок уровня и рекорды в рейтинге',
+          en: 'The last emoji in the interface are now icons: the streak in the header, the level badge and records in the leaderboard',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.32.0',
+    date: '2026-08-19',
+    title: { ru: 'Задания теперь обновляются', en: 'Quests now refresh' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Забрал награду — задание уходит, а на его место встаёт новое. Всего в пуле больше двадцати заданий',
+          en: 'Claim a reward and the quest leaves, with a new one taking its place. The pool holds over twenty quests',
+        },
+      },
+      {
+        icon: '⏳',
+        text: {
+          ru: 'После получения награды слот отдыхает восемь часов — на плашке виден таймер до следующего задания',
+          en: 'After a claim the slot rests for eight hours — the card shows a timer until the next quest',
+        },
+      },
+      {
+        icon: '🧭',
+        text: {
+          ru: 'Новые задания знакомят с функциями, которые сами по себе не находятся: повтор трат, поиск и дневной лимит',
+          en: 'New quests introduce features you would not stumble upon: repeat spending, search and the daily limit',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.31.0',
+    date: '2026-08-18',
+    title: { ru: 'Поиск по операциям', en: 'Transaction search' },
+    items: [
+      {
+        icon: '🔍',
+        text: {
+          ru: 'В шапке Главной появился поиск. Находит по заметке, названию категории, тегу и сумме',
+          en: 'Search now lives in the Home header. It finds transactions by note, category name, tag or amount',
+        },
+      },
+      {
+        icon: '🗃',
+        text: {
+          ru: 'Ищет по всей истории, а не только за выбранный период — платёж годичной давности найдётся сразу',
+          en: 'It searches your whole history, not just the selected period — a payment from a year ago shows up right away',
+        },
+      },
+      {
+        icon: '✏',
+        text: {
+          ru: 'Найденную операцию можно открыть на правку одним касанием',
+          en: 'Tap a result to open it for editing',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.30.0',
+    date: '2026-08-18',
+    title: { ru: 'Повтор трат и лимит на день', en: 'Repeat spending and a daily limit' },
+    items: [
+      {
+        icon: '↻',
+        text: {
+          ru: 'В форме появились подсказки «Повторить»: привычные траты вроде кофе или метро записываются в два касания вместо шести',
+          en: 'The form now suggests Repeat: habitual spending like coffee or transit takes two taps instead of six',
+        },
+      },
+      {
+        icon: '📅',
+        text: {
+          ru: 'На Главной видно, сколько можно потратить именно сегодня. Лимит пересчитывается каждый день: перерасход ужимает завтрашний, экономия расширяет',
+          en: 'Home now shows how much you can spend today. The limit recalculates daily: overspending shrinks tomorrow, saving expands it',
+        },
+      },
+      {
+        icon: '⌨',
+        text: {
+          ru: 'Клавиатура суммы стала понятнее: у клавиш появились плашки, а калькулятор отделён от цифр',
+          en: 'The amount keypad is clearer: keys now have surfaces and the calculator is visually separated from the digits',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.29.0',
+    date: '2026-08-18',
+    title: { ru: 'Приложение стало заметно быстрее', en: 'Noticeably faster app' },
+    items: [
+      {
+        icon: '⚡',
+        text: {
+          ru: 'Запись операций подряд больше не подтормаживает: десять записей подряд теперь идут в несколько раз легче, даже когда в истории уже тысячи операций',
+          en: 'Recording transactions one after another no longer stutters — ten in a row are several times lighter, even with thousands already in your history',
+        },
+      },
+      {
+        icon: '🛡',
+        text: {
+          ru: 'Рейтинг защищён от накрутки: опыт теперь проверяется по реальным данным, а не принимается на веру',
+          en: 'The leaderboard is protected from cheating: XP is now verified against real data instead of being taken on trust',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.28.0',
+    date: '2026-08-18',
+    title: { ru: 'Новая нижняя панель', en: 'New bottom bar' },
+    items: [
+      {
+        icon: '✨',
+        text: {
+          ru: 'Нижняя панель теперь парит над экраном: полупрозрачная, с размытием и плавно ездящей подсветкой активной вкладки',
+          en: 'The bottom bar now floats above the screen: translucent, blurred, with a highlight that glides between tabs',
+        },
+      },
+      {
+        icon: '➕',
+        text: {
+          ru: 'Круглая кнопка «плюс» рядом с панелью — записать операцию можно с любой вкладки, а не только с Главной',
+          en: 'A round plus button next to the bar — you can record a transaction from any tab, not just Home',
+        },
+      },
+      {
+        icon: '⇄',
+        text: {
+          ru: 'Расход и доход теперь переключаются прямо в форме записи — введённая сумма при этом сохраняется',
+          en: 'Expense and income now switch right inside the form — the amount you typed is kept',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.27.0',
+    date: '2026-08-11',
+    title: { ru: 'Новые иконки и жетоны наград', en: 'New icons and reward badges' },
+    items: [
+      {
+        icon: '🎨',
+        text: {
+          ru: 'Иконок для категорий стало в четыре раза больше — 157 штук, разложенных по темам: еда, транспорт, дом, здоровье, досуг, семья, деньги',
+          en: 'Four times more category icons — 157 of them, grouped by theme: food, transport, home, health, leisure, family, money',
+        },
+      },
+      {
+        icon: '🏅',
+        text: {
+          ru: 'Титулы и уровни получили настоящие жетоны с градиентом по редкости вместо букв и эмодзи',
+          en: 'Titles and levels now have real badges with rarity gradients instead of letters and emoji',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В таблице лидеров у каждого игрока виден жетон его уровня',
+          en: 'The leaderboard now shows each player’s level badge',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.26.0',
+    date: '2026-08-11',
+    title: { ru: 'Быстрый старт для новичков', en: 'Quick start for newcomers' },
+    items: [
+      {
+        icon: '🚀',
+        text: {
+          ru: 'Новый онбординг: три шага — доход, пара трат — и сразу прогноз, сколько останется к концу месяца',
+          en: 'New onboarding: three steps — income, a couple of expenses — and an instant forecast of what’s left by month end',
+        },
+      },
+      {
+        icon: '💡',
+        text: {
+          ru: 'В конце приложение подсказывает дневную планку трат, чтобы месяц закончился в плюсе',
+          en: 'At the end the app suggests a daily spending line to finish the month in the black',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.25.0',
+    date: '2026-08-10',
+    title: { ru: 'Лимиты за один тап и раздел «Активы»', en: 'One-tap limits and the Assets tab' },
+    items: [
+      {
+        icon: '🎚️',
+        text: {
+          ru: 'Лимиты теперь открываются первыми — это главное в планировании. И настраиваются одной кнопкой: приложение само расставит их по твоим средним тратам',
+          en: 'Limits now open first — they’re the heart of planning. And one button sets them all up from your average spending',
+        },
+      },
+      {
+        icon: '💎',
+        text: {
+          ru: 'Новая вкладка «Активы»: вклады, акции, крипта и подушка в одном месте — видно, сколько накоплено и сколько это приносит за год',
+          en: 'New “Assets” tab: deposits, stocks, crypto and your cash cushion in one place — see how much you’ve saved and what it earns per year',
+        },
+      },
+      {
+        icon: '🧮',
+        text: {
+          ru: 'Встроенный калькулятор доходности: считает сложный процент с ежемесячными пополнениями и показывает реальную ставку (APY)',
+          en: 'Built-in yield calculator: compound interest with monthly top-ups and the real effective rate (APY)',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.24.0',
+    date: '2026-08-10',
+    title: { ru: 'Умные лимиты и титулы за выдержку', en: 'Smart limits and titles for persistence' },
+    items: [
+      {
+        icon: '🎚️',
+        text: {
+          ru: 'Лимиты стали живыми: прогресс расхода, остаток и сколько можно тратить в день до конца месяца',
+          en: 'Limits came alive: spending progress, what’s left and how much you can spend per day until month end',
+        },
+      },
+      {
+        icon: '🪄',
+        text: {
+          ru: 'Не знаешь, какой лимит поставить? Приложение подскажет твой средний расход по категории — ставится в один тап',
+          en: 'Not sure what limit to set? The app suggests your average spend per category — one tap to apply',
+        },
+      },
+      {
+        icon: '📈',
+        text: {
+          ru: 'В бюджете появились дневной лимит и прогноз: сколько выйдет к концу месяца при текущем темпе',
+          en: 'Budget now shows a daily allowance and a forecast of where you’ll land at the current pace',
+        },
+      },
+      {
+        icon: '🔥',
+        text: {
+          ru: 'Титулы уровня теперь и за выдержку: нужен не только уровень, но и рекорд ежедневной серии — от 5 дней до 80',
+          en: 'Level titles now reward persistence: you need both the level and your best daily streak — from 5 days up to 80',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.23.0',
+    date: '2026-08-10',
+    title: { ru: 'Титулы уровня и обновлённый магазин', en: 'Level titles and a refreshed shop' },
+    items: [
+      {
+        icon: '👑',
+        text: {
+          ru: 'Новый раздел «Титулы уровня»: за каждый из 10 уровней — уникальный титул. Надень его — и его увидят все в таблице лидеров',
+          en: 'New “Level titles” section: each of the 10 levels unlocks a unique title. Equip it — and everyone will see it on the leaderboard',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В рейтинге теперь виден надетый титул каждого игрока — время флексить',
+          en: 'The leaderboard now shows every player’s equipped title — time to flex',
+        },
+      },
+      {
+        icon: '🛍️',
+        text: {
+          ru: 'Магазин стал спокойнее и чище: меньше пёстрых бейджей, аккуратные цены и отметки «надето»',
+          en: 'The shop is calmer and cleaner: fewer flashy badges, tidy prices and “equipped” marks',
+        },
+      },
+    ],
+  },
+  {
+    version: '1.22.0',
+    date: '2026-08-10',
+    title: { ru: 'Планирование под рукой и уровни до 10', en: 'Planning at hand and levels up to 10' },
+    items: [
+      {
+        icon: '🎯',
+        text: {
+          ru: 'Планирование теперь прямо на Главной, под балансом: получил зарплату — сразу распредели бюджет, лимиты и цели',
+          en: 'Planning is now right on Home, under the balance: got your salary — set your budget, limits and goals right away',
+        },
+      },
+      {
+        icon: '🎓',
+        text: {
+          ru: 'Три новых уровня: Магистр финансов, Олигарх и Император — прокачивайся до 10-го',
+          en: 'Three new levels: Master of Finance, Oligarch and Emperor — level up to 10',
+        },
+      },
+      {
+        icon: '🏆',
+        text: {
+          ru: 'В таблице лидеров у каждого игрока виден его статус, а в топ теперь попадает до 100 человек',
+          en: 'The leaderboard now shows each player’s status, and the top now fits up to 100 players',
+        },
+      },
+      {
+        icon: '🛍️',
+        text: {
+          ru: 'Магазин пополнился: акценты Лагуна, Золотой и Графит, титулы Инвестор, Акула бизнеса и Криптомагнат, рамки Изумруд и Неон',
+          en: 'Shop restocked: Lagoon, Golden and Graphite accents, Investor, Business Shark and Crypto Tycoon titles, Emerald and Neon frames',
+        },
+      },
+    ],
+  },
   {
     version: '1.21.0',
     date: '2026-06-15',
@@ -800,7 +1493,7 @@ export const RELEASES: ReleaseNote[] = [
 ]
 
 /** Сравнение версий semver: -1 / 0 / 1. */
-function cmpVersion(a: string, b: string): number {
+export function cmpVersion(a: string, b: string): number {
   const pa = a.split('.').map(Number)
   const pb = b.split('.').map(Number)
   for (let i = 0; i < 3; i++) {

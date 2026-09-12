@@ -23,6 +23,9 @@ export const LEVELS: LevelDef[] = [
   { level: 5, title: 'Капиталист', minXp: 750, badge: '📈' },
   { level: 6, title: 'Магнат', minXp: 1300, badge: '👑' },
   { level: 7, title: 'Легенда', minXp: 2200, badge: '🏆' },
+  { level: 8, title: 'Магистр финансов', minXp: 3500, badge: '🎓' },
+  { level: 9, title: 'Олигарх', minXp: 5200, badge: '💎' },
+  { level: 10, title: 'Император', minXp: 7500, badge: '🏛️' },
 ]
 
 /** XP за одну операцию. */

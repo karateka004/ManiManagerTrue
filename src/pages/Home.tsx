@@ -1,75 +1,249 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
+import { Search, Sparkles, Target, ChevronRight, SlidersHorizontal, Wallet, TrendingUp } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { CategoryList } from '../components/CategoryList'
 import { BudgetAlert } from '../components/BudgetAlert'
+import { DueRecurring } from '../components/DueRecurring'
+import { MonthlyRecap } from '../components/MonthlyRecap'
 import { AccountSwitcher } from '../components/AccountSwitcher'
-import { FabButtons } from '../components/FabButtons'
 import { Avatar } from '../components/Avatar'
-import { useStore, selectNetBalanceByCurrency, type Goal, type Transaction } from '../store/transactions'
+import {
+  useStore,
+  selectNetBalanceByCurrency,
+  selectCurrentMonthExpense,
+  selectDailyAllowance,
+  selectAnalyticsCurrency,
+  type Goal,
+  type Transaction,
+} from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
-import type { CategoryKind } from '../store/categories'
 
-// Шторка добавления операции — отдельным чанком, грузится по первому тапу FAB.
-const AddTransactionSheet = lazy(() =>
-  import('../components/AddTransactionSheet').then((m) => ({ default: m.AddTransactionSheet })),
+// Планирование — та же ленивая шторка, что в Профиле (общий чанк).
+const PlanningSheet = lazy(() =>
+  import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
+type PlanTab = 'limits' | 'budget' | 'goals' | 'invest'
 
-export function HomePage({ onOpenProfile }: { onOpenProfile: () => void }) {
-  const [sheet, setSheet] = useState<{ open: boolean; kind: CategoryKind }>({
-    open: false,
-    kind: 'expense',
-  })
-  // Монтируем шторку только после первого открытия (чтобы анимация закрытия отыграла — держим смонтированной).
-  const [mounted, setMounted] = useState(false)
-  // Операция, которую правим (null = режим создания новой).
-  const [editing, setEditing] = useState<Transaction | null>(null)
+interface Props {
+  onOpenProfile: () => void
+  /** Открыть шторку правки операции — сама шторка живёт в App. */
+  onEditTx: (t: Transaction) => void
+  /** Открыть поиск по всей истории — шторка тоже живёт в App. */
+  onOpenSearch: () => void
+  /** Открыть ассистента: вопросы про свои деньги. */
+  onOpenAssistant: () => void
+}
 
-  const openSheet = (kind: CategoryKind) => {
-    setMounted(true)
-    setEditing(null)
-    setSheet({ open: true, kind })
-  }
-
-  const openEdit = (t: Transaction) => {
-    setMounted(true)
-    setEditing(t)
-    setSheet({ open: true, kind: t.type })
+/**
+ * Главная. Обёрнута в memo намеренно: состояние шторки добавления живёт в App,
+ * и без этого каждое её открытие или закрытие перерисовывало бы весь список
+ * категорий. Пропсы приходят стабильными (useCallback в App).
+ */
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch, onOpenAssistant }: Props) {
+  // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
+  const track = useStore((s) => s.track)
+  const [planningOpen, setPlanningOpen] = useState(false)
+  const [planningTab, setPlanningTab] = useState<PlanTab>('limits')
+  const seenPlanning = useRef(false)
+  if (planningOpen) seenPlanning.current = true
+  const openPlanning = (tab: PlanTab = 'limits') => {
+    track('open_planning')
+    setPlanningTab(tab)
+    setPlanningOpen(true)
   }
 
   return (
     <div className="pb-24">
-      <Header onOpenProfile={onOpenProfile} />
+      <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} onOpenAssistant={onOpenAssistant} />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
+      <TodayBudget />
+      <PlanningCard onOpen={openPlanning} />
       <BudgetAlert />
-      <CategoryList onEditTx={openEdit} />
+      <MonthlyRecap />
+      <DueRecurring />
+      <CategoryList onEditTx={onEditTx} />
 
-      <FabButtons
-        onAddExpense={() => openSheet('expense')}
-        onAddIncome={() => openSheet('income')}
-      />
+      <Suspense fallback={null}>
+        {seenPlanning.current && (
+          <PlanningSheet open={planningOpen} initialTab={planningTab} onClose={() => setPlanningOpen(false)} />
+        )}
+      </Suspense>
+    </div>
+  )
+})
 
-      {mounted && (
-        <Suspense fallback={null}>
-          <AddTransactionSheet
-            open={sheet.open}
-            kind={sheet.kind}
-            editing={editing}
-            onClose={() => { setSheet((s) => ({ ...s, open: false })); setEditing(null) }}
+/**
+ * Сколько ещё можно потратить сегодня.
+ *
+ * Месячный бюджет сам по себе абстрактен: «осталось 40 000 до конца месяца»
+ * ничего не говорит о сегодняшнем дне. Дневной лимит пересчитывается каждый день
+ * от ОСТАТКА (см. selectDailyAllowance), поэтому перерасход сразу ужимает
+ * завтрашний лимит, а экономия — расширяет.
+ *
+ * Показывается только когда бюджет задан — иначе на Главной висел бы пустой блок.
+ */
+function TodayBudget() {
+  const allowance = useStore(selectDailyAllowance)
+  const currency = useStore(selectAnalyticsCurrency)
+  const t = useT()
+  if (!allowance) return null
+
+  const { perDay, leftToday, spentToday, daysLeft } = allowance
+  const over = leftToday < 0
+  // Копейки в дневном лимите только шумят — округляем до целых единиц валюты.
+  const money = (v: number) => formatMoney(Math.round(v), currency)
+  const ratio = perDay > 0 ? Math.min(1, spentToday / perDay) : 1
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="card px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+            {t('home.today_kicker')}
+          </span>
+          <span className="text-[11px] font-medium text-ink-subtle">
+            {t('home.today_days', { days: daysLeft })}
+          </span>
+        </div>
+
+        <div className={`mt-0.5 tabular text-lg font-bold ${over ? 'text-expense-deep' : 'text-ink'}`}>
+          {over ? t('home.today_over', { over: money(-leftToday) }) : t('home.today_left', { left: money(leftToday) })}
+        </div>
+
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+          <div
+            className={`h-full rounded-full transition-[width] duration-500 ${over ? 'bg-expense' : 'bg-brand-500'}`}
+            style={{ width: `${ratio * 100}%` }}
           />
-        </Suspense>
-      )}
+        </div>
+
+        <div className="mt-1 tabular text-[11px] text-ink-subtle">
+          {t('home.today_spent', { spent: money(spentToday), perDay: money(perDay) })}
+        </div>
+      </div>
     </div>
   )
 }
 
-function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
+/**
+ * Планирование на Главной. Раньше это была одна строка-ссылка, и раздел терялся:
+ * увидеть, что там вообще есть, можно было только открыв шторку. Теперь это карта
+ * с четырьмя входами и живыми числами — каждый ведёт сразу на свою вкладку.
+ *
+ * Суммы показываем ТОЛЬКО в валюте выбранного счёта: курсов в приложении нет,
+ * складывать евро с гривнами нечем (то же правило, что в аналитике).
+ */
+function PlanningCard({ onOpen }: { onOpen: (tab: PlanTab) => void }) {
+  const t = useT()
+  const budget = useStore((s) => s.monthlyBudget)
+  const spent = useStore(selectCurrentMonthExpense)
+  const budgets = useStore((s) => s.budgets)
+  const goals = useStore((s) => s.goals)
+  const investments = useStore((s) => s.investments)
+  const currency = useStore(selectAnalyticsCurrency)
+
+  const left = budget - spent
+  const limitsSet = Object.values(budgets).filter((v) => v > 0).length
+  const invested = investments.reduce((sum, i) => (i.currency === currency ? sum + i.amount : sum), 0)
+
+  const hint =
+    budget > 0
+      ? left >= 0
+        ? t('home.plan_left', { left: formatMoney(left, currency), budget: formatMoney(budget, currency) })
+        : t('home.plan_over', { over: formatMoney(-left, currency) })
+      : t('plan.subtitle')
+
+  const money = (v: number) => formatMoney(Math.round(v), currency)
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="card p-3">
+        <button
+          onClick={() => { hapticSelect(); onOpen('limits') }}
+          className="flex w-full items-center gap-3 text-left"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+            <Target size={19} strokeWidth={2.2} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">{t('plan.title')}</span>
+            <span className="block truncate text-[11px] text-ink-subtle">{hint}</span>
+          </span>
+          <ChevronRight size={18} className="shrink-0 text-ink-subtle" />
+        </button>
+
+        <div className="mt-2.5 grid grid-cols-2 gap-2">
+          <PlanChip
+            icon={<SlidersHorizontal size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_limits')}
+            value={limitsSet > 0 ? t('home.plan_limits_n', { n: limitsSet }) : t('home.plan_setup')}
+            onClick={() => onOpen('limits')}
+          />
+          <PlanChip
+            icon={<Wallet size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_budget')}
+            value={budget > 0 ? money(budget) : t('home.plan_setup')}
+            onClick={() => onOpen('budget')}
+          />
+          <PlanChip
+            icon={<Target size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_goals')}
+            value={goals.length > 0 ? t('home.plan_goals_n', { n: goals.length }) : t('home.plan_setup')}
+            onClick={() => onOpen('goals')}
+          />
+          <PlanChip
+            icon={<TrendingUp size={14} strokeWidth={2.4} />}
+            label={t('plan.tab_invest')}
+            value={invested > 0 ? money(invested) : t('home.plan_setup')}
+            onClick={() => onOpen('invest')}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlanChip({
+  icon,
+  label,
+  value,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={() => { hapticSelect(); onClick() }}
+      className="flex min-w-0 items-center gap-2 rounded-2xl bg-surface-sunken/70 px-2.5 py-2 text-left active:scale-[0.98]"
+    >
+      <span className="shrink-0 text-ink-subtle">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">{label}</span>
+        <span className="block truncate tabular text-[12px] font-bold text-ink">{value}</span>
+      </span>
+    </button>
+  )
+}
+
+function Header({
+  onOpenProfile,
+  onOpenSearch,
+  onOpenAssistant,
+}: {
+  onOpenProfile: () => void
+  onOpenSearch: () => void
+  onOpenAssistant: () => void
+}) {
   const mode = useStore((s) => s.homeHeaderMode)
   const goals = useStore((s) => s.goals)
   const currency = useStore((s) => s.currency)
@@ -87,6 +261,22 @@ function Header({ onOpenProfile }: { onOpenProfile: () => void }) {
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
         </div>
+        {/* Ассистент стоит первым и в брендовом тоне: это вход в новое, а поиск
+            рядом — привычный инструмент, за которым и так приходят осознанно. */}
+        <button
+          onClick={() => { hapticSelect(); onOpenAssistant() }}
+          aria-label={t('ai.open')}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+        >
+          <Sparkles size={18} strokeWidth={2.4} />
+        </button>
+        <button
+          onClick={() => { hapticSelect(); onOpenSearch() }}
+          aria-label={t('search.open')}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+        >
+          <Search size={18} strokeWidth={2.4} />
+        </button>
         <Avatar size={40} onClick={onOpenProfile} />
       </div>
     </div>

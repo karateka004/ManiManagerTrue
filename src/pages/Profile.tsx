@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { m } from 'framer-motion'
-import { Settings, Target, Check, ChevronRight } from 'lucide-react'
+import { Settings, Target, Check, ChevronRight, Sparkles } from 'lucide-react'
 import { useStore, selectAllCategories, getCategory } from '../store/transactions'
 import { formatMoney, dayjs } from '../lib/format'
 import { Avatar } from '../components/Avatar'
@@ -10,11 +10,25 @@ import { sendFeedback, isBackendConfigured, BOT_USERNAME } from '../lib/api'
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
 import { getReward } from '../lib/rewards'
-import { useT, type TFunc } from '../lib/i18n'
+import { useCatName, useT, type TFunc } from '../lib/i18n'
 import { MenuRow } from '../components/ui/MenuRow'
+import { RewardBadge } from '../components/rewards/RewardBadge'
+
+import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
 
 // Планирование (финансы) — ленивая шторка, грузится по первому открытию.
 const PlanningSheet = lazy(() => import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })))
+// История обновлений — тоже лениво, открывается из строки «Обновления».
+const ChangelogSheet = lazy(() => import('../components/ChangelogSheet').then((m) => ({ default: m.ChangelogSheet })))
+
+/** Версия, до которой пользователь уже видел изменения (из localStorage). */
+function readSeenVersion(): string {
+  try {
+    return localStorage.getItem(VERSION_KEY) ?? '0.0.0'
+  } catch {
+    return APP_VERSION
+  }
+}
 
 /** Запасной чат, если бэкенд не настроен. */
 const FEEDBACK_FALLBACK_URL = `https://t.me/${BOT_USERNAME}`
@@ -27,6 +41,7 @@ interface Props {
 /** Вкладка «Профиль»: личность + финансовая статистика + планирование + отзыв. */
 export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
   const t = useT()
+  const catName = useCatName()
   const transactions = useStore((s) => s.transactions)
   const cats = useStore(selectAllCategories)
   const currency = useStore((s) => s.currency)
@@ -46,6 +61,24 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
     setPlanningOpen(true)
   }
 
+  // История обновлений: версия, до которой человек уже всё видел, и счётчик новых.
+  const [seenVersion, setSeenVersion] = useState(readSeenVersion)
+  const [changelogOpen, setChangelogOpen] = useState(false)
+  const seenChangelog = useRef(false)
+  if (changelogOpen) seenChangelog.current = true
+  const unseenCount = useMemo(() => newReleasesSince(seenVersion).length, [seenVersion])
+
+  const closeChangelog = () => {
+    // Открыл раздел — значит изменения просмотрены, счётчик гаснет.
+    try {
+      localStorage.setItem(VERSION_KEY, APP_VERSION)
+    } catch {
+      /* приватный режим — переживём, счётчик просто появится снова */
+    }
+    setSeenVersion(APP_VERSION)
+    setChangelogOpen(false)
+  }
+
   const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || t('profile.guest')
   const username = user?.username
 
@@ -62,11 +95,13 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       }
       if (!firstDate || tx.date < firstDate) firstDate = tx.date
     }
-    let topCat: { name: string; color: string; amount: number } | null = null
+    // Имя категории не локализуем здесь: язык — не зависимость этого мемо,
+    // перевод делаем при рендере по id.
+    let topCat: { id: string; name: string; color: string; amount: number } | null = null
     for (const [id, amount] of byCat) {
       if (!topCat || amount > topCat.amount) {
         const c = getCategory(id, cats)
-        topCat = { name: c.name, color: c.color, amount }
+        topCat = { id, name: c.name, color: c.color, amount }
       }
     }
     return { income, expense, balance: income - expense, count: transactions.length, topCat, firstDate }
@@ -111,7 +146,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         onClick={() => { hapticTap(); onOpenRewards() }}
         className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-soft active:scale-[0.99]"
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-xl">{lvl.badge}</span>
+        <RewardBadge level={lvl.level} size={44} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-bold">{t('level.t' + lvl.level)}</span>
@@ -148,7 +183,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
           </div>
           <div className="flex-1">
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{t('profile.top_expense')}</div>
-            <div className="font-semibold text-ink">{stats.topCat.name}</div>
+            <div className="font-semibold text-ink">{catName(stats.topCat.id, stats.topCat.name)}</div>
           </div>
           <div className="tabular text-sm font-bold text-expense-deep">
             {formatMoney(stats.topCat.amount, currency, { compact: true })}
@@ -157,13 +192,28 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       )}
 
       {/* Планирование (финансы) */}
-      <div className="mx-4 mt-3">
+      <div className="mx-4 mt-3 flex flex-col gap-2">
         <MenuRow
           icon={<Target size={20} strokeWidth={2} />}
           title={t('profile.planning')}
           hint={t('profile.planning_hint')}
           accent="emerald"
           onClick={openPlanning}
+        />
+        {/* История обновлений — вместо всплывающей шторки при запуске */}
+        <MenuRow
+          icon={<Sparkles size={20} strokeWidth={2} />}
+          title={t('changelog.title')}
+          hint={t('changelog.hint', { v: APP_VERSION })}
+          accent="brand"
+          trailing={
+            unseenCount > 0 ? (
+              <span className="flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold tabular text-white">
+                {unseenCount}
+              </span>
+            ) : undefined
+          }
+          onClick={() => setChangelogOpen(true)}
         />
       </div>
 
@@ -178,6 +228,12 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
 
       <Suspense fallback={null}>
         {seenPlanning.current && <PlanningSheet open={planningOpen} onClose={() => setPlanningOpen(false)} />}
+      </Suspense>
+
+      <Suspense fallback={null}>
+        {seenChangelog.current && (
+          <ChangelogSheet open={changelogOpen} onClose={closeChangelog} seenVersion={seenVersion} />
+        )}
       </Suspense>
     </div>
   )

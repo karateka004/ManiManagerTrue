@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { m } from 'framer-motion'
 import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
-import { useT, categoriesWord } from '../lib/i18n'
+import { useT, useCatName, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 import { CategoryIcon } from './icons/CategoryIcon'
 
@@ -25,6 +25,7 @@ export function DonutChartWithIcons({ kind }: Props) {
   const totals = useStore(selectAccountTotals)
   const currency = useStore(selectAnalyticsCurrency)
   const t = useT()
+  const catName = useCatName()
   const lang = useStore((s) => s.lang)
 
   const total = kind === 'income' ? totals.income : totals.expense
@@ -102,7 +103,7 @@ export function DonutChartWithIcons({ kind }: Props) {
               <CategoryIcon id={c.icon} size={17} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-ink">{c.name}</span>
+              <span className="block truncate text-[13px] font-semibold text-ink">{catName(c.categoryId, c.name)}</span>
               <span className="block truncate text-[11px] tabular text-ink-subtle">
                 {formatMoney(c.amount, c.currency)}
               </span>

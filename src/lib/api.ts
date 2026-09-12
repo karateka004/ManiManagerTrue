@@ -7,6 +7,7 @@
  *    приложение продолжает работать как раньше.
  */
 import { tg } from './telegram'
+import { CURRENCIES, type Currency } from './currencies'
 
 export const WORKER_URL = 'https://koshel-worker.karateka004.workers.dev'
 
@@ -96,6 +97,12 @@ export interface LeaderEntry {
   username?: string
   xp: number
   level: number
+  /** ID надетого косметического титула (rewards.ts) — «флекс» в рейтинге. */
+  title?: string
+  /** ID надетой рамки аватара — рисуем ободок вокруг кружка игрока. */
+  frame?: string
+  /** ID надетого акцента — цвет ободка, когда рамки нет. */
+  accent?: string
   ops: number
   coins: number
   streakBest: number
@@ -117,6 +124,10 @@ export async function submitProfile(stats: {
   ops: number
   coins: number
   streakBest: number
+  /** ID надетой косметики (опционально — старый воркер поля просто игнорирует). */
+  title?: string
+  frame?: string
+  accent?: string
 }): Promise<{ ok: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   return post('/profile', { initData: tg.initData, ...stats })
@@ -159,9 +170,104 @@ export async function pullCloud(): Promise<CloudSnapshot | null> {
 export async function pushCloud(
   blob: string,
   updatedAt: number,
+  /**
+   * Разрешить сохранить снимок БЕЗ операций поверх облака, в котором они были.
+   * Ставится только когда человек сам удалил все операции в этой сессии —
+   * иначе сервер отклонит пустой снимок как защиту от потери данных.
+   */
+  allowEmpty = false,
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
-  return post('/data/put', { initData: tg.initData, blob, updatedAt })
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
+}
+
+/* ---------- Ассистент: вопросы про свои деньги ---------- */
+
+/** Почему ответа нет. Каждой причине в интерфейсе соответствует свой текст. */
+export type AskError = 'quota' | 'unavailable' | 'unclear' | 'looks_like_record'
+
+export type AskResult = { ok: true; answer: string } | { ok: false; error: AskError }
+
+const ASK_ERRORS: AskError[] = ['quota', 'unavailable', 'unclear', 'looks_like_record']
+
+/**
+ * Спросить ассистента про свои деньги.
+ *
+ * Считает и отвечает воркер по итогам этого пользователя — те же числа, что
+ * показывает приложение. Наружу уходит только текст вопроса и выжимка по
+ * суммам; список операций не отправляется.
+ */
+export async function askAssistant(text: string): Promise<AskResult> {
+  if (!isBackendConfigured() || !tg.initData) return { ok: false, error: 'unavailable' }
+  try {
+    const res = await post('/ask', { initData: tg.initData, text })
+    if (res?.ok && typeof res.answer === 'string' && res.answer.trim()) {
+      return { ok: true, answer: res.answer }
+    }
+    const code = typeof res?.error === 'string' ? res.error : ''
+    return { ok: false, error: ASK_ERRORS.includes(code as AskError) ? (code as AskError) : 'unavailable' }
+  } catch {
+    return { ok: false, error: 'unavailable' }
+  }
+}
+
+/* ---------- Входящие: операции, записанные сообщением боту ---------- */
+
+/**
+ * Операция, записанная через бота и ещё не перенесённая в приложение.
+ *
+ * Лежит в облаке ОТДЕЛЬНО от блоба (ключ `inbox:<id>`), а не внутри него.
+ * Причина в том, что синхронизация — last-write-wins по времени, и приложение
+ * отправляет свой блоб целиком: запиши бот прямо в блоб, открытое приложение
+ * затёрло бы его запись своим следующим пушем, молча.
+ */
+export interface InboxEntry {
+  /** Идентификатор транспорта: им же подтверждается приём. */
+  id: string
+  type: 'income' | 'expense'
+  amount: number
+  currency?: Currency
+  categoryId: string
+  note?: string
+  date: string
+}
+
+const CURRENCY_CODES = new Set<string>(CURRENCIES.map((c) => c.code))
+
+/**
+ * Записи приходят из сети и попадают прямо в деньги человека, поэтому каждое
+ * поле проверяем здесь, а не надеемся на сервер: сломанная сумма испортила бы
+ * всю аналитику, а неизвестный код валюты выпал бы из подсчётов.
+ */
+function isUsableEntry(x: unknown): x is InboxEntry {
+  const e = x as InboxEntry | null
+  if (!e || typeof e.id !== 'string') return false
+  if (e.type !== 'income' && e.type !== 'expense') return false
+  if (typeof e.amount !== 'number' || !Number.isFinite(e.amount) || e.amount <= 0) return false
+  if (typeof e.categoryId !== 'string' || !e.categoryId) return false
+  if (typeof e.date !== 'string' || !e.date) return false
+  if (e.currency !== undefined && !CURRENCY_CODES.has(e.currency)) return false
+  if (e.note !== undefined && typeof e.note !== 'string') return false
+  return true
+}
+
+/** Забрать операции, записанные через бота. Пусто — их нет или бэкенд недоступен. */
+export async function pullInbox(): Promise<InboxEntry[]> {
+  if (!isBackendConfigured() || !tg.initData) return []
+  const res = await post('/inbox/get', { initData: tg.initData })
+  const items = res?.ok && Array.isArray(res.items) ? res.items : []
+  return items.filter(isUsableEntry)
+}
+
+/**
+ * Подтвердить приём: эти записи уже в сторе, из очереди их можно убрать.
+ * Подтверждаем по id, а не «очистить всё»: человек мог написать боту ровно в ту
+ * секунду, пока шёл слив, и очистка целиком съела бы новую запись.
+ */
+export async function ackInbox(ids: string[]): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData || ids.length === 0) return false
+  const res = await post('/inbox/ack', { initData: tg.initData, ids })
+  return !!res?.ok
 }
 
 /* ---------- Напоминания (ежедневный пуш от бота) ---------- */
@@ -193,5 +299,50 @@ export async function checkSubscription(): Promise<boolean> {
     return !!res?.subscribed
   } catch {
     return false
+  }
+}
+
+/* ---------- Персональные подарки ---------- */
+
+/**
+ * Попросить бота поздравить текущего пользователя с персональным подарком в ЛС.
+ * Сервер валидирует награды по своему whitelist и шлёт каждую один раз (дедуп в KV).
+ * Возвращает true, если запрос дошёл (в т.ч. когда всё уже было отправлено раньше).
+ */
+export async function notifyGift(rewards: string[]): Promise<boolean> {
+  if (!isBackendConfigured() || !tg.initData || rewards.length === 0) return false
+  try {
+    const res = await post('/gift-notify', { initData: tg.initData, rewards })
+    return !!res?.ok
+  } catch {
+    return false
+  }
+}
+
+/* ---------- Выгрузка операций ---------- */
+
+export type ExportResult = 'ok' | 'blocked' | 'failed' | 'too_large' | 'no_backend'
+
+/**
+ * Отправить операции файлом в чат с ботом.
+ *
+ * Скачивание прямо из webview Telegram ненадёжно (на iOS ссылка с `download`
+ * молча ничего не делает), поэтому файл отправляет бот. Вне Telegram вызывать
+ * незачем — там сработает обычное скачивание, см. Settings.
+ */
+export async function exportTransactions(
+  csv: string,
+  filename: string,
+  caption: string,
+): Promise<ExportResult> {
+  if (!isBackendConfigured() || !tg.initData) return 'no_backend'
+  try {
+    const r = await post('/export', { initData: tg.initData, csv, filename, caption })
+    if (r?.ok) return 'ok'
+    if (r?.error === 'blocked') return 'blocked'
+    if (r?.error === 'too_large') return 'too_large'
+    return 'failed'
+  } catch {
+    return 'failed'
   }
 }

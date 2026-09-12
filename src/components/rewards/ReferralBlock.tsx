@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CoinAmount } from './CoinAmount'
 import { Send } from 'lucide-react'
 import { buildReferralLink, type ReferralFriend } from '../../lib/api'
 import { REF_REWARD } from '../../store/transactions'
@@ -73,7 +74,7 @@ export function ReferralBlock({ count, friends, t }: { count: number | null; fri
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                      +{REF_REWARD.xp} XP · 🪙{REF_REWARD.coins}
+                      +{REF_REWARD.xp} XP · <CoinAmount value={REF_REWARD.coins} size={10} />
                     </span>
                     <span className="text-[10px] text-ink-subtle">{dayjs(f.at).fromNow()}</span>
                   </div>

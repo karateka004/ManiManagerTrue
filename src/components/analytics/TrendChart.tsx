@@ -169,7 +169,7 @@ function TrendBars({ buckets, series }: { buckets: TrendBucket[]; series: Series
                     initial={{ height: 0 }}
                     animate={{ height: `${(b.income / max) * 100}%` }}
                     transition={{ duration: 0.5, delay: i * 0.015, ease: 'easeOut' }}
-                    className={`w-full max-w-[14px] min-h-[2px] rounded-t-md bg-gradient-to-t from-income to-income-deep ${
+                    className={`w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-income to-income-deep ${
                       isActive ? '' : 'opacity-90'
                     }`}
                   />
@@ -179,7 +179,7 @@ function TrendBars({ buckets, series }: { buckets: TrendBucket[]; series: Series
                     initial={{ height: 0 }}
                     animate={{ height: `${(b.expense / max) * 100}%` }}
                     transition={{ duration: 0.5, delay: i * 0.015, ease: 'easeOut' }}
-                    className={`w-full max-w-[14px] min-h-[2px] rounded-t-md bg-gradient-to-t from-expense to-expense-deep ${
+                    className={`w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-expense to-expense-deep ${
                       isActive ? '' : 'opacity-90'
                     }`}
                   />

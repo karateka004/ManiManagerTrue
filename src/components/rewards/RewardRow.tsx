@@ -1,8 +1,10 @@
-import { Check } from 'lucide-react'
+import { Check, User } from 'lucide-react'
+import { CoinAmount } from './CoinAmount'
 import { useStore } from '../../store/transactions'
 import { useT } from '../../lib/i18n'
 import { hapticTap, hapticNotify } from '../../lib/telegram'
-import { RARITY, rewardPrice, type RewardDef, type Rarity } from '../../lib/rewards'
+import { RARITY, rewardPrice, type RewardDef } from '../../lib/rewards'
+import { RewardBadge } from './RewardBadge'
 
 interface Props {
   reward: RewardDef
@@ -10,7 +12,11 @@ interface Props {
   priceOverride?: number
 }
 
-/** Строка магазина: превью + название + рарность + кнопка купить/надеть. */
+/**
+ * Строка магазина: превью + название + рарность (тихая цветная точка) + одна
+ * кнопка состояния. Визуал намеренно спокойный: без кричащих бейджей и цветных
+ * рамок — надетое отмечается тонким брендовым кольцом, цена — нейтральной пилюлей.
+ */
 export function RewardRow({ reward, priceOverride }: Props) {
   const t = useT()
   const equippedId = useStore((s) => s.equipped[reward.kind])
@@ -44,15 +50,16 @@ export function RewardRow({ reward, priceOverride }: Props) {
 
   return (
     <div
-      className={`card flex items-center gap-3 p-3 transition ${owned || affordable ? '' : 'opacity-70'}`}
-      style={equipped ? { boxShadow: `inset 0 0 0 2px ${rarity.color}` } : undefined}
+      className={`card flex items-center gap-3 p-3 transition ${
+        equipped ? 'ring-1 ring-brand-500/40' : ''
+      } ${owned || affordable ? '' : 'opacity-60'}`}
     >
       <RewardPreview reward={reward} dim={!owned && !affordable} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
+          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
           <span className="truncate text-sm font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
-          <RarityBadge rarity={reward.rarity} />
         </div>
         <div className="truncate text-[11px] text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
       </div>
@@ -62,7 +69,7 @@ export function RewardRow({ reward, priceOverride }: Props) {
           onClick={onEquip}
           disabled={equipped}
           className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
-            equipped ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'bg-brand-500 text-white'
+            equipped ? 'bg-surface-sunken text-ink-subtle' : 'bg-brand-500 text-white'
           }`}
         >
           {equipped ? (
@@ -75,73 +82,49 @@ export function RewardRow({ reward, priceOverride }: Props) {
         <button
           onClick={onBuy}
           disabled={!affordable}
-          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
-            affordable ? 'bg-amber-500 text-white' : 'bg-surface-sunken text-ink-subtle'
+          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold tabular transition active:scale-95 ${
+            affordable ? 'bg-surface-sunken text-ink' : 'bg-surface-sunken text-ink-subtle'
           }`}
         >
-          {discounted ? (
-            <span className="flex items-center gap-1">
-              <span className="text-[10px] font-semibold text-white/70 line-through">{fullPrice.toLocaleString('ru-RU')}</span>
-              🪙 {price.toLocaleString('ru-RU')}
-            </span>
-          ) : (
-            <>🪙 {price.toLocaleString('ru-RU')}</>
-          )}
+          <span className="flex items-center gap-1">
+            {discounted && (
+              <span className="text-[10px] font-semibold text-ink-subtle line-through">{fullPrice.toLocaleString('ru-RU')}</span>
+            )}
+            <CoinAmount value={price} />
+          </span>
         </button>
       )}
     </div>
   )
 }
 
-/** Превью награды: свотч палитры / буква титула / кольцо рамки. */
+/** Превью награды: жетон палитры / жетон титула / кольцо рамки на аватаре. */
 function RewardPreview({ reward, dim }: { reward: RewardDef; dim: boolean }) {
-  const t = useT()
-  const base = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl overflow-hidden'
-
+  // accent — жетон в собственных цветах палитры с тематической иконкой
   if (reward.kind === 'accent' && reward.palette) {
-    return (
-      <div
-        className={base}
-        style={{ background: `rgb(${reward.palette[500]})`, filter: dim ? 'grayscale(0.6)' : undefined }}
-      >
-        <span className="text-sm font-bold text-white">Aa</span>
-      </div>
-    )
+    return <RewardBadge rewardId={reward.id} palette={reward.palette} size={40} dim={dim} />
   }
 
+  // frame — кольцо вокруг силуэта: сразу понятно, что рамка надевается на аватар
   if (reward.kind === 'frame' && reward.frame) {
     const transparent = reward.frame.ring === 'transparent'
     return (
       <div
-        className={base}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
         style={{
-          background: transparent ? undefined : reward.frame.ring,
+          padding: 3,
+          background: transparent ? 'rgb(var(--c-surface-sunken))' : reward.frame.ring,
           boxShadow: dim ? undefined : reward.frame.glow,
-          filter: dim ? 'grayscale(0.6)' : undefined,
+          filter: dim ? 'grayscale(0.6) opacity(0.7)' : undefined,
         }}
       >
-        <div className="h-5 w-5 rounded-full bg-surface-raised" />
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-surface-raised text-ink-subtle">
+          <User size={17} strokeWidth={2.2} />
+        </span>
       </div>
     )
   }
 
-  // title
-  return (
-    <div className={`${base} bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300`}>
-      <span className="text-base font-extrabold">{t('reward.' + reward.id + '.name')[0]}</span>
-    </div>
-  )
-}
-
-function RarityBadge({ rarity }: { rarity: Rarity }) {
-  const t = useT()
-  const meta = RARITY[rarity]
-  return (
-    <span
-      className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
-      style={{ background: `${meta.color}22`, color: meta.color }}
-    >
-      {t('rarity.' + rarity)}
-    </span>
-  )
+  // title — бейдж-жетон с градиентом редкости вместо буквы-заглушки
+  return <RewardBadge rewardId={reward.id} rarity={reward.rarity} size={40} dim={dim} />
 }

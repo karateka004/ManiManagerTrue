@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore, activeTransactions } from '../store/transactions'
 import { dayjs, formatMoney } from '../lib/format'
 import { useT, weekdaysShort, type Lang } from '../lib/i18n'
+import { parseDay } from '../lib/day'
 import { hapticSelect } from '../lib/telegram'
 
 /** Что показывать под числом дня. */
@@ -51,10 +52,14 @@ export function MonthCalendar() {
     const lo = +month.startOf('month')
     const hi = +month.endOf('month')
     for (const t of transactions) {
-      if (account && (t.currency ?? globalCurrency) !== account) continue
-      const x = +dayjs(t.date)
+      // Строго одна валюта: суммы разных валют в одной клетке несопоставимы.
+      if ((t.currency ?? globalCurrency) !== currency) continue
+      // parseDay вместо dayjs: цикл идёт по всем операциям, а dayjs создаёт
+      // объект-обёртку на каждый вызов. И не Date.parse — он читает дату без
+      // времени как полночь UTC, см. [[lib/day]].
+      const x = parseDay(t.date)
       if (x < lo || x > hi) continue
-      const d = dayjs(t.date).date()
+      const d = new Date(x).getDate()
       const cur = map.get(d) ?? { income: 0, expense: 0 }
       if (t.type === 'income') {
         cur.income += t.amount
@@ -66,7 +71,7 @@ export function MonthCalendar() {
       map.set(d, cur)
     }
     return { byDay: map, totals }
-  }, [transactions, month, account, globalCurrency])
+  }, [transactions, month, currency, globalCurrency])
 
   const daysInMonth = month.daysInMonth()
   // Смещение первого дня (неделя с понедельника).

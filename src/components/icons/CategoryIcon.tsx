@@ -34,6 +34,31 @@ import {
   Users,
   Beer,
   Fuel,
+  // Еда и напитки
+  Pizza, Sandwich, Salad, IceCreamCone, Cake, Apple, Cherry, Fish, Egg, Milk,
+  Wine, Martini, CupSoda, Beef, Carrot, Wheat, Popcorn, Candy, Donut, Soup,
+  Utensils, ChefHat,
+  // Транспорт и поездки
+  Bike, TrainFront, Ship, Sailboat, Truck, TramFront, Rocket, CarTaxiFront,
+  Luggage, MapPin, Mountain, Compass, Hotel, TentTree,
+  // Дом и быт
+  Sofa, Bed, Lamp, Refrigerator, Wrench, Hammer, PaintRoller, Plug, Lightbulb,
+  Key, DoorOpen, Trash2, Droplets, Flame, Wifi,
+  // Здоровье и красота
+  Pill, Stethoscope, Syringe, Scissors, Bath, Glasses, Smile, Brain,
+  // Досуг
+  Music, Headphones, Film, Clapperboard, Ticket, Tv, PartyPopper, Palette,
+  Camera, Guitar, Dices, Trophy, Volleyball, Medal, Snowflake,
+  // Семья, дети, питомцы
+  Baby, Backpack, GraduationCap, School, ToyBrick, Dog, Cat, Bird,
+  // Деньги и работа
+  PiggyBank, CreditCard, Landmark, Coins, TrendingUp, Bitcoin, HandCoins,
+  BadgePercent, Calculator, ReceiptText, Vault, Laptop, Presentation, PenTool,
+  Building2, Store, Factory,
+  // Покупки и прочее
+  ShoppingBag, Package, Gem, Watch, Heart, Star, Cigarette, Church, Leaf,
+  Flower, TreePine, Sun, Umbrella, Shield, Newspaper, Mail, Globe, Cloud, Zap,
+  HeartHandshake,
   type LucideProps,
 } from 'lucide-react'
 
@@ -150,18 +175,106 @@ const REGISTRY: Record<string, AnyIcon> = {
   muscle: MuscleIcon,
   beer: Beer,
   fuel: Fuel,
+
+  // ---- Расширенный набор (пикер категорий) ----
+  pizza: Pizza, sandwich: Sandwich, salad: Salad, icecream: IceCreamCone,
+  cake: Cake, apple: Apple, cherry: Cherry, fish: Fish, egg: Egg, milk: Milk,
+  wine: Wine, cocktail: Martini, soda: CupSoda, meat: Beef, carrot: Carrot,
+  grocery: Wheat, popcorn: Popcorn, candy: Candy, donut: Donut, soup: Soup,
+  restaurant: Utensils, cooking: ChefHat,
+
+  bike: Bike, train: TrainFront, ship: Ship, boat: Sailboat, truck: Truck,
+  tram: TramFront, rocket: Rocket, taxi: CarTaxiFront, luggage: Luggage,
+  place: MapPin, mountain: Mountain, compass: Compass, hotel: Hotel,
+  camping: TentTree,
+
+  sofa: Sofa, bed: Bed, lamp: Lamp, fridge: Refrigerator, repair: Wrench,
+  hammer: Hammer, paint: PaintRoller, electricity: Plug, bulb: Lightbulb,
+  rent: Key, door: DoorOpen, trash: Trash2, water: Droplets, gas: Flame,
+  internet: Wifi,
+
+  pills: Pill, doctor: Stethoscope, vaccine: Syringe, barber: Scissors,
+  spa: Bath, glasses: Glasses, dentist: Smile, therapy: Brain,
+
+  music: Music, headphones: Headphones, movie: Film, cinema: Clapperboard,
+  ticket: Ticket, tv: Tv, party: PartyPopper, art: Palette, photo: Camera,
+  guitar: Guitar, boardgame: Dices, trophy: Trophy, ball: Volleyball,
+  medal: Medal, winter: Snowflake,
+
+  baby: Baby, backpack: Backpack, education: GraduationCap, school: School,
+  toys: ToyBrick, dog: Dog, cat: Cat, bird: Bird,
+
+  savings: PiggyBank, card: CreditCard, bank: Landmark, coins: Coins,
+  invest: TrendingUp, crypto: Bitcoin, loan: HandCoins, tax: BadgePercent,
+  calc: Calculator, bill: ReceiptText, vault: Vault, work: Laptop,
+  course: Presentation, design: PenTool, office: Building2, shop: Store,
+  business: Factory,
+
+  bag: ShoppingBag, parcel: Package, jewelry: Gem, watch: Watch,
+  charity: Heart, favorite: Star, tobacco: Cigarette, donation: Church,
+  eco: Leaf, flowers: Flower, nature: TreePine, summer: Sun,
+  insurance: Umbrella, security: Shield, press: Newspaper, post: Mail,
+  online: Globe, cloud: Cloud, energy: Zap, help: HeartHandshake,
 }
 
-/** Ключи иконок, доступные в пикере при создании категории. */
-export const ICON_KEYS: string[] = [
-  'receipt', 'plane', 'tag', 'paw', 'devices',
-  'pot', 'brush', 'washer', 'tent', 'gamepad',
-  'car', 'firstaid', 'book', 'tshirt', 'sneaker',
-  'house_money', 'hanger', 'target', 'croissant', 'wallet',
-  'basket', 'cap', 'family', 'muscle', 'beer',
-  'fuel', 'food', 'cafe', 'transport', 'home',
-  'health', 'phone', 'sport', 'gift', 'salary',
+/** Группы иконок для пикера: заголовок (ключ i18n) + ключи иконок. */
+export const ICON_GROUPS: { titleKey: string; keys: string[] }[] = [
+  {
+    titleKey: 'icons.g_popular',
+    keys: ['food', 'cafe', 'transport', 'car', 'home', 'health', 'clothes', 'fun',
+      'gift', 'sport', 'phone', 'salary', 'wallet', 'receipt', 'basket', 'other'],
+  },
+  {
+    titleKey: 'icons.g_food',
+    keys: ['pizza', 'sandwich', 'salad', 'soup', 'meat', 'fish', 'egg', 'milk',
+      'carrot', 'apple', 'cherry', 'grocery', 'croissant', 'cake', 'donut', 'candy',
+      'icecream', 'popcorn', 'restaurant', 'cooking', 'pot', 'beer', 'wine',
+      'cocktail', 'soda'],
+  },
+  {
+    titleKey: 'icons.g_transport',
+    keys: ['bike', 'train', 'tram', 'taxi', 'truck', 'ship', 'boat', 'plane',
+      'rocket', 'fuel', 'luggage', 'hotel', 'place', 'compass', 'mountain',
+      'camping', 'tent'],
+  },
+  {
+    titleKey: 'icons.g_home',
+    keys: ['rent', 'house_money', 'sofa', 'bed', 'lamp', 'fridge', 'washer',
+      'repair', 'hammer', 'paint', 'brush', 'electricity', 'bulb', 'water', 'gas',
+      'internet', 'door', 'trash'],
+  },
+  {
+    titleKey: 'icons.g_health',
+    keys: ['pills', 'doctor', 'firstaid', 'vaccine', 'dentist', 'therapy',
+      'glasses', 'spa', 'barber', 'muscle', 'ball', 'medal', 'winter'],
+  },
+  {
+    titleKey: 'icons.g_fun',
+    keys: ['music', 'headphones', 'guitar', 'movie', 'cinema', 'tv', 'ticket',
+      'party', 'art', 'photo', 'boardgame', 'gamepad', 'trophy', 'book'],
+  },
+  {
+    titleKey: 'icons.g_family',
+    keys: ['family', 'baby', 'toys', 'school', 'education', 'backpack', 'paw',
+      'dog', 'cat', 'bird'],
+  },
+  {
+    titleKey: 'icons.g_money',
+    keys: ['savings', 'card', 'bank', 'coins', 'invest', 'crypto', 'loan', 'tax',
+      'bill', 'calc', 'vault', 'work', 'course', 'design', 'office', 'shop',
+      'business', 'devices'],
+  },
+  {
+    titleKey: 'icons.g_other',
+    keys: ['bag', 'parcel', 'jewelry', 'watch', 'hanger', 'tshirt', 'cap',
+      'sneaker', 'tag', 'target', 'charity', 'favorite', 'donation', 'help',
+      'insurance', 'security', 'eco', 'flowers', 'nature', 'summer', 'press',
+      'post', 'online', 'cloud', 'energy', 'tobacco'],
+  },
 ]
+
+/** Плоский список ключей пикера (в порядке групп). */
+export const ICON_KEYS: string[] = ICON_GROUPS.flatMap((g) => g.keys)
 
 interface CategoryIconProps extends Omit<SVGProps<SVGSVGElement>, 'id'> {
   id: string

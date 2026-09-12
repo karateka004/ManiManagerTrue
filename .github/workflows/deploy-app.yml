@@ -1,0 +1,90 @@
+# Публикация приложения на GitHub Pages кнопкой из GitHub.
+#
+# Ровно то же, что `npm run deploy` с компьютера: собрать и положить содержимое
+# dist в ветку gh-pages, откуда Pages раздаёт сайт. Отдельный секрет не нужен —
+# пуш в свой же репозиторий делается встроенным токеном Actions.
+#
+# Запускается: вручную (Actions → «Деплой приложения» → Run workflow) и сам на
+# каждый пуш в main. С веток разработки автоматически НЕ выкатывается: фронтенд
+# видят все пользователи, и попасть к ним должно только то, что слито в main.
+name: Деплой приложения
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Правки воркера и заметок к сайту не относятся — не гоняем сборку впустую.
+    paths-ignore:
+      - 'worker/**'
+      - 'CLAUDE.md'
+      - '.github/workflows/deploy-worker.yml'
+
+# Нужно, чтобы встроенный токен мог запушить ветку gh-pages.
+permissions:
+  contents: write
+
+# Две публикации разом наперегонки записали бы разные сборки в одну ветку.
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверка типов
+        run: npm run lint
+
+      - name: Собрать
+        run: npm run build
+
+      - name: Запомнить имя бандла
+        id: bundle
+        run: |
+          name=$(ls dist/assets | grep -oE '^index-[A-Za-z0-9_-]+\.js$' | head -1)
+          if [ -z "$name" ]; then
+            echo "Не нашёл главный бандл в dist/assets — сборка пустая?"
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Бандл: $name"
+
+      - name: Опубликовать в ветку gh-pages
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          # Отдельный репозиторий прямо в dist: в ветке gh-pages лежит результат
+          # сборки, а не история — поэтому она переписывается целиком.
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Сборка из ${GITHUB_SHA:0:7}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+
+      - name: Дождаться, пока Pages отдаст новую сборку
+        run: |
+          url="https://karateka004.github.io/ManiManagerTrue/"
+          want="${{ steps.bundle.outputs.name }}"
+          echo "Жду $want на $url"
+          for i in $(seq 1 40); do
+            if curl -fsS "$url" | grep -q "$want"; then
+              echo "Готово: сайт отдаёт $want"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Pages за 10 минут так и не начал отдавать $want."
+          echo "Сборка в ветке gh-pages лежит — обычно это просто задержка публикации."
+          exit 1

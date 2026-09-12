@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, X } from 'lucide-react'
+import { Flame, Trophy, Users, X } from 'lucide-react'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
+import { getReward, RARITY } from '../lib/rewards'
+import { RewardBadge } from './rewards/RewardBadge'
 import { tg, hapticSelect } from '../lib/telegram'
 import { useT, type TFunc } from '../lib/i18n'
 
@@ -18,8 +20,14 @@ type State =
   | { status: 'error' }
   | { status: 'ok'; total: number; xp: LeaderBoard; refs: LeaderBoard }
 
-const badgeForLevel = (level: number): string =>
-  LEVELS.find((l) => l.level === level)?.badge ?? LEVELS[0].badge
+/**
+ * Уровень из карточки лидерборда — недоверенное число (старые клиенты, битые
+ * данные): зажимаем в диапазон существующих уровней, чтобы бейдж и титул
+ * всегда находились.
+ */
+const levelMeta = (level: number): { lvl: number } => ({
+  lvl: Math.min(Math.max(1, Math.floor(level) || 1), LEVELS.length),
+})
 
 const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
@@ -185,6 +193,23 @@ function Row({
 }) {
   const medal = RANK_MEDAL[rank]
   const initial = (entry.name?.[0] ?? '?').toUpperCase()
+  const { lvl } = levelMeta(entry.level)
+  // Надетый титул игрока — «флекс» рейтинга. Валидируем id по каталогу
+  // (недоверенные данные с сервера); дефолтный «Новенький» не показываем.
+  const titleReward = entry.title && entry.title !== 'title_newbie' ? getReward(entry.title) : undefined
+  const flexTitle = titleReward?.kind === 'title' ? titleReward : undefined
+
+  // Кастомизация кружка игрока: надетая рамка (градиентный ободок), а без неё —
+  // тонкий ободок цвета надетого акцента. Дефолты (без рамки / мятный) — без декора.
+  const frameDef = getReward(entry.frame)?.frame
+  const hasFrame = !!frameDef && frameDef.ring !== 'transparent'
+  const accentPalette =
+    !hasFrame && entry.accent && entry.accent !== 'accent_mint' ? getReward(entry.accent)?.palette : undefined
+  const ringStyle = hasFrame
+    ? { padding: 3, background: frameDef!.ring, boxShadow: frameDef!.glow }
+    : accentPalette
+      ? { padding: 2, background: `rgb(${accentPalette[500]})` }
+      : undefined
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
@@ -194,17 +219,41 @@ function Row({
       <div className="flex w-7 shrink-0 items-center justify-center text-sm font-extrabold tabular text-ink-muted">
         {medal ?? rank}
       </div>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-        {initial}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={ringStyle}>
+        <div
+          className={`flex h-full w-full items-center justify-center rounded-full text-sm font-bold ${
+            ringStyle
+              ? 'bg-surface-raised text-brand-600 dark:text-brand-300'
+              : 'bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'
+          }`}
+        >
+          {initial}
+        </div>
       </div>
+      {/* Жетон уровня — заметнее эмодзи и сразу читается «насколько игрок прокачан» */}
+      <RewardBadge level={lvl} size={26} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-sm font-semibold text-ink">
           <span className="truncate">{entry.name}</span>
           {isMe && <span className="shrink-0 text-[10px] font-bold text-brand-600 dark:text-brand-300">· {t('lb.me')}</span>}
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-ink-subtle">
-          <span>{badgeForLevel(entry.level)} {t('lb.level_short')} {entry.level}</span>
-          {entry.streakBest > 0 && <span>· 🔥 {entry.streakBest}</span>}
+        <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-subtle">
+          <span className="truncate">
+            {t('lb.level_short')} {lvl} ·{' '}
+            {flexTitle ? (
+              <span className="font-semibold" style={{ color: RARITY[flexTitle.rarity].color }}>
+                «{t('reward.' + flexTitle.id + '.name')}»
+              </span>
+            ) : (
+              t('level.t' + lvl)
+            )}
+          </span>
+          {entry.streakBest > 0 && (
+            <span className="flex shrink-0 items-center gap-0.5">
+              ·<Flame size={11} strokeWidth={2.4} fill="currentColor" />
+              {entry.streakBest}
+            </span>
+          )}
         </div>
       </div>
       <div className="text-right">

@@ -3,7 +3,7 @@ import { AnimatePresence, m } from 'framer-motion'
 import { Check } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { CATEGORY_COLORS, type Category, type CategoryKind } from '../store/categories'
-import { CategoryIcon, ICON_KEYS } from './icons/CategoryIcon'
+import { CategoryIcon, ICON_KEYS, ICON_GROUPS } from './icons/CategoryIcon'
 import { useT } from '../lib/i18n'
 import { hapticSelect, hapticNotify, hapticTap } from '../lib/telegram'
 
@@ -156,24 +156,32 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
             {/* Icon picker */}
             <div className="px-6 pb-3">
               <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('cat.icon')}</div>
-              <div className="grid grid-cols-7 gap-2">
-                {ICON_KEYS.map((key) => {
-                  const active = icon === key
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => { hapticSelect(); setIcon(key) }}
-                      className="flex aspect-square items-center justify-center rounded-2xl transition-all active:scale-90"
-                      style={{
-                        background: active ? color + '22' : 'rgb(var(--c-surface-sunken))',
-                        color: active ? color : undefined,
-                        boxShadow: active ? `inset 0 0 0 2px ${color}` : undefined,
-                      }}
-                    >
-                      <CategoryIcon id={key} size={20} />
-                    </button>
-                  )
-                })}
+              {/* Иконок много — раскладываем по темам, иначе получается простыня */}
+              <div className="flex flex-col gap-3">
+                {ICON_GROUPS.map((group) => (
+                  <div key={group.titleKey}>
+                    <div className="mb-1.5 text-[11px] font-semibold text-ink-subtle">{t(group.titleKey)}</div>
+                    <div className="grid grid-cols-7 gap-2">
+                      {group.keys.map((key) => {
+                        const active = icon === key
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => { hapticSelect(); setIcon(key) }}
+                            className="flex aspect-square items-center justify-center rounded-2xl transition-all active:scale-90"
+                            style={{
+                              background: active ? color + '22' : 'rgb(var(--c-surface-sunken))',
+                              color: active ? color : undefined,
+                              boxShadow: active ? `inset 0 0 0 2px ${color}` : undefined,
+                            }}
+                          >
+                            <CategoryIcon id={key} size={20} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
