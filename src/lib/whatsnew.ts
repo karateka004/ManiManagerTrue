@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '1.48.0'
+export const APP_VERSION = '2.0.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,43 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.0.0',
+    date: '2026-10-07',
+    title: { ru: 'Кошель 2.0: спокойнее и понятнее', en: 'Koshel 2.0: calmer and clearer' },
+    items: [
+      {
+        text: {
+          ru: 'Новое оформление всего приложения: вместо стопки одинаковых карточек — списки с тонкими линиями, нейтральный фон и один акцентный цвет, который отмечает только главное действие',
+          en: 'A new look across the app: instead of a stack of identical cards — lists with thin dividers, a neutral background and one accent colour reserved for the main action',
+        },
+      },
+      {
+        text: {
+          ru: 'Главная: бюджет месяца, лимиты и цели собраны в один блок, категории — одним списком с долей каждой',
+          en: 'Home: the monthly budget, limits and goals sit in one block, and categories form a single list showing each one’s share',
+        },
+      },
+      {
+        text: {
+          ru: '«Прогресс»: вместо картинок — данные. Серия за последние семь дней, монеты, место в рейтинге и титулы видны сразу, а кнопка есть только у того, что можно забрать',
+          en: 'Progress: data instead of pictures. Your last seven days of streak, coins, leaderboard place and titles are visible at once, and only rewards you can claim have a button',
+        },
+      },
+      {
+        text: {
+          ru: 'Профиль: выписка за всё время теперь считается по каждой валюте отдельно — раньше доходы в долларах и гривнах складывались в одно число',
+          en: 'Profile: the all-time statement is now counted per currency — previously income in dollars and hryvnias was added up into one number',
+        },
+      },
+      {
+        text: {
+          ru: 'Быстрый старт, Настройки, Магазин, Планирование и шторка новой операции переделаны в том же стиле. Переключатели стали нейтральными, а кнопка «Сохранить» всегда на одном месте и одного цвета',
+          en: 'Quick start, Settings, the Shop, Planning and the new-entry sheet were redone in the same style. Switches became neutral, and the Save button is always in the same place and colour',
+        },
+      },
+    ],
+  },
   {
     version: '1.48.0',
     date: '2026-10-07',

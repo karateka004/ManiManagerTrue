@@ -382,6 +382,8 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '0 21 * * *') {
       ctx.waitUntil(nightlyAnalytics(env, event.scheduledTime))
+    } else if (event.cron === LB_CRON) {
+      ctx.waitUntil(rebuildLeaderboard(env))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
     }
@@ -506,10 +508,8 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   // Число рефералов берём из авторитетного счётчика в KV, а не из тела запроса.
   const refs = clampInt((await env.REFERRALS.get(`count:${user.id}`)) ?? '0')
 
-  // Читаем рейтинг заранее: прежняя запись нужна, чтобы потолок не опустил
-  // уже достигнутый результат. Ниже map переприсваивается при обрезке до LB_MAX.
-  let map = await readLeaderboard(env)
-  const previousEntry = map[String(user.id)]
+  // Прежняя карточка нужна, чтобы потолок не опустил уже достигнутый результат.
+  const previousEntry = await readOwnLeaderEntry(env, user.id)
 
   // Число операций — из облачного блоба этого пользователя: он пишется другим
   // эндпоинтом и служит здесь независимым источником правды. Блоба может не быть
@@ -571,20 +571,132 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     ...(previousEntry && previousEntry.firstSeen === undefined ? { fsx: 1 as const } : previousEntry?.fsx ? { fsx: 1 as const } : {}),
   }
 
-  map[String(user.id)] = entry
-
-  // Не даём KV-значению разрастаться: держим топ по XP (но себя сохраняем всегда).
-  const entries = Object.values(map)
-  if (entries.length > LB_MAX) {
-    entries.sort((a, b) => b.xp - a.xp)
-    const keep = entries.slice(0, LB_MAX)
-    map = {}
-    for (const e of keep) map[String(e.id)] = e
-    map[String(user.id)] = entry
+  // Профиль уходит при каждом запуске приложения, а меняется редко. Писать
+  // карточку заново имеет смысл, только если в ней что-то изменилось или если
+  // прошлая запись была в другие сутки: дата последнего визита нужна аналитике,
+  // но с точностью до дня, а не до запуска.
+  if (previousEntry && sameLeaderEntry(previousEntry, entry) && sameMskDay(previousEntry.at, entry.at)) {
+    return json({ ok: true, unchanged: true }, { status: 200 }, env, origin)
   }
 
-  await env.REFERRALS.put(LB_KEY, JSON.stringify(map))
+  try {
+    await writeOwnLeaderEntry(env, entry)
+  } catch (e) {
+    // Не удалось записать карточку — это не повод ронять запуск приложения:
+    // рейтинг подтянется при следующем визите.
+    console.error('[profile] карточка не записана', e)
+  }
   return json({ ok: true }, { status: 200 }, env, origin)
+}
+
+/* ---------- Рейтинг: карточка на человека + сборка кроном ----------
+   Раньше весь рейтинг был ОДНИМ ключом KV, и каждый запуск приложения у
+   каждого человека читал его целиком, менял свою строку и писал обратно. Это
+   ломалось трижды:
+     - KV принимает не больше одной записи в секунду на ключ, и после рассылки
+       запуски шли бы чаще — записи отбивались бы с ошибкой;
+     - чтение-изменение-запись без блокировки: двое одновременно — и карточка
+       первого затёрта второй, молча;
+     - ключ держал только топ-500 по XP, и новые люди с нулевым XP вытесняли
+       друг друга сразу после записи.
+   Теперь у каждого своя карточка `lb:<id>` (значение — та же карточка в
+   метаданных, чтобы сборка шла одним `list` без чтения каждого ключа), а общий
+   ключ `leaderboard` собирает крон раз в пять минут. Читатели рейтинга не
+   изменились: им по-прежнему отдаётся один ключ. */
+
+const LB_USER_PREFIX = 'lb:'
+
+/** Расписание сборки общего ключа рейтинга — обязано совпадать со строкой в wrangler.toml. */
+const LB_CRON = '*/5 * * * *'
+
+/** Потолок метаданных KV — 1024 байта; держимся ниже с запасом. */
+const LB_META_BUDGET = 950
+
+/** Своя карточка: сначала новый ключ, для тех, кто ещё не заходил после перехода, — прежний общий. */
+async function readOwnLeaderEntry(env: Env, id: number): Promise<LeaderEntry | undefined> {
+  const own = await env.REFERRALS.getWithMetadata<LeaderEntry>(`${LB_USER_PREFIX}${id}`)
+  if (own.metadata && typeof own.metadata.id === 'number') return own.metadata
+  return (await readLeaderboard(env))[String(id)]
+}
+
+/** Карточка, ужатая под лимит метаданных: длинное имя важнее места в рейтинге. */
+function fitLeaderEntry(e: LeaderEntry): LeaderEntry {
+  const out: LeaderEntry = {
+    ...e,
+    name: e.name.slice(0, 64),
+    username: e.username?.slice(0, 32),
+  }
+  if (JSON.stringify(out).length <= LB_META_BUDGET) return out
+  return { ...out, name: out.name.slice(0, 24), title: undefined, frame: undefined, accent: undefined }
+}
+
+async function writeOwnLeaderEntry(env: Env, entry: LeaderEntry): Promise<void> {
+  const fitted = fitLeaderEntry(entry)
+  // Значение — короткая заглушка: всё нужное лежит в метаданных, которые
+  // приходят вместе со списком ключей.
+  await env.REFERRALS.put(`${LB_USER_PREFIX}${entry.id}`, '1', { metadata: fitted })
+}
+
+/** Совпадают ли две карточки по всему, кроме времени записи. */
+function sameLeaderEntry(a: LeaderEntry, b: LeaderEntry): boolean {
+  const strip = (e: LeaderEntry) => JSON.stringify({ ...e, at: 0 })
+  return strip(fitLeaderEntry(a)) === strip(fitLeaderEntry(b))
+}
+
+function sameMskDay(a: number | undefined, b: number): boolean {
+  if (typeof a !== 'number') return false
+  return startOfTodayMskMs(a) === startOfTodayMskMs(b)
+}
+
+/**
+ * Все карточки рейтинга: прежний общий ключ, поверх него — личные карточки.
+ * Нужно и крону, который собирает общий ключ, и админке, которой нужны все
+ * люди, а не только топ.
+ */
+async function readAllLeaderEntries(env: Env): Promise<Record<string, LeaderEntry>> {
+  const map = await readLeaderboard(env)
+  let cursor: string | undefined
+  do {
+    const page = await env.REFERRALS.list<LeaderEntry>({ prefix: LB_USER_PREFIX, cursor })
+    for (const k of page.keys) {
+      const e = k.metadata
+      if (e && typeof e.id === 'number') map[String(e.id)] = e
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  return map
+}
+
+/**
+ * Собрать общий ключ рейтинга (крон раз в пять минут).
+ *
+ * В общий ключ идут топ по XP и топ по приглашениям — объединением, чтобы
+ * доска рефералов не теряла людей с малым XP. Общее число участников кладём в
+ * метаданные ключа: в самом ключе людей не больше топа, а «из скольких»
+ * считается по всем.
+ */
+async function rebuildLeaderboard(env: Env): Promise<void> {
+  const all = Object.values(await readAllLeaderEntries(env))
+  const byXp = [...all].sort((a, b) => b.xp - a.xp).slice(0, LB_MAX)
+  const byRefs = [...all]
+    .filter((e) => (e.refs ?? 0) > 0)
+    .sort((a, b) => (b.refs ?? 0) - (a.refs ?? 0))
+    .slice(0, LB_MAX)
+
+  const map: Record<string, LeaderEntry> = {}
+  for (const e of [...byXp, ...byRefs]) map[String(e.id)] = e
+
+  const next = JSON.stringify(map)
+  const current = await env.REFERRALS.getWithMetadata<{ total?: number }>(LB_KEY)
+  // Ничего не поменялось — не пишем: запись в KV стоит денег, а чтение почти нет.
+  if (current.value === next && current.metadata?.total === all.length) return
+  await env.REFERRALS.put(LB_KEY, next, { metadata: { total: all.length } })
+}
+
+/** Сколько всего участников (не только тех, кто попал в общий ключ). */
+async function readLeaderboardTotal(env: Env, fallback: number): Promise<number> {
+  const { metadata } = await env.REFERRALS.getWithMetadata<{ total?: number }>(LB_KEY)
+  return typeof metadata?.total === 'number' ? Math.max(metadata.total, fallback) : fallback
 }
 
 /** Отдать топ участников + позицию вызывающего (по XP и по рефералам). */
@@ -594,8 +706,12 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
 
   const map = await readLeaderboard(env)
-  const all = Object.values(map)
   const myId = String(user.id)
+  // Свою карточку берём из личного ключа: общий собирается кроном раз в пять
+  // минут, и без этого человек не видел бы себя сразу после первого запуска.
+  const own = await env.REFERRALS.getWithMetadata<LeaderEntry>(`${LB_USER_PREFIX}${myId}`)
+  if (own.metadata && typeof own.metadata.id === 'number') map[myId] = own.metadata
+  const all = Object.values(map)
   // Топ, отдаваемый клиенту. 100 — чтобы при нынешней базе (<100 активных)
   // в списке были видны все, а не только первые 50.
   const TOP = 100
@@ -614,12 +730,8 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
     (a, b) => (b.refs ?? 0) - (a.refs ?? 0) || b.xp - a.xp || (a.at ?? 0) - (b.at ?? 0),
   )
 
-  return json(
-    { ok: true, total: all.length, xp: board(byXp), refs: board(byRefs) },
-    { status: 200 },
-    env,
-    origin,
-  )
+  const total = await readLeaderboardTotal(env, all.length)
+  return json({ ok: true, total, xp: board(byXp), refs: board(byRefs) }, { status: 200 }, env, origin)
 }
 
 /* ------------------------------------------------------------------ */
@@ -1054,8 +1166,6 @@ const REMINDER_TEXTS = [
   'Вечерний чек-ин. Напиши сюда, что потратил: аптека 480',
   'Деньги любят учёт. Одно сообщение — и записано: бензин 2500',
 ]
-/** Сколько держим метку «уже слали сегодня» (20 ч — переживает один суточный цикл). */
-const NOTIFIED_TTL_SEC = 72000
 /** Сдвиг МСК от UTC (у МСК нет перехода на летнее время). */
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 /**
@@ -1272,46 +1382,68 @@ async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
   if (currentSlot < 0 || currentSlot >= REM_SLOTS) return
 
   const todayStart = startOfTodayMskMs(nowMs)
-  let cursor: string | undefined
 
+  // 1) Кандидаты — только по метаданным списка, без единого чтения значений.
+  //    Раньше на каждого человека шло до трёх чтений и запись `notified:<id>`:
+  //    на платном плане это упиралось в 10 000 подзапросов на вызов уже на
+  //    нескольких тысячах человек в слоте, а на бесплатном — в 50, то есть
+  //    примерно в дюжину человек в час.
+  const candidates: string[] = []
+  let cursor: string | undefined
   do {
-    const page = await env.REFERRALS.list<{ updatedAt: number }>({ prefix: DATA_PREFIX, cursor })
+    const page = await env.REFERRALS.list<DataMeta>({ prefix: DATA_PREFIX, cursor })
     for (const k of page.keys) {
       const id = k.name.slice(DATA_PREFIX.length)
-      if (!id) continue
-
-      // 0) Слот пользователя: не его час окна — пропускаем дёшево, без KV-чтений.
-      if (slotForId(id, REM_SLOTS) !== currentSlot) continue
-
-      // 1) Отписан? (дефолт ON = ключ отсутствует)
-      if ((await env.REFERRALS.get(`remind:${id}`)) === '0') continue
-
-      // 2) Заходил сегодня? (по метаданным, иначе читаем значение — для старых ключей)
-      let updatedAt = k.metadata?.updatedAt
-      if (typeof updatedAt !== 'number') {
-        try {
-          const raw = await env.REFERRALS.get(k.name)
-          updatedAt = raw ? (JSON.parse(raw) as { updatedAt?: number }).updatedAt : undefined
-        } catch {
-          updatedAt = undefined
-        }
-      }
-      if (typeof updatedAt === 'number' && updatedAt >= todayStart) continue
-
-      // 3) Уже слали сегодня?
-      if (await env.REFERRALS.get(`notified:${id}`)) continue
-
-      const r = await sendMessage(env, id, text)
-      if (r.ok) {
-        await env.REFERRALS.put(`notified:${id}`, '1', { expirationTtl: NOTIFIED_TTL_SEC })
-      } else if (r.status === 403) {
-        // Бот заблокирован / аккаунт удалён — больше не беспокоим + метим для аналитики.
-        await env.REFERRALS.put(`remind:${id}`, '0')
-        await env.REFERRALS.put(`blocked:${id}`, '1')
-      }
+      if (!id || slotForId(id, REM_SLOTS) !== currentSlot) continue
+      const m = k.metadata
+      // Сам выключил напоминания в приложении: тумблер едет в блобе, а оттуда в карточку.
+      if (m?.c?.rm === 0) continue
+      // Заходил сегодня — напоминать не о чем. Ключ без метки времени в метаданных
+      // не обновлялся с тех пор, как метки появились, значит сегодня точно не заходил.
+      if (typeof m?.updatedAt === 'number' && m.updatedAt >= todayStart) continue
+      candidates.push(id)
     }
     cursor = page.list_complete ? undefined : page.cursor
   } while (cursor)
+
+  // 2) Рассылка порциями: Telegram пускает около 30 сообщений в секунду на бота,
+  //    дальше отвечает 429. Последовательная отправка по одному на тысячах
+  //    человек не уложилась бы во время вызова, параллельная без меры — в лимит.
+  for (let i = 0; i < candidates.length; i += REM_SEND_PER_SEC) {
+    const started = Date.now()
+    await Promise.all(candidates.slice(i, i + REM_SEND_PER_SEC).map((id) => remindOne(env, id, text)))
+    const spent = Date.now() - started
+    if (spent < 1000 && i + REM_SEND_PER_SEC < candidates.length) await sleep(1000 - spent)
+  }
+}
+
+/** Сообщений в секунду. С запасом ниже лимита Telegram (~30), чтобы не ловить 429. */
+const REM_SEND_PER_SEC = 25
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * Напоминание одному человеку.
+ *
+ * Метку «уже слали сегодня» больше не пишем: у каждого человека свой час в
+ * окне рассылки, и второй раз в тот же день он в крон не попадает по
+ * построению. Метка стоила записи KV на каждое напоминание — тысячи записей в
+ * сутки после рассылки — и защищала только от повторного запуска крона, а
+ * Cloudflare его не повторяет.
+ */
+async function remindOne(env: Env, id: string, text: string): Promise<void> {
+  // Отписан: тумблер в приложении или авто-отписка, когда бота заблокировали.
+  if ((await env.REFERRALS.get(`remind:${id}`)) === '0') return
+  let r = await sendMessage(env, id, text)
+  if (r.status === 429) {
+    await sleep(1500)
+    r = await sendMessage(env, id, text)
+  }
+  if (r.status === 403) {
+    // Бот заблокирован / аккаунт удалён — больше не беспокоим + метим для аналитики.
+    await env.REFERRALS.put(`remind:${id}`, '0')
+    await env.REFERRALS.put(`blocked:${id}`, '1')
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1430,7 +1562,7 @@ async function collectPeople(env: Env): Promise<{ people: Person[]; withCard: nu
   } while (cursor)
 
   const [lb, referred, blocked] = await Promise.all([
-    readLeaderboard(env),
+    readAllLeaderEntries(env),
     idsByPrefix(env, 'claimed:'),
     idsByPrefix(env, 'blocked:'),
   ])
@@ -1776,7 +1908,7 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
   }
 
   /* ---------- Рейтинг: монеты и топы ---------- */
-  const lb = await readLeaderboard(env)
+  const lb = await readAllLeaderEntries(env)
   const entries = Object.values(lb)
   const sumCoins = entries.reduce((s, e) => s + (e.coins || 0), 0)
   const topXp = [...entries]

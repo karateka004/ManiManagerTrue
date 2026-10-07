@@ -29,51 +29,42 @@ import {
 /**
  * Иконки заданий.
  *
- * Раньше в карточке стояло эмодзи из определения задания. Эмодзи рисует шрифт
- * системы: на телефоне оно цветное и растровое, среди line-art интерфейса
- * выглядит инородно и дёшево, а на тёмной теме ещё и теряет контраст. Здесь тот
- * же набор lucide, что у категорий, плюс свой цвет на задание — борд читается с
- * одного взгляда, а не сливается в одинаковые серые квадраты.
- *
  * Ключ — id задания, поэтому определение квеста (`quests.ts`) остаётся про
  * правила и награды, а внешний вид живёт здесь.
+ *
+ * 2.0: иконка линейная и цвета подписи, без цветного квадрата. Раньше у каждого
+ * задания был свой цвет, и список из шести заданий превращался в шесть пятен,
+ * которые ничего не сообщали: цвет задания не значит ничего, в отличие от цвета
+ * категории (по нему её находят на диаграмме). Заметным в списке должно быть
+ * только готовое к получению — его выделяет кнопка «Забрать».
  */
-const ICONS: Record<string, { icon: ComponentType<LucideProps>; color: string }> = {
-  first_tx: { icon: PenLine, color: '#3CA37B' },
-  see_analytics: { icon: PieChart, color: '#6FA8DC' },
-  subscribe_channel: { icon: Megaphone, color: '#E76F8E' },
-  try_period: { icon: CalendarRange, color: '#9B7EDE' },
-  tx_10: { icon: Receipt, color: '#F4A261' },
-  set_budget: { icon: Target, color: '#E97373' },
-  use_search: { icon: Search, color: '#4DB6AC' },
-  make_category: { icon: Tag, color: '#B48EAD' },
-  use_repeat: { icon: RefreshCw, color: '#5DB996' },
-  diversify_5: { icon: Palette, color: '#F2C14E' },
-  set_goal: { icon: Flag, color: '#7BC47F' },
-  open_planning: { icon: Compass, color: '#6FA8DC' },
-  streak_3: { icon: Flame, color: '#F4A261' },
-  see_charts: { icon: TrendingUp, color: '#7C8DB5' },
-  personalize: { icon: SlidersHorizontal, color: '#9B7EDE' },
-  see_leaderboard: { icon: Trophy, color: '#F2C14E' },
-  log_7: { icon: CalendarCheck, color: '#4DB6AC' },
-  under_budget: { icon: ShieldCheck, color: '#3CA37B' },
-  goal_reached: { icon: Medal, color: '#F2C14E' },
-  invite_1: { icon: UserPlus, color: '#5DB996' },
-  invite_3: { icon: Users, color: '#6FA8DC' },
-  invite_5: { icon: Crown, color: '#F2C14E' },
+const ICONS: Record<string, ComponentType<LucideProps>> = {
+  first_tx: PenLine,
+  see_analytics: PieChart,
+  subscribe_channel: Megaphone,
+  try_period: CalendarRange,
+  tx_10: Receipt,
+  set_budget: Target,
+  use_search: Search,
+  make_category: Tag,
+  use_repeat: RefreshCw,
+  diversify_5: Palette,
+  set_goal: Flag,
+  open_planning: Compass,
+  streak_3: Flame,
+  see_charts: TrendingUp,
+  personalize: SlidersHorizontal,
+  see_leaderboard: Trophy,
+  log_7: CalendarCheck,
+  under_budget: ShieldCheck,
+  goal_reached: Medal,
+  invite_1: UserPlus,
+  invite_3: Users,
+  invite_5: Crown,
 }
 
-/** Запасной вид, если задание добавили в пул, а иконку завести забыли. */
-const FALLBACK = { icon: Sparkles, color: '#8A968F' }
-
 export function QuestIcon({ id, size = 20 }: { id: string; size?: number }) {
-  const { icon: Icon, color } = ICONS[id] ?? FALLBACK
-  return (
-    <span
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
-      style={{ background: color + '1F', color }}
-    >
-      <Icon size={size} strokeWidth={2.2} />
-    </span>
-  )
+  // Запасной вид — если задание добавили в пул, а иконку завести забыли.
+  const Icon = ICONS[id] ?? Sparkles
+  return <Icon size={size} strokeWidth={2} aria-hidden />
 }

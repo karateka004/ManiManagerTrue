@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { CoinAmount } from '../components/rewards/CoinAmount'
-import { m } from 'framer-motion'
-import { ChevronLeft, Sparkles } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
-import { hapticTap, hapticSelect } from '../lib/telegram'
+import { hapticSelect } from '../lib/telegram'
+import { Group } from '../components/ui/Group'
+import { ScreenHeader } from '../components/ui/ScreenHeader'
 import { dayjs } from '../lib/format'
 import {
   rewardsByKind,
@@ -39,76 +39,45 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
   const ownedCount = SHOP_REWARDS.filter((r) => owned.includes(r.id)).length
 
   return (
-    <div className="pb-24">
-      {/* Шапка */}
-      <div className="flex items-center gap-2 px-4 pt-6 pb-2">
-        <button
-          onClick={() => { hapticTap(); onBack() }}
-          aria-label={t('common.back')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken/60 text-ink-muted active:scale-95"
-        >
-          <ChevronLeft size={22} strokeWidth={2.2} />
-        </button>
-        <div className="min-w-0 flex-1 px-1">
-          <div className="kicker text-ink-subtle">{t('shop.kicker')}</div>
-          <div className="text-2xl font-bold tracking-tight text-ink">{t('shop.title')}</div>
-        </div>
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken/70 px-2.5 py-1 text-[12px] font-bold tabular text-ink">
-          <CoinAmount value={coins} size={13} />
-        </span>
-      </div>
+    <div className="pb-28">
+      <ScreenHeader
+        kicker={t('shop.kicker')}
+        title={t('shop.title')}
+        onBack={onBack}
+        trailing={
+          <span className="flex shrink-0 items-center rounded-full bg-surface-sunken px-3 py-1.5 text-[13px] font-bold tabular-nums text-ink">
+            <CoinAmount value={coins} size={14} />
+          </span>
+        }
+      />
 
-      {/* Витрина дня */}
+      {/* Витрина дня — группой строк, как всё остальное в 2.0 */}
       {featured.length > 0 && (
-        <div className="mx-4 mt-2">
-          <div className="mb-2 flex items-center gap-1.5 px-2">
-            <Sparkles size={14} className="text-amber-500" />
-            <span className="section-title">{t('shop.featured')}</span>
-            <span className="ml-auto text-[11px] font-bold text-amber-600 dark:text-amber-300">−{DAILY_DISCOUNT_PCT}%</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {featured.map((r) => (
-              <RewardRow key={'f-' + r.id} reward={r} priceOverride={discountedPrice(r)} />
-            ))}
-          </div>
-        </div>
+        <Group className="mx-4 mt-5" title={t('shop.featured')} action={`−${DAILY_DISCOUNT_PCT}%`}>
+          {featured.map((r) => (
+            <RewardRow key={'f-' + r.id} reward={r} priceOverride={discountedPrice(r)} />
+          ))}
+        </Group>
       )}
 
-      {/* Табы по типам */}
-      <div className="mx-4 mt-5 flex gap-1 rounded-full bg-surface-sunken p-1">
-        {KIND_TABS.map((k) => {
-          const active = tab === k.id
-          return (
-            <button
-              key={k.id}
-              onClick={() => { hapticSelect(); setTab(k.id) }}
-              className={`relative flex-1 rounded-full py-1.5 text-xs font-semibold transition-colors ${
-                active ? 'text-ink' : 'text-ink-subtle'
-              }`}
-            >
-              {active && (
-                <m.span
-                  layoutId="shop-tab-pill"
-                  className="absolute inset-0 rounded-full bg-surface-raised shadow-soft dark:shadow-soft-dark"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                />
-              )}
-              <span className="relative z-10">{t(k.key)}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Список выбранного типа */}
-      <div className="mx-4 mt-3 flex flex-col gap-2">
-        {items.map((r) => (
-          <RewardRow key={r.id} reward={r} />
+      {/* Типы наград — тот же нейтральный сегмент, что в Настройках */}
+      <div className="seg-track mx-4 mt-6">
+        {KIND_TABS.map((k) => (
+          <button
+            key={k.id}
+            onClick={() => { hapticSelect(); setTab(k.id) }}
+            className={`seg-item px-2 py-1.5 text-[13px] ${tab === k.id ? 'seg-on' : ''}`}
+          >
+            {t(k.key)}
+          </button>
         ))}
       </div>
 
-      <div className="mx-4 mt-4 text-center text-[11px] text-ink-subtle">
-        {t('roadpass.owned_count', { n: ownedCount, total: SHOP_REWARDS.length })}
-      </div>
+      <Group className="mx-4 mt-3" footer={t('roadpass.owned_count', { n: ownedCount, total: SHOP_REWARDS.length })}>
+        {items.map((r) => (
+          <RewardRow key={r.id} reward={r} />
+        ))}
+      </Group>
     </div>
   )
 }

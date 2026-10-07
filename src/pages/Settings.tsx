@@ -1,6 +1,5 @@
-import { lazy, Suspense, useRef, useState } from 'react'
-import { AnimatePresence, m } from 'framer-motion'
-import { Plus, BookOpen, ChevronLeft, Check, Target, CircleCheck, CircleX } from 'lucide-react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
+import { Plus, BookOpen, ChevronDown, Check, Target } from 'lucide-react'
 import {
   useStore,
   selectCategoriesByKind,
@@ -13,6 +12,8 @@ import { setReminders, exportTransactions } from '../lib/api'
 import { buildCsv } from '../lib/csv'
 import { parseTransactionsCsv, type ParsedRow } from '../lib/csvImport'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
+import { Group, Row } from '../components/ui/Group'
+import { ScreenHeader } from '../components/ui/ScreenHeader'
 
 // Редактор категорий — отдельным чанком, грузится по первому открытию.
 const CategoryEditor = lazy(() => import('../components/CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
@@ -26,33 +27,16 @@ import type { Lang } from '../lib/i18n'
 /** Валюты, которые всегда на виду. Остальные — под кнопкой «Ещё». */
 const MAIN_CURRENCY_CODES: Currency[] = ['USD', 'EUR', 'UAH']
 
-function CurrencyTile({
-  code,
-  symbol,
-  name,
-  active,
-  onClick,
-}: {
-  code: Currency
-  symbol: string
-  name: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label={`${name} (${code})`}
-      className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl py-2.5 transition-colors ${
-        active ? 'bg-brand-500 text-white shadow-soft' : 'text-ink-muted active:bg-surface-sunken'
-      }`}
-    >
-      <span className="text-lg font-bold leading-none">{symbol}</span>
-      <span className={`text-[10px] font-semibold ${active ? 'text-white/90' : 'text-ink-subtle'}`}>{code}</span>
-    </button>
-  )
-}
-
+/**
+ * Настройки.
+ *
+ * 2.0: каждый переключатель раньше заливал выбранный вариант брендом — на экране
+ * было восемь ярких зелёных плашек, и самым громким местом приложения стали
+ * настройки. Теперь выбранное — светлая плашка на сером треке (`.seg-*`), а
+ * бренд остался у включённых тумблеров и действия «Добавить категорию».
+ * Раскрывающиеся блоки больше не на framer (`initial: height 0, opacity 0`):
+ * внутри поля ввода, и при остановленном rAF они остались бы невидимыми.
+ */
 export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const t = useT()
   const catName = useCatName()
@@ -112,66 +96,41 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   ]
 
   return (
-    <div className="pb-24">
-      <div className="flex items-center gap-2 px-4 pt-6 pb-2">
-        {onBack && (
-          <button
-            onClick={() => { hapticTap(); onBack() }}
-            aria-label={t('common.back')}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken/60 text-ink-muted active:scale-95"
-          >
-            <ChevronLeft size={22} strokeWidth={2.2} />
-          </button>
-        )}
-        <div className="px-2">
-          <div className="kicker text-ink-subtle">{t('settings.kicker')}</div>
-          <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('settings.title')}</div>
-        </div>
-      </div>
+    <div className="pb-28">
+      <ScreenHeader kicker={t('settings.kicker')} title={t('settings.title')} onBack={onBack} />
 
-      {/* Guide */}
-      <div className="mx-6 mt-4">
-        <button
+      <Group className="mx-4 mt-5">
+        <Row
+          icon={<BookOpen size={18} strokeWidth={2} />}
+          title={t('settings.guide')}
+          chevron
           onClick={() => { hapticTap(); setGuideOpen(true) }}
-          className="card flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-surface-sunken/40"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-            <BookOpen size={20} strokeWidth={2} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">{t('settings.guide')}</span>
-            <span className="mt-0.5 block text-[11px] text-ink-subtle">{t('settings.guide_hint')}</span>
-          </span>
-          <span className="shrink-0 text-ink-subtle">›</span>
-        </button>
-      </div>
+        />
+      </Group>
 
-      {/* Language */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">{t('settings.language')}</div>
-        <div className="card grid grid-cols-2 gap-1 p-1">
-          {LANGS.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => { hapticSelect(); setLang(opt.id) }}
-              className={`rounded-2xl py-3 text-sm font-bold transition-colors ${
-                lang === opt.id ? 'bg-brand-500 text-white' : 'text-ink-muted'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <Segment
+        title={t('settings.language')}
+        options={LANGS}
+        value={lang}
+        onChange={(id) => { hapticSelect(); setLang(id) }}
+      />
 
-      {/* Currency */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 flex items-baseline justify-between px-2">
-          <span className="section-title">{t('settings.currency')}</span>
-          <span className="text-[11px] text-ink-subtle">{getCurrency(currency).name}</span>
-        </div>
-        <div className="card p-2">
-          <div className="grid grid-cols-3 gap-1.5">
+      <Segment
+        title={t('settings.theme')}
+        options={[
+          { id: 'auto', label: t('settings.theme_auto') },
+          { id: 'light', label: t('settings.theme_light') },
+          { id: 'dark', label: t('settings.theme_dark') },
+        ]}
+        value={themeMode}
+        onChange={(id) => { hapticSelect(); setThemeMode(id) }}
+      />
+
+      {/* Валюта */}
+      <section className="mx-4 mt-6">
+        <SectionHead title={t('settings.currency')} action={getCurrency(currency).name} />
+        <div className="rounded-3xl bg-surface-sunken p-1">
+          <div className="grid grid-cols-3 gap-1">
             {mainCurrencies.map((c) => (
               <CurrencyTile
                 key={c.code}
@@ -183,365 +142,251 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
               />
             ))}
           </div>
-
-          <button
-            onClick={() => { hapticSelect(); setMoreOpen((v) => !v) }}
-            className="mt-2 flex w-full items-center justify-center gap-1 rounded-2xl bg-surface-sunken/60 py-2 text-xs font-semibold text-ink-muted active:bg-surface-sunken"
-          >
-            {moreOpen ? t('settings.hide') : t('settings.more_currencies')}
-            <m.span animate={{ rotate: moreOpen ? 180 : 0 }} className="inline-block">⌄</m.span>
-          </button>
-
-          <AnimatePresence initial={false}>
-            {moreOpen && (
-              <m.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                  {moreCurrencies.map((c) => (
-                    <CurrencyTile
-                      key={c.code}
-                      code={c.code}
-                      symbol={c.symbol}
-                      active={currency === c.code}
-                      name={c.name}
-                      onClick={() => { hapticSelect(); setCurrency(c.code) }}
-                    />
-                  ))}
-                </div>
-              </m.div>
-            )}
-          </AnimatePresence>
+          {moreOpen && (
+            <div className="tab-enter mt-1 grid grid-cols-3 gap-1 sm:grid-cols-4">
+              {moreCurrencies.map((c) => (
+                <CurrencyTile
+                  key={c.code}
+                  code={c.code}
+                  symbol={c.symbol}
+                  active={currency === c.code}
+                  name={c.name}
+                  onClick={() => { hapticSelect(); setCurrency(c.code) }}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+        <button
+          onClick={() => { hapticSelect(); setMoreOpen((v) => !v) }}
+          className="caption mx-auto mt-2 flex items-center gap-1 px-3 py-1.5 font-semibold text-ink-muted"
+        >
+          {moreOpen ? t('settings.hide') : t('settings.more_currencies')}
+          <ChevronDown size={14} strokeWidth={2.4} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </section>
 
       {/*
         Быстрый выбор валют в форме операции. Раньше там были зашиты USD/EUR/UAH,
         и человеку с рублём приходилось каждый раз лезть в «Ещё».
       */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 flex items-baseline justify-between px-2">
-          <span className="section-title">{t('settings.quick_cur')}</span>
-          {quickSlot !== null && (
-            <span className="text-[11px] text-brand-600 dark:text-brand-300">{t('settings.quick_cur_pick')}</span>
-          )}
-        </div>
-        <div className="card p-2">
-          <div className="grid grid-cols-3 gap-1.5">
+      <section className="mx-4 mt-4">
+        <SectionHead
+          title={t('settings.quick_cur')}
+          action={
+            quickSlot !== null ? (
+              <span className="text-brand-600 dark:text-brand-300">{t('settings.quick_cur_pick')}</span>
+            ) : undefined
+          }
+        />
+        <div className="rounded-3xl bg-surface-sunken p-1">
+          <div className="grid grid-cols-3 gap-1">
             {quickCurrencies.map((code, i) => {
               const meta = getCurrency(code)
+              const editing = quickSlot === i
               return (
                 <button
                   key={i}
-                  onClick={() => { hapticSelect(); setQuickSlot(quickSlot === i ? null : i) }}
-                  className={`flex flex-col items-center gap-0.5 rounded-2xl py-2.5 transition ${
-                    quickSlot === i
-                      ? 'bg-brand-500 text-white'
-                      : 'bg-surface-sunken/60 text-ink active:bg-surface-sunken'
+                  onClick={() => { hapticSelect(); setQuickSlot(editing ? null : i) }}
+                  className={`flex flex-col items-center gap-0.5 rounded-[20px] py-2.5 text-ink transition ${
+                    editing ? 'seg-on ring-2 ring-inset ring-brand-500' : 'seg-on'
                   }`}
                 >
                   <span className="text-lg font-bold leading-none">{meta.symbol}</span>
-                  <span className={`text-[11px] ${quickSlot === i ? 'text-white/80' : 'text-ink-subtle'}`}>{code}</span>
+                  <span className="text-[11px] text-ink-subtle">{code}</span>
                 </button>
               )
             })}
           </div>
 
-          <AnimatePresence initial={false}>
-            {quickSlot !== null && (
-              <m.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2 grid grid-cols-4 gap-1.5">
-                  {CURRENCIES.map((c) => (
-                    <button
-                      key={c.code}
-                      onClick={() => {
-                        hapticSelect()
-                        setQuickCurrency(quickSlot, c.code)
-                        setQuickSlot(null)
-                      }}
-                      className={`flex flex-col items-center gap-0.5 rounded-xl py-2 text-ink transition ${
-                        quickCurrencies[quickSlot] === c.code ? 'bg-brand-500/15' : 'bg-surface-sunken/50 active:bg-surface-sunken'
-                      }`}
-                    >
-                      <span className="text-sm font-bold leading-none">{c.symbol}</span>
-                      <span className="text-[10px] text-ink-subtle">{c.code}</span>
-                    </button>
-                  ))}
-                </div>
-              </m.div>
-            )}
-          </AnimatePresence>
-
-          <p className="mt-2 px-1 text-[11px] leading-relaxed text-ink-subtle">{t('settings.quick_cur_hint')}</p>
-        </div>
-      </div>
-
-      {/* Chart style */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">
-          {t('settings.chart_style')}
-        </div>
-        <div className="card grid grid-cols-2 gap-1 p-1">
-          {([
-            { id: 'compact', label: t('settings.chart_compact') },
-            { id: 'icons', label: t('settings.chart_icons') },
-          ] as const).map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => {
-                hapticSelect()
-                setChartStyle(opt.id)
-              }}
-              className={`rounded-2xl py-3 text-sm font-bold transition-colors ${
-                chartStyle === opt.id ? 'bg-brand-500 text-white' : 'text-ink-muted'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Home header */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">
-          {t('settings.home_header')}
-        </div>
-        <div className="card p-1">
-          <div className="grid grid-cols-2 gap-1">
-            {([
-              { id: 'date', label: t('settings.hh_date') },
-              { id: 'goal', label: t('settings.hh_goal') },
-            ] as const).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => { hapticSelect(); setHomeHeaderMode(opt.id) }}
-                className={`rounded-2xl py-3 text-sm font-bold transition-colors ${
-                  homeHeaderMode === opt.id ? 'bg-brand-500 text-white' : 'text-ink-muted'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          {homeHeaderMode === 'goal' && (
-            goals.length === 0 ? (
-              <div className="px-2 py-3 text-center text-xs text-ink-subtle">{t('settings.hh_no_goals')}</div>
-            ) : (
-              <div className="mt-1 border-t border-surface-sunken pt-2">
-                <div className="mb-1.5 px-2 caption text-ink-subtle">
-                  {t('settings.hh_pick_goal')}
-                </div>
-                <div className="flex flex-col gap-1">
-                  {goals.map((g) => {
-                    const active = (homeHeaderGoalId ?? goals[0]?.id) === g.id
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => { hapticSelect(); setHomeHeaderGoalId(g.id) }}
-                        className={`flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
-                          active ? 'bg-brand-500/15 text-brand-700 dark:text-brand-200' : 'text-ink-muted active:bg-surface-sunken'
-                        }`}
-                      >
-                        <Target size={16} strokeWidth={2.2} className="shrink-0" aria-hidden />
-                        <span className="truncate">{g.title}</span>
-                        {active && <Check size={16} strokeWidth={2.6} className="ml-auto shrink-0 text-brand-500" aria-hidden />}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
+          {quickSlot !== null && (
+            <div className="tab-enter mt-1 grid grid-cols-4 gap-1">
+              {CURRENCIES.map((c) => {
+                const current = quickCurrencies[quickSlot] === c.code
+                return (
+                  <button
+                    key={c.code}
+                    onClick={() => {
+                      hapticSelect()
+                      setQuickCurrency(quickSlot, c.code)
+                      setQuickSlot(null)
+                    }}
+                    className={`flex flex-col items-center gap-0.5 rounded-2xl py-2 transition ${
+                      current ? 'seg-on' : 'text-ink-muted active:bg-surface-raised'
+                    }`}
+                  >
+                    <span className="text-sm font-bold leading-none">{c.symbol}</span>
+                    <span className="text-[10px] text-ink-subtle">{c.code}</span>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
-      </div>
+        <p className="caption mt-2 px-1 leading-snug text-ink-subtle">{t('settings.quick_cur_hint')}</p>
+      </section>
 
-      {/* Theme */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">{t('settings.theme')}</div>
-        <div className="card grid grid-cols-3 gap-1 p-1">
-          {([
-            { id: 'auto', label: t('settings.theme_auto') },
-            { id: 'light', label: t('settings.theme_light') },
-            { id: 'dark', label: t('settings.theme_dark') },
-          ] as const).map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => {
-                hapticSelect()
-                setThemeMode(opt.id)
-              }}
-              className={`rounded-2xl py-3 text-sm font-bold transition-colors ${
-                themeMode === opt.id ? 'bg-brand-500 text-white' : 'text-ink-muted'
-              }`}
-            >
-              {opt.label}
-            </button>
+      <Segment
+        title={t('settings.chart_style')}
+        options={[
+          { id: 'compact', label: t('settings.chart_compact') },
+          { id: 'icons', label: t('settings.chart_icons') },
+        ]}
+        value={chartStyle}
+        onChange={(id) => { hapticSelect(); setChartStyle(id) }}
+      />
+
+      {/* Шапка Главной: дата или цель, и какая цель */}
+      <Segment
+        title={t('settings.home_header')}
+        options={[
+          { id: 'date', label: t('settings.hh_date') },
+          { id: 'goal', label: t('settings.hh_goal') },
+        ]}
+        value={homeHeaderMode}
+        onChange={(id) => { hapticSelect(); setHomeHeaderMode(id) }}
+      >
+        {homeHeaderMode === 'goal' &&
+          (goals.length === 0 ? (
+            <p className="caption mt-2 px-1 text-ink-subtle">{t('settings.hh_no_goals')}</p>
+          ) : (
+            <Group className="mt-3" footer={t('settings.hh_pick_goal')}>
+              {goals.map((g) => {
+                const active = (homeHeaderGoalId ?? goals[0]?.id) === g.id
+                return (
+                  <Row
+                    key={g.id}
+                    icon={<Target size={18} strokeWidth={2} />}
+                    title={g.title}
+                    trailing={
+                      active ? <Check size={18} strokeWidth={2.6} className="shrink-0 text-brand-500" aria-hidden /> : undefined
+                    }
+                    onClick={() => { hapticSelect(); setHomeHeaderGoalId(g.id) }}
+                  />
+                )
+              })}
+            </Group>
           ))}
-        </div>
-      </div>
+      </Segment>
 
-      {/* Budgets */}
-      <div className="mx-6 mt-6">
-        <button
+      {/* Лимиты по категориям — свёрнуты: список длинный, а нужен редко */}
+      <section className="mx-4 mt-6">
+        <Group>
+          <Row
+            title={t('settings.budgets')}
+            value={
+              <span className="text-ink-muted">
+                {budgetsCount > 0 ? t('settings.budgets_active', { n: budgetsCount }) : t('settings.budgets_none')}
+              </span>
+            }
+            trailing={
+              <ChevronDown
+                size={18}
+                strokeWidth={2.2}
+                className={`-mr-1 shrink-0 text-ink-subtle transition-transform ${budgetsOpen ? 'rotate-180' : ''}`}
+              />
+            }
+            onClick={() => { hapticSelect(); setBudgetsOpen((v) => !v) }}
+          />
+          {budgetsOpen &&
+            expenseCats.map((c) => (
+              <BudgetRow
+                key={c.id}
+                icon={c.icon}
+                name={catName(c.id, c.name)}
+                color={c.color}
+                value={budgets[c.id] ?? 0}
+                onChange={(v) => setBudget(c.id, v)}
+                currencySymbol={getCurrency(currency).symbol}
+              />
+            ))}
+        </Group>
+        {budgetsOpen && <p className="caption mt-2 px-1 leading-snug text-ink-subtle">{t('settings.budget_hint')}</p>}
+        {budgetsCount > 0 && (
+          <p className="caption mt-2 px-1 text-ink-subtle">
+            {t('settings.active_limits_sum')}{' '}
+            <span className="font-semibold tabular-nums text-ink">
+              {formatMoney(Object.values(budgets).reduce((s, v) => s + v, 0), currency)}
+            </span>
+          </p>
+        )}
+      </section>
+
+      {/* Свои категории */}
+      <Group
+        className="mx-4 mt-6"
+        title={t('settings.custom_categories')}
+        action={customCats.length > 0 ? t('settings.cats_count', { n: customCats.length }) : undefined}
+      >
+        {customCats.map((c) => (
+          <Row
+            key={c.id}
+            lead={<CatBadge icon={c.icon} color={c.color} />}
+            title={c.name}
+            value={
+              <span className="caption font-medium text-ink-subtle">
+                {c.kind === 'income' ? t('settings.income_cats') : t('settings.expense_cats')}
+              </span>
+            }
+            chevron
+            onClick={() => { hapticSelect(); setEditor({ open: true, cat: c }) }}
+          />
+        ))}
+        <Row
+          icon={<Plus size={18} strokeWidth={2.4} className="text-brand-600 dark:text-brand-300" />}
+          title={<span className="text-brand-600 dark:text-brand-300">{t('settings.add_category')}</span>}
+          onClick={() => { hapticTap(); setEditor({ open: true, cat: null }) }}
+        />
+      </Group>
+
+      {/* Данные */}
+      <Group className="mx-4 mt-6" title={t('settings.data')}>
+        <Row title={t('settings.total_ops')} value={<span className="text-ink-muted">{count.toLocaleString('ru-RU')}</span>} />
+        <Row
+          title={t('settings.demo')}
+          subtitle={t('settings.demo_hint')}
+          wrap
+          trailing={<Toggle on={demoMode} />}
+          onClick={() => { hapticSelect(); setDemoMode(!demoMode) }}
+        />
+        <ExportRow />
+        <ImportRow />
+        <Row
+          title={<span className="text-expense-deep dark:text-expense-soft">{t('settings.clear_all')}</span>}
+          onClick={handleClear}
+        />
+      </Group>
+
+      {/* Уведомления */}
+      <Group className="mx-4 mt-6" title={t('settings.notifications')}>
+        <Row
+          title={t('settings.reminders')}
+          subtitle={t('settings.reminders_hint')}
+          wrap
+          trailing={<Toggle on={remindersEnabled} />}
           onClick={() => {
             hapticSelect()
-            setBudgetsOpen((v) => !v)
+            const next = !remindersEnabled
+            setRemindersEnabled(next)
+            setReminders(next) // сообщаем серверу — чтобы cron сразу учёл
           }}
-          className="mb-2 flex w-full items-center justify-between px-2"
-        >
-          <span className="section-title">
-            {t('settings.budgets')}
-          </span>
-          <span className="text-xs text-ink-subtle">
-            {budgetsCount > 0 ? t('settings.budgets_active', { n: budgetsCount }) : t('settings.budgets_none')}{' '}
-            <m.span
-              animate={{ rotate: budgetsOpen ? 180 : 0 }}
-              className="ml-1 inline-block"
-            >
-              ⌄
-            </m.span>
-          </span>
-        </button>
-        <AnimatePresence initial={false}>
-          {budgetsOpen && (
-            <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
-            >
-              <div className="card divide-y divide-surface-sunken">
-                {expenseCats.map((c) => (
-                  <BudgetRow
-                    key={c.id}
-                    icon={c.icon}
-                    name={catName(c.id, c.name)}
-                    color={c.color}
-                    value={budgets[c.id] ?? 0}
-                    onChange={(v) => setBudget(c.id, v)}
-                    currencySymbol={getCurrency(currency).symbol}
-                  />
-                ))}
-              </div>
-              <p className="mx-2 mt-2 text-[11px] leading-relaxed text-ink-subtle">
-                {t('settings.budget_hint')}
-              </p>
-            </m.div>
-          )}
-        </AnimatePresence>
-      </div>
+        />
+      </Group>
 
-      {/* Categories */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 flex items-center justify-between px-2">
-          <span className="section-title">{t('settings.custom_categories')}</span>
-          <span className="text-[11px] text-ink-subtle">{customCats.length > 0 ? t('settings.cats_count', { n: customCats.length }) : t('settings.cats_none')}</span>
+      {/* О приложении */}
+      <Group className="mx-4 mt-6" title={t('settings.about')}>
+        <div className="row">
+          <p className="row-main text-[14px] leading-relaxed text-ink-muted">{t('settings.about_text')}</p>
         </div>
-        <div className="card divide-y divide-surface-sunken">
-          {customCats.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => { hapticSelect(); setEditor({ open: true, cat: c }) }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left active:bg-surface-sunken/40"
-            >
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: c.color + '22', color: c.color }}
-              >
-                <CategoryIcon id={c.icon} size={18} />
-              </div>
-              <span className="flex-1 text-sm font-medium text-ink">{c.name}</span>
-              <span className="text-[11px] text-ink-subtle">{c.kind === 'income' ? t('settings.income_cats') : t('settings.expense_cats')}</span>
-              <span className="text-ink-subtle">›</span>
-            </button>
-          ))}
-          <button
-            onClick={() => { hapticTap(); setEditor({ open: true, cat: null }) }}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-sunken/40"
-          >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-ink-subtle/40 text-ink-subtle">
-              <Plus size={18} strokeWidth={2} />
-            </div>
-            <span className="text-sm font-semibold text-brand-600 dark:text-brand-300">{t('settings.add_category')}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Data */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">{t('settings.data')}</div>
-        <div className="card divide-y divide-surface-sunken">
-          <SettingRow label={t('settings.total_ops')} value={count.toString()} />
-          <ToggleRow
-            label={t('settings.demo')}
-            hint={t('settings.demo_hint')}
-            on={demoMode}
-            onToggle={() => {
-              hapticSelect()
-              setDemoMode(!demoMode)
-            }}
-          />
-          <ExportRow />
-          <ImportRow />
-          <SettingRow
-            label={t('settings.clear_all')}
-            value="→"
-            danger
-            onClick={handleClear}
-          />
-        </div>
-      </div>
-
-      {/* Notifications */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">
-          {t('settings.notifications')}
-        </div>
-        <div className="card divide-y divide-surface-sunken">
-          <ToggleRow
-            label={t('settings.reminders')}
-            hint={t('settings.reminders_hint')}
-            on={remindersEnabled}
-            onToggle={() => {
-              hapticSelect()
-              const next = !remindersEnabled
-              setRemindersEnabled(next)
-              setReminders(next) // сообщаем серверу — чтобы cron сразу учёл
-            }}
-          />
-        </div>
-      </div>
-
-      {/* About */}
-      <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 section-title">{t('settings.about')}</div>
-        <div className="card p-4 text-sm leading-relaxed text-ink-muted">
-          <p>{t('settings.about_text')}</p>
-          <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-subtle">
-            {t('settings.in_telegram')}
-            {tg.isInTelegram ? (
-              <CircleCheck size={14} strokeWidth={2.2} className="text-income" aria-label="да" />
-            ) : (
-              <CircleX size={14} strokeWidth={2.2} className="text-expense" aria-label="нет" />
-            )}
-          </p>
-        </div>
-      </div>
-
-      {budgetsCount > 0 && <ActiveBudgetsBar total={Object.values(budgets).reduce((s, v) => s + v, 0)} currency={currency} t={t} />}
+        <Row
+          title={t('settings.in_telegram').replace(/:\s*$/, '')}
+          value={
+            <span className={tg.isInTelegram ? 'text-income-deep dark:text-brand-300' : 'text-ink-subtle'}>
+              {tg.isInTelegram ? t('common.yes') : t('common.no')}
+            </span>
+          }
+        />
+      </Group>
 
       {seenEditor.current && (
         <Suspense fallback={null}>
@@ -562,11 +407,105 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   )
 }
 
-function ActiveBudgetsBar({ total, currency, t }: { total: number; currency: Currency; t: ReturnType<typeof useT> }) {
+/** Заголовок раздела с тихим значением справа. */
+function SectionHead({ title, action }: { title: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mx-6 mt-4 text-center text-[11px] text-ink-subtle">
-      {t('settings.active_limits_sum')} <span className="tabular font-semibold text-ink">{formatMoney(total, currency)}</span>
+    <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+      <h2 className="section-title">{title}</h2>
+      {action && <span className="caption shrink-0 text-ink-subtle">{action}</span>}
     </div>
+  )
+}
+
+/** Раздел-переключатель: заголовок и сегмент из 2–3 вариантов. */
+function Segment<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+  children,
+}: {
+  title: string
+  options: readonly { id: T; label: string }[]
+  value: T
+  onChange: (id: T) => void
+  children?: ReactNode
+}) {
+  return (
+    <section className="mx-4 mt-6">
+      <SectionHead title={title} />
+      <div className="seg-track" role="radiogroup" aria-label={title}>
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            role="radio"
+            aria-checked={value === opt.id}
+            onClick={() => onChange(opt.id)}
+            className={`seg-item ${value === opt.id ? 'seg-on' : ''}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function CurrencyTile({
+  code,
+  symbol,
+  name,
+  active,
+  onClick,
+}: {
+  code: Currency
+  symbol: string
+  name: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`${name} (${code})`}
+      aria-pressed={active}
+      className={`flex flex-col items-center justify-center gap-0.5 rounded-[20px] py-2.5 transition-colors ${
+        active ? 'seg-on' : 'text-ink-muted'
+      }`}
+    >
+      <span className={`text-lg font-bold leading-none ${active ? 'text-ink' : ''}`}>{symbol}</span>
+      <span className="text-[11px] font-semibold text-ink-subtle">{code}</span>
+    </button>
+  )
+}
+
+/** Значок категории — цвет здесь информация: по нему категорию узнают везде. */
+function CatBadge({ icon, color }: { icon: string; color: string }) {
+  return (
+    <span
+      className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+      style={{ background: color + '22', color }}
+      aria-hidden
+    >
+      <CategoryIcon id={icon} size={18} />
+    </span>
+  )
+}
+
+/** Тумблер. Сам по себе не кнопка — нажимается вся строка. */
+function Toggle({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors ${on ? 'bg-brand-500' : 'bg-surface-sunken'}`}
+    >
+      <span
+        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.2)] transition-all ${
+          on ? 'left-[21px]' : 'left-[3px]'
+        }`}
+      />
+    </span>
   )
 }
 
@@ -583,70 +522,46 @@ function BudgetRow({ icon, name, color, value, onChange, currencySymbol }: Budge
   const [draft, setDraft] = useState(value > 0 ? String(value) : '')
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
-      <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-        style={{ background: color + '22', color }}
-        aria-hidden
-      >
-        <CategoryIcon id={icon} size={18} />
-      </div>
-      <span className="flex-1 text-sm font-medium text-ink">{name}</span>
-      <div className="flex items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-1.5">
-        <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          placeholder="—"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            const n = parseFloat(draft.replace(',', '.'))
-            const safe = Number.isFinite(n) && n > 0 ? n : 0
-            onChange(safe)
-            setDraft(safe > 0 ? String(safe) : '')
-          }}
-          className="w-20 bg-transparent text-right text-sm font-semibold text-ink placeholder:text-ink-subtle focus:outline-none tabular"
-        />
-        <span className="text-xs text-ink-subtle">{currencySymbol}</span>
+    <div className="row tab-enter">
+      <CatBadge icon={icon} color={color} />
+      <div className="row-main">
+        <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-ink">{name}</span>
+        <div className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-3 py-1.5">
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            placeholder="—"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              const n = parseFloat(draft.replace(',', '.'))
+              const safe = Number.isFinite(n) && n > 0 ? n : 0
+              onChange(safe)
+              setDraft(safe > 0 ? String(safe) : '')
+            }}
+            className="w-20 bg-transparent text-right text-[15px] font-semibold tabular-nums text-ink placeholder:text-ink-subtle focus:outline-none"
+          />
+          <span className="caption text-ink-subtle">{currencySymbol}</span>
+        </div>
       </div>
     </div>
   )
 }
 
-function ToggleRow({
-  label,
-  hint,
-  on,
-  onToggle,
-}: {
-  label: string
-  hint?: string
-  on: boolean
-  onToggle: () => void
-}) {
+/**
+ * Строка-действие раздела «Данные». Пока действие не запускали — шеврон;
+ * после — короткий результат справа («Готово», «Найдено 12»).
+ */
+function ActionRow({ label, result, onClick }: { label: string; result?: string; onClick?: () => void }) {
   return (
-    <button onClick={onToggle} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:bg-surface-sunken/40">
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-ink">{label}</span>
-        {hint && <span className="mt-0.5 block text-[11px] leading-snug text-ink-subtle">{hint}</span>}
-      </span>
-      <span
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-brand-500' : 'bg-surface-sunken'}`}
-      >
-        <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`}
-        />
-      </span>
-    </button>
+    <Row
+      title={label}
+      value={result !== undefined ? <span className="text-ink-muted">{result}</span> : undefined}
+      chevron={!!onClick && result === undefined}
+      onClick={onClick}
+    />
   )
-}
-
-interface RowProps {
-  label: string
-  value: string
-  onClick?: () => void
-  danger?: boolean
 }
 
 /**
@@ -663,8 +578,16 @@ function ExportRow() {
   const t = useT()
   const catName = useCatName()
 
-  const value =
-    state === 'busy' ? '…' : state === 'ok' ? t('settings.export_done') : state === 'blocked' ? t('settings.export_blocked') : state === 'failed' ? t('settings.export_failed') : '→'
+  const result =
+    state === 'busy'
+      ? '…'
+      : state === 'ok'
+        ? t('settings.export_done')
+        : state === 'blocked'
+          ? t('settings.export_blocked')
+          : state === 'failed'
+            ? t('settings.export_failed')
+            : undefined
 
   const run = async () => {
     if (state === 'busy' || transactions.length === 0) return
@@ -713,9 +636,9 @@ function ExportRow() {
   }
 
   return (
-    <SettingRow
+    <ActionRow
       label={t('settings.export')}
-      value={value}
+      result={result}
       onClick={transactions.length > 0 ? run : undefined}
     />
   )
@@ -769,17 +692,21 @@ function ImportRow() {
     setPending(null)
   }
 
-  const value = pending
+  const result = pending
     ? t('settings.import_found', { n: pending.rows.length })
     : done
       ? done.added > 0
         ? t('settings.import_added', { n: done.added })
         : t('settings.import_none')
-      : '→'
+      : undefined
 
   return (
     <>
-      <SettingRow label={pending ? t('settings.import_confirm') : t('settings.import')} value={value} onClick={pending ? commit : pick} />
+      <ActionRow
+        label={pending ? t('settings.import_confirm') : t('settings.import')}
+        result={result}
+        onClick={pending ? commit : pick}
+      />
       <input
         ref={inputRef}
         type="file"
@@ -793,20 +720,5 @@ function ImportRow() {
         }}
       />
     </>
-  )
-}
-
-function SettingRow({ label, value, onClick, danger }: RowProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-surface-sunken/40 disabled:active:bg-transparent"
-    >
-      <span className={`text-sm font-medium ${danger ? 'text-expense-deep' : 'text-ink'}`}>
-        {label}
-      </span>
-      <span className="tabular text-sm text-ink-subtle">{value}</span>
-    </button>
   )
 }

@@ -39,7 +39,7 @@ export function AccountSwitcher() {
   const shown = account ?? currency
 
   return (
-    <div className="mx-6 mb-1 mt-1 flex flex-wrap gap-1.5">
+    <div className="mx-4 mb-1 mt-1 flex flex-wrap gap-1.5">
       {accounts.map((c) => (
         <Chip key={c} active={shown === c} onClick={() => { hapticSelect(); setAccount(c) }}>
           {getCurrency(c).symbol} {c}
@@ -54,7 +54,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     <button
       onClick={onClick}
       className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-        active ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+        active ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
       }`}
     >
       {children}

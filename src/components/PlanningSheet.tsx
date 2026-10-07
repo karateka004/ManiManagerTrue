@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Target, Plus, Trash2, X, Wallet, SlidersHorizontal, Link2, Wand2, TrendingUp } from 'lucide-react'
+import { Target, Plus, Trash2, X, Link2, Wand2 } from 'lucide-react'
 import { InvestmentsTab } from './planning/InvestmentsTab'
 import {
   useStore,
@@ -64,35 +64,34 @@ export function PlanningSheet({ open, onClose, initialTab }: Props) {
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-2 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                  <Target size={20} strokeWidth={2} />
-                </span>
-                <div className="leading-tight">
-                  <div className="text-base font-bold text-ink">{t('plan.title')}</div>
-                  <div className="text-[11px] text-ink-subtle">{t('plan.subtitle')}</div>
-                </div>
-              </div>
-              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label={t('common.close')}>
-                <X size={22} />
+            {/* 2.0: без значка в зелёном квадрате и подзаголовка-перечисления —
+                вкладки ниже и так называют разделы. */}
+            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
+              <div className="text-[17px] font-extrabold text-ink">{t('plan.title')}</div>
+              <button
+                onClick={onClose}
+                aria-label={t('common.close')}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
+              >
+                <X size={18} strokeWidth={2.4} />
               </button>
             </div>
 
-            {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет) */}
-            <div className="px-4 pb-2">
-              <div className="flex rounded-2xl bg-surface-sunken/60 p-1">
+            {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет).
+                Без иконок: четыре подписи с иконками на 320 px не помещались. */}
+            <div className="px-4 pb-3">
+              <div className="seg-track">
                 <TabButton active={tab === 'limits'} onClick={() => { setTab('limits'); hapticSelect() }}>
-                  <SlidersHorizontal size={14} strokeWidth={2.4} /> {t('plan.tab_limits')}
+                  {t('plan.tab_limits')}
                 </TabButton>
                 <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
-                  <Wallet size={14} strokeWidth={2.4} /> {t('plan.tab_budget')}
+                  {t('plan.tab_budget')}
                 </TabButton>
                 <TabButton active={tab === 'goals'} onClick={() => { setTab('goals'); hapticSelect() }}>
-                  <Target size={14} strokeWidth={2.4} /> {t('plan.tab_goals')}
+                  {t('plan.tab_goals')}
                 </TabButton>
                 <TabButton active={tab === 'invest'} onClick={() => { setTab('invest'); hapticSelect() }}>
-                  <TrendingUp size={14} strokeWidth={2.4} /> {t('plan.tab_invest')}
+                  {t('plan.tab_invest')}
                 </TabButton>
               </div>
             </div>
@@ -114,9 +113,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition-colors ${
-        active ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-subtle active:text-ink-muted'
-      }`}
+      aria-pressed={active}
+      className={`seg-item min-w-0 px-1 py-1.5 text-[13px] ${active ? 'seg-on' : ''}`}
     >
       {children}
     </button>
@@ -192,12 +190,12 @@ function BudgetTab({ t }: { t: TFunc }) {
 
         {budget > 0 ? (
           <div className="mt-3">
+            {/* Полоса — обычный div: доля бюджета это данные, и застрять на нулевой
+                ширине из-за остановленного rAF она не должна (см. «Грабли»). */}
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
-              <m.div
-                className={`h-full rounded-full ${barColor}`}
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              <div
+                className={`h-full rounded-full transition-[width] duration-500 ${barColor}`}
+                style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
               />
             </div>
             <div className="mt-2 flex items-center justify-between text-[12px]">
@@ -340,19 +338,12 @@ function LimitsTab({ t }: { t: TFunc }) {
     <div>
       {/* Первый шаг для новичка: одна кнопка вместо десяти полей ввода */}
       {withLimitCount === 0 && autoCandidates.length > 0 && (
-        <div className="card mb-2 p-3">
-          <div className="flex items-start gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-              <Wand2 size={18} strokeWidth={2.2} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-ink">{t('plan.limits_auto_title')}</div>
-              <div className="mt-0.5 text-[11px] leading-relaxed text-ink-subtle">{t('plan.limits_auto_hint')}</div>
-            </div>
-          </div>
+        <div className="card mb-3 p-4">
+          <div className="text-[15px] font-semibold text-ink">{t('plan.limits_auto_title')}</div>
+          <div className="caption mt-1 leading-relaxed text-ink-subtle">{t('plan.limits_auto_hint')}</div>
           <button
             onClick={applyAll}
-            className="mt-2.5 w-full rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99]"
+            className="mt-3 w-full rounded-full bg-brand-500 px-4 py-3 text-[15px] font-bold text-white active:scale-[0.99]"
           >
             {t('plan.limits_auto_apply', { n: autoCandidates.length })}
           </button>
@@ -391,7 +382,7 @@ function LimitsTab({ t }: { t: TFunc }) {
       {expenseCats.length === 0 ? (
         <div className="py-10 text-center text-sm text-ink-subtle">{t('plan.limits_empty')}</div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="card grouped overflow-hidden">
           {ordered.map((c) => (
             <LimitRow
               key={c.id}
@@ -463,18 +454,22 @@ function LimitRow({
   const perDay = left / daysLeftInMonth()
   const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-brand-500'
 
+  // 2.0: строка группы, а не отдельная карточка — десять одинаковых коробок
+  // подряд превращали вкладку в стопку. Значок в цвете категории остался:
+  // по этому цвету её узнают на Главной и в Аналитике.
   return (
-    <div className="card p-3">
+    <div className="row items-start">
+      <div
+        className="mr-3 mt-2.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+        style={{ background: color + '22', color }}
+        aria-hidden
+      >
+        <CategoryIcon id={icon} size={18} />
+      </div>
+      <div className="row-main flex-col items-stretch gap-0">
       <div className="flex items-center gap-3">
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: color + '22', color }}
-          aria-hidden
-        >
-          <CategoryIcon id={icon} size={18} />
-        </div>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{name}</span>
-        <div className="flex items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-1.5">
+        <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-ink">{name}</span>
+        <div className="flex items-center gap-1 rounded-full bg-surface-sunken px-3 py-1.5">
           <input
             type="number"
             inputMode="decimal"
@@ -517,18 +512,19 @@ function LimitRow({
           /* Подсказка со средним расходом — ставится в один тап */
           <button
             onClick={applyAvg}
-            className="mt-2 flex w-full items-center gap-2 rounded-2xl bg-surface-sunken/70 px-3 py-2 text-left active:scale-[0.99]"
+            className="mt-2 flex w-full items-center gap-2 rounded-full bg-surface-sunken px-3 py-2 text-left active:scale-[0.99]"
           >
-            <Wand2 size={15} strokeWidth={2.4} className="shrink-0 text-brand-600 dark:text-brand-300" />
-            <span className="min-w-0 flex-1 truncate text-[11px] text-ink-subtle">
+            <Wand2 size={15} strokeWidth={2.4} className="shrink-0 text-ink-subtle" />
+            <span className="caption-sm min-w-0 flex-1 truncate text-ink-subtle">
               {t('plan.limit_avg', { sum: formatMoney(avg, currency) })}
             </span>
-            <span className="shrink-0 text-[11px] font-bold text-brand-600 dark:text-brand-300">
+            <span className="caption-sm shrink-0 font-bold text-brand-600 dark:text-brand-300">
               {t('plan.limit_apply')}
             </span>
           </button>
         )
       )}
+      </div>
     </div>
   )
 }
@@ -570,11 +566,13 @@ function GoalsTab({ t }: { t: TFunc }) {
         <div className="py-8 text-center text-sm text-ink-subtle">{t('plan.goals_empty')}</div>
       )}
 
-      <div className="flex flex-col gap-2">
-        {goals.map((g) => (
-          <GoalCard key={g.id} goal={g} t={t} />
-        ))}
-      </div>
+      {goals.length > 0 && (
+        <div className="card grouped overflow-hidden">
+          {goals.map((g) => (
+            <GoalCard key={g.id} goal={g} t={t} />
+          ))}
+        </div>
+      )}
 
       {adding ? (
         <div className="card mt-2 p-3">
@@ -603,7 +601,7 @@ function GoalsTab({ t }: { t: TFunc }) {
                 key={code}
                 onClick={() => { setCur(code); hapticSelect() }}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  cur === code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                  cur === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                 }`}
               >
                 {getCurrency(code).symbol} {code}
@@ -616,9 +614,7 @@ function GoalsTab({ t }: { t: TFunc }) {
             onClick={() => { setSync((v) => !v); hapticSelect() }}
             className="mb-2 flex w-full items-center gap-3 rounded-2xl bg-surface-sunken px-3 py-2.5 text-left"
           >
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${sync ? 'bg-brand-500 text-white' : 'bg-surface-raised text-ink-subtle'}`}>
-              <Link2 size={16} strokeWidth={2.4} />
-            </span>
+            <Link2 size={16} strokeWidth={2.4} className="shrink-0 text-ink-subtle" />
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-semibold text-ink">{t('plan.goal_sync')}</span>
               <span className="block text-[10px] leading-snug text-ink-subtle">{t('plan.goal_sync_hint')}</span>
@@ -632,13 +628,13 @@ function GoalsTab({ t }: { t: TFunc }) {
             <button
               onClick={submit}
               disabled={!title.trim() || !(parseFloat(target.replace(',', '.')) > 0)}
-              className="flex-1 rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99] disabled:opacity-40"
+              className="flex-1 rounded-full bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99] disabled:opacity-40"
             >
               {t('plan.goal_add')}
             </button>
             <button
               onClick={() => { setAdding(false); hapticSelect() }}
-              className="rounded-2xl bg-surface-sunken px-4 py-2.5 text-sm font-bold text-ink-muted active:scale-[0.99]"
+              className="rounded-full bg-surface-sunken px-4 py-2.5 text-sm font-bold text-ink-muted active:scale-[0.99]"
             >
               {t('common.cancel')}
             </button>
@@ -647,7 +643,7 @@ function GoalsTab({ t }: { t: TFunc }) {
       ) : (
         <button
           onClick={startAdding}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ink-subtle/30 py-3 text-sm font-semibold text-brand-600 active:scale-[0.99] dark:text-brand-300"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-surface-sunken py-3 text-[15px] font-semibold text-ink active:scale-[0.99]"
         >
           <Plus size={18} strokeWidth={2.4} /> {t('plan.goal_new')}
         </button>
@@ -684,16 +680,20 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
     removeGoal(goal.id)
   }
 
+  // 2.0: цель — строка общей группы. Иконка нейтральная (цвет цели ничего не
+  // значит), полоса — обычный div: накопленное это данные, и прятать их за
+  // framer-анимацией, которая может не стартовать, нельзя.
   return (
-    <div className="card p-3">
+    <div className="row items-start">
+      {/* Иконка вместо эмодзи из данных (см. GoalHeader на Главной). */}
+      <span className="mr-3 mt-3.5 flex w-5 shrink-0 justify-center text-ink-subtle">
+        <Target size={18} strokeWidth={2} aria-hidden />
+      </span>
+      <div className="row-main flex-col items-stretch gap-0">
       <div className="flex items-center gap-3">
-        {/* Иконка вместо эмодзи из данных (см. GoalHeader на Главной). */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
-          <Target size={19} strokeWidth={2.2} aria-hidden />
-        </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink">{goal.title}</div>
-          <div className="text-[11px] text-ink-subtle">
+          <div className="truncate text-[15px] font-semibold text-ink">{goal.title}</div>
+          <div className="caption mt-0.5 tabular-nums text-ink-subtle">
             {formatMoney(saved, cur)} {t('plan.goal_of')} {formatMoney(goal.target, cur)}
           </div>
         </div>
@@ -702,12 +702,10 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
         </button>
       </div>
 
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
-        <m.div
-          className={`h-full rounded-full ${done ? 'bg-income' : 'bg-gradient-to-r from-brand-400 to-brand-600'}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.round(ratio * 100)}%` }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+        <div
+          className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
+          style={{ width: `${Math.round(ratio * 100)}%` }}
         />
       </div>
 
@@ -720,7 +718,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
         <div className="mt-2 text-center text-[12px] font-semibold text-income-deep">{t('plan.goal_done')}</div>
       ) : (
         <div className="mt-2 flex items-center gap-2">
-          <div className="flex flex-1 items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-2">
+          <div className="flex flex-1 items-center gap-1 rounded-full bg-surface-sunken px-3 py-2">
             <input
               type="number"
               inputMode="decimal"
@@ -733,12 +731,13 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
           </div>
           <button
             onClick={onContribute}
-            className="shrink-0 rounded-2xl bg-brand-500 px-4 py-2 text-sm font-bold text-white active:scale-95"
+            className="shrink-0 rounded-full bg-surface-sunken px-4 py-2 text-sm font-bold text-ink active:scale-95"
           >
             {t('plan.goal_contribute')}
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }

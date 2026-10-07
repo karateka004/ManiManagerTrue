@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import {
   X,
-  BookOpen,
+  ChevronDown,
   Home,
   PlusCircle,
   LayoutGrid,
@@ -329,60 +329,57 @@ export function GuideSheet({ open, onClose }: Props) {
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-3 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                  <BookOpen size={20} strokeWidth={2} />
-                </span>
-                <div className="leading-tight">
-                  <div className="text-base font-bold text-ink">{guide.title}</div>
-                  <div className="text-[11px] text-ink-subtle">{guide.subtitle}</div>
-                </div>
+            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
+              <div className="min-w-0 leading-tight">
+                <div className="text-[17px] font-extrabold text-ink">{guide.title}</div>
+                <div className="caption mt-0.5 text-ink-subtle">{guide.subtitle}</div>
               </div>
-              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label={lang === 'en' ? 'Close' : 'Закрыть'}>
-                <X size={22} />
+              <button
+                onClick={onClose}
+                aria-label={lang === 'en' ? 'Close' : 'Закрыть'}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
+              >
+                <X size={18} strokeWidth={2.4} />
               </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-              <div className="flex flex-col gap-2">
+              {/* 2.0: одна группа с линиями вместо одиннадцати карточек, иконки
+                  нейтральные. Раскрытие — без framer: внутри текст, и прятать его
+                  за анимацией высоты, которая может не стартовать, нельзя. */}
+              <div className="card grouped overflow-hidden">
                 {guide.sections.map((s) => {
                   const isOpen = openId === s.id
                   return (
-                    <div key={s.id} className="card overflow-hidden">
+                    <div key={s.id} className="row flex-col items-stretch pl-0">
                       <button
                         onClick={() => toggle(s.id)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-sunken/40"
+                        aria-expanded={isOpen}
+                        className="flex w-full items-center pl-4 text-left transition-colors active:bg-surface-sunken"
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
+                        <span className="mr-3 flex w-5 shrink-0 justify-center text-ink-subtle [&>svg]:h-[18px] [&>svg]:w-[18px]">
                           {s.icon}
                         </span>
-                        <span className="flex-1 text-sm font-bold text-ink">{s.title}</span>
-                        <m.span animate={{ rotate: isOpen ? 180 : 0 }} className="shrink-0 text-ink-subtle">
-                          ⌄
-                        </m.span>
+                        <span className="row-main">
+                          <span className="min-w-0 flex-1 text-[15px] font-semibold text-ink">{s.title}</span>
+                          <ChevronDown
+                            size={18}
+                            strokeWidth={2.2}
+                            className={`-mr-1 shrink-0 text-ink-subtle transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          />
+                        </span>
                       </button>
 
-                      <AnimatePresence initial={false}>
-                        {isOpen && (
-                          <m.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                            className="overflow-hidden"
-                          >
-                            <ul className="flex flex-col gap-2 px-4 pb-4 pt-1">
-                              {s.items.map((item, i) => (
-                                <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-ink-muted">
-                                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500/60" />
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </m.div>
-                        )}
-                      </AnimatePresence>
+                      {isOpen && (
+                        <ul className="tab-enter flex flex-col gap-2 pb-4 pl-12 pr-4">
+                          {s.items.map((item, i) => (
+                            <li key={i} className="flex gap-2 text-[14px] leading-relaxed text-ink-muted">
+                              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ink-subtle" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )
                 })}

@@ -59,7 +59,7 @@ export function MonthlyRecap() {
   const delta = summary.deltaPct === null ? null : Math.round(summary.deltaPct)
 
   return (
-    <div className="mx-4 mt-3 overflow-hidden rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
+    <div className="card mx-4 mb-3 overflow-hidden">
       <div className="flex items-start justify-between gap-2 px-4 pt-3.5">
         <div>
           <div className="caption text-ink-subtle">
@@ -83,7 +83,7 @@ export function MonthlyRecap() {
         </div>
       </div>
 
-      <div className="mt-3 divide-y divide-ink/[.06] border-t border-ink/[.06] dark:divide-ink/[.09] dark:border-ink/[.09]">
+      <div className="mt-3 divide-y divide-hairline border-t border-hairline">
         {summary.topCategory && (
           <Row
             label={t('recap.top')}

@@ -4,16 +4,26 @@
 
 @layer base {
   :root {
-    /* Light palette (defaults) */
-    --c-surface: 250 251 249;        /* #FAFBF9 */
+    /* Светлая палитра.
+       2.0: поверхности и «чернила» нейтральные, без зелёного подтона. Раньше
+       зелёным было всё — фон с мятным градиентом, тени, серые с зеленцой, — и
+       акцент переставал что-либо значить. Теперь зелёный остаётся только у
+       бренда: главное действие, активное состояние, «хорошо». */
+    --c-surface: 246 246 243;        /* #F6F6F3 — тёплый off-white */
     --c-surface-raised: 255 255 255; /* #FFFFFF */
-    --c-surface-sunken: 241 244 240; /* #F1F4F0 */
-    --c-ink: 15 26 20;               /* #0F1A14 */
-    --c-ink-muted: 94 107 98;        /* #5E6B62 */
-    --c-ink-subtle: 138 150 143;     /* #8A968F */
+    --c-surface-sunken: 239 239 235; /* #EFEFEB */
+    --c-ink: 20 22 20;               /* #141614 */
+    --c-ink-muted: 96 100 95;        /* #60645F */
+    --c-ink-subtle: 138 142 136;     /* #8A8E88 */
+    /* Активная плашка сегмента: на сером треке — светлая, а не залитая брендом. */
+    --c-seg-on: 255 255 255;
+    /* Обводка карточек и разделители групп. */
+    --hairline: rgb(20 22 20 / 0.08);
 
-    --bg-gradient-top: #F1FAF5;
-    --bg-gradient-bottom: #FAFBF9;
+    /* Фон страницы теперь ровный; переменные градиента оставлены для мест,
+       которые на них ссылаются, и равны фону. */
+    --bg-gradient-top: rgb(246 246 243);
+    --bg-gradient-bottom: rgb(246 246 243);
 
     /* Brand-палитра (акцент) — RGB-триплеты, чтобы менять акцент рантайм.
        Дефолт — мятно-зелёный. Награды-«акценты» переопределяют эти переменные. */
@@ -45,15 +55,19 @@
   }
 
   .dark {
-    --c-surface: 15 26 20;           /* #0F1A14 */
-    --c-surface-raised: 26 38 32;    /* #1A2620 */
-    --c-surface-sunken: 36 48 41;    /* #243029 */
-    --c-ink: 232 240 235;            /* #E8F0EB */
-    --c-ink-muted: 168 181 174;      /* #A8B5AE */
-    --c-ink-subtle: 124 138 130;     /* ~ */
+    /* Тёмная палитра — тоже нейтральная. Глубина делается шагом светлоты между
+       фоном, группой и полем, а не тенями: на тёмном тень не видна. */
+    --c-surface: 14 15 14;           /* #0E0F0E */
+    --c-surface-raised: 27 28 26;    /* #1B1C1A */
+    --c-surface-sunken: 39 40 38;    /* #272826 */
+    --c-ink: 236 238 234;            /* #ECEEEA */
+    --c-ink-muted: 168 172 166;      /* #A8ACA6 */
+    --c-ink-subtle: 126 130 124;     /* #7E827C */
+    --c-seg-on: 64 66 62;
+    --hairline: rgb(255 255 255 / 0.08);
 
-    --bg-gradient-top: #0F1A14;
-    --bg-gradient-bottom: #0B1410;
+    --bg-gradient-top: rgb(14 15 14);
+    --bg-gradient-bottom: rgb(14 15 14);
 
     color-scheme: dark;
   }
@@ -65,7 +79,7 @@
   body {
     margin: 0;
     font-family: 'Manrope Variable', 'Manrope', system-ui, -apple-system, sans-serif;
-    background: linear-gradient(180deg, var(--bg-gradient-top) 0%, var(--bg-gradient-bottom) 30%);
+    background: rgb(var(--c-surface));
     color: rgb(var(--c-ink));
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
@@ -164,35 +178,71 @@
   }
 
   /* ---------- Главные карточки (баланс, уровень) ----------
-     Был плоский мятный градиент в две краски плюс пара размытых кругов сверху —
-     так выглядит шаблон. Здесь поверхность собрана как у дорогих карт:
-       — мягкий свет из левого верхнего угла и глубина в правом нижнем,
-         чтобы карточка читалась объёмной, а не залитой;
-       — тонкий блик по верхней кромке (inset-тень) — «стекло»;
-       — едва заметное зерно: убирает «пластиковую» гладкость градиента и
-         полосы-ступеньки на дешёвых экранах. Зерно — встроенный SVG, без
-         запросов, и смешивается режимом overlay, поэтому не сереет цвет.
+     2.0: герой больше не залит ярким брендом. Ярко-зелёная плашка во всю
+     ширину кричала громче самих чисел и делала зелёным весь экран. Теперь это
+     глубокая поверхность — от самого тёмного тона акцента к почти чёрному, — и
+     на ней светится только пятно акцента в углу. Число на тёмном читается
+     сильнее, а цвет остаётся подписью бренда, а не фоном.
+       — зерно убирает пластиковую гладкость и полосы-ступеньки градиента на
+         дешёвых экранах (встроенный SVG, без запросов, режим overlay);
+       — блик по верхней кромке — граница стекла, а не тень.
      Цвета — из переменных акцента: купленные палитры работают и здесь. */
   .hero-surface {
     color: #fff;
     background-image:
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.32'/></svg>"),
-      radial-gradient(120% 90% at 0% 0%, rgb(255 255 255 / 0.2), transparent 55%),
-      radial-gradient(90% 80% at 100% 100%, rgb(var(--brand-900) / 0.5), transparent 65%),
-      linear-gradient(135deg, rgb(var(--brand-500)) 0%, rgb(var(--brand-600)) 55%, rgb(var(--brand-700)) 100%);
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.22'/></svg>"),
+      radial-gradient(70% 90% at 100% 0%, rgb(var(--brand-400) / 0.42), transparent 62%),
+      radial-gradient(60% 70% at 0% 100%, rgb(var(--brand-500) / 0.14), transparent 70%),
+      linear-gradient(160deg, rgb(var(--brand-900)) 0%, rgb(11 14 12) 78%);
     background-blend-mode: overlay, normal, normal, normal;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.22),
-      inset 0 0 0 1px rgb(255 255 255 / 0.06),
-      0 22px 44px -22px rgb(var(--brand-800) / 0.65);
+      inset 0 1px 0 rgb(255 255 255 / 0.10),
+      inset 0 0 0 1px rgb(255 255 255 / 0.05);
   }
 
   .pill {
     @apply inline-flex items-center rounded-full px-4 py-2 font-semibold;
   }
 
+  /* Одна карточка на всё приложение: белая группа с обводкой в 1 px. Карточка
+     — только для группы строк или интерактивного блока; карточка в карточке и
+     карточка на каждую строку — то, от чего 2.0 уходит. */
   .card {
-    @apply bg-surface-raised rounded-3xl shadow-soft dark:shadow-soft-dark;
+    @apply bg-surface-raised rounded-3xl;
+    box-shadow: 0 0 0 1px var(--hairline);
+  }
+
+  /* ---------- Сгруппированный список (components/ui/Group) ----------
+     Как настройки в iOS: строки в одной карточке, между ними тонкая линия,
+     и линия начинается от текста, а не от края — иконка стоит «снаружи»
+     списка и не режется разделителем. Поэтому линия — граница .row-main, а
+     не самой строки. */
+  .row {
+    @apply flex w-full items-center pl-4 text-left;
+  }
+  .row-main {
+    @apply flex min-h-[52px] min-w-0 flex-1 items-center gap-3 py-3 pr-4;
+  }
+  .grouped > * + .row .row-main {
+    border-top: 1px solid var(--hairline);
+  }
+  button.row {
+    @apply transition-colors active:bg-surface-sunken;
+  }
+
+  /* ---------- Сегменты (язык, тема, валюта, «Расход/Доход») ----------
+     Активный — светлая плашка на сером треке. Сплошная заливка брендом делала
+     каждый переключатель самым ярким пятном экрана, хотя это просто настройка. */
+  .seg-track {
+    @apply flex rounded-full bg-surface-sunken p-1;
+  }
+  .seg-item {
+    @apply flex-1 whitespace-nowrap rounded-full px-3 py-2 text-[14px] font-semibold text-ink-muted transition-colors;
+  }
+  .seg-on {
+    @apply text-ink;
+    background: rgb(var(--c-seg-on));
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px var(--hairline);
   }
 
   .fab {
@@ -200,17 +250,6 @@
            active:scale-95 transition-transform duration-150;
   }
 
-  /* Цветное поле обложки плитки «Прогресса». Цвет приходит из --tile-a, которую
-     ставит Tile по акценту, поэтому здесь только градиент и разная плотность по
-     теме: на тёмном фоне тот же процент читается слабее, чем на белом.
-     Через утилиты Tailwind не выразить — градиент с rgb(var() / alpha). */
-  .tile-art {
-    background: linear-gradient(150deg, rgb(var(--tile-a) / 0.30) 0%, rgb(var(--tile-a) / 0.07) 100%);
-  }
-
-  .dark .tile-art {
-    background: linear-gradient(150deg, rgb(var(--tile-a) / 0.34) 0%, rgb(var(--tile-a) / 0.08) 100%);
-  }
 }
 
 /* Появление вкладки: лёгкий fade+slide на чистом CSS.

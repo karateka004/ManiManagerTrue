@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { Flame, Trophy, Users, X } from 'lucide-react'
+import { Flame, X } from 'lucide-react'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
 import { getReward, RARITY } from '../lib/rewards'
@@ -95,31 +95,31 @@ export function LeaderboardSheet({ open, onClose }: Props) {
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-2 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                  <Trophy size={20} strokeWidth={2} />
-                </span>
-                <div className="leading-tight">
-                  <div className="text-base font-bold text-ink">{t('lb.title')}</div>
-                  <div className="text-[11px] text-ink-subtle">
-                    {state.status === 'ok' ? t('lb.participants', { n: state.total }) : t('lb.subtitle')}
-                  </div>
+            {/* 2.0: шапка как у остальных шторок — без значка в цветном квадрате. */}
+            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
+              <div className="min-w-0 leading-tight">
+                <div className="text-[17px] font-extrabold text-ink">{t('lb.title')}</div>
+                <div className="caption mt-0.5 text-ink-subtle">
+                  {state.status === 'ok' ? t('lb.participants', { n: state.total }) : t('lb.subtitle')}
                 </div>
               </div>
-              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label={t('common.close')}>
-                <X size={22} />
+              <button
+                onClick={onClose}
+                aria-label={t('common.close')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
+              >
+                <X size={18} strokeWidth={2.4} />
               </button>
             </div>
 
             {/* Переключатель досок */}
-            <div className="px-4 pb-2">
-              <div className="flex rounded-2xl bg-surface-sunken/60 p-1">
+            <div className="px-4 pb-3">
+              <div className="seg-track">
                 <TabButton active={tab === 'xp'} onClick={() => { setTab('xp'); hapticSelect() }}>
-                  <Trophy size={15} strokeWidth={2.4} /> {t('lb.by_xp')}
+                  {t('lb.by_xp')}
                 </TabButton>
                 <TabButton active={tab === 'refs'} onClick={() => { setTab('refs'); hapticSelect() }}>
-                  <Users size={15} strokeWidth={2.4} /> {t('lb.by_refs')}
+                  {t('lb.by_refs')}
                 </TabButton>
               </div>
             </div>
@@ -142,14 +142,16 @@ export function LeaderboardSheet({ open, onClose }: Props) {
               )}
 
               {board && board.top.length > 0 && (
-                <div className="flex flex-col gap-1.5">
+                <div className="card grouped overflow-hidden">
                   {board.top.map((e, i) => (
                     <Row key={e.id} entry={e} rank={i + 1} isMe={e.id === myId} tab={tab} t={t} />
                   ))}
 
                   {meOutsideTop && (
                     <>
-                      <div className="my-1 text-center text-[11px] text-ink-subtle">· · ·</div>
+                      <div className="row">
+                        <div className="row-main caption justify-center text-ink-subtle">· · ·</div>
+                      </div>
                       <Row entry={meOutsideTop} rank={meOutsideTop.rank} isMe tab={tab} t={t} />
                     </>
                   )}
@@ -179,9 +181,8 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold transition-colors ${
-        active ? 'bg-surface-raised text-ink shadow-sm' : 'text-ink-subtle active:text-ink-muted'
-      }`}
+      aria-pressed={active}
+      className={`seg-item py-1.5 ${active ? 'seg-on' : ''}`}
     >
       {children}
     </button>
@@ -221,12 +222,11 @@ function Row({
       ? { padding: 2, background: `rgb(${accentPalette[500]})` }
       : undefined
   return (
-    <div
-      className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
-        isMe ? 'bg-brand-500/15 ring-1 ring-brand-500/40' : 'bg-surface-sunken/50'
-      }`}
-    >
-      <div className="flex w-7 shrink-0 items-center justify-center">
+    // 2.0: строка группы. Себя видно по тихой подложке и пометке «· ты», а не по
+    // брендовой рамке вокруг отдельной карточки.
+    <div className={`row ${isMe ? 'bg-brand-500/10' : ''}`}>
+      <div className="row-main gap-3">
+      <div className="-ml-1 flex w-7 shrink-0 items-center justify-center">
         {metal ? (
           <span
             className={`flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ${metal}`}
@@ -242,7 +242,7 @@ function Row({
           className={`flex h-full w-full items-center justify-center rounded-full text-sm font-bold ${
             ringStyle
               ? 'bg-surface-raised text-brand-600 dark:text-brand-300'
-              : 'bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'
+              : 'bg-surface-sunken text-ink-muted'
           }`}
         >
           {initial}
@@ -286,6 +286,7 @@ function Row({
             <div className="text-[10px] text-ink-subtle">{t('lb.friends')}</div>
           </>
         )}
+      </div>
       </div>
     </div>
   )

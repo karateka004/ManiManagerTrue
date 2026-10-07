@@ -50,7 +50,7 @@ function CurrencyChips({
           key={code}
           onClick={() => { onChange(code); hapticSelect() }}
           className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-            value === code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+            value === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
           }`}
         >
           {getCurrency(code).symbol} {code}
@@ -139,7 +139,7 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
               </span>
             ))}
           </div>
-          <div className="mt-2 flex items-center gap-2 border-t border-surface-sunken pt-2 text-[11px]">
+          <div className="mt-2 flex items-center gap-2 border-t border-hairline pt-2 text-[11px]">
             <TrendingUp size={13} strokeWidth={2.4} className="shrink-0 text-income-deep" />
             <span className="text-ink-subtle">
               {t('inv.yearly')}:{' '}
@@ -185,7 +185,7 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
       ) : (
         <button
           onClick={() => { hapticTap(); setAdding(true) }}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ink-subtle/30 py-3 text-sm font-semibold text-brand-600 active:scale-[0.99] dark:text-brand-300"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-surface-sunken py-3 text-[15px] font-semibold text-ink active:scale-[0.99]"
         >
           <Plus size={18} strokeWidth={2.4} /> {t('inv.add')}
         </button>
@@ -196,7 +196,7 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
         onClick={() => { hapticTap(); setCalcOpen((v) => !v) }}
         className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-surface-sunken/60 p-3 text-left active:scale-[0.99]"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+        <span className="flex w-5 shrink-0 justify-center text-ink-subtle">
           <Calculator size={18} strokeWidth={2.2} />
         </span>
         <span className="min-w-0 flex-1">
@@ -396,7 +396,7 @@ function AddInvestmentForm({
             })
           }}
           disabled={!valid}
-          className="flex-1 rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99] disabled:opacity-40"
+          className="flex-1 rounded-full bg-brand-500 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.99] disabled:opacity-40"
         >
           {t('common.save')}
         </button>
@@ -479,7 +479,7 @@ function CompoundCalculator({
             <div className="tabular font-semibold text-income-deep">+{formatMoney(res.profit, currency)}</div>
           </div>
         </div>
-        <div className="mt-2 border-t border-surface-sunken pt-2 text-[11px] text-ink-subtle">
+        <div className="mt-2 border-t border-hairline pt-2 text-[11px] text-ink-subtle">
           {t('inv.calc_apy', { apy: res.apy.toFixed(2) })}
         </div>
       </div>

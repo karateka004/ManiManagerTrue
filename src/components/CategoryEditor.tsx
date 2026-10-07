@@ -85,7 +85,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
             </div>
 
             <div className="flex items-center justify-between px-6 py-2">
-              <span className="text-base font-bold text-ink">
+              <span className="text-[17px] font-extrabold text-ink">
                 {editing ? t('cat.edit') : t('cat.new')}
               </span>
               <button onClick={onClose} className="text-sm font-medium text-ink-subtle active:text-ink-muted">
@@ -117,7 +117,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             {/* Kind */}
             <div className="px-6 pb-3">
-              <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
+              <div className="seg-track">
                 {([
                   { id: 'expense', label: t('common.expense_one') },
                   { id: 'income', label: t('common.income_one') },
@@ -125,9 +125,8 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
                   <button
                     key={opt.id}
                     onClick={() => { hapticSelect(); setKind(opt.id) }}
-                    className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${
-                      kind === opt.id ? 'bg-surface-raised text-ink shadow-soft dark:shadow-soft-dark' : 'text-ink-subtle'
-                    }`}
+                    aria-pressed={kind === opt.id}
+                    className={`seg-item ${kind === opt.id ? 'seg-on' : ''}`}
                   >
                     {opt.label}
                   </button>
@@ -190,7 +189,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
               <button
                 onClick={save}
                 disabled={!canSave}
-                className={`w-full rounded-full bg-brand-500 py-4 text-base font-bold text-white shadow-fab transition-transform active:scale-[0.98] ${
+                className={`w-full rounded-full bg-brand-500 py-4 text-base font-bold text-white transition-transform active:scale-[0.98] ${
                   canSave ? '' : 'opacity-40'
                 }`}
               >

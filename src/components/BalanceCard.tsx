@@ -28,7 +28,7 @@ export function BalanceCard() {
     : allEntries
 
   return (
-    <div className="px-6 pb-2">
+    <div className="px-4 pb-3">
       {/* Обычный div, а не m.div с initial: opacity 0. Это главное число в
           приложении, а framer крутит появление через requestAnimationFrame: в
           свёрнутом Telegram он стоит, и карточка оставалась бы невидимой

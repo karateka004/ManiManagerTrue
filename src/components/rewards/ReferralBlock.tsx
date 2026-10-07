@@ -1,14 +1,33 @@
-import { useState } from 'react'
-import { CoinAmount } from './CoinAmount'
+import { useState, type ReactNode } from 'react'
 import { Send } from 'lucide-react'
 import { buildReferralLink, type ReferralFriend } from '../../lib/api'
 import { REF_REWARD } from '../../store/transactions'
 import { openTelegramLink, hapticTap, hapticSelect } from '../../lib/telegram'
 import { dayjs } from '../../lib/format'
 import type { TFunc } from '../../lib/i18n'
+import { Group, Row } from '../ui/Group'
 
-/** Реферальный блок: ссылка-приглашение + список присоединившихся друзей. */
-export function ReferralBlock({ count, friends, t }: { count: number | null; friends: ReferralFriend[]; t: TFunc }) {
+/**
+ * Друзья: задания за приглашения, ссылка и список присоединившихся — одной
+ * группой.
+ *
+ * 2.0: раньше это были два раздела подряд — «Спешел» с тремя карточками
+ * заданий и «Пригласить друзей» с кнопками. По сути одно и то же действие,
+ * разнесённое на два заголовка, причём «Спешел» не объяснял, что внутри.
+ * Задания приходят сюда готовыми строками (`quests`), чтобы логика борда
+ * осталась на странице.
+ */
+export function ReferralBlock({
+  count,
+  friends,
+  quests,
+  t,
+}: {
+  count: number | null
+  friends: ReferralFriend[]
+  quests: ReactNode
+  t: TFunc
+}) {
   const [copied, setCopied] = useState(false)
   const link = buildReferralLink()
 
@@ -30,60 +49,50 @@ export function ReferralBlock({ count, friends, t }: { count: number | null; fri
   }
 
   return (
-    <div className="mx-4 mt-4">
-      <div className="mb-2 flex items-center justify-between px-2">
-        <span className="section-title">{t('profile.invite_friends')}</span>
-        {count !== null && (
-          <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300">{t('profile.invited', { n: count })}</span>
-        )}
-      </div>
-      <div className="card p-3">
-        <p className="px-1 text-[12px] leading-relaxed text-ink-muted">
-          {t('profile.invite_text')}
-        </p>
-        <div className="mt-2 flex gap-2">
-          <button
-            onClick={share}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-bold text-white active:scale-[0.99]"
-          >
-            <Send size={18} strokeWidth={2} />
-            {t('profile.share')}
-          </button>
-          <button
-            onClick={copy}
-            className="rounded-2xl bg-surface-sunken px-4 py-3 text-sm font-bold text-ink-muted active:scale-[0.99]"
-          >
-            {copied ? t('profile.copied') : t('profile.copy')}
-          </button>
-        </div>
+    <Group
+      className="mx-4 mt-6"
+      title={t('profile.invite_friends')}
+      action={count !== null && count > 0 ? t('profile.invited', { n: count }) : undefined}
+    >
+      {quests}
 
-        {friends.length > 0 && (
-          <div className="mt-3 border-t border-surface-sunken pt-3">
-            <div className="mb-2 px-1 section-title">
-              {t('profile.who_joined')}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {friends.map((f) => (
-                <div key={f.id} className="flex items-center gap-2.5 rounded-2xl bg-surface-sunken/50 px-2.5 py-2">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                    {(f.name?.[0] ?? '?').toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-ink">{f.name}</div>
-                    {f.username && <div className="truncate text-[11px] text-ink-subtle">@{f.username}</div>}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                      +{REF_REWARD.xp} XP · <CoinAmount value={REF_REWARD.coins} size={10} />
-                    </span>
-                    <span className="text-[10px] text-ink-subtle">{dayjs(f.at).fromNow()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+      <div className="row">
+        <div className="row-main flex-col items-stretch gap-3">
+          <p className="caption leading-snug text-ink-muted">{t('profile.invite_text')}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={share}
+              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-2.5 text-[14px] font-bold text-white transition-transform active:scale-[0.98]"
+            >
+              <Send size={16} strokeWidth={2.2} />
+              {t('profile.share')}
+            </button>
+            <button
+              type="button"
+              onClick={copy}
+              className="rounded-full bg-surface-sunken px-4 py-2.5 text-[14px] font-bold text-ink transition-transform active:scale-[0.98]"
+            >
+              {copied ? t('profile.copied') : t('profile.copy')}
+            </button>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+
+      {friends.map((f) => (
+        <Row
+          key={f.id}
+          lead={
+            <span className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[14px] font-bold text-ink-muted">
+              {(f.name?.[0] ?? '?').toUpperCase()}
+            </span>
+          }
+          title={f.name}
+          subtitle={f.username ? '@' + f.username : undefined}
+          value={<span className="text-ink-muted">+{REF_REWARD.xp} XP</span>}
+          valueSub={dayjs(f.at).fromNow()}
+        />
+      ))}
+    </Group>
   )
 }

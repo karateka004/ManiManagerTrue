@@ -61,6 +61,8 @@ const DICT: Dict = {
   'app.name': { ru: 'Кошель', en: 'Koshel' },
   'common.income': { ru: 'Доходы', en: 'Income' },
   'common.expense': { ru: 'Расходы', en: 'Expenses' },
+  'common.yes': { ru: 'Да', en: 'Yes' },
+  'common.no': { ru: 'Нет', en: 'No' },
   'common.balance': { ru: 'Баланс', en: 'Balance' },
   'common.cancel': { ru: 'Отмена', en: 'Cancel' },
   'common.clear': { ru: 'Очистить', en: 'Clear' },
@@ -158,10 +160,10 @@ const DICT: Dict = {
   'ai.title': { ru: 'Ассистент', en: 'Assistant' },
   'ai.open': { ru: 'Открыть ассистента', en: 'Open assistant' },
   'ai.intro': {
-    ru: 'Спросите про свои деньги обычными словами — отвечу по вашим записям.',
+    ru: 'Спроси про свои деньги обычными словами — отвечу по твоим записям.',
     en: 'Ask about your money in plain words — I answer from your entries.',
   },
-  'ai.placeholder': { ru: 'Спросите про деньги', en: 'Ask about your money' },
+  'ai.placeholder': { ru: 'Спроси про деньги', en: 'Ask about your money' },
   'ai.send': { ru: 'Спросить', en: 'Ask' },
   'ai.q1': { ru: 'Как у меня сейчас с финансами?', en: 'How are my finances right now?' },
   'ai.q2': { ru: 'На что уходит больше всего?', en: 'Where does most of it go?' },
@@ -172,11 +174,11 @@ const DICT: Dict = {
     en: 'No more questions for today — I will answer again tomorrow.',
   },
   'ai.err_unavailable': {
-    ru: 'Не получилось ответить. Попробуйте ещё раз.',
+    ru: 'Не получилось ответить. Попробуй ещё раз.',
     en: 'Could not answer. Please try again.',
   },
   'ai.err_unclear': {
-    ru: 'Не понял вопрос. Спросите про траты, доходы или остаток.',
+    ru: 'Не понял вопрос. Спроси про траты, доходы или остаток.',
     en: 'I did not get that. Ask about spending, income or what is left.',
   },
   'ai.err_record': {
@@ -185,7 +187,7 @@ const DICT: Dict = {
   },
   // Строка обязана оставаться правдой: меняешь объём отправляемого — правь и здесь.
   'ai.privacy': {
-    ru: 'Отвечает Google Gemini по итогам ваших сумм. Список операций не отправляется.',
+    ru: 'Отвечает Google Gemini по итогам твоих сумм. Список операций не отправляется.',
     en: 'Answers come from Google Gemini using your totals. The list of entries is not sent.',
   },
   'settings.about': { ru: 'О приложении', en: 'About' },
@@ -264,6 +266,14 @@ const DICT: Dict = {
   'time.soon': { ru: 'меньше минуты', en: 'less than a minute' },
   'quest.empty': { ru: 'Все задания выполнены. Новые появятся с обновлениями — загляни позже!', en: 'All quests done. New ones arrive with updates — check back later!' },
   'quest.left': { ru: 'ещё {n} впереди', en: '{n} more ahead' },
+  'profile.all_time': { ru: 'За всё время', en: 'All time' },
+  'profile.first_entry': { ru: 'Первая запись', en: 'First entry' },
+  'profile.top_short': { ru: 'Больше всего', en: 'Top spend' },
+  'progress.rank': { ru: '{rank}-е из {total}', en: '#{rank} of {total}' },
+  'progress.rank_only': { ru: '{rank}-е место', en: '#{rank}' },
+  'progress.of': { ru: '{n} из {total}', en: '{n} of {total}' },
+  'streak.in_row': { ru: '{n} {word} подряд', en: '{n} {word} in a row' },
+  'streak.none': { ru: 'Серия ещё не начата', en: 'No streak yet' },
   'unit.h': { ru: 'ч', en: 'h' },
   'unit.m': { ru: 'мин', en: 'm' },
 
@@ -517,6 +527,7 @@ const DICT: Dict = {
     en: 'Delete category “{name}”? Its operations will remain.',
   },
   'cat.of_limit': { ru: 'из лимита', en: 'of limit' },
+  'cat.limit_line': { ru: 'лимит {limit} · {pct}%', en: 'limit {limit} · {pct}%' },
 
   /* Календарь */
   'cal.tab': { ru: 'Календарь', en: 'Calendar' },
@@ -562,8 +573,8 @@ const DICT: Dict = {
   /* Пустое состояние списка */
   'empty.title': { ru: 'Пусто, но это поправимо', en: 'Empty — but fixable' },
   'empty.text': {
-    ru: 'Добавь первую операцию кнопкой + или − внизу — и здесь появится разбивка по категориям.',
-    en: 'Add your first operation with the + or − button below — a category breakdown will appear here.',
+    ru: 'Добавь первую операцию кнопкой + внизу или просто напиши боту «кофе 300» — и здесь появится разбивка по категориям.',
+    en: 'Add your first entry with the + button below, or just text the bot “coffee 300” — a category breakdown will appear here.',
   },
   'empty.enable_demo': { ru: 'Включить демо-режим', en: 'Enable demo mode' },
 
@@ -821,8 +832,8 @@ const DICT: Dict = {
   },
   'qs.finish': { ru: 'Открыть приложение', en: 'Open the app' },
   'qs.finish_hint': {
-    ru: 'Твои операции уже сохранены. Добавляй новые кнопками + и − на главной.',
-    en: 'Your entries are saved. Add more with the + and − buttons on the home screen.',
+    ru: 'Операции уже сохранены. Новые — кнопкой + внизу или сообщением боту: «кофе 300».',
+    en: 'Your entries are saved. Add more with the + button below or by texting the bot: “coffee 300”.',
   },
 
   'home.cap_goal': { ru: 'Цель', en: 'Goal' },
@@ -834,6 +845,10 @@ const DICT: Dict = {
   'home.plan_goals_n': { ru: '{n} шт.', en: '{n} set' },
   /* Остаток на сегодня (дневной лимит из месячного бюджета) */
   'home.today_kicker': { ru: 'На сегодня', en: 'For today' },
+  'home.today_left_label': { ru: 'Можно потратить сегодня', en: 'Left to spend today' },
+  'home.today_over_label': { ru: 'Перерасход сегодня', en: 'Over today' },
+  'home.month_line': { ru: 'Месяц: {spent} из {budget}', en: 'Month: {spent} of {budget}' },
+  'home.budget_set': { ru: 'Задать бюджет месяца', en: 'Set a monthly budget' },
   'home.today_left': { ru: 'Можно ещё {left}', en: '{left} still available' },
   'home.today_over': { ru: 'Перерасход {over}', en: 'Over by {over}' },
   'home.today_spent': { ru: 'Потрачено {spent} из {perDay}', en: 'Spent {spent} of {perDay}' },
@@ -897,6 +912,26 @@ export function categoriesWord(lang: Lang, n: number): string {
   if (mod10 === 1 && mod100 !== 11) return 'категория'
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'категории'
   return 'категорий'
+}
+
+/** Слово «монета» с правильным склонением (RU) / числом (EN). */
+export function coinsWord(lang: Lang, n: number): string {
+  if (lang === 'en') return n === 1 ? 'coin' : 'coins'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'монета'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'монеты'
+  return 'монет'
+}
+
+/** Слово «операция» с правильным склонением (RU) / числом (EN). */
+export function opsWord(lang: Lang, n: number): string {
+  if (lang === 'en') return n === 1 ? 'entry' : 'entries'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'операция'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'операции'
+  return 'операций'
 }
 
 /** Короткие названия дней недели (Пн…Вс / Mon…Sun). */

@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react'
-import { AnimatePresence, m } from 'framer-motion'
+import { X } from 'lucide-react'
 import {
   useStore,
   selectByCategoryAccount,
@@ -10,13 +10,23 @@ import {
   type BudgetStatus,
   type Transaction,
 } from '../store/transactions'
-import { PieChart } from 'lucide-react'
 import { formatMoney, formatShortDate } from '../lib/format'
-import { useCatName, useT } from '../lib/i18n'
+import { opsWord, useCatName, useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 import { hapticTap, hapticSelect } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 
+/**
+ * Категории периода — по одной группе на доходы и расходы.
+ *
+ * 2.0: раньше каждая категория была отдельной карточкой с тенью и цветной
+ * пилюлей-счётчиком у названия: пятнадцать одинаковых коробок, и на каждой по
+ * три цветных пятна (значок, пилюля, сумма красным). Теперь это один список с
+ * тонкими разделителями. Цвет остался там, где он — информация: значок
+ * категории и полоска доли (по ним категорию узнают на диаграмме). Суммы —
+ * обычным цветом текста: знак «+» у дохода и заголовок раздела и так говорят,
+ * что это, а красный на каждой строке превращал список расходов в тревогу.
+ */
 export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx: (t: Transaction) => void }) {
   const expenses = useStore((s) => selectByCategoryAccount(s, 'expense'))
   const incomes = useStore((s) => selectByCategoryAccount(s, 'income'))
@@ -31,53 +41,82 @@ export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx:
   }
 
   return (
-    <div className="mt-2 px-4">
-      {incomes.length > 0 && (
-        <SectionHeader title={t('common.income')} cats={incomes} kind="income" />
-      )}
-      <div className="space-y-2">
-        {incomes.map((c) => <CategoryRow key={c.categoryId} cat={c} onEditTx={onEditTx} />)}
-      </div>
-
+    <div className="mt-1 px-4">
       {expenses.length > 0 && (
-        <SectionHeader title={t('common.expense')} cats={expenses} kind="expense" />
+        <Section title={t('common.expense')} cats={expenses} kind="expense">
+          {expenses.map((c) => (
+            <CategoryRow key={c.categoryId} cat={c} budget={budgetByCat.get(c.categoryId)} onEditTx={onEditTx} />
+          ))}
+        </Section>
       )}
-      <div className="space-y-2">
-        {expenses.map((c) => <CategoryRow key={c.categoryId} cat={c} budget={budgetByCat.get(c.categoryId)} onEditTx={onEditTx} />)}
-      </div>
 
-      {/* Bottom padding so FAB doesn't cover last row */}
-      <div className="h-32" />
+      {incomes.length > 0 && (
+        <Section title={t('common.income')} cats={incomes} kind="income">
+          {incomes.map((c) => (
+            <CategoryRow key={c.categoryId} cat={c} onEditTx={onEditTx} />
+          ))}
+        </Section>
+      )}
+
+      {/* Запас снизу, чтобы плавающая панель не закрывала последнюю строку. */}
+      <div className="h-28" />
     </div>
   )
 })
 
-function SectionHeader({ title, cats, kind }: { title: string; cats: CategoryAggregate[]; kind: 'income' | 'expense' }) {
+/**
+ * Раздел: заголовок с итогом и группа строк. Расходы теперь идут первыми —
+ * на Главную приходят посмотреть, куда ушли деньги, а доходов у большинства
+ * одна-две строки.
+ */
+function Section({
+  title,
+  cats,
+  kind,
+  children,
+}: {
+  title: string
+  cats: CategoryAggregate[]
+  kind: 'income' | 'expense'
+  children: React.ReactNode
+}) {
   // Суммы по валютам: в режиме «Все» категории могут быть в разных валютах —
   // не смешиваем их в одно число, а показываем по каждой (722 ₴ · 80 €).
   const byCur = new Map<Currency, number>()
   for (const c of cats) byCur.set(c.currency, (byCur.get(c.currency) ?? 0) + c.amount)
   const parts = [...byCur.entries()]
-  const symbol = kind === 'income' ? '+' : '−'
 
   return (
-    <div className="mb-2 mt-4 flex items-center justify-between px-2">
-      <span className="section-title">{title}</span>
-      <span className={`tabular text-xs font-bold ${kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-        {parts.map(([cur, amount], i) => (
-          <span key={cur}>
-            {i > 0 && <span className="font-normal text-ink-subtle"> · </span>}
-            {symbol} {formatMoney(amount, cur).replace('−', '')}
-          </span>
-        ))}
-      </span>
-    </div>
+    <section className="mt-5 first:mt-2">
+      <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+        <h2 className="section-title">{title}</h2>
+        <span className="caption tabular-nums text-ink-muted">
+          {parts.map(([cur, amount], i) => (
+            <span key={cur}>
+              {i > 0 && <span className="text-ink-subtle"> · </span>}
+              {kind === 'income' ? '+' : ''}
+              {formatMoney(amount, cur).replace('−', '')}
+            </span>
+          ))}
+        </span>
+      </div>
+      <div className="card grouped overflow-hidden">{children}</div>
+    </section>
   )
 }
 
-const CategoryRow = memo(function CategoryRow({ cat, budget, onEditTx }: { cat: CategoryAggregate; budget?: BudgetStatus; onEditTx: (t: Transaction) => void }) {
+const CategoryRow = memo(function CategoryRow({
+  cat,
+  budget,
+  onEditTx,
+}: {
+  cat: CategoryAggregate
+  budget?: BudgetStatus
+  onEditTx: (t: Transaction) => void
+}) {
   const [open, setOpen] = useState(false)
   const currency = useStore(selectAnalyticsCurrency)
+  const lang = useStore((s) => s.lang)
   const tr = useT()
   const catName = useCatName()
 
@@ -86,83 +125,58 @@ const CategoryRow = memo(function CategoryRow({ cat, budget, onEditTx }: { cat: 
     setOpen((v) => !v)
   }
 
-  const budgetStripe =
+  const limitTone =
     budget?.level === 'over'
-      ? 'before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-expense'
+      ? 'font-semibold text-expense-deep dark:text-expense-soft'
       : budget?.level === 'warn'
-      ? 'before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-yellow-400'
-      : ''
+        ? 'font-semibold text-amber-700 dark:text-amber-400'
+        : 'text-ink-subtle'
 
   return (
-    <div className={`card relative overflow-hidden ${budgetStripe}`}>
-      <button
-        onClick={toggle}
-        className="flex w-full items-center gap-3 px-4 py-3 active:bg-surface-sunken/40"
-      >
-        <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+    <>
+      <button type="button" onClick={toggle} className="row" aria-expanded={open}>
+        <span
+          className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{ background: cat.color + '22', color: cat.color }}
         >
-          <CategoryIcon id={cat.icon} size={22} />
-        </div>
-
-        <div className="flex-1 text-left">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">{catName(cat.categoryId, cat.name)}</span>
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
-              style={{ background: cat.color }}
-            >
-              {cat.count}
+          <CategoryIcon id={cat.icon} size={20} />
+        </span>
+        <span className="row-main flex-col items-stretch gap-1">
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-[15px] font-semibold text-ink">{catName(cat.categoryId, cat.name)}</span>
+            <span className="shrink-0 text-[15px] font-semibold tabular-nums text-ink">
+              {cat.kind === 'income' ? '+' : ''}
+              {formatMoney(cat.amount, cat.currency).replace('−', '')}
             </span>
-          </div>
-          <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
-            <div
-              className="h-full rounded-full"
-              style={{ width: `${Math.min(cat.pct, 100)}%`, background: cat.color }}
-            />
-          </div>
-          {budget && (
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-subtle">
-              <span
-                className={
-                  budget.level === 'over'
-                    ? 'font-semibold text-expense-deep'
-                    : budget.level === 'warn'
-                    ? 'font-semibold text-yellow-700 dark:text-yellow-400'
-                    : ''
-                }
-              >
-                {Math.round(budget.ratio * 100)}%
+          </span>
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="caption-sm tabular-nums text-ink-subtle">
+              {cat.count} {opsWord(lang, cat.count)} · {cat.pct.toFixed(0)}%
+            </span>
+            {budget && (
+              <span className={`caption-sm shrink-0 tabular-nums ${limitTone}`}>
+                {tr('cat.limit_line', {
+                  limit: formatMoney(budget.limit, currency),
+                  pct: Math.round(budget.ratio * 100),
+                })}
               </span>
-              <span>{tr('cat.of_limit')}</span>
-              <span className="tabular">{formatMoney(budget.limit, currency)}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="text-right">
-          <div className={`tabular font-bold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-            {cat.kind === 'income' ? '+' : '−'} {formatMoney(cat.amount, cat.currency).replace('−', '')}
-          </div>
-          <div className="text-xs text-ink-subtle">{cat.pct.toFixed(0)}%</div>
-        </div>
+            )}
+          </span>
+          {/* Доля категории в разделе — тонкой полосой её цвета: по этому цвету
+              категорию находят на диаграмме в Аналитике. */}
+          <span className="mt-0.5 block h-[3px] w-full overflow-hidden rounded-full bg-surface-sunken">
+            <span
+              className="block h-full rounded-full"
+              style={{ width: `${Math.max(2, Math.min(cat.pct, 100))}%`, background: cat.color }}
+            />
+          </span>
+        </span>
       </button>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <m.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
-          >
-            <RowTransactions cat={cat} currency={currency} onEditTx={onEditTx} />
-          </m.div>
-        )}
-      </AnimatePresence>
-    </div>
+      {/* Раскрытие без framer: внутри — данные, а их нельзя прятать за анимацией,
+          которая может не стартовать в свёрнутом webview (см. «Грабли»). */}
+      {open && <RowTransactions cat={cat} currency={currency} onEditTx={onEditTx} />}
+    </>
   )
 })
 
@@ -186,35 +200,35 @@ function RowTransactions({
   const tr = useT()
 
   return (
-    <div className="border-t border-surface-sunken bg-surface-sunken/30 px-4 py-2">
+    <div className="tab-enter bg-surface-sunken/50 pb-1 pl-[68px] pr-2">
       {transactions.map((t) => (
-        <div key={t.id} className="flex items-center justify-between py-2">
+        <div key={t.id} className="flex items-center gap-2 border-t border-hairline first:border-t-0">
           <button
+            type="button"
             onClick={() => { hapticSelect(); onEditTx(t) }}
-            className="flex flex-1 items-center justify-between gap-3 text-left active:opacity-60"
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 py-2.5 text-left active:opacity-60"
             aria-label={tr('common.edit')}
           >
-            <div className="flex items-center gap-3">
-              <span className="h-2 w-2 rounded-full" style={{ background: cat.color }} />
-              <div>
-                {t.note && <div className="text-sm text-ink">{t.note}</div>}
-                <div className="text-xs text-ink-subtle">{formatShortDate(t.date)}</div>
-              </div>
-            </div>
-            <span className={`tabular text-sm font-semibold ${cat.kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
-              {cat.kind === 'income' ? '+' : '−'} {formatMoney(t.amount, t.currency ?? currency).replace('−', '')}
+            <span className="min-w-0">
+              <span className="block truncate text-[14px] text-ink">{t.note || formatShortDate(t.date)}</span>
+              {t.note && <span className="caption-sm block text-ink-subtle">{formatShortDate(t.date)}</span>}
+            </span>
+            <span className="shrink-0 text-[14px] font-semibold tabular-nums text-ink">
+              {cat.kind === 'income' ? '+' : ''}
+              {formatMoney(t.amount, t.currency ?? currency).replace('−', '')}
             </span>
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation()
               hapticTap('medium')
               removeTransaction(t.id)
             }}
-            className="ml-3 text-ink-subtle/60 text-lg active:text-expense"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense"
             aria-label={tr('common.delete')}
           >
-            ×
+            <X size={15} strokeWidth={2.4} />
           </button>
         </div>
       ))}
@@ -222,25 +236,28 @@ function RowTransactions({
   )
 }
 
+/**
+ * Пусто за период. Без большой иконки в круге — картинка без цифр ничего не
+ * сообщает. Главное действие здесь — «+» в нижней панели, поэтому кнопка демо —
+ * второстепенная и нейтральная.
+ */
 function EmptyState() {
   const setDemoMode = useStore((s) => s.setDemoMode)
   const t = useT()
 
   return (
-    <div className="mt-4 flex flex-col items-center px-6 py-8 text-center">
-      <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-brand-100 text-brand-500">
-        <PieChart size={38} strokeWidth={1.5} />
+    <div className="px-4 pb-28 pt-2">
+      <div className="card px-5 py-6">
+        <h3 className="text-[17px] font-bold text-ink">{t('empty.title')}</h3>
+        <p className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">{t('empty.text')}</p>
+        <button
+          type="button"
+          onClick={() => { hapticTap(); setDemoMode(true) }}
+          className="mt-4 rounded-full bg-surface-sunken px-4 py-2.5 text-[14px] font-semibold text-ink transition-transform active:scale-95"
+        >
+          {t('empty.enable_demo')}
+        </button>
       </div>
-      <h3 className="text-xl font-bold text-ink">{t('empty.title')}</h3>
-      <p className="mt-2 max-w-xs text-sm text-ink-muted">
-        {t('empty.text')}
-      </p>
-      <button
-        onClick={() => { hapticTap(); setDemoMode(true) }}
-        className="mt-6 rounded-full bg-brand-500 px-6 py-3 text-sm font-semibold text-white active:scale-95 transition-transform"
-      >
-        {t('empty.enable_demo')}
-      </button>
     </div>
   )
 }

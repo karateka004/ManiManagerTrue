@@ -15,6 +15,11 @@ export default defineConfig({
   build: {
     target: 'es2020',
     outDir: 'dist',
+    // Шрифты — всегда отдельными файлами. Мелкий набор Manrope (cyrillic-ext,
+    // 2,5 кБ) Vite по умолчанию встраивал в CSS как data:, а CSP страницы
+    // (`font-src 'self'`) такой шрифт блокирует. В этом наборе знак гривны ₴ —
+    // он молча рисовался системным шрифтом. Политику не ослабляем: файл лучше.
+    assetsInlineLimit: (filePath) => (/\.(woff2?|ttf|otf)$/.test(filePath) ? false : undefined),
     rollupOptions: {
       output: {
         // Делим вендоры на отдельные чанки: кэшируются между релизами

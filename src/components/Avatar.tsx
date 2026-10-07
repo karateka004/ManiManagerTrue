@@ -20,8 +20,8 @@ export function Avatar({ size = 40, onClick }: { size?: number; onClick?: () => 
   const inner = (
     <button
       onClick={onClick}
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-brand-600 active:scale-95 ${
-        hasFrame ? '' : 'ring-2 ring-brand-200/60 dark:ring-brand-500/30'
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-sunken text-ink-muted active:scale-95 ${
+        hasFrame ? '' : 'shadow-soft'
       }`}
       style={{ width: innerSize, height: innerSize, fontSize: Math.round(innerSize * 0.42) }}
       aria-label={t('nav.profile')}

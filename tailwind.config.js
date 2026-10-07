@@ -35,6 +35,10 @@ export default {
           raised: 'rgb(var(--c-surface-raised) / <alpha-value>)',
           sunken: 'rgb(var(--c-surface-sunken) / <alpha-value>)',
         },
+        // Тонкая линия: обводка карточек и разделители в группах. Полная rgba из
+        // переменной — у неё своя прозрачность для светлой и тёмной темы, шкалой
+        // Tailwind её не выразить (нужные 6–8 % в шкалу не входят).
+        hairline: 'var(--hairline)',
         ink: {
           DEFAULT: 'rgb(var(--c-ink) / <alpha-value>)',
           muted: 'rgb(var(--c-ink-muted) / <alpha-value>)',
@@ -50,16 +54,25 @@ export default {
         'display-lg': ['2.75rem', { lineHeight: '1', letterSpacing: '-0.03em', fontWeight: '700' }],
         'display-md': ['2rem', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' }],
       },
+      // 2.0: радиусы ужаты. Было 32–40 px у карточек и шторок — мягко до
+      // бесформенности. Группа и герой — 24 (rounded-3xl), шторка сверху — 28,
+      // элементы внутри — 12–16, пилюли — full.
       borderRadius: {
-        '4xl': '2rem',
-        '5xl': '2.5rem',
+        '4xl': '1.5rem',
+        '5xl': '1.75rem',
       },
       boxShadow: {
-        soft: '0 2px 12px rgba(20, 63, 48, 0.06)',
-        raised: '0 8px 24px rgba(20, 63, 48, 0.10)',
-        fab: '0 10px 24px rgba(20, 63, 48, 0.18)',
-        'soft-dark': '0 2px 10px rgba(0, 0, 0, 0.35)',
-        'raised-dark': '0 8px 24px rgba(0, 0, 0, 0.45)',
+        // 2.0: «мягкая тень» стала тонкой обводкой. Мягкая зелёная тень под
+        // каждой карточкой — главный признак шаблонного интерфейса; обводка в
+        // 1 px держит форму и не шумит. Имя оставлено прежним, чтобы не трогать
+        // все места использования: смысл «обычная карточка» тот же.
+        soft: '0 0 0 1px var(--hairline)',
+        'soft-dark': '0 0 0 1px var(--hairline)',
+        // Шторки и плавающие элементы действительно лежат над страницей — им
+        // тень нужна, но нейтральная, без зелёного оттенка.
+        raised: '0 -10px 40px rgba(0, 0, 0, 0.10)',
+        'raised-dark': '0 -10px 40px rgba(0, 0, 0, 0.50)',
+        fab: '0 8px 20px rgba(0, 0, 0, 0.16)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',

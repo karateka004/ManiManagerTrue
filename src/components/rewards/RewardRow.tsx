@@ -15,7 +15,11 @@ interface Props {
 /**
  * Строка магазина: превью + название + рарность (тихая цветная точка) + одна
  * кнопка состояния. Визуал намеренно спокойный: без кричащих бейджей и цветных
- * рамок — надетое отмечается тонким брендовым кольцом, цена — нейтральной пилюлей.
+ * рамок, цена — нейтральной пилюлей.
+ *
+ * 2.0: строка живёт в группе (`.card.grouped`), а не отдельной карточкой.
+ * Надетое отмечено тихой галочкой справа — кольцо вокруг одной карточки из
+ * десяти пропало вместе с самими карточками.
  */
 export function RewardRow({ reward, priceOverride }: Props) {
   const t = useT()
@@ -49,51 +53,50 @@ export function RewardRow({ reward, priceOverride }: Props) {
   }
 
   return (
-    <div
-      className={`card flex items-center gap-3 p-3 transition ${
-        equipped ? 'ring-1 ring-brand-500/40' : ''
-      } ${owned || affordable ? '' : 'opacity-60'}`}
-    >
-      <RewardPreview reward={reward} dim={!owned && !affordable} />
+    <div className={`row ${owned || affordable ? '' : 'opacity-60'}`}>
+      <span className="mr-3 shrink-0">
+        <RewardPreview reward={reward} dim={!owned && !affordable} />
+      </span>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
-          <span className="truncate text-sm font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
+      <div className="row-main">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
+            <span className="truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
+          </div>
+          <div className="caption mt-0.5 truncate text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
         </div>
-        <div className="truncate text-[11px] text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
-      </div>
 
-      {owned ? (
-        <button
-          onClick={onEquip}
-          disabled={equipped}
-          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
-            equipped ? 'bg-surface-sunken text-ink-subtle' : 'bg-brand-500 text-white'
-          }`}
-        >
-          {equipped ? (
-            <span className="flex items-center gap-1"><Check size={14} strokeWidth={3} /> {t('roadpass.equipped')}</span>
+        {owned ? (
+          equipped ? (
+            <span className="caption flex shrink-0 items-center gap-1 font-semibold text-ink-muted">
+              <Check size={15} strokeWidth={2.8} /> {t('roadpass.equipped')}
+            </span>
           ) : (
-            t('roadpass.equip')
-          )}
-        </button>
-      ) : (
-        <button
-          onClick={onBuy}
-          disabled={!affordable}
-          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold tabular transition active:scale-95 ${
-            affordable ? 'bg-surface-sunken text-ink' : 'bg-surface-sunken text-ink-subtle'
-          }`}
-        >
-          <span className="flex items-center gap-1">
-            {discounted && (
-              <span className="text-[10px] font-semibold text-ink-subtle line-through">{fullPrice.toLocaleString('ru-RU')}</span>
-            )}
-            <CoinAmount value={price} />
-          </span>
-        </button>
-      )}
+            <button
+              onClick={onEquip}
+              className="shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink transition active:scale-95"
+            >
+              {t('roadpass.equip')}
+            </button>
+          )
+        ) : (
+          <button
+            onClick={onBuy}
+            disabled={!affordable}
+            className={`shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold tabular-nums transition active:scale-95 ${
+              affordable ? 'text-ink' : 'text-ink-subtle'
+            }`}
+          >
+            <span className="flex items-center gap-1">
+              {discounted && (
+                <span className="text-[11px] font-semibold text-ink-subtle line-through">{fullPrice.toLocaleString('ru-RU')}</span>
+              )}
+              <CoinAmount value={price} />
+            </span>
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -44,10 +44,9 @@ const OPS = ['+', '−', '×', '÷'] as const
 
 /**
  * Раскладка клавиатуры. Раньше клавиши были просто глифами на фоне шторки — без
- * поверхностей не видно, куда жать, а операторы отличались от цифр только цветом
- * и сливались с ними. Теперь у каждой клавиши своя плашка, а колонка операторов
- * выделена тоном: цифры и калькулятор читаются как две разные зоны, при этом
- * сетка осталась 4x4 и шторка не стала выше.
+ * поверхностей не видно, куда жать. Теперь у цифр своя плашка, а операторы —
+ * контурные: цифры и калькулятор читаются как две разные зоны. Мятной заливки у
+ * операторов больше нет (2.0): бренд в шторке один — у кнопки «Сохранить».
  */
 const KEYS: { k: string; kind: 'digit' | 'op' | 'back' }[] = [
   { k: '7', kind: 'digit' }, { k: '8', kind: 'digit' }, { k: '9', kind: 'digit' }, { k: '÷', kind: 'op' },
@@ -299,22 +298,20 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
             </div>
 
             <div className="flex items-center justify-between gap-3 px-4 py-2">
-              <div className="flex items-center gap-1 rounded-full bg-surface-sunken p-1">
+              {/* Сегмент нейтральный: красная и зелёная заливки делали переключатель
+                  самым ярким местом шторки, а вид операции и так виден по знаку суммы. */}
+              <div className="seg-track">
                 <button
                   onClick={() => switchKind('expense')}
                   aria-pressed={kind === 'expense'}
-                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
-                    kind === 'expense' ? 'bg-expense-soft text-expense-deep' : 'text-ink-subtle'
-                  }`}
+                  className={`seg-item px-4 py-1.5 ${kind === 'expense' ? 'seg-on' : ''}`}
                 >
                   − {tr('common.expense_one')}
                 </button>
                 <button
                   onClick={() => switchKind('income')}
                   aria-pressed={kind === 'income'}
-                  className={`rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
-                    kind === 'income' ? 'bg-income-soft text-income-deep' : 'text-ink-subtle'
-                  }`}
+                  className={`seg-item px-4 py-1.5 ${kind === 'income' ? 'seg-on' : ''}`}
                 >
                   + {tr('common.income_one')}
                 </button>
@@ -326,7 +323,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
             {/* Amount display */}
             <div className="px-6 pt-2 pb-3 text-center">
-              <div className={`text-display-lg ${kind === 'expense' ? 'text-expense-deep' : 'text-income-deep'}`}>
+              <div className="text-display-lg text-ink">
                 {kind === 'expense' ? '−' : '+'} <Money value={numeric} currency={txCurrency} />
               </div>
               {hasOps && (
@@ -336,7 +333,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               <div className="mt-2 flex flex-col items-center gap-2">
                 <button
                   onClick={() => { hapticSelect(); setCurrencyOpen((v) => !v) }}
-                  className="flex items-center gap-1.5 rounded-full border border-surface-raised bg-surface-raised px-3 py-1 text-xs font-semibold text-ink-muted active:bg-surface-sunken"
+                  className="flex items-center gap-1.5 rounded-full bg-surface-sunken px-3 py-1 text-[13px] font-semibold text-ink-muted active:opacity-70"
                 >
                   <span>{getCurrency(txCurrency).symbol}</span>
                   <span>{txCurrency}</span>
@@ -349,7 +346,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                         key={code}
                         onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
                         className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                          txCurrency === code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                          txCurrency === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                         }`}
                       >
                         {getCurrency(code).symbol} {code}
@@ -368,7 +365,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                         key={c.code}
                         onClick={() => { hapticSelect(); setTxCurrency(c.code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
                         className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                          txCurrency === c.code ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
+                          txCurrency === c.code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                         }`}
                       >
                         {c.symbol} {c.code}
@@ -394,12 +391,11 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                       <button
                         key={`${f.categoryId}|${f.amount}|${f.currency}`}
                         onClick={() => applyFrequent(f)}
-                        className="flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 transition-transform active:scale-95"
-                        style={{ background: cat.color + '1F' }}
+                        className="flex shrink-0 items-center gap-2 rounded-full bg-surface-sunken py-1.5 pl-1.5 pr-3.5 transition-transform active:scale-95"
                       >
                         <span
                           className="flex h-7 w-7 items-center justify-center rounded-full"
-                          style={{ background: cat.color + '2E', color: cat.color }}
+                          style={{ background: cat.color + '22', color: cat.color }}
                         >
                           <CategoryIcon id={cat.icon} size={15} />
                         </span>
@@ -427,7 +423,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
             {/* Date */}
             <div className="px-6 pb-2">
-              <div className="flex items-center gap-1.5">
+              <div className="seg-track">
                 {([
                   { id: todayISO, label: tr('add.today') },
                   { id: dayjs().subtract(1, 'day').format('YYYY-MM-DD'), label: tr('add.yesterday') },
@@ -437,19 +433,15 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                     <button
                       key={opt.label}
                       onClick={() => { hapticSelect(); setDate(opt.id) }}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        active ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-ink-muted'
-                      }`}
+                      className={`seg-item py-1.5 text-[13px] ${active ? 'seg-on' : ''}`}
                     >
                       {opt.label}
                     </button>
                   )
                 })}
                 <label
-                  className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    date !== todayISO && date !== dayjs().subtract(1, 'day').format('YYYY-MM-DD')
-                      ? 'bg-brand-500 text-white'
-                      : 'bg-surface-sunken text-ink-muted'
+                  className={`seg-item relative flex items-center justify-center gap-1.5 py-1.5 text-[13px] ${
+                    date !== todayISO && date !== dayjs().subtract(1, 'day').format('YYYY-MM-DD') ? 'seg-on' : ''
                   }`}
                 >
                   <Calendar size={14} strokeWidth={2} />
@@ -473,10 +465,10 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                   <button
                     key={t}
                     onClick={() => { hapticSelect(); setTags((arr) => arr.filter((x) => x !== t)) }}
-                    className="flex items-center gap-1 rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold text-brand-600 active:scale-95 dark:bg-brand-500/20 dark:text-brand-300"
+                    className="flex items-center gap-1 rounded-full bg-surface-sunken px-2.5 py-1 text-xs font-semibold text-ink active:scale-95"
                   >
                     #{t}
-                    <span className="text-brand-400">×</span>
+                    <span className="text-ink-subtle">×</span>
                   </button>
                 ))}
                 {tags.length < 6 && (
@@ -522,9 +514,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                     <button
                       key={c.id}
                       onClick={() => { hapticSelect(); setCategoryId(c.id) }}
-                      className={`flex flex-col items-center gap-1 rounded-2xl p-2 transition-all ${
-                        active ? 'scale-105 shadow-soft' : 'active:scale-95'
-                      }`}
+                      className="flex flex-col items-center gap-1 rounded-2xl p-2 transition-colors active:scale-95"
                       style={{
                         background: active ? c.color + '22' : 'transparent',
                         boxShadow: active ? `inset 0 0 0 2px ${c.color}` : undefined,
@@ -536,7 +526,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                       >
                         <CategoryIcon id={c.icon} size={20} />
                       </div>
-                      <span className="text-[10px] font-medium leading-tight text-ink-muted">{catName(c.id, c.name)}</span>
+                      <span className={`text-[11px] font-medium leading-tight ${active ? 'text-ink' : 'text-ink-muted'}`}>{catName(c.id, c.name)}</span>
                     </button>
                   )
                 })}
@@ -546,10 +536,10 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                   onClick={() => { hapticTap(); setEditorOpen(true) }}
                   className="flex flex-col items-center gap-1 rounded-2xl p-2 active:scale-95"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-dashed border-ink-subtle/40 text-ink-subtle">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-ink-subtle">
                     <Plus size={20} strokeWidth={2} />
                   </div>
-                  <span className="text-[10px] font-medium leading-tight text-ink-subtle">{tr('add.create')}</span>
+                  <span className="text-[11px] font-medium leading-tight text-ink-subtle">{tr('add.create')}</span>
                 </button>
               </div>
             </div>
@@ -563,7 +553,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                   aria-label={kind === 'back' ? tr('common.delete') : k}
                   className={`flex items-center justify-center rounded-2xl py-3.5 text-2xl font-semibold transition-transform active:scale-95 ${
                     kind === 'op'
-                      ? 'bg-brand-500/[0.18] text-brand-700 active:bg-brand-500/30 dark:bg-brand-500/20 dark:text-brand-300'
+                      ? 'text-ink-muted shadow-soft active:bg-surface-sunken'
                       : kind === 'back'
                       ? 'bg-surface-sunken text-ink-muted active:bg-surface-sunken/70'
                       : 'bg-surface-sunken text-ink active:bg-surface-sunken/70'
@@ -578,9 +568,9 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               <button
                 onClick={submit}
                 disabled={!canSubmit}
-                className={`w-full rounded-full py-4 text-base font-bold text-white shadow-fab transition-transform active:scale-[0.98] ${
-                  kind === 'expense' ? 'bg-expense' : 'bg-brand-500'
-                } ${!canSubmit ? 'opacity-40' : ''}`}
+                className={`w-full rounded-full bg-brand-500 py-4 text-base font-bold text-white transition-transform active:scale-[0.98] ${
+                  !canSubmit ? 'opacity-40' : ''
+                }`}
               >
                 {editing
                   ? tr('common.save')
@@ -591,7 +581,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               {editing && (
                 <button
                   onClick={removeEditing}
-                  className="mt-2 w-full rounded-full py-3 text-sm font-bold text-expense-deep active:bg-expense-soft"
+                  className="mt-2 w-full rounded-full py-3 text-sm font-bold text-expense-deep active:bg-surface-sunken dark:text-expense-soft"
                 >
                   {tr('common.delete')}
                 </button>

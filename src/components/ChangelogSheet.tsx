@@ -1,5 +1,5 @@
 import { m, AnimatePresence } from 'framer-motion'
-import { X, Sparkles } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { RELEASES, cmpVersion, APP_VERSION } from '../lib/whatsnew'
@@ -47,20 +47,17 @@ export function ChangelogSheet({ open, onClose, seenVersion }: Props) {
               <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-2 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                  <Sparkles size={19} strokeWidth={2} />
-                </span>
-                <div className="leading-tight">
-                  <div className="text-base font-bold text-ink">{t('changelog.title')}</div>
-                  <div className="text-[11px] text-ink-subtle">
-                    {t('changelog.current', { v: APP_VERSION })}
-                  </div>
-                </div>
+            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
+              <div className="min-w-0 leading-tight">
+                <div className="text-[17px] font-extrabold text-ink">{t('changelog.title')}</div>
+                <div className="caption mt-0.5 text-ink-subtle">{t('changelog.current', { v: APP_VERSION })}</div>
               </div>
-              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label={t('common.close')}>
-                <X size={22} />
+              <button
+                onClick={onClose}
+                aria-label={t('common.close')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
+              >
+                <X size={18} strokeWidth={2.4} />
               </button>
             </div>
 
@@ -86,7 +83,7 @@ export function ChangelogSheet({ open, onClose, seenVersion }: Props) {
                           <div key={i} className="flex items-start gap-2.5">
                             {/* Точка вместо эмодзи у каждого пункта: 150 разных пиктограмм
                                 в одном списке читались как рябь, а не как перечень. */}
-                            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500/70" aria-hidden />
+                            <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-subtle" aria-hidden />
                             <span className="text-[13px] leading-snug text-ink-muted">{it.text[lang]}</span>
                           </div>
                         ))}

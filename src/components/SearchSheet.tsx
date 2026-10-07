@@ -133,37 +133,37 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
         ) : results.length === 0 ? (
           <div className="px-2 py-10 text-center text-sm text-ink-subtle">{t('search.empty')}</div>
         ) : (
-          <div className="space-y-1">
+          // 2.0: результаты — одна группа с линиями, как список категорий на
+          // Главной; суммы обычным цветом, знак и так говорит, доход это или расход.
+          <div className="card grouped overflow-hidden">
             {results.map(({ tx, cat }) => (
               <button
                 key={tx.id}
                 onClick={() => { hapticSelect(); onEditTx(tx); onClose() }}
-                className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left active:bg-surface-sunken"
+                className="row"
               >
                 <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                  className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
                   style={{ background: (cat?.color ?? '#A8A8A8') + '22', color: cat?.color ?? '#A8A8A8' }}
                 >
                   <CategoryIcon id={cat?.icon ?? 'other'} size={18} />
                 </span>
 
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink">
-                    {tx.note || (cat ? categoryName(lang, cat.id, cat.name) : '—')}
+                <span className="row-main">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold text-ink">
+                      {tx.note || (cat ? categoryName(lang, cat.id, cat.name) : '—')}
+                    </span>
+                    <span className="caption mt-0.5 block truncate text-ink-subtle">
+                      {cat && tx.note ? `${categoryName(lang, cat.id, cat.name)} · ` : ''}
+                      {dayjs(tx.date).format('D MMM YYYY')}
+                    </span>
                   </span>
-                  <span className="block truncate text-[11px] text-ink-subtle">
-                    {cat && tx.note ? `${categoryName(lang, cat.id, cat.name)} · ` : ''}
-                    {dayjs(tx.date).format('D MMM YYYY')}
-                  </span>
-                </span>
 
-                <span
-                  className={`shrink-0 tabular text-sm font-bold ${
-                    tx.type === 'income' ? 'text-income-deep' : 'text-expense-deep'
-                  }`}
-                >
-                  {tx.type === 'income' ? '+' : '−'}{' '}
-                  {formatMoney(tx.amount, tx.currency ?? globalCurrency).replace('−', '')}
+                  <span className="shrink-0 text-[15px] font-semibold tabular-nums text-ink">
+                    {tx.type === 'income' ? '+' : '−'}
+                    {formatMoney(tx.amount, tx.currency ?? globalCurrency).replace('−', '')}
+                  </span>
                 </span>
               </button>
             ))}

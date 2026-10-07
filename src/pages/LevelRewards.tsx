@@ -1,7 +1,9 @@
-import { ChevronLeft, Lock, Check, Flame, Star } from 'lucide-react'
+import { Lock, Check, Flame, Star } from 'lucide-react'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { hapticTap, hapticNotify } from '../lib/telegram'
+import { Group, Row } from '../components/ui/Group'
+import { ScreenHeader } from '../components/ui/ScreenHeader'
 import { useLevel } from '../components/LevelBar'
 import { RARITY, LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
 import { RewardBadge } from '../components/rewards/RewardBadge'
@@ -21,64 +23,30 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   const claimed = LEVEL_REWARDS.filter((r) => owned.includes(r.id)).length
 
   return (
-    <div className="pb-24">
-      {/* Шапка */}
-      <div className="flex items-center gap-2 px-4 pt-6 pb-2">
-        <button
-          onClick={() => { hapticTap(); onBack() }}
-          aria-label={t('common.back')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken/60 text-ink-muted active:scale-95"
-        >
-          <ChevronLeft size={22} strokeWidth={2.2} />
-        </button>
-        <div className="min-w-0 flex-1 px-1">
-          <div className="kicker text-ink-subtle">{t('lvlrew.kicker')}</div>
-          <div className="text-2xl font-bold tracking-tight text-ink">{t('lvlrew.title')}</div>
-        </div>
-        {/* Значок уровня — тот же, что в шапке «Прогресса»: эмодзи из levels.ts
-            здесь рисовал системный шрифт и выбивался из остальных иконок. */}
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-100 px-2.5 py-1 text-[12px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-          <RewardBadge level={lvl.level} size={20} />
-          {lvl.level}
-        </span>
-      </div>
+    <div className="pb-28">
+      <ScreenHeader kicker={t('lvlrew.kicker')} title={t('lvlrew.title')} onBack={onBack} />
 
-      <p className="mx-4 mb-3 px-2 text-[12px] leading-relaxed text-ink-subtle">{t('lvlrew.hint')}</p>
+      <p className="caption mx-4 mt-3 px-1 leading-relaxed text-ink-muted">{t('lvlrew.hint')}</p>
 
-      {/* Текущие показатели по обоим условиям */}
-      <div className="mx-4 mb-3 grid grid-cols-2 gap-2">
-        <StatChip icon={<Star size={15} strokeWidth={2.4} />} label={t('lvlrew.your_level')} value={String(lvl.level)} />
-        <StatChip
-          icon={<Flame size={15} strokeWidth={2.4} />}
-          label={t('lvlrew.your_days')}
-          value={t('lvlrew.streak_value', { best: days, now: streakNow })}
+      {/* Текущие показатели по обоим условиям — строками, без цветных квадратов */}
+      <Group className="mx-4 mt-4">
+        <Row
+          icon={<Star size={18} strokeWidth={2} />}
+          title={t('lvlrew.your_level')}
+          value={<span className="text-ink-muted">{lvl.level}</span>}
         />
-      </div>
+        <Row
+          icon={<Flame size={18} strokeWidth={2} />}
+          title={t('lvlrew.your_days')}
+          value={<span className="text-ink-muted">{t('lvlrew.streak_value', { best: days, now: streakNow })}</span>}
+        />
+      </Group>
 
-      <div className="mx-4 flex flex-col gap-2">
+      <Group className="mx-4 mt-6" footer={t('lvlrew.progress', { n: claimed, total: LEVEL_REWARDS.length })}>
         {LEVEL_REWARDS.map((r) => (
           <LevelRewardRow key={r.id} reward={r} currentLevel={lvl.level} days={days} />
         ))}
-      </div>
-
-      <div className="mx-4 mt-4 text-center text-[11px] text-ink-subtle">
-        {t('lvlrew.progress', { n: claimed, total: LEVEL_REWARDS.length })}
-      </div>
-    </div>
-  )
-}
-
-/** Небольшой чип с текущим показателем (уровень / дни). */
-function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-2xl bg-surface-sunken/60 px-3 py-2">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-        {icon}
-      </span>
-      <div className="min-w-0 leading-tight">
-        <div className="caption-sm text-ink-subtle">{label}</div>
-        <div className="tabular text-sm font-bold text-ink">{value}</div>
-      </div>
+      </Group>
     </div>
   )
 }
@@ -121,61 +89,62 @@ function LevelRewardRow({
   }
 
   return (
-    <div className={`card flex items-center gap-3 p-3 ${unlocked ? '' : 'opacity-55'}`}>
+    <div className={`row ${unlocked ? '' : 'opacity-55'}`}>
       {/* Жетон уровня: градиент по редкости + номер уровня в углу */}
-      <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={42} dim={!unlocked} />
+      <span className="mr-3 shrink-0">
+        <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={40} dim={!unlocked} />
+      </span>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
-          <span className="truncate text-sm font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
-        </div>
-        {owned ? (
-          <div className="truncate text-[11px] text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
-        ) : (
-          /* Пока не забрано — вместо описания показываем оба условия с прогрессом */
-          <div className="mt-0.5 flex items-center gap-2 text-[11px]">
-            <span className={levelOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
-              {levelOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
-              {t('lb.level_short')} {reward.unlockLevel}
-            </span>
-            {needDays > 0 && (
-              <span className={daysOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
-                {daysOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
-                {t('lvlrew.days_progress', { n: Math.min(days, needDays), need: needDays })}
-              </span>
-            )}
+      <div className="row-main">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
+            <span className="truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
           </div>
+          {owned ? (
+            <div className="caption mt-0.5 truncate text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
+          ) : (
+            /* Пока не забрано — вместо описания показываем оба условия с прогрессом */
+            <div className="caption-sm mt-1 flex items-center gap-2">
+              <span className={levelOk ? 'font-semibold text-ink' : 'text-ink-subtle'}>
+                {levelOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
+                {t('lb.level_short')} {reward.unlockLevel}
+              </span>
+              {needDays > 0 && (
+                <span className={daysOk ? 'font-semibold text-ink' : 'text-ink-subtle'}>
+                  {daysOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
+                  {t('lvlrew.days_progress', { n: Math.min(days, needDays), need: needDays })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {!unlocked ? (
+          <span className="caption flex shrink-0 items-center gap-1 font-semibold text-ink-subtle">
+            <Lock size={13} strokeWidth={2.5} />
+            {!levelOk ? t('lvlrew.locked', { n: reward.unlockLevel }) : t('lvlrew.locked_days', { n: needDays })}
+          </span>
+        ) : !owned ? (
+          <button
+            onClick={onClaim}
+            className="shrink-0 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white transition active:scale-95"
+          >
+            {t('lvlrew.claim')}
+          </button>
+        ) : equipped ? (
+          <span className="caption flex shrink-0 items-center gap-1 font-semibold text-ink-muted">
+            <Check size={15} strokeWidth={2.8} /> {t('roadpass.equipped')}
+          </span>
+        ) : (
+          <button
+            onClick={onEquip}
+            className="shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink transition active:scale-95"
+          >
+            {t('roadpass.equip')}
+          </button>
         )}
       </div>
-
-      {!unlocked ? (
-        <span className="flex shrink-0 items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-2 text-xs font-bold text-ink-subtle">
-          <Lock size={13} strokeWidth={2.5} />
-          {!levelOk ? t('lvlrew.locked', { n: reward.unlockLevel }) : t('lvlrew.locked_days', { n: needDays })}
-        </span>
-      ) : !owned ? (
-        <button
-          onClick={onClaim}
-          className="shrink-0 rounded-2xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition active:scale-95"
-        >
-          {t('lvlrew.claim')}
-        </button>
-      ) : (
-        <button
-          onClick={onEquip}
-          disabled={equipped}
-          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
-            equipped ? 'bg-surface-sunken text-ink-subtle' : 'bg-brand-500 text-white'
-          }`}
-        >
-          {equipped ? (
-            <span className="flex items-center gap-1"><Check size={14} strokeWidth={3} /> {t('roadpass.equipped')}</span>
-          ) : (
-            t('roadpass.equip')
-          )}
-        </button>
-      )}
     </div>
   )
 }

@@ -130,8 +130,31 @@ export async function submitProfile(stats: {
   accent?: string
 }): Promise<{ ok: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
-  return post('/profile', { initData: tg.initData, ...stats })
+  // Профиль шлётся при каждом запуске и каждом открытии «Прогресса», а меняется
+  // редко. Тот же профиль, уже отправленный сегодня, не шлём: сервер всё равно
+  // его не запишет, а запрос к воркеру — это его лимиты. Первый запуск за день
+  // уходит всегда — по нему аналитика видит, что человек заходил.
+  const sig = JSON.stringify(stats)
+  const day = new Date().toDateString()
+  try {
+    const last = JSON.parse(localStorage.getItem(PROFILE_SENT_KEY) || '{}') as { sig?: string; day?: string }
+    if (last.sig === sig && last.day === day) return { ok: true }
+  } catch {
+    /* нет доступа к хранилищу — просто отправим */
+  }
+  const res = await post('/profile', { initData: tg.initData, ...stats })
+  if (res?.ok) {
+    try {
+      localStorage.setItem(PROFILE_SENT_KEY, JSON.stringify({ sig, day }))
+    } catch {
+      /* переживём: в худшем случае отправим ещё раз */
+    }
+  }
+  return res
 }
+
+/** Что и когда последним ушло в рейтинг — чтобы не слать одно и то же. */
+const PROFILE_SENT_KEY = 'koshel:profileSent'
 
 /**
  * Получить таблицы лидеров: две доски — по XP и по рефералам. Каждая содержит

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { ArrowUp, Sparkles, X } from 'lucide-react'
+import { ArrowUp, MessageCircle, X } from 'lucide-react'
 import { askAssistant, type AskError } from '../lib/api'
 import { useT, type TFunc } from '../lib/i18n'
 import { hapticSelect, hapticNotify } from '../lib/telegram'
@@ -120,9 +120,7 @@ export function AssistantSheet({ open, onClose }: Props) {
 function Head({ t, onClose }: { t: TFunc; onClose: () => void }) {
   return (
     <div className="flex items-center gap-3 px-5 pb-3 pt-5">
-      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-200">
-        <Sparkles size={18} strokeWidth={2.4} />
-      </span>
+      <MessageCircle size={20} strokeWidth={2.2} className="text-ink-subtle" />
       <div className="min-w-0 flex-1 text-[17px] font-extrabold text-ink">{t('ai.title')}</div>
       <button
         onClick={onClose}
@@ -241,7 +239,7 @@ function Composer({
 }) {
   return (
     <div
-      className="flex items-end gap-2 border-t border-surface-sunken px-4 pt-3"
+      className="flex items-end gap-2 border-t border-hairline px-4 pt-3"
       style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 12px)' }}
     >
       <textarea

@@ -114,7 +114,7 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
       {rows.length === 0 ? (
         <div className="py-6 text-center text-[13px] text-ink-subtle">{t('cat.empty')}</div>
       ) : (
-        <div className="mt-1 divide-y divide-ink/[.06] dark:divide-ink/[.09]">
+        <div className="mt-1 divide-y divide-hairline">
           {rows.slice(0, MAX_ROWS).map((tx) => (
             <button
               key={tx.id}

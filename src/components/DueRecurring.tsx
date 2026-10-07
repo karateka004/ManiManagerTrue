@@ -49,7 +49,7 @@ export function DueRecurring() {
   }
 
   return (
-    <div className="mx-4 mt-3 rounded-3xl bg-surface-raised px-4 py-3 shadow-soft dark:shadow-soft-dark">
+    <div className="card mx-4 mb-3 px-4 py-3">
       <div className="mb-1 flex items-center gap-2">
         <Repeat size={14} strokeWidth={2.4} className="text-ink-subtle" />
         <span className="caption text-ink-subtle">{t('due.title')}</span>

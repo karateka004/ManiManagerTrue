@@ -313,11 +313,11 @@ function DemoBanner() {
   const t = useT()
   if (!demoMode) return null
   return (
-    <div className="mx-4 mb-1 mt-2 flex items-center justify-between gap-3 rounded-2xl bg-brand-500/15 px-4 py-2.5 text-brand-700 dark:text-brand-200">
-      <span className="text-xs font-semibold">{t('demo.banner')}</span>
+    <div className="card mx-4 mb-1 mt-2 flex items-center justify-between gap-3 px-4 py-2.5">
+      <span className="caption text-ink-muted">{t('demo.banner')}</span>
       <button
         onClick={() => { hapticTap(); setDemoMode(false) }}
-        className="shrink-0 rounded-full bg-brand-500 px-3 py-1 text-xs font-bold text-white active:scale-95"
+        className="shrink-0 rounded-full bg-surface-sunken px-3 py-1.5 text-xs font-semibold text-ink active:scale-95"
       >
         {t('common.exit')}
       </button>

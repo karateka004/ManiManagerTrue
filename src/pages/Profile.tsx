@@ -1,6 +1,5 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
-import { m } from 'framer-motion'
-import { Settings, Target, Check, ChevronRight, Sparkles } from 'lucide-react'
+import { Settings, Target, Check, ScrollText } from 'lucide-react'
 import { useStore, selectAllCategories, getCategory } from '../store/transactions'
 import { formatMoney, dayjs } from '../lib/format'
 import { Avatar } from '../components/Avatar'
@@ -11,7 +10,8 @@ import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
 import { getReward } from '../lib/rewards'
 import { useCatName, useT, type TFunc } from '../lib/i18n'
-import { MenuRow } from '../components/ui/MenuRow'
+import type { Currency } from '../lib/currencies'
+import { Group, Row } from '../components/ui/Group'
 import { RewardBadge } from '../components/rewards/RewardBadge'
 
 import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
@@ -38,7 +38,22 @@ interface Props {
   onOpenRewards: () => void
 }
 
-/** Вкладка «Профиль»: личность + финансовая статистика + планирование + отзыв. */
+/** Итоги по одной валюте. */
+interface CurrencyTotals {
+  currency: Currency
+  income: number
+  expense: number
+}
+
+/**
+ * Вкладка «Профиль»: кто ты, выписка за всё время, уровень, планирование, отзыв.
+ *
+ * 2.0: четыре карточки-счётчика стали одной выпиской, меню — строками одной
+ * группы без цветных квадратов. И исправлена ошибка: доходы и расходы
+ * складывались в одно число из всех валют и подписывались валютой по умолчанию
+ * — 100 $ и 4000 ₴ показывались как «4100 ₴». Курсов в приложении нет, поэтому
+ * разные валюты не складываем, а показываем каждую своей строкой.
+ */
 export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
   const t = useT()
   const catName = useCatName()
@@ -83,145 +98,146 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
   const username = user?.username
 
   const stats = useMemo(() => {
-    let income = 0
-    let expense = 0
-    const byCat = new Map<string, number>()
+    const byCur = new Map<Currency, CurrencyTotals & { ops: number }>()
+    const byCat = new Map<string, number>() // ключ — `${валюта}|${категория}`
     let firstDate: string | null = null
     for (const tx of transactions) {
-      if (tx.type === 'income') income += tx.amount
+      const cur = tx.currency ?? currency
+      let row = byCur.get(cur)
+      if (!row) {
+        row = { currency: cur, income: 0, expense: 0, ops: 0 }
+        byCur.set(cur, row)
+      }
+      row.ops++
+      if (tx.type === 'income') row.income += tx.amount
       else {
-        expense += tx.amount
-        byCat.set(tx.categoryId, (byCat.get(tx.categoryId) ?? 0) + tx.amount)
+        row.expense += tx.amount
+        const key = cur + '|' + tx.categoryId
+        byCat.set(key, (byCat.get(key) ?? 0) + tx.amount)
       }
       if (!firstDate || tx.date < firstDate) firstDate = tx.date
     }
-    // Имя категории не локализуем здесь: язык — не зависимость этого мемо,
-    // перевод делаем при рендере по id.
-    let topCat: { id: string; name: string; color: string; amount: number } | null = null
-    for (const [id, amount] of byCat) {
+    // Порядок валют — по числу операций: основная валюта человека идёт первой.
+    const totals = [...byCur.values()].sort((a, b) => b.ops - a.ops)
+    if (totals.length === 0) totals.push({ currency, income: 0, expense: 0, ops: 0 })
+
+    // Главная статья расходов — в основной валюте: сравнивать суммы в гривнах и
+    // долларах между собой без курса нельзя.
+    const main = totals[0].currency
+    let topCat: { id: string; name: string; amount: number; currency: Currency } | null = null
+    for (const [key, amount] of byCat) {
+      const sep = key.indexOf('|')
+      if (key.slice(0, sep) !== main) continue
       if (!topCat || amount > topCat.amount) {
-        const c = getCategory(id, cats)
-        topCat = { id, name: c.name, color: c.color, amount }
+        const id = key.slice(sep + 1)
+        topCat = { id, name: getCategory(id, cats).name, amount, currency: main }
       }
     }
-    return { income, expense, balance: income - expense, count: transactions.length, topCat, firstDate }
-  }, [transactions, cats])
+    return { totals, count: transactions.length, topCat, firstDate }
+  }, [transactions, cats, currency])
 
   return (
-    <div className="pb-24">
+    <div className="pb-28">
       {/* Шапка с шестерёнкой настроек */}
-      <div className="flex items-start justify-between px-6 pt-6 pb-1">
+      <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-6">
         <div>
-          <div className="kicker text-ink-subtle">{t('profile.kicker')}</div>
+          <div className="kicker">{t('profile.kicker')}</div>
           <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('profile.title')}</div>
         </div>
         <button
           onClick={() => { hapticTap(); onOpenSettings() }}
           aria-label={t('nav.settings')}
-          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-sunken/60 text-ink-muted active:scale-95"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95"
         >
-          <Settings size={20} strokeWidth={2} />
+          <Settings size={18} strokeWidth={2.2} />
         </button>
       </div>
 
-      {/* Карточка пользователя */}
-      <div className="flex flex-col items-center gap-2 px-6 pb-2 pt-2">
-        <Avatar size={84} />
-        <div className="text-center">
-          <div className="text-lg font-bold text-ink">{name}</div>
-          {username && <div className="text-sm text-ink-subtle">@{username}</div>}
-          {equippedTitle && (
-            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-brand-100 px-2.5 py-0.5 text-[11px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-              {equippedTitle}
-            </div>
-          )}
-          {!tg.isInTelegram && (
-            <div className="mt-1 text-[11px] text-ink-subtle">{t('profile.open_in_tg')}</div>
-          )}
-        </div>
-      </div>
-
-      {/* Компактная строка уровня → ведёт во вкладку «Награды» */}
-      <button
-        onClick={() => { hapticTap(); onOpenRewards() }}
-        className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 hero-surface rounded-3xl p-4 text-left active:scale-[0.99]"
-      >
-        <RewardBadge level={lvl.level} size={44} />
+      {/* Кто ты — одной строкой, без карточки: это подпись к экрану, а не блок данных. */}
+      <div className="mt-3 flex items-center gap-3.5 px-5">
+        <Avatar size={56} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm font-bold">{t('level.t' + lvl.level)}</span>
-            <span className="text-[11px] font-bold tabular text-white/90">{lvl.xp.toLocaleString('ru-RU')} XP</span>
+          <div className="truncate text-[17px] font-bold leading-tight text-ink">{name}</div>
+          <div className="caption mt-1 flex min-w-0 items-center gap-1.5 text-ink-subtle">
+            {username && <span className="truncate">@{username}</span>}
+            {username && equippedTitle && <span aria-hidden>·</span>}
+            {equippedTitle && <span className="truncate text-ink-muted">{equippedTitle}</span>}
+            {!username && !equippedTitle && !tg.isInTelegram && <span>{t('profile.open_in_tg')}</span>}
           </div>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/20">
-            <m.div
-              className="h-full rounded-full bg-white"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.round(lvl.ratio * 100)}%` }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <div className="mt-1 text-[11px] text-white/70">{t('profile.level', { level: lvl.level, max: LEVELS.length })}</div>
         </div>
-        <ChevronRight size={18} className="shrink-0 text-white/70" />
-      </button>
-
-      {/* Финансовая статистика */}
-      <div className="mx-4 mt-3 grid grid-cols-2 gap-2">
-        <StatBox label={t('profile.income_total')} value={formatMoney(stats.income, currency, { compact: true })} tone="income" />
-        <StatBox label={t('profile.expense_total')} value={formatMoney(stats.expense, currency, { compact: true })} tone="expense" />
-        <StatBox label={t('profile.balance')} value={formatMoney(stats.balance, currency, { compact: true })} tone={stats.balance >= 0 ? 'income' : 'expense'} />
-        <StatBox label={t('profile.ops')} value={String(stats.count)} tone="neutral" />
       </div>
 
-      {stats.topCat && (
-        <div className="mx-4 mt-2 flex items-center gap-3 rounded-3xl bg-surface-sunken/60 p-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-bold text-white"
-            style={{ background: stats.topCat.color }}
-          >
-            №1
-          </div>
-          <div className="flex-1">
-            <div className="caption text-ink-subtle">{t('profile.top_expense')}</div>
-            <div className="font-semibold text-ink">{catName(stats.topCat.id, stats.topCat.name)}</div>
-          </div>
-          <div className="tabular text-sm font-bold text-expense-deep">
-            {formatMoney(stats.topCat.amount, currency, { compact: true })}
-          </div>
-        </div>
-      )}
+      {/* Выписка за всё время. Каждая валюта — своей строкой значения. */}
+      <Group className="mx-4 mt-5" title={t('profile.all_time')}>
+        <Row
+          title={t('common.income')}
+          value={<PerCurrency totals={stats.totals} pick={(r) => r.income} sign="+" />}
+        />
+        <Row
+          title={t('common.expense')}
+          value={<PerCurrency totals={stats.totals} pick={(r) => r.expense} sign="−" />}
+        />
+        <Row
+          title={t('profile.balance')}
+          value={<PerCurrency totals={stats.totals} pick={(r) => r.income - r.expense} signed />}
+        />
+        <Row title={t('profile.ops')} value={stats.count.toLocaleString('ru-RU')} />
+        {stats.topCat && (
+          <Row
+            title={t('profile.top_short')}
+            value={catName(stats.topCat.id, stats.topCat.name)}
+            valueSub={formatMoney(stats.topCat.amount, stats.topCat.currency)}
+          />
+        )}
+        {stats.firstDate && (
+          <Row title={t('profile.first_entry')} value={dayjs(stats.firstDate).format('D MMMM YYYY')} />
+        )}
+      </Group>
 
-      {/* Планирование (финансы) */}
-      <div className="mx-4 mt-3 flex flex-col gap-2">
-        <MenuRow
-          icon={<Target size={20} strokeWidth={2} />}
+      <Group className="mx-4 mt-6">
+        {/* Уровень — строкой с полосой; подробности и награды на «Прогрессе». */}
+        <Row
+          lead={
+            <span className="mr-3 shrink-0">
+              <RewardBadge level={lvl.level} size={28} />
+            </span>
+          }
+          title={t('level.t' + lvl.level)}
+          subtitle={t('profile.level', { level: lvl.level, max: LEVELS.length })}
+          value={<span className="text-ink-muted">{lvl.xp.toLocaleString('ru-RU')} XP</span>}
+          chevron
+          onClick={() => { hapticTap(); onOpenRewards() }}
+        >
+          <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
+            <span
+              className="block h-full rounded-full bg-brand-500 transition-[width] duration-500"
+              style={{ width: `${Math.round(lvl.ratio * 100)}%` }}
+            />
+          </span>
+        </Row>
+        <Row
+          icon={<Target size={18} strokeWidth={2} />}
           title={t('profile.planning')}
-          hint={t('profile.planning_hint')}
-          accent="emerald"
+          chevron
           onClick={openPlanning}
         />
         {/* История обновлений — вместо всплывающей шторки при запуске */}
-        <MenuRow
-          icon={<Sparkles size={20} strokeWidth={2} />}
+        <Row
+          icon={<ScrollText size={18} strokeWidth={2} />}
           title={t('changelog.title')}
-          hint={t('changelog.hint', { v: APP_VERSION })}
-          accent="brand"
-          trailing={
+          value={
             unseenCount > 0 ? (
-              <span className="flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold tabular text-white">
+              <span className="flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-brand-500 px-1.5 text-[12px] font-bold text-white">
                 {unseenCount}
               </span>
-            ) : undefined
+            ) : (
+              <span className="text-ink-subtle">v{APP_VERSION}</span>
+            )
           }
+          chevron
           onClick={() => setChangelogOpen(true)}
         />
-      </div>
-
-      {stats.firstDate && (
-        <div className="mt-3 text-center text-[11px] text-ink-subtle">
-          {t('profile.with_us_since', { date: dayjs(stats.firstDate).format('D MMMM YYYY') })}
-        </div>
-      )}
+      </Group>
 
       {/* Отзыв */}
       <FeedbackBlock t={t} />
@@ -236,6 +252,40 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         )}
       </Suspense>
     </div>
+  )
+}
+
+/**
+ * Значение по валютам столбиком: «+111 370 ₴» и под ним «+500 €». Одно число на
+ * все валюты было бы неправдой, а первая строка — основная валюта.
+ */
+function PerCurrency({
+  totals,
+  pick,
+  sign,
+  signed,
+}: {
+  totals: CurrencyTotals[]
+  pick: (r: CurrencyTotals) => number
+  /** Постоянный знак (у доходов «+», у расходов «−»), если сумма не ноль. */
+  sign?: '+' | '−'
+  /** Знак по самому числу — для баланса. */
+  signed?: boolean
+}) {
+  return (
+    <>
+      {totals.map((r) => {
+        const v = pick(r)
+        const text = signed
+          ? formatMoney(v, r.currency, { sign: true })
+          : (v !== 0 && sign ? sign : '') + formatMoney(v, r.currency)
+        return (
+          <span key={r.currency} className={`block ${signed && v < 0 ? 'text-expense-deep dark:text-expense-soft' : ''}`}>
+            {text}
+          </span>
+        )
+      })}
+    </>
   )
 }
 
@@ -275,11 +325,10 @@ function FeedbackBlock({ t }: { t: TFunc }) {
   }
 
   return (
-    <div className="mx-4 mt-4">
-      <div className="mb-2 px-2 section-title">{t('profile.feedback')}</div>
-      <div className="card p-3">
+    <Group className="mx-4 mt-6" title={t('profile.feedback')}>
+      <div className="p-3">
         {state === 'sent' ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-sm font-medium text-income-deep">
+          <div className="flex items-center gap-2 px-1 py-2 text-[15px] font-medium text-income-deep dark:text-brand-300">
             <Check size={18} strokeWidth={2.5} />
             {t('profile.feedback_thanks')}
           </div>
@@ -291,31 +340,21 @@ function FeedbackBlock({ t }: { t: TFunc }) {
               rows={3}
               maxLength={1000}
               placeholder={t('profile.feedback_placeholder')}
-              className="w-full resize-none rounded-2xl bg-surface-sunken/60 px-3 py-2.5 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-300"
+              className="w-full resize-none rounded-2xl bg-surface-sunken px-3.5 py-3 text-[15px] text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-300"
             />
             {state === 'error' && (
-              <div className="mt-1 px-1 text-[11px] text-expense-deep">{t('profile.feedback_error')}</div>
+              <div className="caption-sm mt-1 px-1 text-expense-deep dark:text-expense-soft">{t('profile.feedback_error')}</div>
             )}
             <button
               onClick={submit}
               disabled={!text.trim() || state === 'sending'}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99] disabled:opacity-40"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-3 text-[15px] font-bold text-white transition active:scale-[0.99] disabled:opacity-40"
             >
               {state === 'sending' ? t('profile.feedback_sending') : isBackendConfigured() ? t('profile.feedback_send') : t('profile.feedback_chat')}
             </button>
           </>
         )}
       </div>
-    </div>
-  )
-}
-
-function StatBox({ label, value, tone }: { label: string; value: string; tone: 'income' | 'expense' | 'neutral' }) {
-  const color = tone === 'income' ? 'text-income-deep' : tone === 'expense' ? 'text-expense-deep' : 'text-ink'
-  return (
-    <div className="card flex flex-col gap-0.5 p-3">
-      <span className="caption-sm text-ink-subtle">{label}</span>
-      <span className={`tabular text-base font-bold ${color}`}>{value}</span>
-    </div>
+    </Group>
   )
 }

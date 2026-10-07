@@ -142,7 +142,7 @@ function Hero() {
       {hasSpark && <Sparkline />}
 
       {o.forecast.length > 0 && (
-        <div className="border-t border-ink/[.07] px-5 py-4 dark:border-ink/10">
+        <div className="border-t border-hairline px-5 py-4">
           <div className="flex items-baseline justify-between gap-3">
             {/* Подпись ужимается, число — никогда: на девятизначной сумме оно
                 переносилось на вторую строку и карточка выглядела сломанной */}
@@ -308,12 +308,12 @@ function InsightRow({ insight, first }: { insight: Insight; first: boolean }) {
       text = t('ov.i.new_cat.text', { amount: money(insight.amount) })
       break
     case 'no_spend':
-      color = '#3CA37B'
+      color = ''
       title = t('ov.i.no_spend.title', { days: insight.days, word: daysWord(lang, insight.days) })
       text = t('ov.i.no_spend.text')
       break
     case 'weekday':
-      color = '#6FA8DC'
+      color = ''
       title = t('ov.i.weekday.title', { day: weekdaysFull(lang)[insight.day] })
       text = t('ov.i.weekday.text', {
         avg: money(insight.avg),
@@ -334,12 +334,12 @@ function InsightRow({ insight, first }: { insight: Insight; first: boolean }) {
   }
 
   return (
-    <div className={`flex gap-3 px-4 py-3.5 ${first ? '' : 'border-t border-ink/[.06] dark:border-ink/[.09]'}`}>
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px]"
-        style={{ background: color + '28', color }}
-      >
-        <Icon size={19} strokeWidth={2.2} />
+    <div className={`flex gap-3 px-4 py-3.5 ${first ? '' : 'border-t border-hairline'}`}>
+      {/* 2.0: без цветного квадрата — это не категория. Цвет остался у самой
+          иконки и только там, где он что-то значит: цвет категории у наблюдений
+          про категорию, красный/зелёный у темпа и бюджета. Остальные нейтральные. */}
+      <span className={`flex w-5 shrink-0 justify-center pt-px ${color ? '' : 'text-ink-subtle'}`} style={color ? { color } : undefined}>
+        <Icon size={18} strokeWidth={2.2} />
       </span>
       <div className="min-w-0">
         <div className="text-[14px] font-bold leading-tight text-ink">{title}</div>
@@ -408,7 +408,7 @@ function RecurringBlock() {
       {rows.map((r, i) => (
         <div
           key={r.id}
-          className={`flex items-center gap-3 py-3 ${i ? 'border-t border-ink/[.06] dark:border-ink/[.09]' : ''}`}
+          className={`flex items-center gap-3 py-3 ${i ? 'border-t border-hairline' : ''}`}
         >
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -429,7 +429,7 @@ function RecurringBlock() {
           </span>
         </div>
       ))}
-      <div className="flex items-center justify-between border-t border-ink/[.06] py-3 dark:border-ink/[.09]">
+      <div className="flex items-center justify-between border-t border-hairline py-3">
         <span className="text-[13px] font-semibold text-ink-muted">{t('ov.recurring_year')}</span>
         <span className="tabular text-[15px] font-extrabold text-ink">
           {formatMoney(Math.round(monthly * 12), currency)}
@@ -456,7 +456,7 @@ function Biggest() {
         return (
           <div
             key={tx.id}
-            className={`flex items-center gap-3 py-3 ${i ? 'border-t border-ink/[.06] dark:border-ink/[.09]' : ''}`}
+            className={`flex items-center gap-3 py-3 ${i ? 'border-t border-hairline' : ''}`}
           >
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
