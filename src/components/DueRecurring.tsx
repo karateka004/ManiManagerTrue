@@ -52,7 +52,7 @@ export function DueRecurring() {
     <div className="mx-4 mt-3 rounded-3xl bg-surface-raised px-4 py-3 shadow-soft dark:shadow-soft-dark">
       <div className="mb-1 flex items-center gap-2">
         <Repeat size={14} strokeWidth={2.4} className="text-ink-subtle" />
-        <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink-subtle">{t('due.title')}</span>
+        <span className="caption text-ink-subtle">{t('due.title')}</span>
       </div>
       {rows.map((r) => (
         <div key={r.id} className="flex items-center gap-3 py-2">

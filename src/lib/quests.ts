@@ -47,8 +47,6 @@ export interface QuestDef {
   /** Награда. */
   xp: number
   coins: number
-  /** Эмодзи-иконка. */
-  icon: string
   /** Группа на борде: обычные / спешел (реферальные). */
   group: QuestGroup
   /** Внешнее действие (для подписки — ссылка на канал). */
@@ -92,39 +90,39 @@ export const QUEST_COOLDOWN_MS = 8 * 60 * 60 * 1000
  */
 export const QUESTS: QuestDef[] = [
   /* ── Обычные ──────────────────────────────────────────────────────── */
-  { id: 'first_tx', metric: 'transactions', goal: 1, xp: 30, coins: 10, icon: '✍️', group: 'main' },
-  { id: 'see_analytics', metric: 'event', event: 'visit_analytics', goal: 1, xp: 25, coins: 8, icon: '📊', group: 'main' },
+  { id: 'first_tx', metric: 'transactions', goal: 1, xp: 30, coins: 10, group: 'main' },
+  { id: 'see_analytics', metric: 'event', event: 'visit_analytics', goal: 1, xp: 25, coins: 8, group: 'main' },
   {
     id: 'subscribe_channel',
     metric: 'subscribe',
     goal: 1,
     xp: 50,
     coins: 20,
-    icon: '📣',
+   
     group: 'main',
     actionUrl: 'https://t.me/Svyat_research',
   },
-  { id: 'try_period', metric: 'event', event: 'use_period', goal: 1, xp: 25, coins: 8, icon: '🗓', group: 'main' },
-  { id: 'tx_10', metric: 'transactions', goal: 10, xp: 120, coins: 28, icon: '🧾', group: 'main' },
-  { id: 'set_budget', metric: 'event', event: 'set_budget', goal: 1, xp: 45, coins: 15, icon: '🎯', group: 'main' },
-  { id: 'use_search', metric: 'event', event: 'use_search', goal: 1, xp: 40, coins: 12, icon: '🔍', group: 'main' },
-  { id: 'make_category', metric: 'event', event: 'add_category', goal: 1, xp: 35, coins: 10, icon: '🏷', group: 'main' },
-  { id: 'use_repeat', metric: 'event', event: 'use_repeat', goal: 1, xp: 40, coins: 12, icon: '↻', group: 'main' },
-  { id: 'diversify_5', metric: 'categories', goal: 5, xp: 50, coins: 15, icon: '🎨', group: 'main' },
-  { id: 'set_goal', metric: 'event', event: 'add_goal', goal: 1, xp: 45, coins: 15, icon: '🏝', group: 'main' },
-  { id: 'open_planning', metric: 'event', event: 'open_planning', goal: 1, xp: 25, coins: 8, icon: '🧭', group: 'main' },
-  { id: 'streak_3', metric: 'streak', goal: 3, xp: 60, coins: 20, icon: '🔥', group: 'main' },
-  { id: 'see_charts', metric: 'event', event: 'visit_charts', goal: 1, xp: 25, coins: 8, icon: '📈', group: 'main' },
-  { id: 'personalize', metric: 'event', event: 'customize', goal: 1, xp: 25, coins: 8, icon: '🎛', group: 'main' },
-  { id: 'see_leaderboard', metric: 'event', event: 'open_leaderboard', goal: 1, xp: 25, coins: 8, icon: '🏆', group: 'main' },
-  { id: 'log_7', metric: 'logDays', goal: 7, xp: 90, coins: 25, icon: '📅', group: 'main' },
-  { id: 'under_budget', metric: 'budgetKept', goal: 1, xp: 80, coins: 25, icon: '🛡', group: 'main' },
-  { id: 'goal_reached', metric: 'goalsReached', goal: 1, xp: 120, coins: 35, icon: '🥇', group: 'main' },
+  { id: 'try_period', metric: 'event', event: 'use_period', goal: 1, xp: 25, coins: 8, group: 'main' },
+  { id: 'tx_10', metric: 'transactions', goal: 10, xp: 120, coins: 28, group: 'main' },
+  { id: 'set_budget', metric: 'event', event: 'set_budget', goal: 1, xp: 45, coins: 15, group: 'main' },
+  { id: 'use_search', metric: 'event', event: 'use_search', goal: 1, xp: 40, coins: 12, group: 'main' },
+  { id: 'make_category', metric: 'event', event: 'add_category', goal: 1, xp: 35, coins: 10, group: 'main' },
+  { id: 'use_repeat', metric: 'event', event: 'use_repeat', goal: 1, xp: 40, coins: 12, group: 'main' },
+  { id: 'diversify_5', metric: 'categories', goal: 5, xp: 50, coins: 15, group: 'main' },
+  { id: 'set_goal', metric: 'event', event: 'add_goal', goal: 1, xp: 45, coins: 15, group: 'main' },
+  { id: 'open_planning', metric: 'event', event: 'open_planning', goal: 1, xp: 25, coins: 8, group: 'main' },
+  { id: 'streak_3', metric: 'streak', goal: 3, xp: 60, coins: 20, group: 'main' },
+  { id: 'see_charts', metric: 'event', event: 'visit_charts', goal: 1, xp: 25, coins: 8, group: 'main' },
+  { id: 'personalize', metric: 'event', event: 'customize', goal: 1, xp: 25, coins: 8, group: 'main' },
+  { id: 'see_leaderboard', metric: 'event', event: 'open_leaderboard', goal: 1, xp: 25, coins: 8, group: 'main' },
+  { id: 'log_7', metric: 'logDays', goal: 7, xp: 90, coins: 25, group: 'main' },
+  { id: 'under_budget', metric: 'budgetKept', goal: 1, xp: 80, coins: 25, group: 'main' },
+  { id: 'goal_reached', metric: 'goalsReached', goal: 1, xp: 120, coins: 35, group: 'main' },
 
   /* ── Спешел (реферальные) ─────────────────────────────────────────── */
-  { id: 'invite_1', metric: 'referrals', goal: 1, xp: 60, coins: 5, icon: '🤝', group: 'special' },
-  { id: 'invite_3', metric: 'referrals', goal: 3, xp: 120, coins: 10, icon: '🚀', group: 'special' },
-  { id: 'invite_5', metric: 'referrals', goal: 5, xp: 250, coins: 20, icon: '👑', group: 'special' },
+  { id: 'invite_1', metric: 'referrals', goal: 1, xp: 60, coins: 5, group: 'special' },
+  { id: 'invite_3', metric: 'referrals', goal: 3, xp: 120, coins: 10, group: 'special' },
+  { id: 'invite_5', metric: 'referrals', goal: 5, xp: 250, coins: 20, group: 'special' },
 ]
 
 /** Суммарный XP пула — держать в синхроне с XP_ALL_QUESTS в воркере. */

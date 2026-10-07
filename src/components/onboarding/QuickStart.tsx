@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { X, ArrowRight, Plus, Check, Sparkles } from 'lucide-react'
+import { X, ArrowRight, Plus, Check, Sparkles, Sprout, TriangleAlert, Lightbulb } from 'lucide-react'
 import { useStore, selectCategoriesByKind } from '../../store/transactions'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { getCurrency, type Currency } from '../../lib/currencies'
 import { formatMoney, dayjs } from '../../lib/format'
+import { Money } from '../ui/Money'
 import { hapticTap, hapticSelect, hapticNotify } from '../../lib/telegram'
 import { useT, type TFunc } from '../../lib/i18n'
 
@@ -202,7 +203,10 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
 function StepWelcome({ t, onStart }: { t: TFunc; onStart: () => void }) {
   return (
     <div className="pb-2 text-center">
-      <div className="text-5xl">🌿</div>
+      {/* Знак в тонированном круге вместо эмодзи 🌿 — тот же язык, что у иконок в приложении. */}
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-brand-500/10 text-brand-600 dark:bg-brand-400/15 dark:text-brand-300">
+        <Sprout size={30} strokeWidth={2} aria-hidden />
+      </div>
       <div className="mt-2 text-2xl font-bold tracking-tight text-ink">{t('qs.welcome_title')}</div>
       <p className="mx-auto mt-2 max-w-[300px] text-[14px] leading-relaxed text-ink-muted">
         {t('qs.welcome_sub')}
@@ -272,7 +276,7 @@ function StepIncome({
         ))}
       </div>
 
-      <div className="mt-4 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+      <div className="mt-4 caption text-ink-subtle">
         {t('qs.income_source')}
       </div>
       <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
@@ -389,22 +393,30 @@ function StepForecast({
   const positive = projected >= 0
   return (
     <div className="pb-2 text-center">
-      <div className="text-4xl">{positive ? '🎉' : '⚠️'}</div>
+      <div
+        className={`mx-auto flex h-14 w-14 items-center justify-center rounded-[20px] ${
+          positive
+            ? 'bg-brand-500/10 text-brand-600 dark:bg-brand-400/15 dark:text-brand-300'
+            : 'bg-expense/10 text-expense-deep dark:bg-expense/15 dark:text-expense-soft'
+        }`}
+      >
+        {positive ? <Check size={26} strokeWidth={2.6} aria-hidden /> : <TriangleAlert size={24} strokeWidth={2.2} aria-hidden />}
+      </div>
       <div className="mt-2 text-xl font-bold text-ink">{t('qs.result_title')}</div>
 
       {/* Главная цифра прогноза */}
       <div
         className={`mt-4 rounded-4xl p-5 ${
           positive
-            ? 'bg-gradient-to-br from-brand-500 to-brand-700'
+            ? 'hero-surface'
             : 'bg-gradient-to-br from-rose-500 to-rose-700'
         } text-white shadow-soft`}
       >
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-white/70">
+        <div className="caption text-white/70">
           {positive ? t('qs.result_left_label') : t('qs.result_short_label')}
         </div>
-        <div className="mt-1 text-display-lg tabular font-bold">
-          {formatMoney(Math.abs(projected), currency)}
+        <div className="mt-1 text-display-lg font-bold">
+          <Money value={Math.abs(projected)} currency={currency} />
         </div>
         <div className="mt-1 text-[12px] leading-snug text-white/80">{t('qs.result_hint')}</div>
       </div>
@@ -416,7 +428,7 @@ function StepForecast({
       </div>
 
       <div className="mt-3 flex items-start gap-2.5 rounded-3xl bg-surface-sunken/60 p-3 text-left">
-        <span className="mt-0.5 text-base leading-none">💡</span>
+        <Lightbulb size={16} strokeWidth={2.2} className="mt-px shrink-0 text-amber-500" aria-hidden />
         <span className="text-[12px] leading-relaxed text-ink-muted">
           {t('qs.result_advice', { sum: formatMoney(safeDaily, currency) })}
         </span>
@@ -494,7 +506,7 @@ function CategoryChips({
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: 'income' | 'expense' }) {
   return (
     <div className="flex-1 rounded-2xl bg-surface-sunken/60 p-3 text-left">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</div>
+      <div className="caption-sm text-ink-subtle">{label}</div>
       <div className={`tabular text-sm font-bold ${tone === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
         {value}
       </div>

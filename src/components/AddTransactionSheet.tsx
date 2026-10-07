@@ -11,6 +11,7 @@ import {
 } from '../store/transactions'
 import type { CategoryKind } from '../store/categories'
 import { formatMoney, dayjs } from '../lib/format'
+import { Money } from './ui/Money'
 import { useCatName, useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
@@ -325,8 +326,8 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
             {/* Amount display */}
             <div className="px-6 pt-2 pb-3 text-center">
-              <div className={`text-display-lg tabular ${kind === 'expense' ? 'text-expense-deep' : 'text-income-deep'}`}>
-                {kind === 'expense' ? '−' : '+'} {formatMoney(numeric, txCurrency)}
+              <div className={`text-display-lg ${kind === 'expense' ? 'text-expense-deep' : 'text-income-deep'}`}>
+                {kind === 'expense' ? '−' : '+'} <Money value={numeric} currency={txCurrency} />
               </div>
               {hasOps && (
                 <div className="mt-1 text-sm font-medium tabular text-ink-subtle">{expr} =</div>
@@ -382,7 +383,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 чужую сумму поверх редактируемой было бы неожиданно. */}
             {!editing && frequent.length > 0 && (
               <div className="pb-3 pt-1">
-                <div className="px-6 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+                <div className="px-6 pb-1.5 caption text-ink-subtle">
                   {tr('add.frequent')}
                 </div>
                 <div className="no-scrollbar flex gap-2 overflow-x-auto px-6">

@@ -1,6 +1,6 @@
-import { m } from 'framer-motion'
 import { useStore, selectTotalsByCurrency, type PeriodMode } from '../store/transactions'
 import { formatMoney } from '../lib/format'
+import { Money } from './ui/Money'
 import { useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 
@@ -29,18 +29,14 @@ export function BalanceCard() {
 
   return (
     <div className="px-6 pb-2">
-      <m.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="relative overflow-hidden rounded-4xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-600 px-6 py-5 shadow-raised"
-      >
-        {/* Декоративные блобы */}
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute -bottom-12 -left-6 h-32 w-32 rounded-full bg-brand-300/30 blur-2xl" />
+      {/* Обычный div, а не m.div с initial: opacity 0. Это главное число в
+          приложении, а framer крутит появление через requestAnimationFrame: в
+          свёрнутом Telegram он стоит, и карточка оставалась бы невидимой
+          (см. «Грабли» в CLAUDE.md). Появление и так даёт .tab-enter вкладки. */}
+      <div className="hero-surface relative overflow-hidden rounded-4xl px-6 py-5">
 
         <div className="relative">
-          <div className="text-xs font-semibold uppercase tracking-widest text-white/70">{t(BALANCE_LABEL[periodMode])}</div>
+          <div className="caption text-white/70">{t(BALANCE_LABEL[periodMode])}</div>
 
           {entries.length === 0 ? (
             /* Нет транзакций — пустое состояние */
@@ -48,13 +44,13 @@ export function BalanceCard() {
           ) : entries.length === 1 ? (
             /* Одна валюта — классический вид */
             <>
-              <div className="mt-1 text-display-lg tabular text-white">
-                {formatMoney(entries[0][1].balance, entries[0][0])}
+              <div className="mt-1 text-display-lg text-white">
+                <Money value={entries[0][1].balance} currency={entries[0][0]} />
               </div>
               <div className="mt-4 flex items-center gap-4">
-                <Stat label={t('common.income')} value={formatMoney(entries[0][1].income, entries[0][0])} positive />
+                <Stat label={t('common.income')} amount={entries[0][1].income} currency={entries[0][0]} positive />
                 <div className="h-8 w-px bg-white/20" />
-                <Stat label={t('common.expense')} value={formatMoney(entries[0][1].expense, entries[0][0])} />
+                <Stat label={t('common.expense')} amount={entries[0][1].expense} currency={entries[0][0]} />
               </div>
             </>
           ) : (
@@ -64,43 +60,45 @@ export function BalanceCard() {
                 <div key={cur}>
                   {i > 0 && <div className="mb-3 border-t border-white/10" />}
                   <div className="flex items-baseline justify-between">
-                    <span className="text-xs font-bold uppercase tracking-widest text-white/60">{cur}</span>
+                    <span className="caption-sm text-white/60">{cur}</span>
                     <span className="tabular text-lg font-bold text-white">
                       {formatMoney(totals.balance, cur)}
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-3">
-                    <Stat label={t('common.income')} value={formatMoney(totals.income, cur)} positive compact />
+                    <Stat label={t('common.income')} amount={totals.income} currency={cur} positive compact />
                     <div className="h-6 w-px bg-white/20" />
-                    <Stat label={t('common.expense')} value={formatMoney(totals.expense, cur)} compact />
+                    <Stat label={t('common.expense')} amount={totals.expense} currency={cur} compact />
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
-      </m.div>
+      </div>
     </div>
   )
 }
 
 function Stat({
   label,
-  value,
+  amount,
+  currency,
   positive,
   compact,
 }: {
   label: string
-  value: string
+  amount: number
+  currency: Currency
   positive?: boolean
   compact?: boolean
 }) {
   return (
     <div>
-      <div className={`font-semibold uppercase tracking-widest text-white/60 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{label}</div>
+      <div className={`text-white/65 ${compact ? 'caption-sm' : 'caption'}`}>{label}</div>
       <div className={`tabular font-bold ${compact ? 'text-xs' : 'text-sm'} ${positive ? 'text-white' : 'text-white/95'}`}>
         {positive ? '+ ' : '− '}
-        {value.replace('−', '')}
+        <Money value={Math.abs(amount)} currency={currency} />
       </div>
     </div>
   )

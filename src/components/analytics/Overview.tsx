@@ -6,9 +6,9 @@ import {
   PiggyBank,
   Receipt,
   Sparkles,
-  TrendingDown,
   TrendingUp,
 } from 'lucide-react'
+import { DeltaChip } from '../ui/DeltaChip'
 import {
   useStore,
   selectOverview,
@@ -18,6 +18,7 @@ import {
 } from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
+import { Money } from '../ui/Money'
 import { daysWord, useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { FlowChart } from './FlowChart'
@@ -82,7 +83,7 @@ export const Overview = memo(function Overview({ onPickCategory }: { onPickCateg
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-6 mb-2 mt-6 text-[11px] font-extrabold uppercase tracking-wider text-ink-subtle">{children}</div>
+    <div className="mx-6 mb-2 mt-6 section-title">{children}</div>
   )
 }
 
@@ -94,7 +95,6 @@ function Hero() {
 
   // Округляем ДО выбора стрелки: «0 %» со стрелкой вверх выглядит ошибкой
   const delta = o.deltaPct === null ? null : Math.round(o.deltaPct)
-  const down = (delta ?? 0) < 0
   // Подпись прогноза — последний день периода, а не его граница (граница = полночь следующего)
   const lastDay = dayjs(o.endKey).subtract(1, 'day').format('D MMMM')
   // Нижний отступ шапки даёт то, что идёт под ней (кривая или прогноз). Если под
@@ -110,9 +110,9 @@ function Hero() {
       <div className={`px-5 pt-4 ${hasBelow ? '' : 'pb-4'}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{t('ov.spent')}</div>
-            <div className="tabular mt-1 text-[32px] font-extrabold leading-none tracking-tight text-ink">
-              {formatMoney(o.spent, o.currency)}
+            <div className="caption text-ink-subtle">{t('ov.spent')}</div>
+            <div className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-ink">
+              <Money value={o.spent} currency={o.currency} />
             </div>
           </div>
           {delta !== null &&
@@ -121,16 +121,7 @@ function Hero() {
                 {t('ov.as_usual')}
               </span>
             ) : (
-              <span
-                className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-extrabold ${
-                  down
-                    ? 'bg-income-soft text-income-deep dark:bg-brand-500/16 dark:text-brand-300'
-                    : 'bg-expense-soft text-expense-deep dark:bg-expense/16 dark:text-expense'
-                }`}
-              >
-                {down ? <TrendingDown size={13} strokeWidth={2.6} /> : <TrendingUp size={13} strokeWidth={2.6} />}
-                {Math.abs(delta)}%
-              </span>
+              <DeltaChip delta={delta} />
             ))}
         </div>
         {o.mixedCurrency ? (

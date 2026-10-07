@@ -29,7 +29,17 @@ const levelMeta = (level: number): { lvl: number } => ({
   lvl: Math.min(Math.max(1, Math.floor(level) || 1), LEVELS.length),
 })
 
-const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
+/**
+ * Призовые места — медальоны из «металла» с номером места вместо эмодзи-медалей.
+ * Число остаётся числом: столбец мест ровный, а первое место читается так же,
+ * как двадцатое, только с отливом. Эмодзи-медаль рисует шрифт системы — на
+ * каждом телефоне своя, и рядом с линейными иконками выглядит игрушкой.
+ */
+const RANK_METAL: Record<number, string> = {
+  1: 'bg-gradient-to-b from-[#F7DC8A] to-[#C99A35] text-[#4A3505]',
+  2: 'bg-gradient-to-b from-[#EEF1F4] to-[#A8B0B9] text-[#2C3238]',
+  3: 'bg-gradient-to-b from-[#EDC09A] to-[#A86C3F] text-[#3D2310]',
+}
 
 export function LeaderboardSheet({ open, onClose }: Props) {
   const t = useT()
@@ -191,7 +201,7 @@ function Row({
   tab: Tab
   t: TFunc
 }) {
-  const medal = RANK_MEDAL[rank]
+  const metal = RANK_METAL[rank]
   const initial = (entry.name?.[0] ?? '?').toUpperCase()
   const { lvl } = levelMeta(entry.level)
   // Надетый титул игрока — «флекс» рейтинга. Валидируем id по каталогу
@@ -216,8 +226,16 @@ function Row({
         isMe ? 'bg-brand-500/15 ring-1 ring-brand-500/40' : 'bg-surface-sunken/50'
       }`}
     >
-      <div className="flex w-7 shrink-0 items-center justify-center text-sm font-extrabold tabular text-ink-muted">
-        {medal ?? rank}
+      <div className="flex w-7 shrink-0 items-center justify-center">
+        {metal ? (
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-bold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ${metal}`}
+          >
+            {rank}
+          </span>
+        ) : (
+          <span className="text-sm font-semibold tabular-nums text-ink-subtle">{rank}</span>
+        )}
       </div>
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={ringStyle}>
         <div

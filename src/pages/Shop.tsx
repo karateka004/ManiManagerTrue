@@ -50,7 +50,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
           <ChevronLeft size={22} strokeWidth={2.2} />
         </button>
         <div className="min-w-0 flex-1 px-1">
-          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('shop.kicker')}</div>
+          <div className="kicker text-ink-subtle">{t('shop.kicker')}</div>
           <div className="text-2xl font-bold tracking-tight text-ink">{t('shop.title')}</div>
         </div>
         <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken/70 px-2.5 py-1 text-[12px] font-bold tabular text-ink">
@@ -63,7 +63,7 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
         <div className="mx-4 mt-2">
           <div className="mb-2 flex items-center gap-1.5 px-2">
             <Sparkles size={14} className="text-amber-500" />
-            <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('shop.featured')}</span>
+            <span className="section-title">{t('shop.featured')}</span>
             <span className="ml-auto text-[11px] font-bold text-amber-600 dark:text-amber-300">−{DAILY_DISCOUNT_PCT}%</span>
           </div>
           <div className="flex flex-col gap-2">

@@ -288,7 +288,7 @@ function RangeCalendar({ open, initialStart, initialEnd, onClose, onApply, onAll
             </div>
 
             {/* Weekday header */}
-            <div className="grid grid-cols-7 gap-1 px-4 pt-1 text-center text-[10px] font-bold uppercase text-ink-subtle">
+            <div className="grid grid-cols-7 gap-1 px-4 pt-1 text-center caption-sm capitalize text-ink-subtle">
               {weekdaysShort(lang).map((d) => (
                 <div key={d} className="py-1">{d}</div>
               ))}

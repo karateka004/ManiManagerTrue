@@ -112,7 +112,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       {/* Шапка с шестерёнкой настроек */}
       <div className="flex items-start justify-between px-6 pt-6 pb-1">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('profile.kicker')}</div>
+          <div className="kicker text-ink-subtle">{t('profile.kicker')}</div>
           <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('profile.title')}</div>
         </div>
         <button
@@ -144,7 +144,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       {/* Компактная строка уровня → ведёт во вкладку «Награды» */}
       <button
         onClick={() => { hapticTap(); onOpenRewards() }}
-        className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-soft active:scale-[0.99]"
+        className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center gap-3 hero-surface rounded-3xl p-4 text-left active:scale-[0.99]"
       >
         <RewardBadge level={lvl.level} size={44} />
         <div className="min-w-0 flex-1">
@@ -182,7 +182,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
             №1
           </div>
           <div className="flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{t('profile.top_expense')}</div>
+            <div className="caption text-ink-subtle">{t('profile.top_expense')}</div>
             <div className="font-semibold text-ink">{catName(stats.topCat.id, stats.topCat.name)}</div>
           </div>
           <div className="tabular text-sm font-bold text-expense-deep">
@@ -276,7 +276,7 @@ function FeedbackBlock({ t }: { t: TFunc }) {
 
   return (
     <div className="mx-4 mt-4">
-      <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('profile.feedback')}</div>
+      <div className="mb-2 px-2 section-title">{t('profile.feedback')}</div>
       <div className="card p-3">
         {state === 'sent' ? (
           <div className="flex items-center gap-2 px-1 py-2 text-sm font-medium text-income-deep">
@@ -314,7 +314,7 @@ function StatBox({ label, value, tone }: { label: string; value: string; tone: '
   const color = tone === 'income' ? 'text-income-deep' : tone === 'expense' ? 'text-expense-deep' : 'text-ink'
   return (
     <div className="card flex flex-col gap-0.5 p-3">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</span>
+      <span className="caption-sm text-ink-subtle">{label}</span>
       <span className={`tabular text-base font-bold ${color}`}>{value}</span>
     </div>
   )

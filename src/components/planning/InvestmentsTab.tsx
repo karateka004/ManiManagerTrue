@@ -131,7 +131,7 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
       {/* Сводка портфеля */}
       {investments.length > 0 && (
         <div className="card mb-2 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{t('inv.total')}</div>
+          <div className="caption-sm text-ink-subtle">{t('inv.total')}</div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             {curEntries.map(([cur, sum]) => (
               <span key={cur} className="tabular text-xl font-bold text-ink">
@@ -334,7 +334,7 @@ function AddInvestmentForm({
 
   return (
     <div className="card mt-2 p-3">
-      <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('inv.add')}</div>
+      <div className="mb-2 section-title">{t('inv.add')}</div>
 
       {/* Тип актива */}
       <div className="mb-2">
@@ -467,7 +467,7 @@ function CompoundCalculator({
       </div>
 
       <div className="mt-3 rounded-2xl bg-surface-sunken/70 p-3">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{t('inv.calc_result')}</div>
+        <div className="caption-sm text-ink-subtle">{t('inv.calc_result')}</div>
         <div className="tabular text-2xl font-bold text-ink">{formatMoney(res.total, currency)}</div>
         <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
           <div>
@@ -500,7 +500,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</span>
+      <span className="mb-1 block caption-sm text-ink-subtle">{label}</span>
       <span className="flex items-center gap-1 rounded-2xl bg-surface-sunken px-3 py-2">
         <input
           type="number"

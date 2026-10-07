@@ -64,7 +64,7 @@
 
   body {
     margin: 0;
-    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-family: 'Manrope Variable', 'Manrope', system-ui, -apple-system, sans-serif;
     background: linear-gradient(180deg, var(--bg-gradient-top) 0%, var(--bg-gradient-bottom) 30%);
     color: rgb(var(--c-ink));
     -webkit-font-smoothing: antialiased;
@@ -95,6 +95,98 @@
 }
 
 @layer components {
+  /* ---------- Подписи ----------
+     Раньше все подписи были капсом с разрядкой («БАЛАНС ЗА МЕСЯЦ», «ДОХОДЫ»,
+     «ЗАДАНИЯ») — почерк дашбордов пятилетней давности: интерфейс кричит каждой
+     подписью, и вес размазывается по всему экрану. Сейчас подписи строчные и
+     тихие, а вес держат числа и заголовки. У подписей три роли, и стили разные:
+
+     .kicker        — надстрочник над заголовком страницы («Аналитика» над
+                      «Куда уходят деньги»): мелко и приглушённо.
+     .section-title — заголовок группы карточек («Что заметно», «Задания»):
+                      наоборот, СИЛЬНЕЕ прежнего — это навигация по экрану.
+     .caption       — подпись над числом в карточке («Доходы», «Потрачено»).
+     .caption-sm    — то же в тесных местах (плитки 2×2, легенды).
+
+     Цвет подписи задаётся на месте: внутри брендовой карточки он белый. */
+  .kicker {
+    @apply text-[13px] font-medium leading-tight text-ink-subtle;
+    letter-spacing: -0.005em;
+  }
+  .section-title {
+    @apply text-[15px] font-semibold leading-tight text-ink;
+    letter-spacing: -0.012em;
+  }
+  .caption {
+    @apply text-[13px] font-medium leading-tight;
+    letter-spacing: -0.005em;
+  }
+  .caption-sm {
+    @apply text-[12px] font-medium leading-tight;
+  }
+
+  /* ---------- Крупные суммы (см. components/ui/Money) ---------- */
+  .money {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+    /* Неразрывность, которую раньше давал NBSP перед символом: «€» не должен
+       уезжать на следующую строку отдельно от суммы. */
+    white-space: nowrap;
+  }
+  /* Пропорция с нижним пределом: у крупной суммы символ заметно мельче цифр,
+     а у суммы в 14 px он не должен ужиматься до нечитаемых 8 px. */
+  .money-frac {
+    font-size: max(0.62em, 11px);
+    opacity: 0.78;
+    letter-spacing: 0;
+  }
+  .money-sym {
+    font-size: max(0.56em, 11px);
+    font-weight: 600;
+    opacity: 0.55;
+    margin-left: 0.16em;
+    letter-spacing: 0;
+  }
+
+  /* ---------- Плашка изменения (components/ui/DeltaChip) ----------
+     Прозрачности — ТОЛЬКО из шкалы Tailwind (5, 10, 15, 20, 25…). Любое другое
+     число (было /16) молча не генерируется, и тёмная тема ломается без
+     единого предупреждения. Тонкое кольцо того же цвета держит форму плашки
+     на любом фоне, вместо заливки «пузырём». */
+  .delta-chip {
+    @apply inline-flex shrink-0 items-center gap-0.5 rounded-full py-[3px] pl-1.5 pr-2 text-[12px] font-semibold tabular-nums ring-1 ring-inset;
+  }
+  .delta-good {
+    @apply bg-income/10 text-income-deep ring-income/20 dark:bg-brand-400/15 dark:text-brand-300 dark:ring-brand-400/25;
+  }
+  .delta-bad {
+    @apply bg-expense/10 text-expense-deep ring-expense/20 dark:bg-expense/15 dark:text-expense-soft dark:ring-expense/25;
+  }
+
+  /* ---------- Главные карточки (баланс, уровень) ----------
+     Был плоский мятный градиент в две краски плюс пара размытых кругов сверху —
+     так выглядит шаблон. Здесь поверхность собрана как у дорогих карт:
+       — мягкий свет из левого верхнего угла и глубина в правом нижнем,
+         чтобы карточка читалась объёмной, а не залитой;
+       — тонкий блик по верхней кромке (inset-тень) — «стекло»;
+       — едва заметное зерно: убирает «пластиковую» гладкость градиента и
+         полосы-ступеньки на дешёвых экранах. Зерно — встроенный SVG, без
+         запросов, и смешивается режимом overlay, поэтому не сереет цвет.
+     Цвета — из переменных акцента: купленные палитры работают и здесь. */
+  .hero-surface {
+    color: #fff;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.32'/></svg>"),
+      radial-gradient(120% 90% at 0% 0%, rgb(255 255 255 / 0.2), transparent 55%),
+      radial-gradient(90% 80% at 100% 100%, rgb(var(--brand-900) / 0.5), transparent 65%),
+      linear-gradient(135deg, rgb(var(--brand-500)) 0%, rgb(var(--brand-600)) 55%, rgb(var(--brand-700)) 100%);
+    background-blend-mode: overlay, normal, normal, normal;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.22),
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      0 22px 44px -22px rgb(var(--brand-800) / 0.65);
+  }
+
   .pill {
     @apply inline-flex items-center rounded-full px-4 py-2 font-semibold;
   }

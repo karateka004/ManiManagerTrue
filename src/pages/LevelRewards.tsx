@@ -32,7 +32,7 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
           <ChevronLeft size={22} strokeWidth={2.2} />
         </button>
         <div className="min-w-0 flex-1 px-1">
-          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('lvlrew.kicker')}</div>
+          <div className="kicker text-ink-subtle">{t('lvlrew.kicker')}</div>
           <div className="text-2xl font-bold tracking-tight text-ink">{t('lvlrew.title')}</div>
         </div>
         {/* Значок уровня — тот же, что в шапке «Прогресса»: эмодзи из levels.ts
@@ -76,7 +76,7 @@ function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string
         {icon}
       </span>
       <div className="min-w-0 leading-tight">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</div>
+        <div className="caption-sm text-ink-subtle">{label}</div>
         <div className="tabular text-sm font-bold text-ink">{value}</div>
       </div>
     </div>
@@ -136,11 +136,13 @@ function LevelRewardRow({
           /* Пока не забрано — вместо описания показываем оба условия с прогрессом */
           <div className="mt-0.5 flex items-center gap-2 text-[11px]">
             <span className={levelOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
-              {levelOk ? '✓' : ''} {t('lb.level_short')} {reward.unlockLevel}
+              {levelOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
+              {t('lb.level_short')} {reward.unlockLevel}
             </span>
             {needDays > 0 && (
               <span className={daysOk ? 'font-semibold text-income-deep' : 'text-ink-subtle'}>
-                {daysOk ? '✓' : ''} {t('lvlrew.days_progress', { n: Math.min(days, needDays), need: needDays })}
+                {daysOk && <Check size={12} strokeWidth={3} className="-mt-px mr-0.5 inline" aria-hidden />}
+                {t('lvlrew.days_progress', { n: Math.min(days, needDays), need: needDays })}
               </span>
             )}
           </div>

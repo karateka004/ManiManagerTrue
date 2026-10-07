@@ -2,12 +2,15 @@ import { useStore } from '../store/transactions'
 import { tg } from '../lib/telegram'
 import { getReward } from '../lib/rewards'
 import { useT } from '../lib/i18n'
+import { User } from 'lucide-react'
 
 /** Аватар пользователя Telegram: фото или инициалы + надетая рамка. */
 export function Avatar({ size = 40, onClick }: { size?: number; onClick?: () => void }) {
   const t = useT()
   const user = tg.user
-  const initials = (user?.first_name?.[0] ?? '🌿').toUpperCase()
+  // Без имени (вне Telegram) — силуэт, а не эмодзи: эмодзи рисует шрифт системы,
+  // на каждом телефоне он свой и среди линейных иконок выглядит чужим.
+  const initials = user?.first_name?.[0]?.toUpperCase() ?? null
   const photo = user?.photo_url
   const frame = getReward(useStore((s) => s.equipped.frame))?.frame
   const hasFrame = !!frame && frame.ring !== 'transparent'
@@ -26,7 +29,11 @@ export function Avatar({ size = 40, onClick }: { size?: number; onClick?: () => 
       {photo ? (
         <img src={photo} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
       ) : (
-        <span className="font-bold">{initials}</span>
+        initials ? (
+          <span className="font-bold">{initials}</span>
+        ) : (
+          <User size={Math.round(size * 0.46)} strokeWidth={2} aria-hidden />
+        )
       )}
     </button>
   )

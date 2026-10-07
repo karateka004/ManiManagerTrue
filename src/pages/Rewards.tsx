@@ -153,12 +153,12 @@ export function RewardsPage() {
   return (
     <div className="pb-24">
       <div className="px-6 pt-6 pb-1">
-        <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('rewards.kicker')}</div>
+        <div className="kicker text-ink-subtle">{t('rewards.kicker')}</div>
         <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('nav.rewards')}</div>
       </div>
 
       {/* Level hero */}
-      <div className="mx-4 mt-3 overflow-hidden rounded-4xl bg-gradient-to-br from-brand-500 to-brand-700 p-5 text-white shadow-soft">
+      <div className="mx-4 mt-3 hero-surface overflow-hidden rounded-4xl p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <RewardBadge level={lvl.level} size={48} />
@@ -229,7 +229,7 @@ export function RewardsPage() {
       {/* Задания */}
       <div className="mx-4 mt-5">
         <div className="mb-2 flex items-center justify-between px-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('profile.quests')}</span>
+          <span className="section-title">{t('profile.quests')}</span>
           {claimable > 0 ? (
             <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300">
               {t('profile.claimable', { n: claimable })}
@@ -252,7 +252,7 @@ export function RewardsPage() {
       {/* Спешел — реферальные задания */}
       <div className="mx-4 mt-5">
         <div className="mb-2 px-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('rewards.special')}</span>
+          <span className="section-title">{t('rewards.special')}</span>
         </div>
         <div className="flex flex-col gap-2">
           <QuestSlots slots={specialSlots} now={now} t={t} onClaim={onClaim} />

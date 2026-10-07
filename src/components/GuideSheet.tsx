@@ -339,7 +339,7 @@ export function GuideSheet({ open, onClose }: Props) {
                   <div className="text-[11px] text-ink-subtle">{guide.subtitle}</div>
                 </div>
               </div>
-              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label="✕">
+              <button onClick={onClose} className="text-ink-subtle active:text-ink-muted" aria-label={lang === 'en' ? 'Close' : 'Закрыть'}>
                 <X size={22} />
               </button>
             </div>

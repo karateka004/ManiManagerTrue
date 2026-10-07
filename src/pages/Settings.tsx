@@ -1,6 +1,6 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { Plus, BookOpen, ChevronLeft } from 'lucide-react'
+import { Plus, BookOpen, ChevronLeft, Check, Target, CircleCheck, CircleX } from 'lucide-react'
 import {
   useStore,
   selectCategoriesByKind,
@@ -124,7 +124,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           </button>
         )}
         <div className="px-2">
-          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('settings.kicker')}</div>
+          <div className="kicker text-ink-subtle">{t('settings.kicker')}</div>
           <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('settings.title')}</div>
         </div>
       </div>
@@ -148,7 +148,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Language */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.language')}</div>
+        <div className="mb-2 px-2 section-title">{t('settings.language')}</div>
         <div className="card grid grid-cols-2 gap-1 p-1">
           {LANGS.map((opt) => (
             <button
@@ -167,7 +167,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       {/* Currency */}
       <div className="mx-6 mt-6">
         <div className="mb-2 flex items-baseline justify-between px-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.currency')}</span>
+          <span className="section-title">{t('settings.currency')}</span>
           <span className="text-[11px] text-ink-subtle">{getCurrency(currency).name}</span>
         </div>
         <div className="card p-2">
@@ -225,7 +225,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       */}
       <div className="mx-6 mt-6">
         <div className="mb-2 flex items-baseline justify-between px-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.quick_cur')}</span>
+          <span className="section-title">{t('settings.quick_cur')}</span>
           {quickSlot !== null && (
             <span className="text-[11px] text-brand-600 dark:text-brand-300">{t('settings.quick_cur_pick')}</span>
           )}
@@ -288,7 +288,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Chart style */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">
+        <div className="mb-2 px-2 section-title">
           {t('settings.chart_style')}
         </div>
         <div className="card grid grid-cols-2 gap-1 p-1">
@@ -314,7 +314,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Home header */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">
+        <div className="mb-2 px-2 section-title">
           {t('settings.home_header')}
         </div>
         <div className="card p-1">
@@ -340,7 +340,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
               <div className="px-2 py-3 text-center text-xs text-ink-subtle">{t('settings.hh_no_goals')}</div>
             ) : (
               <div className="mt-1 border-t border-surface-sunken pt-2">
-                <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
+                <div className="mb-1.5 px-2 caption text-ink-subtle">
                   {t('settings.hh_pick_goal')}
                 </div>
                 <div className="flex flex-col gap-1">
@@ -354,9 +354,9 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
                           active ? 'bg-brand-500/15 text-brand-700 dark:text-brand-200' : 'text-ink-muted active:bg-surface-sunken'
                         }`}
                       >
-                        <span className="shrink-0 text-base">{g.icon}</span>
+                        <Target size={16} strokeWidth={2.2} className="shrink-0" aria-hidden />
                         <span className="truncate">{g.title}</span>
-                        {active && <span className="ml-auto shrink-0 text-brand-500">✓</span>}
+                        {active && <Check size={16} strokeWidth={2.6} className="ml-auto shrink-0 text-brand-500" aria-hidden />}
                       </button>
                     )
                   })}
@@ -369,7 +369,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Theme */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.theme')}</div>
+        <div className="mb-2 px-2 section-title">{t('settings.theme')}</div>
         <div className="card grid grid-cols-3 gap-1 p-1">
           {([
             { id: 'auto', label: t('settings.theme_auto') },
@@ -401,7 +401,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           }}
           className="mb-2 flex w-full items-center justify-between px-2"
         >
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">
+          <span className="section-title">
             {t('settings.budgets')}
           </span>
           <span className="text-xs text-ink-subtle">
@@ -447,7 +447,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       {/* Categories */}
       <div className="mx-6 mt-6">
         <div className="mb-2 flex items-center justify-between px-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.custom_categories')}</span>
+          <span className="section-title">{t('settings.custom_categories')}</span>
           <span className="text-[11px] text-ink-subtle">{customCats.length > 0 ? t('settings.cats_count', { n: customCats.length }) : t('settings.cats_none')}</span>
         </div>
         <div className="card divide-y divide-surface-sunken">
@@ -482,7 +482,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Data */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.data')}</div>
+        <div className="mb-2 px-2 section-title">{t('settings.data')}</div>
         <div className="card divide-y divide-surface-sunken">
           <SettingRow label={t('settings.total_ops')} value={count.toString()} />
           <ToggleRow
@@ -507,7 +507,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* Notifications */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">
+        <div className="mb-2 px-2 section-title">
           {t('settings.notifications')}
         </div>
         <div className="card divide-y divide-surface-sunken">
@@ -527,11 +527,16 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
 
       {/* About */}
       <div className="mx-6 mt-6">
-        <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('settings.about')}</div>
+        <div className="mb-2 px-2 section-title">{t('settings.about')}</div>
         <div className="card p-4 text-sm leading-relaxed text-ink-muted">
           <p>{t('settings.about_text')}</p>
-          <p className="mt-3 text-xs text-ink-subtle">
-            {t('settings.in_telegram')} {tg.isInTelegram ? '✅' : '❌'}
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-subtle">
+            {t('settings.in_telegram')}
+            {tg.isInTelegram ? (
+              <CircleCheck size={14} strokeWidth={2.2} className="text-income" aria-label="да" />
+            ) : (
+              <CircleX size={14} strokeWidth={2.2} className="text-expense" aria-label="нет" />
+            )}
           </p>
         </div>
       </div>
@@ -659,7 +664,7 @@ function ExportRow() {
   const catName = useCatName()
 
   const value =
-    state === 'busy' ? '…' : state === 'ok' ? '✓' : state === 'blocked' ? t('settings.export_blocked') : state === 'failed' ? t('settings.export_failed') : '→'
+    state === 'busy' ? '…' : state === 'ok' ? t('settings.export_done') : state === 'blocked' ? t('settings.export_blocked') : state === 'failed' ? t('settings.export_failed') : '→'
 
   const run = async () => {
     if (state === 'busy' || transactions.length === 0) return

@@ -84,7 +84,9 @@ export function ChangelogSheet({ open, onClose, seenVersion }: Props) {
                       <div className="flex flex-col gap-2">
                         {r.items.map((it, i) => (
                           <div key={i} className="flex items-start gap-2.5">
-                            <span className="mt-0.5 text-base leading-none">{it.icon}</span>
+                            {/* Точка вместо эмодзи у каждого пункта: 150 разных пиктограмм
+                                в одном списке читались как рябь, а не как перечень. */}
+                            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500/70" aria-hidden />
                             <span className="text-[13px] leading-snug text-ink-muted">{it.text[lang]}</span>
                           </div>
                         ))}

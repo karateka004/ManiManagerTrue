@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { X, TrendingDown, TrendingUp } from 'lucide-react'
+import { X } from 'lucide-react'
+import { DeltaChip } from './ui/DeltaChip'
 import { useStore, selectMonthlySummary, selectAnalyticsCurrency } from '../store/transactions'
 import { daysIntoMonth, monthKey } from '../lib/monthly'
 import { dayjs, formatMoney } from '../lib/format'
+import { Money } from './ui/Money'
 import { useCatName, useT } from '../lib/i18n'
 import { hapticTap } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
@@ -55,31 +57,21 @@ export function MonthlyRecap() {
   }
 
   const delta = summary.deltaPct === null ? null : Math.round(summary.deltaPct)
-  const down = (delta ?? 0) < 0
 
   return (
     <div className="mx-4 mt-3 overflow-hidden rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
       <div className="flex items-start justify-between gap-2 px-4 pt-3.5">
         <div>
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-ink-subtle">
+          <div className="caption text-ink-subtle">
             {t('recap.title', { month: dayjs(summary.monthStart).format('MMMM') })}
           </div>
-          <div className="tabular mt-1 text-[26px] font-extrabold leading-none tracking-tight text-ink">
-            {formatMoney(summary.spent, currency)}
+          <div className="mt-1 text-[26px] font-extrabold leading-none tracking-tight text-ink">
+            <Money value={summary.spent} currency={currency} />
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {delta !== null && delta !== 0 && (
-            <span
-              className={`flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-extrabold ${
-                down
-                  ? 'bg-income-soft text-income-deep dark:bg-brand-500/16 dark:text-brand-300'
-                  : 'bg-expense-soft text-expense-deep dark:bg-expense/16 dark:text-expense'
-              }`}
-            >
-              {down ? <TrendingDown size={13} strokeWidth={2.6} /> : <TrendingUp size={13} strokeWidth={2.6} />}
-              {Math.abs(delta)}%
-            </span>
+            <DeltaChip delta={delta} />
           )}
           <button
             onClick={close}

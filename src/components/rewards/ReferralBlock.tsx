@@ -32,7 +32,7 @@ export function ReferralBlock({ count, friends, t }: { count: number | null; fri
   return (
     <div className="mx-4 mt-4">
       <div className="mb-2 flex items-center justify-between px-2">
-        <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('profile.invite_friends')}</span>
+        <span className="section-title">{t('profile.invite_friends')}</span>
         {count !== null && (
           <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300">{t('profile.invited', { n: count })}</span>
         )}
@@ -59,7 +59,7 @@ export function ReferralBlock({ count, friends, t }: { count: number | null; fri
 
         {friends.length > 0 && (
           <div className="mt-3 border-t border-surface-sunken pt-3">
-            <div className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+            <div className="mb-2 px-1 section-title">
               {t('profile.who_joined')}
             </div>
             <div className="flex flex-col gap-1.5">

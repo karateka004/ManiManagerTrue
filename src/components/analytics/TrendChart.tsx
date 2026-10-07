@@ -113,7 +113,7 @@ export function TrendChart() {
 function StatCard({ label, value, tone }: { label: string; value: string; tone: 'income' | 'expense' }) {
   return (
     <div className="card flex flex-col gap-0.5 p-3">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</span>
+      <span className="caption-sm text-ink-subtle">{label}</span>
       <span className={`tabular text-sm font-bold ${tone === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
         {value}
       </span>

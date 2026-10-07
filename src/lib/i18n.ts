@@ -139,6 +139,7 @@ const DICT: Dict = {
   'settings.export_caption': { ru: 'Ваши операции — {n} шт.', en: 'Your transactions — {n} in total' },
   'settings.export_blocked': { ru: 'откройте бота', en: 'open the bot' },
   'settings.export_failed': { ru: 'не вышло', en: 'failed' },
+  'settings.export_done': { ru: 'отправлено в чат', en: 'sent to chat' },
   'settings.csv_date': { ru: 'Дата', en: 'Date' },
   'settings.csv_type': { ru: 'Тип', en: 'Type' },
   'settings.csv_category': { ru: 'Категория', en: 'Category' },
@@ -209,7 +210,7 @@ const DICT: Dict = {
     en: 'Open in Telegram to see your profile',
   },
   'profile.level': { ru: 'Уровень {level} из {max}', en: 'Level {level} of {max}' },
-  'profile.max_level': { ru: 'Максимальный уровень — ты легенда 🏆', en: 'Max level — you are a legend 🏆' },
+  'profile.max_level': { ru: 'Максимальный уровень — ты легенда', en: 'Max level — you are a legend' },
   'profile.xp_progress': { ru: '{into} / {need} XP · до след. {toNext}', en: '{into} / {need} XP · {toNext} to next' },
   'profile.achievements': { ru: 'Достижения', en: 'Achievements' },
   'profile.achievements_hint': {
@@ -252,7 +253,7 @@ const DICT: Dict = {
   'profile.feedback_chat': { ru: 'Написать в чат бота', en: 'Message the bot' },
 
   /* Квесты */
-  'quest.received': { ru: '✓ Получено', en: '✓ Claimed' },
+  'quest.received': { ru: 'Получено', en: 'Claimed' },
   'quest.claim': { ru: 'Забрать', en: 'Claim' },
   'quest.subscribe': { ru: 'Подписаться', en: 'Subscribe' },
   'quest.locked_title': { ru: 'Следующее задание', en: 'Next quest' },
@@ -319,7 +320,7 @@ const DICT: Dict = {
   'plan.goal_add': { ru: 'Создать цель', en: 'Create goal' },
   'plan.goal_contribute': { ru: 'Внести', en: 'Add' },
   'plan.goal_contribute_ph': { ru: 'Сумма взноса', en: 'Contribution' },
-  'plan.goal_done': { ru: 'Цель достигнута! 🎉', en: 'Goal reached! 🎉' },
+  'plan.goal_done': { ru: 'Цель достигнута', en: 'Goal reached' },
   'plan.goal_delete_confirm': { ru: 'Удалить цель?', en: 'Delete this goal?' },
   'plan.goal_of': { ru: 'из', en: 'of' },
   'plan.goal_sync': { ru: 'Синхронизировать с балансом', en: 'Sync with balance' },
@@ -573,8 +574,8 @@ const DICT: Dict = {
   /* Прочее */
   'chart.no_data': { ru: 'Нет данных', en: 'No data' },
   'share.text': {
-    ru: 'Веду финансы в «Кошель» — попробуй, удобно 👇',
-    en: 'I track my finances with Koshel — give it a try 👇',
+    ru: 'Веду финансы в «Кошель» — попробуй, удобно',
+    en: 'I track my finances with Koshel — give it a try',
   },
 
   /* Названия уровней (levels.ts) */
@@ -727,10 +728,10 @@ const DICT: Dict = {
   'roadpass.owned_count': { ru: 'Куплено {n} из {total} наград', en: 'Owned {n} of {total} rewards' },
   'roadpass.days_short': { ru: 'дн.', en: 'd' },
   'roadpass.streak_record': { ru: 'рекорд {best}', en: 'best {best}' },
-  'roadpass.claimed_today': { ru: 'Сегодня ✓', en: 'Today ✓' },
+  'roadpass.claimed_today': { ru: 'Получено сегодня', en: 'Claimed today' },
   'roadpass.to_milestone': { ru: 'До рубежа {n} дн.', en: 'To milestone: {n}d' },
   'roadpass.milestone_hit': { ru: 'рубеж {n} дн.!', en: 'milestone {n}d!' },
-  'roadpass.today_reward': { ru: 'Сегодняшняя награда: +{xp} XP · 🪙 {coins}', en: 'Today’s reward: +{xp} XP · 🪙 {coins}' },
+  'roadpass.today_reward': { ru: 'Сегодняшняя награда: +{xp} XP · монеты: {coins}', en: 'Today’s reward: +{xp} XP · coins: {coins}' },
   'roadpass.milestone_suffix': { ru: ' · рубеж {n} дн.', en: ' · milestone {n}d' },
   'roadpass.equipped': { ru: 'Надето', en: 'Equipped' },
   'roadpass.equip': { ru: 'Надеть', en: 'Equip' },
@@ -836,6 +837,9 @@ const DICT: Dict = {
   'home.today_left': { ru: 'Можно ещё {left}', en: '{left} still available' },
   'home.today_over': { ru: 'Перерасход {over}', en: 'Over by {over}' },
   'home.today_spent': { ru: 'Потрачено {spent} из {perDay}', en: 'Spent {spent} of {perDay}' },
+  'home.today_exhausted': { ru: 'Бюджет месяца исчерпан', en: 'Monthly budget used up' },
+  'home.today_month_over': { ru: 'Сверх бюджета месяца: {over}', en: 'Over the monthly budget by {over}' },
+  'home.today_spent_only': { ru: 'Сегодня потрачено {spent}', en: 'Spent today: {spent}' },
   'home.today_days': { ru: 'осталось дней: {days}', en: '{days} days left' },
 
   /* Плашка демо-режима */

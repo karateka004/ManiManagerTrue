@@ -137,7 +137,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             {/* Color picker */}
             <div className="px-6 pb-3">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('cat.color')}</div>
+              <div className="mb-2 caption text-ink-subtle">{t('cat.color')}</div>
               <div className="flex flex-wrap gap-2">
                 {CATEGORY_COLORS.map((c) => (
                   <button
@@ -155,7 +155,7 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
 
             {/* Icon picker */}
             <div className="px-6 pb-3">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('cat.icon')}</div>
+              <div className="mb-2 caption text-ink-subtle">{t('cat.icon')}</div>
               {/* Иконок много — раскладываем по темам, иначе получается простыня */}
               <div className="flex flex-col gap-3">
                 {ICON_GROUPS.map((group) => (

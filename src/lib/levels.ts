@@ -11,21 +11,19 @@ export interface LevelDef {
   title: string
   /** Минимальный XP, с которого начинается уровень. */
   minXp: number
-  /** Бейдж-эмодзи (косметика статуса). */
-  badge: string
 }
 
 export const LEVELS: LevelDef[] = [
-  { level: 1, title: 'Новичок', minXp: 0, badge: '🌱' },
-  { level: 2, title: 'Счетовод', minXp: 60, badge: '📒' },
-  { level: 3, title: 'Бережливый', minXp: 180, badge: '🪙' },
-  { level: 4, title: 'Финансист', minXp: 400, badge: '💼' },
-  { level: 5, title: 'Капиталист', minXp: 750, badge: '📈' },
-  { level: 6, title: 'Магнат', minXp: 1300, badge: '👑' },
-  { level: 7, title: 'Легенда', minXp: 2200, badge: '🏆' },
-  { level: 8, title: 'Магистр финансов', minXp: 3500, badge: '🎓' },
-  { level: 9, title: 'Олигарх', minXp: 5200, badge: '💎' },
-  { level: 10, title: 'Император', minXp: 7500, badge: '🏛️' },
+  { level: 1, title: 'Новичок', minXp: 0 },
+  { level: 2, title: 'Счетовод', minXp: 60 },
+  { level: 3, title: 'Бережливый', minXp: 180 },
+  { level: 4, title: 'Финансист', minXp: 400 },
+  { level: 5, title: 'Капиталист', minXp: 750 },
+  { level: 6, title: 'Магнат', minXp: 1300 },
+  { level: 7, title: 'Легенда', minXp: 2200 },
+  { level: 8, title: 'Магистр финансов', minXp: 3500 },
+  { level: 9, title: 'Олигарх', minXp: 5200 },
+  { level: 10, title: 'Император', minXp: 7500 },
 ]
 
 /** XP за одну операцию. */
@@ -34,7 +32,6 @@ export const XP_PER_TRANSACTION = 12
 export interface LevelProgress {
   level: number
   title: string
-  badge: string
   xp: number
   /** XP, набранный внутри текущего уровня. */
   xpIntoLevel: number
@@ -65,7 +62,6 @@ export function levelFor(xp: number): LevelProgress {
     return {
       level: cur.level,
       title: cur.title,
-      badge: cur.badge,
       xp,
       xpIntoLevel: xp - cur.minXp,
       xpForLevel: xp - cur.minXp || 1,
@@ -80,7 +76,6 @@ export function levelFor(xp: number): LevelProgress {
   return {
     level: cur.level,
     title: cur.title,
-    badge: cur.badge,
     xp,
     xpIntoLevel,
     xpForLevel,

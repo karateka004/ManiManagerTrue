@@ -18,15 +18,13 @@ export interface RarityMeta {
   label: string
   /** Цвет рамки/акцента бейджа рарности. */
   color: string
-  /** Эмодзи-маркер. */
-  dot: string
 }
 
 export const RARITY: Record<Rarity, RarityMeta> = {
-  common: { label: 'Обычная', color: '#94A3B8', dot: '⚪' },
-  rare: { label: 'Редкая', color: '#3B82F6', dot: '🔵' },
-  epic: { label: 'Эпическая', color: '#A855F7', dot: '🟣' },
-  legendary: { label: 'Легендарная', color: '#F59E0B', dot: '🟡' },
+  common: { label: 'Обычная', color: '#94A3B8' },
+  rare: { label: 'Редкая', color: '#3B82F6' },
+  epic: { label: 'Эпическая', color: '#A855F7' },
+  legendary: { label: 'Легендарная', color: '#F59E0B' },
 }
 
 /** Полная палитра акцента: 10 RGB-триплетов «r g b» для --brand-50..900. */

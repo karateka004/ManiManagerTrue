@@ -62,7 +62,7 @@ function SectionHeader({ title, cats, kind }: { title: string; cats: CategoryAgg
 
   return (
     <div className="mb-2 mt-4 flex items-center justify-between px-2">
-      <span className="text-xs font-bold uppercase tracking-wider text-ink-subtle">{title}</span>
+      <span className="section-title">{title}</span>
       <span className={`tabular text-xs font-bold ${kind === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
         {parts.map(([cur, amount], i) => (
           <span key={cur}>

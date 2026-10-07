@@ -95,17 +95,20 @@ function TodayBudget() {
   const t = useT()
   if (!allowance) return null
 
-  const { perDay, leftToday, spentToday, daysLeft } = allowance
-  const over = leftToday < 0
+  const { perDay, leftToday, spentToday, daysLeft, monthLeft } = allowance
   // Копейки в дневном лимите только шумят — округляем до целых единиц валюты.
   const money = (v: number) => formatMoney(Math.round(v), currency)
+  // Бюджет месяца кончился ещё до сегодняшнего дня: дневной лимит нулевой, и
+  // «Потрачено 300 € из 0 €» читалось бы как поломка. Говорим, что случилось.
+  const exhausted = Math.round(perDay) <= 0
+  const over = exhausted || leftToday < 0
   const ratio = perDay > 0 ? Math.min(1, spentToday / perDay) : 1
 
   return (
     <div className="px-6 pb-2">
       <div className="card px-4 py-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
+          <span className="caption text-ink-subtle">
             {t('home.today_kicker')}
           </span>
           <span className="text-[11px] font-medium text-ink-subtle">
@@ -114,7 +117,11 @@ function TodayBudget() {
         </div>
 
         <div className={`mt-0.5 tabular text-lg font-bold ${over ? 'text-expense-deep' : 'text-ink'}`}>
-          {over ? t('home.today_over', { over: money(-leftToday) }) : t('home.today_left', { left: money(leftToday) })}
+          {exhausted
+            ? t('home.today_exhausted')
+            : over
+              ? t('home.today_over', { over: money(-leftToday) })
+              : t('home.today_left', { left: money(leftToday) })}
         </div>
 
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
@@ -125,7 +132,11 @@ function TodayBudget() {
         </div>
 
         <div className="mt-1 tabular text-[11px] text-ink-subtle">
-          {t('home.today_spent', { spent: money(spentToday), perDay: money(perDay) })}
+          {!exhausted
+            ? t('home.today_spent', { spent: money(spentToday), perDay: money(perDay) })
+            : monthLeft < 0
+              ? t('home.today_month_over', { over: money(-monthLeft) })
+              : t('home.today_spent_only', { spent: money(spentToday) })}
         </div>
       </div>
     </div>
@@ -228,7 +239,7 @@ function PlanChip({
     >
       <span className="shrink-0 text-ink-subtle">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">{label}</span>
+        <span className="block truncate caption-sm text-ink-subtle">{label}</span>
         <span className="block truncate tabular text-[12px] font-bold text-ink">{value}</span>
       </span>
     </button>
@@ -256,7 +267,7 @@ function Header({
     <div className="px-6 pt-6 pb-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">
+          <div className="kicker text-ink-subtle">
             {showGoals ? t('home.cap_goal') : t('home.cap_date')}
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
@@ -363,8 +374,11 @@ function GoalBody({ goal, currency, netByCur }: { goal: Goal; currency: Currency
   const pct = goal.target > 0 ? Math.min(100, (saved / goal.target) * 100) : 0
   return (
     <div>
-      <div className="truncate text-base font-bold text-ink">
-        {goal.icon} {goal.title}
+      {/* goal.icon в данных — эмодзи (раньше всем целям ставился 🎯). Не рисуем
+          его, а показываем иконку: так чистыми становятся и уже созданные цели. */}
+      <div className="flex min-w-0 items-center gap-1.5 text-base font-bold text-ink">
+        <Target size={16} strokeWidth={2.2} className="shrink-0 text-brand-600 dark:text-brand-300" aria-hidden />
+        <span className="truncate">{goal.title}</span>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-sunken">

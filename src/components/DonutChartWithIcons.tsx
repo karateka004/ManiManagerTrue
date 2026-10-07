@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { m } from 'framer-motion'
 import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
 import { formatMoney } from '../lib/format'
+import { Money } from './ui/Money'
 import { useT, useCatName, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 import { CategoryIcon } from './icons/CategoryIcon'
@@ -82,10 +83,10 @@ export function DonutChartWithIcons({ kind }: Props) {
 
         {/* Сумма в центре */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-ink-subtle">
+          <span className="caption-sm text-ink-subtle">
             {kind === 'income' ? t('common.income') : t('common.expense')}
           </span>
-          <span className="mt-1 text-xl font-bold tracking-tight tabular text-ink">{formatMoney(total, currency)}</span>
+          <span className="mt-1 text-xl font-bold tracking-tight text-ink"><Money value={total} currency={currency} /></span>
           <span className="mt-0.5 text-[10px] text-ink-muted">
             {categories.length} {categoriesWord(lang, categories.length)}
           </span>

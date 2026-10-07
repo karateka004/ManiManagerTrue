@@ -42,8 +42,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Manrope', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['Manrope', 'system-ui', 'sans-serif'],
+        sans: ['Manrope Variable', 'Manrope', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         // Tight display sizes for amounts

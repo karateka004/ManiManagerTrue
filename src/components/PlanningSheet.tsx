@@ -174,7 +174,7 @@ function BudgetTab({ t }: { t: TFunc }) {
 
   return (
     <div>
-      <div className="mb-1 px-1 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('plan.budget_title')}</div>
+      <div className="mb-1 px-1 section-title">{t('plan.budget_title')}</div>
       <div className="card p-3">
         <div className="flex items-center gap-2 rounded-2xl bg-surface-sunken px-3 py-2.5">
           <input
@@ -279,7 +279,7 @@ function InfoBox({
 }) {
   return (
     <div className="card p-3">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{label}</div>
+      <div className="caption-sm text-ink-subtle">{label}</div>
       <div className={`tabular text-base font-bold ${tone === 'bad' ? 'text-expense-deep' : 'text-ink'}`}>{value}</div>
       <div className="mt-0.5 text-[10px] leading-snug text-ink-subtle">{hint}</div>
     </div>
@@ -578,7 +578,7 @@ function GoalsTab({ t }: { t: TFunc }) {
 
       {adding ? (
         <div className="card mt-2 p-3">
-          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">{t('plan.goal_new')}</div>
+          <div className="mb-2 section-title">{t('plan.goal_new')}</div>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -687,8 +687,9 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-sunken text-xl">
-          {goal.icon}
+        {/* Иконка вместо эмодзи из данных (см. GoalHeader на Главной). */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
+          <Target size={19} strokeWidth={2.2} aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-ink">{goal.title}</div>

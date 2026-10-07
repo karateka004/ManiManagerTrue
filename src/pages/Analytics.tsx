@@ -46,7 +46,7 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
   return (
     <div className="pb-32">
       <div className="px-6 pt-6 pb-2">
-        <div className="text-xs font-semibold uppercase tracking-widest text-ink-subtle">{t('nav.analytics')}</div>
+        <div className="kicker text-ink-subtle">{t('nav.analytics')}</div>
         <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('analytics.subtitle')}</div>
       </div>
 
@@ -78,7 +78,7 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
 
           {tab === 'expense' && daily.length > 0 && (
             <div className="mx-6 mt-6">
-              <div className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-ink-subtle">
+              <div className="mb-2 px-2 section-title">
                 {t('analytics.by_days')}
               </div>
               <DailyBars data={daily} />

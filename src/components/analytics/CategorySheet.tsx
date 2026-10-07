@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { TrendingDown, TrendingUp } from 'lucide-react'
+import { DeltaChip } from '../ui/DeltaChip'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import {
@@ -54,7 +54,6 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
   const inPeriod = o.categories.find((c) => c.categoryId === categoryId)
   const amount = inPeriod?.amount ?? rows.reduce((a, x) => a + (x.type === 'expense' ? x.amount : 0), 0)
   const delta = inPeriod?.deltaPct === null || inPeriod === undefined ? null : Math.round(inPeriod.deltaPct)
-  const down = (delta ?? 0) < 0
   const max = Math.max(...months.map((m) => m.amount), 1)
 
   const open = (tx: Transaction) => {
@@ -77,21 +76,12 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
           <div className="tabular text-[13px] text-ink-subtle">{formatMoney(amount, o.currency)}</div>
         </div>
         {delta !== null && delta !== 0 && (
-          <span
-            className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-extrabold ${
-              down
-                ? 'bg-income-soft text-income-deep dark:bg-brand-500/16 dark:text-brand-300'
-                : 'bg-expense-soft text-expense-deep dark:bg-expense/16 dark:text-expense'
-            }`}
-          >
-            {down ? <TrendingDown size={13} strokeWidth={2.6} /> : <TrendingUp size={13} strokeWidth={2.6} />}
-            {Math.abs(delta)}%
-          </span>
+          <DeltaChip delta={delta} />
         )}
       </div>
 
       {/* Полгода столбиков: столбик обязан считаться от родителя с высотой */}
-      <div className="mt-5 text-[11px] font-extrabold uppercase tracking-wider text-ink-subtle">
+      <div className="mt-5 section-title">
         {t('cat.half_year')}
       </div>
       <div className="mt-2 flex h-24 items-stretch gap-2">
@@ -118,7 +108,7 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
         })}
       </div>
 
-      <div className="mt-5 text-[11px] font-extrabold uppercase tracking-wider text-ink-subtle">
+      <div className="mt-5 section-title">
         {t('cat.in_period')}
       </div>
       {rows.length === 0 ? (

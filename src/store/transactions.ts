@@ -669,7 +669,7 @@ export const useStore = create<State & Actions>()(
               title: title.trim() || 'Цель',
               target: Number.isFinite(target) && target > 0 ? target : 0,
               saved: 0,
-              icon: icon || '🎯',
+              icon: icon || 'target',
               createdAt: Date.now(),
               syncBalance: !!syncBalance,
               currency: currency ?? s.currency,
@@ -1444,6 +1444,8 @@ export interface DailyAllowance {
   leftToday: number
   spentToday: number
   daysLeft: number
+  /** Остаток месячного бюджета с учётом сегодняшних трат (отрицательный — перерасход месяца). */
+  monthLeft: number
 }
 
 /**
@@ -1479,7 +1481,7 @@ export const selectDailyAllowance: (s: State) => DailyAllowance | null = memo1(
     // получилось бы деление на ноль.
     const daysLeft = Math.max(1, now.daysInMonth() - now.date() + 1)
     const perDay = Math.max(0, (s.monthlyBudget - spentMonth + spentToday) / daysLeft)
-    return { perDay, leftToday: perDay - spentToday, spentToday, daysLeft }
+    return { perDay, leftToday: perDay - spentToday, spentToday, daysLeft, monthLeft: s.monthlyBudget - spentMonth }
   },
   // account/currency — считаем в валюте отображения, при переключении пересчитываем.
   (s) => [activeTransactions(s), s.monthlyBudget, s.account, s.currency],

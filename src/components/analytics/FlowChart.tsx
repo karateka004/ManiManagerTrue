@@ -137,8 +137,8 @@ export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) 
                         Math.abs(d) < 5
                           ? 'bg-surface-sunken text-ink-subtle'
                           : d > 0
-                            ? 'bg-expense-soft text-expense-deep dark:bg-expense/18 dark:text-expense'
-                            : 'bg-income-soft text-income-deep dark:bg-brand-500/18 dark:text-brand-300'
+                            ? 'bg-expense-soft text-expense-deep dark:bg-expense/20 dark:text-expense'
+                            : 'bg-income-soft text-income-deep dark:bg-brand-500/20 dark:text-brand-300'
                       }`}
                     >
                       {Math.abs(d) < 5 ? t('ov.as_usual') : `${d > 0 ? '+' : '−'}${Math.abs(d)}%`}
