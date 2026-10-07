@@ -17,6 +17,7 @@
  * дублировать в воркере версию стора и всю лесенку миграций.
  */
 import type { Env } from './env'
+import { markDay, mskDay, type DayMask } from './days'
 
 /** Одна запись во входящих. Поля — подмножество Transaction из приложения. */
 export interface InboxEntry {
@@ -38,9 +39,32 @@ export interface InboxEntry {
 export interface Inbox {
   items: InboxEntry[]
   updatedAt: number
+  /** Статистика записей через бота — живёт в метаданных ключа (см. InboxMeta). */
+  meta: InboxMeta
 }
 
-const PREFIX = 'inbox:'
+/**
+ * Статистика записей через бота — в МЕТАДАННЫХ ключа очереди.
+ *
+ * Аналитике нужно знать, кто и как часто пишет боту, а очередь хранит только
+ * ещё не забранные записи и после слива пустеет. Отдельный счётчик стоил бы
+ * отдельной записи KV на каждое сообщение; метаданные же едут той же записью,
+ * что и сама очередь, — бесплатно. Метаданные приходят вместе со списком
+ * ключей, поэтому дашборд собирает всех пишущих боту одним `list`.
+ */
+export interface InboxMeta {
+  /** Сколько операций человек записал через бота за всё время (минус отменённые). */
+  n?: number
+  /** Первая и последняя запись, epoch ms. */
+  f?: number
+  l?: number
+  /** Дни, в которые человек писал боту (см. days.ts). */
+  m?: string
+  d?: number
+}
+
+export const INBOX_PREFIX = 'inbox:'
+const PREFIX = INBOX_PREFIX
 
 /**
  * Потолок очереди. Двести неслитых записей — это «приложение не открывали
@@ -67,16 +91,44 @@ export function newBatchId(): string {
 export const entryId = (batch: string, index: number): string => `${batch}-${index}`
 
 export async function readInbox(env: Env, userId: string | number): Promise<Inbox> {
-  const raw = await env.REFERRALS.get(inboxKey(userId))
-  if (!raw) return { items: [], updatedAt: 0 }
+  const got = await env.REFERRALS.getWithMetadata<InboxMeta>(inboxKey(userId))
+  const meta = cleanMeta(got.metadata)
+  const raw = got.value
+  if (!raw) return { items: [], updatedAt: 0, meta }
   try {
     const parsed = JSON.parse(raw) as Partial<Inbox>
     const items = Array.isArray(parsed?.items) ? parsed.items.filter(isUsableEntry) : []
-    return { items, updatedAt: Number(parsed?.updatedAt) || 0 }
+    return { items, updatedAt: Number(parsed?.updatedAt) || 0, meta }
   } catch {
     // Битое значение не должно запирать человеку запись навсегда.
-    return { items: [], updatedAt: 0 }
+    return { items: [], updatedAt: 0, meta }
   }
+}
+
+/** Метаданные из хранилища — недоверенные: берём только поля правильного вида. */
+function cleanMeta(x: InboxMeta | null | undefined): InboxMeta {
+  if (!x || typeof x !== 'object') return {}
+  const out: InboxMeta = {}
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : undefined)
+  if (num(x.n) !== undefined) out.n = num(x.n)
+  if (num(x.f) !== undefined) out.f = num(x.f)
+  if (num(x.l) !== undefined) out.l = num(x.l)
+  if (typeof x.m === 'string' && num(x.d) !== undefined) {
+    out.m = x.m
+    out.d = num(x.d)
+  }
+  return out
+}
+
+/** Учесть новые записи в статистике: счётчик, первая/последняя и день активности. */
+function countRecords(meta: InboxMeta, added: number, now: number): InboxMeta {
+  const mask: DayMask = markDay(meta.m !== undefined ? { m: meta.m, d: meta.d } : undefined, mskDay(now))
+  return { n: (meta.n ?? 0) + added, f: meta.f ?? now, l: now, m: mask.m, d: mask.d }
+}
+
+/** Записать очередь вместе со статистикой. */
+async function writeInbox(env: Env, userId: string | number, items: InboxEntry[], meta: InboxMeta): Promise<void> {
+  await env.REFERRALS.put(inboxKey(userId), JSON.stringify({ items, updatedAt: Date.now() }), { metadata: meta })
 }
 
 function isUsableEntry(x: unknown): x is InboxEntry {
@@ -112,7 +164,7 @@ export async function appendInbox(
     return { ok: false, full: true, items: inbox.items }
   }
   const items = [...inbox.items, ...entries]
-  await env.REFERRALS.put(inboxKey(userId), JSON.stringify({ items, updatedAt: Date.now() }))
+  await writeInbox(env, userId, items, countRecords(inbox.meta, entries.length, Date.now()))
   return { ok: true, full: false, items }
 }
 
@@ -130,7 +182,7 @@ export async function dropFromInbox(
   ids: string[],
 ): Promise<{ removed: InboxEntry[]; left: number }> {
   const drop = new Set(ids)
-  return dropWhere(env, userId, (e) => drop.has(e.id))
+  return dropWhere(env, userId, (e) => drop.has(e.id), false)
 }
 
 /** Убрать целиком пачку одного сообщения — за этим стоит кнопка «Отменить». */
@@ -139,7 +191,7 @@ export async function dropBatch(
   userId: string | number,
   batch: string,
 ): Promise<{ removed: InboxEntry[]; left: number }> {
-  return dropWhere(env, userId, (e) => e.id.startsWith(`${batch}-`))
+  return dropWhere(env, userId, (e) => e.id.startsWith(`${batch}-`), true)
 }
 
 /**
@@ -156,20 +208,31 @@ export async function setBatchCategory(
   const mine = (e: InboxEntry) => e.id.startsWith(`${batch}-`)
   if (!inbox.items.some(mine)) return []
   const items = inbox.items.map((e) => (mine(e) ? { ...e, categoryId } : e))
-  await env.REFERRALS.put(inboxKey(userId), JSON.stringify({ items, updatedAt: Date.now() }))
+  await writeInbox(env, userId, items, inbox.meta)
   return items.filter(mine)
 }
 
+/**
+ * `undo` — человек сам отменил запись кнопкой: её не было, и из счётчика она
+ * уходит. Подтверждение приёма приложением — не отмена: запись состоялась,
+ * просто переехала в приложение.
+ */
 async function dropWhere(
   env: Env,
   userId: string | number,
   match: (e: InboxEntry) => boolean,
+  undo: boolean,
 ): Promise<{ removed: InboxEntry[]; left: number }> {
   const inbox = await readInbox(env, userId)
   const removed = inbox.items.filter(match)
   if (removed.length === 0) return { removed, left: inbox.items.length }
   const items = inbox.items.filter((e) => !match(e))
-  if (items.length === 0) await env.REFERRALS.delete(inboxKey(userId))
-  else await env.REFERRALS.put(inboxKey(userId), JSON.stringify({ items, updatedAt: Date.now() }))
+  const meta: InboxMeta = undo ? { ...inbox.meta, n: Math.max(0, (inbox.meta.n ?? 0) - removed.length) } : inbox.meta
+  // Опустевшую очередь больше не удаляем, а оставляем пустой: в её метаданных
+  // живёт статистика записей через бота, и удаление стёрло бы её вместе с
+  // ключом. По стоимости это та же одна операция записи, что и удаление.
+  // Ключ без статистики (записан до её появления) удаляем, как раньше.
+  if (items.length === 0 && meta.n === undefined) await env.REFERRALS.delete(inboxKey(userId))
+  else await writeInbox(env, userId, items, meta)
   return { removed, left: items.length }
 }

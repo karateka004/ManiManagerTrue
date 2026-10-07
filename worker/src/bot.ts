@@ -39,6 +39,7 @@ import {
 } from './inbox'
 import { formatMoney } from './money'
 import { isRateLimited } from './limits'
+import { campaignTag, rememberSource } from './sources'
 import {
   answerCallback,
   editMessageText,
@@ -52,6 +53,12 @@ import {
 
 /** URL мини-аппа для кнопки «Открыть» (публичный, не секрет). */
 export const APP_URL = 'https://karateka004.github.io/ManiManagerTrue/'
+
+/**
+ * Дашборд аналитики. Открывается из бота кнопкой web_app — тогда вход идёт по
+ * подписи Telegram владельца, без пароля (см. handleAdminStats).
+ */
+export const ADMIN_URL = 'https://koshel-worker.karateka004.workers.dev/admin'
 
 /** Команды для синей кнопки «Меню». Их мало намеренно: с ботом говорят словами. */
 export const BOT_COMMANDS = [
@@ -229,9 +236,20 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
 
   if (text.startsWith('/')) {
     const cmd = text.slice(1).split(/[\s@]/)[0].toLowerCase()
-    if (cmd === 'start') await sendMessage(env, userId, START, startKeyboard)
-    else if (cmd === 'today') await sendToday(env, userId)
-    else await sendMessage(env, userId, HELP, openKeyboard)
+    if (cmd === 'start') {
+      // «/start <метка>» — человек пришёл по рекламной ссылке на бота. Метку
+      // запоминаем до ответа, но её сбой не должен стоить человеку приветствия.
+      const tag = campaignTag(text.split(/\s+/)[1])
+      if (tag) await rememberSource(env, from, tag, Date.now()).catch((e) => console.error('[start] метка не записана', e))
+      await sendMessage(env, userId, START, startKeyboard)
+    } else if (cmd === 'today') await sendToday(env, userId)
+    else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
+      // Только владельцу и только в личке: кнопка web_app открывает дашборд
+      // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
+      await sendMessage(env, userId, 'Аналитика Кошеля', {
+        inline_keyboard: [[{ text: 'Открыть аналитику', web_app: { url: ADMIN_URL } }]],
+      })
+    } else await sendMessage(env, userId, HELP, openKeyboard)
     return
   }
 

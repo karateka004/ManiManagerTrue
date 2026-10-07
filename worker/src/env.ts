@@ -29,4 +29,6 @@ export interface Env {
   GEMINI_API_KEY?: string
   /** Модель Gemini. Пусто — DEFAULT_MODEL из src/gemini.ts. */
   GEMINI_MODEL?: string
+  /** Утренняя сводка владельцу (ночной крон): 'off' — не слать. По умолчанию шлём. */
+  ADMIN_DIGEST?: string
 }

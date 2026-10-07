@@ -1,1074 +1,1350 @@
 /**
- * HTML админ-дашборда «Кошель · Аналитика».
+ * HTML админ-дашборда «Кошель · Аналитика» (2.0).
  *
- * Самодостаточная страница: вход по паролю (значение секрета ADMIN_KEY), затем
- * POST /admin/stats с заголовком X-Admin-Key и отрисовка. Графики — ручной
- * inline-SVG, внешних библиотек нет.
+ * Самодостаточная страница: графики — ручной SVG/HTML, внешних библиотек нет.
+ * Вход двумя путями: открыта кнопкой из бота — по подписи Telegram владельца
+ * (initData берём из адресной строки, куда его кладёт Telegram); открыта в
+ * браузере — по паролю (секрет ADMIN_KEY).
  *
- * Оформление намеренно повторяет само приложение: те же CSS-переменные
- * поверхностей и чернил, что в src/index.css, тот же мятный акцент, шрифт Manrope,
- * та же геометрия карточек. Светлая и тёмная темы — как в приложении.
+ * Оформление — язык приложения 2.0: нейтральные поверхности, обводка в 1 px
+ * вместо теней, подписи строчными, один акцент. Цвета графиков проверены
+ * валидатором палитр (dataviz): категориальные ряды — зелёный/синий/розовый,
+ * ступени воронки — одна гамма по порядку, удержание — последовательная шкала.
+ * Значения в подписях и подсказках — цветом текста, а не цветом ряда.
  *
- * ВАЖНО: внутренний <script> написан на строковой конкатенации (без обратных
- * кавычек и ${}), чтобы не конфликтовать с этой шаблонной строкой.
+ * ВАЖНО: внутренний <script> написан на строковой конкатенации — без обратных
+ * кавычек, ${…} и обратных слэшей: всё это внутри шаблонной строки TypeScript
+ * либо закрыло бы её, либо молча превратилось бы в другой символ. Сторожит
+ * scripts/check-admin-js.mjs (в npm run lint), который проверяет именно ту
+ * строку, что уходит в браузер.
  */
 export const ADMIN_HTML = `<!doctype html>
 <html lang="ru" data-theme="dark">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="robots" content="noindex, nofollow" />
+<meta name="color-scheme" content="light dark" />
 <title>Кошель · Аналитика</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
-  /* Палитра — копия токенов приложения (src/index.css). */
+  /* ---------- Токены: те же поверхности и чернила, что в приложении 2.0 ---------- */
   :root{
-    --surface:#FAFBF9; --raised:#FFFFFF; --sunken:#F1F4F0;
-    --ink:#0F1A14; --ink-muted:#5E6B62; --ink-subtle:#8A968F;
-    --line:rgba(15,26,20,.08);
-    --brand:#3CA37B; --brand-soft:#5DB996; --brand-deep:#246E54; --brand-tint:rgba(60,163,123,.12);
-    --amber:#D9A038; --amber-tint:rgba(217,160,56,.14);
-    --rose:#E97373; --rose-tint:rgba(233,115,115,.14);
-    --shadow:0 2px 12px rgba(20,63,48,.06);
-    --shadow-raised:0 8px 24px rgba(20,63,48,.10);
-    --grad-top:#F1FAF5; --grad-bottom:#FAFBF9;
+    --page:#F6F6F3; --card:#FFFFFF; --sunken:#EFEFEB;
+    --ink:#141614; --ink-2:#5A5E59; --ink-3:#6E726C;
+    --hair:rgba(20,22,20,.08); --grid:#E7E7E2; --axis:#CDCDC6;
+    /* Метки одного ряда и акцент текста. Зелёный 600 — 4:1 к белому. */
+    --mark:#2D8866; --mark-wash:rgba(45,136,102,.10); --brand-text:#246E54; --context:#C4C5BF;
+    /* Категориальные ряды (проверены валидатором, светлая тема, к белому). */
+    --s1:#2D8866; --s2:#2a78d6; --s3:#e87ba4;
+    /* Статусы: только со значком и словом, не цветом в одиночку. */
+    --good:#1F7A3D; --bad:#C2312F; --warn:#9A6400;
+    --good-dot:#0ca30c; --warn-dot:#fab219; --bad-dot:#d03b3b;
+    --seg-on:#FFFFFF;
     color-scheme:light;
   }
   html[data-theme="dark"]{
-    --surface:#0F1A14; --raised:#1A2620; --sunken:#243029;
-    --ink:#E8F0EB; --ink-muted:#A8B5AE; --ink-subtle:#7C8A82;
-    --line:rgba(232,240,235,.08);
-    --brand:#5DB996; --brand-soft:#8FD3AC; --brand-deep:#3CA37B; --brand-tint:rgba(93,185,150,.14);
-    --amber:#E8B04B; --amber-tint:rgba(232,176,75,.16);
-    --rose:#E97373; --rose-tint:rgba(233,115,115,.16);
-    --shadow:0 2px 10px rgba(0,0,0,.35);
-    --shadow-raised:0 8px 24px rgba(0,0,0,.45);
-    --grad-top:#0F1A14; --grad-bottom:#0B1410;
+    --page:#0E0F0E; --card:#1B1C1A; --sunken:#272826;
+    --ink:#ECEEEA; --ink-2:#A8ACA6; --ink-3:#8A8E88;
+    --hair:rgba(255,255,255,.08); --grid:#2A2B29; --axis:#3B3C39;
+    --mark:#3CA37B; --mark-wash:rgba(60,163,123,.14); --brand-text:#8FD3AC; --context:#4A4C48;
+    --s1:#3CA37B; --s2:#3987e5; --s3:#d55181;
+    --good:#4CC27A; --bad:#F07C7A; --warn:#F2B544;
+    --seg-on:#40423E;
     color-scheme:dark;
   }
+
   *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page);color:var(--ink);overflow-x:hidden}
+  /* Страница не имеет права ехать вбок: на iPhone это выглядело обрезанными
+     краями — подсказка графика вылезала за правый край и расширяла документ. */
+  @supports (overflow:clip){html,body{overflow-x:clip}}
   body{
-    margin:0;min-height:100vh;
-    background:linear-gradient(180deg,var(--grad-top) 0%,var(--grad-bottom) 30%);
-    color:var(--ink);
     font:15px/1.45 Manrope,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    -webkit-font-smoothing:antialiased;
+    -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+    min-height:100vh;
   }
-  .tabular{font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
-  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 72px}
+  button{font:inherit;color:inherit;cursor:pointer}
+  a{color:var(--brand-text);text-decoration:none}
+  /* Цифры, стоящие столбцом, — моноширинные; крупные одиночные — пропорциональные. */
+  .tnum{font-variant-numeric:tabular-nums}
+  .muted{color:var(--ink-3)}
+  .wrap{max-width:1080px;margin:0 auto;padding:4px 16px 96px}
+  [hidden]{display:none !important}
 
-  /* ---------- Шапка ---------- */
-  header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.01em}
-  .dot{width:10px;height:10px;border-radius:99px;background:var(--brand);box-shadow:0 0 0 4px var(--brand-tint)}
-  .brand span{color:var(--ink-subtle);font-weight:600}
-  .spacer{flex:1}
-  .iconbtn{
-    display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px;border-radius:99px;
-    border:1px solid var(--line);background:var(--raised);color:var(--ink-muted);
-    font:600 13px Manrope,sans-serif;cursor:pointer;transition:color .15s,border-color .15s;
+  /* ---------- Шапка и вкладки ---------- */
+  .top{
+    position:sticky;top:0;z-index:30;background:var(--page);
+    padding-top:env(safe-area-inset-top,0px);
   }
-  .iconbtn:hover{color:var(--ink);border-color:var(--brand)}
-  .iconbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    .top{background:color-mix(in srgb,var(--page) 84%,transparent);backdrop-filter:saturate(1.3) blur(16px);-webkit-backdrop-filter:saturate(1.3) blur(16px)}
+  }
+  .top-in{max-width:1080px;margin:0 auto;padding:12px 16px 10px;display:flex;align-items:center;gap:8px}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px;letter-spacing:-.015em;white-space:nowrap;min-width:0}
+  .brand .dot{width:9px;height:9px;border-radius:99px;background:var(--mark);flex:none}
+  .brand .sub{font-weight:600;color:var(--ink-3)}
+  .spacer{flex:1;min-width:0}
+  .status{
+    display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:99px;border:0;
+    background:var(--sunken);font-size:12.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;
+  }
+  .status i{width:8px;height:8px;border-radius:99px;flex:none}
+  .icon{width:36px;height:36px;border-radius:99px;border:0;background:var(--sunken);display:grid;place-items:center;color:var(--ink-2);flex:none}
+  .icon svg,.ic{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .tabs{max-width:1080px;margin:0 auto;padding:0 16px 10px}
+  /* Пять вкладок делят ряд по длине слов, а не поровну: поровну «Удержание»
+     и «Источники» не влезали и резались многоточием. */
+  #tabs button{flex:1 1 auto;padding:8px 4px}
 
-  /* ---------- Секции и карточки ---------- */
-  .section{
-    display:flex;align-items:baseline;gap:10px;
-    font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--ink-subtle);margin:30px 4px 12px;
+  .seg{display:flex;padding:3px;border-radius:99px;background:var(--sunken);gap:2px;min-width:0}
+  .seg button{
+    flex:1 1 0;min-width:0;border:0;background:none;padding:8px 6px;border-radius:99px;
+    font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    transition:background .15s,color .15s;
   }
-  .section i{font-style:normal;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink-subtle);opacity:.8}
-  .card{background:var(--raised);border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:var(--shadow)}
+  .seg button.on{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--hair)}
+  .seg.sm button{padding:6px 10px;font-size:12.5px}
+  .seg.fit{display:inline-flex}
+  .seg.fit button{flex:0 0 auto}
+  /* Фильтры списка — чипы с переносом: спрятанный за прокруткой фильтр всё
+     равно что отсутствует, а шесть сегментов в ряд на телефон не влезают. */
+  .chipbar{display:flex;flex-wrap:wrap;gap:6px}
+  .chipbar button{border:0;background:var(--sunken);border-radius:99px;padding:7px 12px;font-weight:600;font-size:13px;color:var(--ink-2)}
+  .chipbar button.on{background:var(--ink);color:var(--page)}
+
+  /* ---------- Карточки и группы ---------- */
+  .card{background:var(--card);border-radius:22px;box-shadow:0 0 0 1px var(--hair);padding:16px;min-width:0}
   .grid{display:grid;gap:12px}
-  .g4{grid-template-columns:repeat(4,1fr)}
-  .g3{grid-template-columns:repeat(3,1fr)}
-  .g2{grid-template-columns:1fr 1fr}
-  /* Пара карточек разной высоты: тянуть короткую до высокой — значит оставить
-     внизу пустое поле. Выравниваем по верху там, где содержимое несопоставимо. */
-  .grid.start{align-items:start}
-  @media(max-width:900px){.g4{grid-template-columns:1fr 1fr}.g3,.g2{grid-template-columns:1fr}}
-  @media(max-width:560px){.g4{grid-template-columns:1fr}}
-
-  .stat .k{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-subtle)}
-  .stat .v{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-top:10px}
-  .stat .s{font-size:12px;color:var(--ink-muted);margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700}
-  .pill.up{background:var(--brand-tint);color:var(--brand-deep)}
-  .pill.down{background:var(--rose-tint);color:var(--rose)}
-  .pill.flat{background:var(--sunken);color:var(--ink-subtle)}
-  html[data-theme="dark"] .pill.up{color:var(--brand-soft)}
-  .v.brand{color:var(--brand-deep)} html[data-theme="dark"] .v.brand{color:var(--brand-soft)}
-  .v.amber{color:var(--amber)}
-
-  /* ---------- Сегменты (как переключатель периода в приложении) ---------- */
-  .segs{display:inline-flex;padding:3px;border-radius:99px;background:var(--sunken);gap:2px}
-  .segs button{
-    border:0;background:none;color:var(--ink-subtle);cursor:pointer;
-    font:700 12px Manrope,sans-serif;padding:6px 13px;border-radius:99px;transition:all .18s;
+  .grid > *{min-width:0}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .start{align-items:start}
+  @media(max-width:880px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:720px){.g2{grid-template-columns:minmax(0,1fr)}}
+  .sec{margin:28px 4px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .sec h2{margin:0;font-size:16px;font-weight:700;letter-spacing:-.012em;white-space:nowrap}
+  .sec .aside{font-size:13px;color:var(--ink-3);font-weight:500;text-align:right}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .cardhead h3{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+  .select{
+    height:36px;max-width:100%;padding:0 30px 0 12px;border-radius:99px;border:0;background:var(--sunken);color:var(--ink);
+    font:600 13px Manrope,sans-serif;appearance:none;-webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+    background-position:calc(100% - 16px) 15px,calc(100% - 11px) 15px;background-size:5px 5px;background-repeat:no-repeat;
   }
-  .segs button.on{background:var(--raised);color:var(--ink);box-shadow:var(--shadow)}
+  .note{font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+  .empty{color:var(--ink-3);font-size:13.5px;text-align:center;padding:28px 8px}
 
-  .cardhead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-  .cardhead h3{margin:0;font-size:14px;font-weight:700;letter-spacing:-.01em}
-  .cardhead .hint{font-size:11px;color:var(--ink-subtle);font-weight:500}
+  /* Сгруппированный список: строки в одной карточке, линия начинается от текста. */
+  .group{background:var(--card);border-radius:22px;box-shadow:0 0 0 1px var(--hair);overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;width:100%;padding:0 0 0 16px;border:0;background:none;text-align:left;min-width:0}
+  .row-main{display:flex;align-items:center;gap:12px;flex:1;min-width:0;min-height:52px;padding:11px 16px 11px 0}
+  .group > .row + .row .row-main,.group > .row + * .row-main{border-top:1px solid var(--hair)}
+  button.row:active{background:var(--sunken)}
+  .row .t{font-weight:600;font-size:14.5px;min-width:0}
+  .row .s{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow-wrap:anywhere}
+  .row .v{margin-left:auto;text-align:right;font-weight:700;font-size:14.5px;white-space:nowrap;flex:none}
+  .row .v small{display:block;font-weight:500;font-size:12px;color:var(--ink-3)}
+  .chev{color:var(--ink-3);width:16px;height:16px}
+
+  /* ---------- Плашки ---------- */
+  .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 6px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:inset 0 0 0 1px var(--hair)}
+  .chip svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .chip.good{color:var(--good)} .chip.bad{color:var(--bad)} .chip.flat{color:var(--ink-3)}
+  .tag{display:inline-flex;align-items:center;padding:1px 7px;border-radius:99px;font-size:11.5px;font-weight:600;background:var(--sunken);color:var(--ink-2);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .tag.src{color:var(--brand-text)}
+  .tag.blk{color:var(--bad)}
+
+  /* ---------- Герой «Сегодня» ----------
+     Глубокая поверхность, как у главных карточек приложения: тёмная зелень к
+     почти чёрному, светится только пятно акцента. Числа на ней белые, столбики
+     сегодняшнего дня — мятные, вчерашние — призрачные: это контекст. */
+  .hero{
+    position:relative;overflow:hidden;border-radius:26px;padding:18px 18px 14px;color:#fff;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.2'/></svg>"),
+      radial-gradient(70% 90% at 100% 0%,rgba(93,185,150,.38),transparent 62%),
+      radial-gradient(60% 70% at 0% 100%,rgba(60,163,123,.12),transparent 70%),
+      linear-gradient(160deg,#143F30 0%,#0B0E0C 80%);
+    background-blend-mode:overlay,normal,normal,normal;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.10),inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .hero .k{font-size:13px;font-weight:500;color:rgba(255,255,255,.72);display:flex;align-items:center;gap:8px}
+  .live{width:7px;height:7px;border-radius:99px;background:#8FD3AC;box-shadow:0 0 0 0 rgba(143,211,172,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(143,211,172,.55)}70%{box-shadow:0 0 0 7px rgba(143,211,172,0)}100%{box-shadow:0 0 0 0 rgba(143,211,172,0)}}
+  @media (prefers-reduced-motion:reduce){.live{animation:none}}
+  .hero-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:6px;flex-wrap:wrap}
+  .hero-num{font-size:56px;font-weight:800;letter-spacing:-.035em;line-height:.95}
+  .hero-num small{font-size:16px;font-weight:600;letter-spacing:0;color:rgba(255,255,255,.72);margin-left:8px}
+  .hero-side{text-align:right;font-size:13px;color:rgba(255,255,255,.72);line-height:1.5}
+  .hero-side b{color:#fff;font-weight:700}
+  .hours{position:relative;display:flex;align-items:flex-end;gap:2px;height:96px;margin-top:16px}
+  .hcol{position:relative;flex:1 1 0;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center}
+  .hcol .y{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,12px);border-radius:4px 4px 0 0;background:rgba(255,255,255,.16)}
+  .hcol .b{position:relative;width:min(100%,12px);border-radius:4px 4px 0 0;background:#8FD3AC}
+  .hcol.now .b{background:#B8E5CC}
+  .hcol:hover .b,.hcol.hot .b{background:#DCF2E5}
+  .haxis{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:rgba(255,255,255,.55)}
+  .hlegend{display:flex;gap:14px;margin-top:10px;font-size:12px;color:rgba(255,255,255,.72)}
+  .hlegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .hero-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.10)}
+  .hero-stats div{font-size:12px;color:rgba(255,255,255,.65);line-height:1.35;min-width:0}
+  .hero-stats b{display:block;font-size:18px;color:#fff;font-weight:700;letter-spacing:-.01em}
+
+  /* ---------- Плитки показателей ---------- */
+  .stat .lb{font-size:13px;font-weight:500;color:var(--ink-3)}
+  .stat .val{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-top:6px}
+  .stat .val small{font-size:14px;font-weight:600;color:var(--ink-3);letter-spacing:0;margin-left:4px}
+  .stat .meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--ink-2)}
+  .spark{height:34px;margin-top:10px}
+  .spark svg{display:block;width:100%;height:34px;overflow:visible}
+
+  /* ---------- Выводы ---------- */
+  .ins{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--hair)}
+  .ins:first-child{border-top:0;padding-top:2px}
+  .ins:last-child{padding-bottom:2px}
+  .ins .ic{margin-top:1px;width:18px;height:18px}
+  .ins.good .ic{color:var(--good)} .ins.bad .ic{color:var(--bad)} .ins.info .ic{color:var(--ink-3)}
+  .ins p{margin:0;font-size:14px;line-height:1.5}
+
+  /* ---------- Воронка ---------- */
+  .step{padding:11px 0;border-top:1px solid var(--hair)}
+  .step:first-child{border-top:0;padding-top:0}
+  .step .top{display:flex;align-items:baseline;gap:10px}
+  .step .lb{font-size:14px;font-weight:600;min-width:0}
+  .step .nm{margin-left:auto;font-size:16px;font-weight:800;letter-spacing:-.02em}
+  .step .pc{font-size:12.5px;color:var(--ink-3);font-weight:600;min-width:42px;text-align:right}
+  .track{height:10px;border-radius:99px;background:var(--sunken);overflow:hidden;margin-top:7px}
+  .fill{height:100%;border-radius:0 4px 4px 0}
+  .lost{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--ink-3)}
+  .lost .chip{font-size:11.5px}
 
   /* ---------- График ---------- */
   .chartwrap{position:relative}
-  .chart{width:100%;height:auto;display:block;overflow:visible}
-  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--ink-muted);font-weight:600}
-  .legend b{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:6px;vertical-align:middle}
-  .tip{
-    position:absolute;pointer-events:none;opacity:0;transition:opacity .12s;
-    background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:8px 11px;
-    box-shadow:var(--shadow-raised);font-size:12px;white-space:nowrap;z-index:5;
-  }
-  .tip .d{color:var(--ink-subtle);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
-  .tip .r{display:flex;align-items:center;gap:6px;font-weight:600}
+  .chart svg{display:block;width:100%;overflow:visible}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
+  .legend i{display:inline-block;width:14px;height:2px;border-radius:2px;margin-right:6px;vertical-align:4px}
+  .legend i.box{width:10px;height:10px;border-radius:3px;vertical-align:-1px}
+  .tablev{margin-top:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--ink-3);font-weight:600;font-size:12px;padding:6px 8px;white-space:nowrap}
+  td{padding:8px;border-top:1px solid var(--hair);vertical-align:middle}
+  td.r,th.r{text-align:right}
+  .linkbtn{border:0;background:none;color:var(--brand-text);font-weight:600;font-size:13px;padding:4px 0}
 
-  /* ---------- Воронка ---------- */
-  .step{display:grid;grid-template-columns:1fr;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
-  .step:first-child{border-top:0;padding-top:0}
-  .step .top{display:flex;align-items:baseline;gap:10px}
-  .step .lb{font-size:13px;font-weight:600}
-  .step .nm{margin-left:auto;font-size:15px;font-weight:800;letter-spacing:-.02em}
-  .step .pc{font-size:12px;color:var(--ink-subtle);font-weight:700;min-width:44px;text-align:right}
-  .track{height:10px;border-radius:99px;background:var(--sunken);overflow:hidden}
-  .fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand-deep),var(--brand-soft));transition:width .5s cubic-bezier(.16,1,.3,1)}
-  .drop{font-size:11.5px;color:var(--rose);font-weight:600;margin-top:6px}
+  /* ---------- Удержание ---------- */
+  .heat{width:100%;border-collapse:separate;border-spacing:3px;table-layout:fixed}
+  .heat th{font-size:12px;padding:2px 2px 6px;text-align:center}
+  .heat th.c0{text-align:left;width:34%}
+  .heat td{padding:0;border:0;height:42px;text-align:center;border-radius:9px;font-size:13px;font-weight:700}
+  .heat td.c0{text-align:left;padding:0 4px;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .heat td.c0 small{display:block;font-weight:500;font-size:11.5px;color:var(--ink-3)}
+  .heat td.cell small{display:block;font-size:10.5px;font-weight:600;opacity:.75;margin-top:-1px}
+  .heat td.na{background:var(--sunken);color:var(--ink-3);font-weight:500}
+  .heat td.future{background:none;box-shadow:inset 0 0 0 1px var(--hair)}
+  .scale{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--ink-3)}
+  .scale .bar{flex:1;max-width:220px;height:8px;border-radius:99px}
+  .stack{display:flex;gap:2px;height:14px;margin-top:4px}
+  .stack div{height:100%;min-width:3px}
+  .stack div:first-child{border-radius:7px 0 0 7px} .stack div:last-child{border-radius:0 7px 7px 0}
+  .kv{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:13px;color:var(--ink-2)}
+  .kv b{color:var(--ink)}
+  .dotkey{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
-  /* ---------- Полосы (разделы, распределения) ---------- */
-  .bar{display:grid;grid-template-columns:178px 1fr auto;align-items:center;gap:12px;padding:7px 0;font-size:13px}
+  /* ---------- Полосы (распределения) ---------- */
+  .bar{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) auto;align-items:center;gap:12px;padding:7px 0;font-size:13.5px}
   .bar .bl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-  .bar .bt{height:8px;border-radius:99px;background:var(--sunken);overflow:hidden;position:relative}
-  .bar .bf{height:100%;border-radius:99px;background:var(--brand);opacity:.85}
-  /* Двухслойная полоса: бледная — все за всё время, поверх сплошная — те, кто ещё
-     заходит. Раньше слои различались только оттенком зелёного и не читались. */
-  .bar .bf.pale{opacity:.3}
-  .bar .bf2{position:absolute;left:0;top:0;height:100%;border-radius:99px;background:var(--brand)}
-  .bar .bn{font-weight:700;min-width:60px;text-align:right;color:var(--ink-muted);font-size:12px}
-  /* На узком экране подпись не влезает рядом с полосой и обрезается многоточием —
-     кладём её отдельной строкой над полосой, а не режем. */
+  .bar .bt{height:8px;border-radius:99px;background:var(--sunken);position:relative;overflow:hidden}
+  .bar .bf{position:absolute;left:0;top:0;height:100%;border-radius:0 4px 4px 0}
+  .bar .bn{font-weight:700;min-width:54px;text-align:right;font-size:13px}
+  .bar .bn small{font-weight:500;color:var(--ink-3)}
   @media(max-width:560px){
-    .bar{grid-template-columns:1fr auto;row-gap:5px;padding:9px 0}
+    .bar{grid-template-columns:minmax(0,1fr) auto;row-gap:5px}
     .bar .bl{grid-column:1/-1;white-space:normal}
   }
 
-  /* ---------- Список вместо таблицы (телефон) ----------
-     Таблица из семи колонок в экране шириной 430 px превращается в полосу,
-     которую надо возить пальцем вбок, и половина данных всё равно за краем.
-     На узком экране те же данные раскладываем строками сверху вниз. */
-  .lst{display:flex;flex-direction:column}
-  .li{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-  .li:first-child{border-top:0;padding-top:0}
-  .li .body{flex:1;min-width:0}
-  .li .l1{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-  .li .l1 .nm{font-weight:700;font-size:15px}
-  .li .l2{margin-top:3px;font-size:13px;color:var(--ink-muted);line-height:1.45}
-  .li .l2 b{color:var(--ink);font-weight:700}
-  .li .side{text-align:right;font-weight:800;font-size:15px;white-space:nowrap}
-  .li .side small{display:block;font-weight:600;font-size:11px;color:var(--ink-subtle);margin-top:2px}
-
-  /* Пояснения свёрнуты: мелкий серый абзац под каждым блоком — это стена текста,
-     которую всё равно не читают, а место она занимает на каждом экране. */
-  .expl{margin-top:12px}
-  .expl summary{
-    cursor:pointer;list-style:none;font-size:12px;font-weight:700;color:var(--ink-subtle);
-    display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;background:var(--sunken);
-  }
-  .expl summary::-webkit-details-marker{display:none}
-  .expl summary::after{content:'?';font-weight:800;opacity:.7}
-  .expl[open] summary::after{content:'×'}
-  .expl .body{margin-top:9px;font-size:12.5px;line-height:1.55;color:var(--ink-muted)}
-
-  .sortsel{
-    height:38px;padding:0 12px;border-radius:99px;border:1px solid var(--line);
-    background:var(--sunken);color:var(--ink);font:700 12px Manrope,sans-serif;
-  }
-
-  /* Узкий экран: дашборд смотрят и с телефона, поэтому подписи кнопок прячем,
-     а ряды сегментов делаем прокручиваемыми — страница не должна ехать вбок. */
-  .segs{max-width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
-  /* На телефоне ряд фильтров переносим: спрятанный за боковой прокруткой фильтр
-     всё равно что отсутствует — о нём не догадаться. */
-  @media(max-width:700px){ .segs{flex-wrap:wrap;overflow-x:visible} }
-  .segs::-webkit-scrollbar{display:none}
-  .segs button{flex:none}
-  .brand{white-space:nowrap}
-  .cardhead{flex-wrap:wrap}
-  @media(max-width:700px){
-    header{gap:8px}
-    .iconbtn .lb{display:none}
-    .iconbtn{padding:0 11px}
-    .brand{font-size:15px}
-    .wrap{padding:14px 12px 56px}
-    .card{border-radius:20px;padding:14px}
-    /* Четыре карточки в столбик — это четыре экрана до первого содержательного
-       блока. В два столбца они занимают два ряда и читаются одним взглядом. */
-    .g4{grid-template-columns:1fr 1fr;gap:10px}
-    .stat .v{font-size:26px;margin-top:6px}
-    .stat .k{font-size:9.5px;letter-spacing:.07em}
-    .stat .s{font-size:11.5px;margin-top:6px;gap:4px}
-    .section{margin:24px 2px 10px;font-size:10.5px}
-    .section i{display:none}
-    .note{font-size:12px}
-    .cardhead h3{font-size:15px}
-    .cardhead .hint{display:none}
-    .step .lb{font-size:13.5px}
-    .step .nm{font-size:16px}
-    .banner{padding:12px 14px;border-radius:16px}
-  }
-  @media(max-width:400px){
-    .g4{grid-template-columns:1fr}
-  }
-
-  /* ---------- Таблицы ---------- */
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th{
-    text-align:left;color:var(--ink-subtle);font-weight:800;font-size:10px;
-    letter-spacing:.08em;text-transform:uppercase;padding:8px 10px;white-space:nowrap;
-  }
-  th.sortable{cursor:pointer;user-select:none}
-  th.sortable:hover{color:var(--ink)}
-  th.on{color:var(--brand-deep)} html[data-theme="dark"] th.on{color:var(--brand-soft)}
-  td{padding:9px 10px;border-top:1px solid var(--line);vertical-align:middle}
-  td.r,th.r{text-align:right}
-  tbody tr:hover{background:var(--sunken)}
-  .who{display:flex;align-items:center;gap:10px;min-width:0}
-  .ava{
-    width:32px;height:32px;border-radius:99px;flex:none;display:grid;place-items:center;
-    font-weight:800;font-size:13px;color:#fff;background:var(--brand-deep);
-  }
-  .ava.off{background:var(--ink-subtle)}
-  .who .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .who .un{color:var(--ink-subtle);font-size:11px;font-weight:500}
-  .tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em}
-  .tag.ref{background:var(--brand-tint);color:var(--brand-deep)}
-  html[data-theme="dark"] .tag.ref{color:var(--brand-soft)}
-  .tag.blk{background:var(--rose-tint);color:var(--rose)}
-  .tag.est{background:var(--sunken);color:var(--ink-subtle)}
-  .sdot{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:7px;vertical-align:middle}
-  .sdot.a{background:var(--brand)} .sdot.s{background:var(--amber)} .sdot.c{background:var(--ink-subtle);opacity:.5}
-
-  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  /* ---------- Люди ---------- */
   .search{
-    flex:1;min-width:180px;height:38px;padding:0 14px;border-radius:99px;
-    border:1px solid var(--line);background:var(--sunken);color:var(--ink);
-    font:500 13px Manrope,sans-serif;outline:none;
+    flex:1 1 220px;min-width:0;height:38px;padding:0 14px;border-radius:99px;border:0;background:var(--sunken);
+    color:var(--ink);font:500 14px Manrope,sans-serif;outline:none;
   }
-  .search:focus{border-color:var(--brand)}
-  .scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+  .search:focus{box-shadow:0 0 0 2px var(--mark-wash),0 0 0 1px var(--mark)}
+  .ava{width:36px;height:36px;border-radius:99px;flex:none;display:grid;place-items:center;font-weight:800;font-size:14px;color:var(--ink-2);background:var(--sunken)}
+  .ava.on{color:#fff;background:var(--mark)}
+  .who{min-width:0;flex:1}
+  .who .l1{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .who .nm{font-weight:700;font-size:14.5px;overflow-wrap:anywhere}
+  .who .un{font-size:12.5px;color:var(--ink-3)}
+  .who .l2{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+  .who .l2 b{color:var(--ink);font-weight:700}
+  .sdot{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:6px;vertical-align:1px}
+  .more{display:block;margin:12px auto 0;height:38px;padding:0 18px;border-radius:99px;border:0;background:var(--sunken);font-weight:600;font-size:13px;color:var(--ink-2)}
 
-  .empty{color:var(--ink-subtle);font-size:13px;text-align:center;padding:44px 0}
-  .note{color:var(--ink-subtle);font-size:11px;line-height:1.6}
-  .foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}
+  /* ---------- Ссылки для рекламы ---------- */
+  .field{width:100%;height:42px;padding:0 14px;border-radius:14px;border:0;background:var(--sunken);color:var(--ink);font:600 15px Manrope,sans-serif;outline:none}
+  .field:focus{box-shadow:0 0 0 2px var(--mark-wash),0 0 0 1px var(--mark)}
+  .linkrow{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--hair)}
+  .linkrow:first-of-type{border-top:0}
+  .linkrow .u{flex:1;min-width:0;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+  .linkrow .u b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+  .btn{height:36px;padding:0 14px;border-radius:99px;border:0;background:var(--mark);color:#fff;font-weight:700;font-size:13px;white-space:nowrap;flex:none}
+  .btn.ghost{background:var(--sunken);color:var(--ink)}
 
-  /* Пока карточки не собраны, часть чисел на странице занижена. Говорить об этом
-     сноской в самом низу — значит дать человеку сначала поверить в неверные цифры. */
-  .banner{
-    display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px;
-    background:var(--amber-tint);border:1px solid var(--line);border-radius:20px;padding:14px 16px;
+  /* ---------- Подсказка, тост, шторка ---------- */
+  .tip{
+    position:fixed;z-index:60;pointer-events:none;opacity:0;transition:opacity .12s;max-width:240px;
+    background:var(--card);border-radius:14px;padding:9px 11px;font-size:12.5px;line-height:1.4;
+    box-shadow:0 0 0 1px var(--hair),0 12px 28px rgba(0,0,0,.18);
   }
-  .banner .txt{flex:1;min-width:200px;font-size:13px;line-height:1.5}
-  .banner b{color:var(--ink)}
-  .banner button{
-    height:38px;padding:0 16px;border-radius:99px;border:0;background:var(--brand);color:#fff;
-    font:800 13px Manrope,sans-serif;cursor:pointer;white-space:nowrap;
+  .tip.on{opacity:1}
+  .tip .d{color:var(--ink-3);font-size:12px;margin-bottom:4px}
+  .tip .r{display:flex;align-items:center;gap:7px;color:var(--ink-2)}
+  .tip .r b{color:var(--ink);font-weight:800;min-width:22px}
+  .tip .r i{display:inline-block;width:12px;height:2px;border-radius:2px}
+  .toast{
+    position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:70;transform:translate(-50%,20px);
+    opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;
+    background:var(--ink);color:var(--page);border-radius:99px;padding:10px 16px;font-size:13.5px;font-weight:600;max-width:calc(100% - 32px);
   }
-  .banner button:hover{background:var(--brand-deep)}
-  .banner button[disabled]{opacity:.6;cursor:default}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  .sheet{position:fixed;inset:0;z-index:50}
+  .sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+  .sheet-card{
+    position:absolute;left:0;right:0;bottom:0;max-height:88vh;overflow:auto;background:var(--card);
+    border-radius:26px 26px 0 0;padding:8px 16px calc(24px + env(safe-area-inset-bottom,0px));
+    max-width:640px;margin:0 auto;box-shadow:0 0 0 1px var(--hair);
+    animation:up .25s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes up{from{transform:translateY(30px)}to{transform:translateY(0)}}
+  .grab{width:40px;height:5px;border-radius:99px;background:var(--sunken);margin:4px auto 12px}
+  .ph{display:flex;align-items:center;gap:12px}
+  .ph .ava{width:52px;height:52px;font-size:20px}
+  .ph h3{margin:0;font-size:19px;letter-spacing:-.015em;overflow-wrap:anywhere}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:8px}
+  .cal span{aspect-ratio:1;border-radius:6px;background:var(--sunken)}
+  .cal span.y{background:var(--mark)}
+  .cal span.u{background:none;box-shadow:inset 0 0 0 1px var(--hair)}
+  .cal span.x{background:none}
+  .cal span.t{box-shadow:0 0 0 2px var(--ink-3)}
 
   /* ---------- Вход ---------- */
-  #login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;
-    background:linear-gradient(180deg,var(--grad-top) 0%,var(--grad-bottom) 40%)}
-  .loginbox{background:var(--raised);border:1px solid var(--line);border-radius:28px;padding:30px;width:min(370px,100%);
-    text-align:center;box-shadow:var(--shadow-raised)}
-  .loginbox .dot{margin:0 auto 14px}
-  .loginbox h1{font-size:19px;margin:0 0 5px;letter-spacing:-.02em}
-  .loginbox p{color:var(--ink-muted);font-size:13px;margin:0 0 20px}
-  .loginbox input{width:100%;padding:13px 16px;border-radius:16px;border:1px solid var(--line);
-    background:var(--sunken);color:var(--ink);font:500 15px Manrope,sans-serif;outline:none;text-align:center}
-  .loginbox input:focus{border-color:var(--brand)}
-  .loginbox button{width:100%;margin-top:12px;padding:13px;border-radius:16px;border:0;
-    background:var(--brand);color:#fff;font:800 15px Manrope,sans-serif;cursor:pointer}
-  .loginbox button:hover{background:var(--brand-deep)}
-  .err{color:var(--rose);font-size:12px;min-height:17px;margin-top:11px;font-weight:600}
-  #dash{display:none}
-  .loading{opacity:.5;transition:opacity .2s}
-  .spin{
-    display:inline-block;width:12px;height:12px;margin-right:7px;vertical-align:-1px;
-    border:2px solid var(--line);border-top-color:var(--brand);border-radius:99px;
-    animation:sp .7s linear infinite;
-  }
+  #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .loginbox{background:var(--card);border-radius:26px;padding:28px 22px;width:min(380px,100%);box-shadow:0 0 0 1px var(--hair)}
+  .loginbox h1{font-size:20px;margin:12px 0 6px;letter-spacing:-.02em}
+  .loginbox p{color:var(--ink-2);font-size:14px;margin:0 0 18px}
+  .loginbox .field{text-align:left}
+  .loginbox .btn{width:100%;height:46px;margin-top:12px;font-size:15px;border-radius:14px}
+  .check{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px;color:var(--ink-2)}
+  .check input{width:18px;height:18px;accent-color:var(--mark)}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px;font-weight:600}
+  .banner{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px 14px;border-radius:16px;background:var(--sunken);font-size:13px;color:var(--ink-2)}
+  .spin{width:14px;height:14px;border-radius:99px;border:2px solid var(--hair);border-top-color:var(--mark);animation:sp .7s linear infinite;flex:none}
   @keyframes sp{to{transform:rotate(360deg)}}
+  .loading #view{opacity:.55;transition:opacity .2s}
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:30px;padding-top:16px;border-top:1px solid var(--hair);font-size:12.5px;color:var(--ink-3)}
+
+  @media(max-width:520px){
+    .brand .sub{display:none}
+    .hero-num{font-size:52px}
+    .stat .val{font-size:28px}
+    .card{padding:14px}
+  }
 </style>
 </head>
 <body>
-  <div id="login">
+  <div id="login" hidden>
     <div class="loginbox">
-      <div class="dot"></div>
-      <h1>Кошель · Аналитика</h1>
-      <p>Внутренний дашборд. Введите пароль администратора.</p>
-      <input id="login-pass" type="password" autocomplete="current-password" placeholder="Пароль" />
-      <button id="login-btn">Войти</button>
+      <span class="brand"><span class="dot"></span>Кошель</span>
+      <h1>Аналитика</h1>
+      <p id="login-text">Введите пароль администратора. Из бота дашборд открывается без пароля — команда /admin.</p>
+      <div id="login-form">
+        <input class="field" id="login-pass" type="password" autocomplete="current-password" placeholder="Пароль" />
+        <label class="check"><input type="checkbox" id="login-remember" checked /> Запомнить на этом устройстве</label>
+        <button class="btn" id="login-btn">Войти</button>
+      </div>
       <div class="err" id="login-err"></div>
     </div>
   </div>
 
-  <div id="dash" class="wrap">
-    <header>
-      <div class="brand"><span class="dot"></span>Кошель <span>· Аналитика</span></div>
-      <div class="spacer"></div>
-      <button class="iconbtn" id="theme-btn" title="Тема"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span class="lb" id="theme-lb">Тема</span></button>
-      <button class="iconbtn" id="refresh"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span class="lb">Обновить</span></button>
-      <button class="iconbtn" id="logout"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg><span class="lb">Выйти</span></button>
-    </header>
-
-    <div class="grid g4" id="hero"></div>
-    <div id="cov-banner"></div>
-
-    <div class="section">Активация <i>сколько людей доходят до пользы</i></div>
-    <div class="grid g2">
-      <div class="card" id="funnel"></div>
-      <div class="card" id="lifecycle"></div>
-    </div>
-
-    <div class="section">Динамика <i>по снимкам на конец суток МСК</i></div>
-    <div class="card">
-      <div class="cardhead">
-        <h3 id="chart-title">Пользователи</h3>
+  <div id="app" hidden>
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="dot"></span>Кошель <span class="sub">аналитика</span></div>
         <div class="spacer"></div>
-        <div class="segs" id="metric-segs"></div>
-        <div class="segs" id="range-segs"></div>
+        <button class="status" id="status" hidden><i></i><span></span></button>
+        <button class="icon" id="refresh" aria-label="Обновить"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+        <button class="icon" id="theme" aria-label="Тема"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        <button class="icon" id="logout" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></button>
       </div>
-      <div class="chartwrap"><div id="chart"></div><div class="tip" id="tip"></div></div>
-      <div class="legend" id="legend"></div>
-      <div class="note" id="chart-note" style="margin-top:10px"></div>
-    </div>
-
-    <div class="section">Когорты <i>кто пришёл на неделе и что с ними стало</i></div>
-    <div class="card"><div class="scroll" id="cohorts"></div></div>
-
-    <div class="section">Кто эти люди <i>поимённо, с датами и активностью</i></div>
-    <div class="card">
-      <div class="toolbar">
-        <input class="search" id="q" placeholder="Поиск по имени или @нику" />
-        <div class="segs" id="people-segs"></div>
-        <div id="people-sort"></div>
-      </div>
-      <div id="people-list"></div>
-      <div class="scroll"><table id="people-table"></table></div>
-      <div id="people-more"></div>
-      <div class="note" id="people-note" style="margin-top:12px"></div>
-    </div>
-
-    <div class="section">Разделы <i>сколько людей открывали</i></div>
-    <div class="card" id="sections"></div>
-
-    <div class="section">Настройки и устройство базы</div>
-    <div class="grid g2 start">
-      <div class="card" id="settings"></div>
-      <div class="card" id="ops"></div>
-    </div>
-
-    <div class="section">Топы</div>
-    <div class="grid g2">
-      <div class="card"><div class="cardhead"><h3>По XP</h3></div><div class="scroll" id="top-xp"></div></div>
-      <div class="card"><div class="cardhead"><h3>По приглашениям</h3></div><div class="scroll" id="top-refs"></div></div>
-    </div>
-
-    <div class="foot">
-      <div class="note" id="coverage"></div>
-      <div class="spacer"></div>
-      <div class="note" id="updated"></div>
-    </div>
+      <nav class="tabs"><div class="seg" id="tabs"></div></nav>
+    </header>
+    <main class="wrap">
+      <div id="banner"></div>
+      <div id="view"></div>
+      <div class="foot"><span id="updated"></span><button class="linkbtn" data-act="digest">Прислать сводку в Telegram</button></div>
+    </main>
   </div>
+
+  <div class="sheet" id="sheet" hidden><div class="sheet-bg" data-act="close"></div><div class="sheet-card" id="sheet-card"></div></div>
+  <div class="tip" id="tip"></div>
+  <div class="toast" id="toast"></div>
 
 <script>
 (function(){
-  var KEY='koshel_admin_key', THEME='koshel_admin_theme';
-  var D=null, range=30, metric='growth', pfilter='all', psort='lastSeen', pdir=-1, pcap=20;
-
-  var $=function(id){ return document.getElementById(id); };
-  /** Телефон и узкое окно: таблицы уступают место спискам, график — своей высоте. */
-  function isNarrow(){ return window.innerWidth < 700; }
-  function esc(s){ s=String(s==null?'':s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function nf(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
-  function kf(n){ n=Number(n)||0; return n>=10000 ? Math.round(n/1000)+'к' : nf(n); }
-  function pc(n){ return (Math.round((Number(n)||0)*10)/10)+'%'; }
-
+  'use strict';
+  var KEY='koshel_admin_key', THEME='koshel_admin_theme', BOT='TrueManiManager_Bot';
+  var D=null;
+  var S={ tab:'overview', win:'7', src:'all', chart:'growth', range:30, table:false,
+          retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'' };
+  var TG=null, tgInit='', busy=false, lastLoad=0, sheetOpen=false;
   var DAY=86400000;
-  function dstr(ms){ return new Date(ms).toLocaleDateString('ru-RU',{day:'numeric',month:'short'}); }
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ s=String(s==null?'':s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function nf(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
+  function pcn(part,whole){ return whole>0 ? Math.round(part/whole*100) : 0; }
+  function pct(part,whole){ return whole>0 ? pcn(part,whole)+'%' : '—'; }
+  function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function isDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
+
+  var MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+  var MON_EN=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  var MONF=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  /** «5 окт» из строки YYYY-MM-DD — без часовых поясов браузера. */
+  function dshort(s){ var p=String(s).split('-'); return Number(p[2])+' '+MON[Number(p[1])-1]; }
+  function mskParts(ms){ var d=new Date(ms+3*3600000); return { y:d.getUTCFullYear(), m:d.getUTCMonth(), d:d.getUTCDate(), h:d.getUTCHours(), mi:d.getUTCMinutes() }; }
+  function two(n){ return (n<10?'0':'')+n; }
+  function tmsk(ms){ var p=mskParts(ms); return two(p.h)+':'+two(p.mi); }
+  function dmsk(ms){ var p=mskParts(ms); return p.d+' '+MON[p.m]; }
+  function dtmsk(ms){ var p=mskParts(ms); return p.d+' '+MONF[p.m]+', '+two(p.h)+':'+two(p.mi); }
   function ago(ms){
     if(!ms) return '—';
-    var d=Math.floor((Date.now()-ms)/DAY);
-    if(d<=0) return 'сегодня';
-    if(d===1) return 'вчера';
+    var m=Math.floor((Date.now()-ms)/60000);
+    if(m<1) return 'только что';
+    if(m<60) return m+' мин назад';
+    var h=Math.floor(m/60); if(h<24) return h+' ч назад';
+    var d=Math.floor(h/24); if(d===1) return 'вчера';
     if(d<7) return d+' дн. назад';
     if(d<30) return Math.floor(d/7)+' нед. назад';
     if(d<365) return Math.floor(d/30)+' мес. назад';
     return Math.floor(d/365)+' г. назад';
   }
-  function delta(cur,prev){
+
+  /* ---------- Иконки (линейные, как в приложении) ---------- */
+  var IC={
+    up:'<svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>',
+    down:'<svg viewBox="0 0 24 24"><path d="M7 7l10 10"/><path d="M17 8v9H8"/></svg>',
+    good:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>',
+    bad:'<svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+    info:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>',
+    chev:'<svg class="ic chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
+    close:'<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+  };
+
+  /** Честное изменение: на маленькой базе проценты врут («+1000%»), поэтому
+      при прошлом значении меньше десяти показываем само прошлое значение. */
+  function delta(cur,prev,upGood,word){
+    if(prev==null) return '';
     cur=Number(cur)||0; prev=Number(prev)||0;
-    if(prev===0 && cur===0) return '<span class="pill flat">без изменений</span>';
-    if(prev===0) return '<span class="pill up">+'+cur+' к прошлой неделе</span>';
-    var diff=cur-prev, p=Math.round((diff/prev)*100);
-    if(diff===0) return '<span class="pill flat">как неделей раньше</span>';
-    return '<span class="pill '+(diff>0?'up':'down')+'">'+(diff>0?'+':'')+p+'% к прошлой неделе</span>';
+    if(cur===prev) return '<span class="chip flat">'+esc(word)+' столько же</span>';
+    var up=cur>prev, good=(up===upGood);
+    // Скачок в разы (после рекламы) в процентах тоже бессмыслен: «+820%» не
+    // читается, «неделей раньше 10» — читается.
+    var plain=prev<10 || Math.abs(cur-prev)/prev>3;
+    var txt=plain ? (word+' '+nf(prev)) : ((up?'+':'−')+Math.abs(Math.round((cur-prev)/prev*100))+'%');
+    return '<span class="chip '+(good?'good':'bad')+'">'+(up?IC.up:IC.down)+esc(txt)+'</span>';
   }
 
   /* ---------- Тема ---------- */
-  function applyTheme(t){
+  function applyTheme(t,save){
     document.documentElement.setAttribute('data-theme',t);
-    $('theme-lb').textContent = t==='dark' ? 'Тёмная' : 'Светлая';
-    try{ localStorage.setItem(THEME,t); }catch(e){}
+    if(save){ try{ localStorage.setItem(THEME,t); }catch(e){} }
+    if(TG){
+      var bg=t==='dark'?'#0E0F0E':'#F6F6F3';
+      try{ if(TG.setHeaderColor) TG.setHeaderColor(bg); if(TG.setBackgroundColor) TG.setBackgroundColor(bg); }catch(e){}
+    }
   }
   function initTheme(){
-    var t='dark';
-    try{ t=localStorage.getItem(THEME)||'dark'; }catch(e){}
-    applyTheme(t);
+    var t=null;
+    try{ t=localStorage.getItem(THEME); }catch(e){}
+    if(!t) t=(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    applyTheme(t,false);
   }
 
-  /* ---------- Экраны ---------- */
+  /* ---------- Подсказка ---------- */
+  var tipEl=null, tipHideT=null;
+  /** Показать подсказку у точки; не даём ей выйти за край экрана. */
+  function showTip(html,x,y){
+    tipEl.innerHTML=html; tipEl.className='tip on';
+    var w=tipEl.offsetWidth, h=tipEl.offsetHeight, vw=document.documentElement.clientWidth;
+    var left=Math.min(Math.max(8,x-w/2),vw-w-8);
+    var top=y-h-12; if(top<8) top=y+16;
+    tipEl.style.left=left+'px'; tipEl.style.top=top+'px';
+    clearTimeout(tipHideT);
+  }
+  function hideTip(){ tipEl.className='tip'; }
+
+  /* ---------- Тост ---------- */
+  var toastT=null;
+  function toast(msg){
+    var t=$('toast'); t.textContent=msg; t.className='toast on';
+    clearTimeout(toastT); toastT=setTimeout(function(){ t.className='toast'; },2400);
+  }
+
+  /* ---------- Доступ ---------- */
+  function savedKey(){
+    try{ return localStorage.getItem(KEY) || sessionStorage.getItem(KEY); }catch(e){ return null; }
+  }
+  function headers(){
+    var h={'Content-Type':'application/json'};
+    if(tgInit) h['X-Tg-Init-Data']=tgInit; else h['X-Admin-Key']=savedKey()||'';
+    return h;
+  }
+  function api(path,body){
+    return fetch(path,{method:'POST',headers:headers(),body:JSON.stringify(body||{})}).then(function(r){
+      if(r.status===403){ var e=new Error('forbidden'); e.code=403; throw e; }
+      if(r.status===429){ var e2=new Error('slow'); e2.code=429; throw e2; }
+      return r.json();
+    });
+  }
   function showLogin(msg){
-    $('login').style.display='flex'; $('dash').style.display='none';
-    $('login-err').textContent=msg||''; $('login-pass').value=''; $('login-pass').focus();
+    $('app').hidden=true; $('login').hidden=false;
+    if(tgInit){
+      $('login-form').hidden=true;
+      $('login-text').textContent='Эта страница — только для владельца Кошеля. Ваш аккаунт Telegram не подходит.';
+    } else {
+      $('login-err').textContent=msg||'';
+      setTimeout(function(){ try{ $('login-pass').focus(); }catch(e){} },50);
+    }
   }
-  function showDash(){ $('login').style.display='none'; $('dash').style.display='block'; }
+  function showApp(){ $('login').hidden=true; $('app').hidden=false; $('logout').hidden=!!tgInit; }
 
-  /* ---------- Сегменты ---------- */
-  function segs(host,items,active,onPick){
-    var el=$(host); if(!el) return;
-    el.innerHTML='';
-    items.forEach(function(it){
-      var b=document.createElement('button');
-      b.textContent=it.label;
-      if(it.key===active) b.className='on';
-      b.onclick=function(){ onPick(it.key); };
-      el.appendChild(b);
+  /* ---------- Загрузка ---------- */
+  function load(opts){
+    opts=opts||{};
+    if(busy) return;
+    if(!tgInit && !savedKey()){ showLogin(); return; }
+    busy=true; if(D) document.body.classList.add('loading');
+    api('/admin/stats',{fresh:!!opts.fresh, backfill:!!opts.backfill}).then(function(d){
+      busy=false; document.body.classList.remove('loading');
+      if(!d || !d.ok){ toast('Не удалось загрузить данные'); return; }
+      D=d; lastLoad=Date.now(); showApp(); render(); paintBanner();
+      if(!opts.backfill) autoBackfill();
+    }).catch(function(e){
+      busy=false; document.body.classList.remove('loading');
+      if(e && e.code===403){ try{ localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); }catch(x){} showLogin(D?'Сессия закончилась — войдите снова':'Неверный пароль'); return; }
+      if(e && e.code===429){ toast('Слишком часто — подождите минуту'); return; }
+      toast('Нет связи с сервером');
     });
   }
 
-  /* ---------- Верхние карточки ---------- */
-  function renderHero(){
-    var u=D.users, a=D.active, n=D.newUsers, hasCards=((D.coverage||{}).withCard||0)>0;
-    var cards=[
-      { k:'Всего людей', v:nf(u.total), cls:'',
-        s:'по приглашению '+nf(u.fromRef)+' · сами '+nf(u.organic) },
-      // Число считается по карточкам. Пока их нет, честнее прочерк, чем ноль:
-      // ноль читается как «никто не пишет», а это неправда.
-      { k:'Записывают операции', v:hasCards?nf(a.writers7):'—', cls:'brand',
-        s:hasCards
-          ? 'за 30 дней '+nf(a.writers30)+' · всего с операциями '+nf(u.withOps)+' ('+pc(u.withOpsPct)+')'
-          : 'нужны карточки · всего с операциями '+nf(u.withOps)+' ('+pc(u.withOpsPct)+')' },
-      { k:'Заходили за 7 дней', v:nf(a.wau), cls:'',
-        s:'сегодня '+nf(a.dau)+' · за 30 дней '+nf(a.mau)+' · липкость '+pc(a.stickiness) },
-      { k:'Новых за 7 дней', v:nf(n.d7), cls:'amber', pill:delta(n.d7,n.prev7),
-        s:'сегодня '+nf(n.today)+' · за 30 дней '+nf(n.d30) }
-    ];
-    $('hero').innerHTML=cards.map(function(c){
-      return '<div class="card stat"><div class="k">'+esc(c.k)+'</div>'
-        +'<div class="v '+c.cls+' tabular">'+c.v+'</div>'
-        +'<div class="s">'+(c.pill||'')+'<span>'+esc(c.s)+'</span></div></div>';
+  /* Дозаполнение карточек — порциями, сами, пока база не пройдена. */
+  var bfBusy=false, bfDone=false;
+  function autoBackfill(){
+    if(bfBusy||bfDone||!D) return;
+    var cov=D.coverage||{};
+    if(((cov.cloudKeys||0)-(cov.withCard||0))<=0){ bfDone=true; return; }
+    bfBusy=true; paintBanner();
+    var rounds=0;
+    (function step(){
+      rounds++;
+      api('/admin/stats',{backfill:true}).then(function(d){
+        if(!d||!d.ok){ bfBusy=false; bfDone=true; paintBanner(); return; }
+        D=d; var bf=d.backfill||{};
+        if(bf.done||!bf.scanned||rounds>=40){ bfBusy=false; bfDone=true; render(); paintBanner(); return; }
+        paintBanner(); step();
+      }).catch(function(){ bfBusy=false; bfDone=true; paintBanner(); });
+    })();
+  }
+  function paintBanner(){
+    var host=$('banner'); if(!host||!D) return;
+    var cov=D.coverage||{}, miss=(cov.cloudKeys||0)-(cov.withCard||0);
+    if(miss<=0 && !bfBusy){ host.innerHTML=''; return; }
+    host.innerHTML='<div class="banner">'+(bfBusy?'<span class="spin"></span>':'')
+      +'<span>Собраны данные по '+nf(cov.withCard)+' из '+nf(cov.cloudKeys)+' человек — пока идёт сбор, разделы и настройки занижены.</span></div>';
+  }
+
+  /* ---------- Вкладки ---------- */
+  var TABS=[['overview','Сводка'],['retention','Удержание'],['sources','Источники'],['people','Люди'],['product','Продукт']];
+  function renderTabs(){
+    $('tabs').innerHTML=TABS.map(function(t){
+      return '<button data-act="tab" data-v="'+t[0]+'"'+(S.tab===t[0]?' class="on"':'')+'>'+t[1]+'</button>';
     }).join('');
   }
+  function render(){
+    if(!D) return;
+    renderTabs(); renderStatus();
+    var html='';
+    if(S.tab==='overview') html=viewOverview();
+    else if(S.tab==='retention') html=viewRetention();
+    else if(S.tab==='sources') html=viewSources();
+    else if(S.tab==='people') html=viewPeople();
+    else html=viewProduct();
+    $('view').innerHTML=html;
+    afterRender();
+    tickUpdated();
+  }
+  function tickUpdated(){
+    if(!D) return;
+    $('updated').textContent='Обновлено '+tmsk(D.generatedAt)+' МСК · само раз в минуту';
+  }
 
-  /* ---------- Воронка ---------- */
-  function renderFunnel(){
-    var f=D.funnel, base=f.length?f[0].users:0, html='';
-    html+='<div class="cardhead"><h3>Путь до привычки</h3><div class="hint">каждый шаг — часть предыдущего</div></div>';
-    for(var i=0;i<f.length;i++){
-      var s=f[i], share=base?(s.users/base)*100:0;
-      var lost='';
-      if(i>0){
-        var prev=f[i-1].users, d=prev-s.users;
-        if(d>0 && prev>0) lost='отсеялось '+nf(d)+' · '+pc((d/prev)*100)+' от предыдущего шага';
-      }
-      // Потеря шага стоит отдельной строкой под полосой: втиснутая рядом с
-      // названием, она ломала строку пополам на узком экране.
-      html+='<div class="step"><div class="top"><span class="lb">'+esc(s.label)+'</span>'
-        +'<span class="nm tabular">'+nf(s.users)+'</span><span class="pc tabular">'+pc(share)+'</span></div>'
-        +'<div class="track"><div class="fill" style="width:'+Math.max(1,share).toFixed(1)+'%"></div></div>'
-        +(lost?'<div class="drop">'+lost+'</div>':'')+'</div>';
+  /* ---------- Шапка: состояние бота ---------- */
+  function renderStatus(){
+    var w=D.webhook, el=$('status');
+    if(!w){ el.hidden=true; return; }
+    el.hidden=false;
+    var color, text;
+    if(!w.registered){ color='var(--bad-dot)'; text='Бот не принимает'; }
+    else if(!w.ok){ color=w.pending>0?'var(--warn-dot)':'var(--bad-dot)'; text=w.pending>0?('Очередь '+nf(w.pending)):'Бот: ошибка'; }
+    else { color='var(--good-dot)'; text='Бот на связи'; }
+    el.querySelector('i').style.background=color;
+    el.querySelector('span').textContent=text;
+  }
+
+  /* ================================================================== */
+  /* Сводка                                                              */
+  /* ================================================================== */
+  function viewOverview(){
+    return heroToday()+kpis()+insightsBlock()+funnelBlock()+growthBlock();
+  }
+
+  function heroToday(){
+    var t=D.today, k=D.kpi, hours=t.hours, hy=t.hoursY, max=1, i;
+    for(i=0;i<24;i++){ if((hours[i]||0)>max) max=hours[i]; if((hy[i]||0)>max) max=hy[i]; }
+    var cols='';
+    for(i=0;i<24;i++){
+      var v=i<hours.length?hours[i]:null, yv=hy[i]||0;
+      var h=v==null?0:Math.round(v/max*100), hyp=Math.round(yv/max*100);
+      cols+='<div class="hcol'+(i===t.hourNow?' now':'')+'" data-hour="'+i+'">'
+        +(yv?'<div class="y" style="height:'+Math.max(2,hyp)+'%"></div>':'')
+        +(v?'<div class="b" style="height:'+Math.max(3,h)+'%"></div>':'')+'</div>';
     }
-    $('funnel').innerHTML=html;
+    var act=t.act||0, viaBot=t.bot||0;
+    var side='за последний час <b>'+nf(k.lastHour)+'</b><br>обычно <b>'+nf(k.usual)+'</b> в день';
+    return '<section class="hero" style="margin-top:6px">'
+      +'<div class="k"><span class="live"></span>Сегодня до '+tmsk(D.generatedAt)+' МСК</div>'
+      +'<div class="hero-top"><div class="hero-num">'+nf(k.newToday)+'<small>новых</small></div><div class="hero-side">'+side+'</div></div>'
+      +'<div class="hours" id="hours">'+cols+'</div>'
+      +'<div class="haxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23 ч</span></div>'
+      +'<div class="hlegend"><span><i style="background:#8FD3AC"></i>Сегодня</span><span><i style="background:rgba(255,255,255,.22)"></i>Вчера</span></div>'
+      +'<div class="hero-stats">'
+      +'<div><b>'+nf(act)+'</b>записали операцию'+(k.newToday?' · '+pct(act,k.newToday):'')+'</div>'
+      +'<div><b>'+nf(viaBot)+'</b>пишут боту</div>'
+      +'<div><b>'+nf(k.dau)+'</b>заходили · '+nf(k.dauBack)+' вернулись</div>'
+      +'</div></section>';
   }
 
-  /* ---------- Жизненный цикл ---------- */
-  function renderLifecycle(){
-    var l=D.lifecycle, r=D.retention, u=D.users, total=u.total||1;
-    var rows=[
-      { lb:'Активные · 7 дней', n:l.active, c:'var(--brand)' },
-      { lb:'Засыпают · 7–30 дней', n:l.sleeping, c:'var(--amber)' },
-      { lb:'Ушли · больше 30', n:l.churned, c:'var(--ink-subtle)' },
-      { lb:'Без единой операции', n:l.zeroOps, c:'var(--rose)' }
-    ];
-    var html='<div class="cardhead"><h3>Что с базой сейчас</h3></div>';
-    rows.forEach(function(r2){
-      var w=(r2.n/total)*100;
-      html+='<div class="bar"><div class="bl">'+esc(r2.lb)+'</div>'
-        +'<div class="bt"><div class="bf" style="width:'+Math.max(1,w).toFixed(1)+'%;background:'+r2.c+'"></div></div>'
-        +'<div class="bn tabular">'+nf(r2.n)+' · '+pc(w)+'</div></div>';
-    });
-    var ink=function(x){ return '<b style="color:var(--ink)">'+x+'</b>'; };
-    html+='<div class="note" style="margin-top:14px">Вернулись хотя бы раз: '+ink(pc(r.returnedPct))
-      +' ('+nf(r.returned)+' из '+nf(r.base)+')<br>'
-      +'Задали бюджет или цель: '+ink(nf(D.planned||0))
-      +' · заблокировали бота: '+ink(nf(u.blocked))
-      +' · выключили напоминания: '+ink(nf(u.remindersOff))+'</div>';
-    html+=expl('Почему не D1',
-      'У нас есть только дата последнего визита, а не журнал всех заходов. Поэтому считаем «зашёл ещё в '
-      +'какой-то другой день», а не «на следующий день после регистрации». Число получается чуть добрее '
-      +'настоящего D1, зато не выдумано.');
-    $('lifecycle').innerHTML=html;
+  function tile(label,value,unit,meta,sparkKey,sparkVals){
+    return '<div class="card stat"><div class="lb">'+esc(label)+'</div>'
+      +'<div class="val">'+value+(unit?'<small>'+esc(unit)+'</small>':'')+'</div>'
+      +'<div class="meta">'+meta+'</div>'
+      +(sparkVals?'<div class="spark" data-spark="'+sparkKey+'"></div>':'')+'</div>';
+  }
+  function kpis(){
+    var k=D.kpi, sp=D.spark, n=sp.days.length;
+    var wPrev=sp.writers[n-8], aPrev=sp.active[n-2];
+    var d1=k.d1||{base:0,n:0};
+    var d1v=d1.base>=5 ? pcn(d1.n,d1.base)+'%' : '—';
+    var d1meta=d1.base>=5 ? (nf(d1.n)+' из '+nf(d1.base)+' за две недели') : 'копится: нужно хотя бы 5 новичков с прожитым вторым днём';
+    return '<div class="sec"><h2>Главное</h2><span class="aside">'+nf(k.total)+' человек всего</span></div>'
+      +'<div class="grid g4">'
+      +tile('Новые за неделю',nf(k.new7),'',delta(k.new7,k.newPrev7,true,'неделей раньше'),'fresh',sp.fresh)
+      +tile('Пишут за неделю',nf(k.writers7),'',(wPrev!=null?delta(k.writers7,wPrev,true,'неделей раньше'):'')+'<span>из них боту '+nf(D.bot.writers7)+'</span>','writers',sp.writers)
+      +tile('Заходили сегодня',nf(k.dau),'',(aPrev!=null?delta(k.dau,aPrev,true,'вчера'):'')+'<span>новых '+nf(k.dauNew)+'</span>','active',sp.active)
+      +tile('Вернулись на 2-й день',d1v,'','<span>'+esc(d1meta)+'</span>',null,null)
+      +'</div>';
   }
 
-  /* ---------- График ---------- */
-  /* Ряды внутри одного графика обязаны быть сопоставимы по масштабу. Накопительное
-     «всего» (сотни) и суточный приток (единицы) на одной оси означают, что второй
-     ряд лежит на нуле и не читается вовсе, — поэтому потоки и накопления разведены
-     по разным вкладкам, а приток нарисован столбиками: это событие дня, а не кривая. */
+  function insightsBlock(){
+    var list=D.insights||[];
+    if(!list.length) return '';
+    return '<div class="sec"><h2>Что важно</h2></div><div class="card">'
+      +list.map(function(x){
+        var icon=x.tone==='good'?IC.good:(x.tone==='bad'?IC.bad:IC.info);
+        var word=x.tone==='good'?'Хорошо: ':(x.tone==='bad'?'Внимание: ':'');
+        return '<div class="ins '+x.tone+'">'+icon+'<p><span class="muted">'+word+'</span>'+esc(x.text)+'</p></div>';
+      }).join('')+'</div>';
+  }
+
+  var WIN_SEGS=[['all','Все'],['30','30 дн'],['7','7 дн'],['1','Сегодня']];
+  var FUNNEL_LABELS=['Пришли','Записали операцию','Вернулись в другой день','Набрали 5 операций','Пишут сейчас'];
+  /* Ступени воронки — одна гамма по порядку (проверена как порядковая шкала). */
+  var FUNNEL_LIGHT=['#1D5743','#246E54','#2D8866','#3CA37B','#5DB996'];
+  var FUNNEL_DARK=['#B8E5CC','#8FD3AC','#5DB996','#3CA37B','#2D8866'];
+  function segSelect(act,value){
+    var opts=(D.segments||[]).map(function(s){
+      return '<option value="'+esc(s.key)+'"'+(s.key===value?' selected':'')+'>'+esc(s.key==='all'?'Все источники':s.label)+'</option>';
+    }).join('');
+    return '<select class="select" data-act="'+act+'">'+opts+'</select>';
+  }
+  function segButtons(act,items,value,cls){
+    return '<div class="seg sm '+(cls||'fit')+'">'+items.map(function(it){
+      return '<button data-act="'+act+'" data-v="'+it[0]+'"'+(String(value)===String(it[0])?' class="on"':'')+'>'+it[1]+'</button>';
+    }).join('')+'</div>';
+  }
+  function funnelBlock(){
+    var bySrc=D.funnels[S.src]||D.funnels.all, f=bySrc[S.win]||bySrc.all, steps=f.steps, base=steps[0]||0;
+    var ramp=isDark()?FUNNEL_DARK:FUNNEL_LIGHT;
+    // Самая большая потеря между ступенями — её и подсвечиваем.
+    var worst=-1, worstLoss=0, i;
+    for(i=1;i<steps.length;i++){ var l=steps[i-1]-steps[i]; if(steps[i-1]>0 && l/steps[i-1]>worstLoss && l>0){ worstLoss=l/steps[i-1]; worst=i; } }
+    var html='';
+    for(i=0;i<steps.length;i++){
+      var share=base?steps[i]/base*100:0;
+      var lost='';
+      if(i>0 && steps[i-1]>0){
+        var dropped=steps[i-1]-steps[i];
+        lost='<div class="lost">'+(dropped>0?'не дошли '+nf(dropped)+' · ':'')+'дошли '+pct(steps[i],steps[i-1])+' от прошлой ступени'
+          +(i===worst && base>=5?' <span class="chip bad">'+IC.down+'главная потеря</span>':'')+'</div>';
+      }
+      html+='<div class="step"><div class="top"><span class="lb">'+FUNNEL_LABELS[i]+'</span>'
+        +'<span class="nm">'+nf(steps[i])+'</span><span class="pc tnum">'+(base?Math.round(share)+'%':'—')+'</span></div>'
+        +'<div class="track"><div class="fill" style="width:'+(steps[i]?Math.max(1.5,share).toFixed(1):0)+'%;background:'+ramp[i]+'"></div></div>'+lost+'</div>';
+    }
+    if(!base) html='<div class="empty">В этом срезе пока никого нет</div>';
+    return '<div class="sec"><h2>Путь до привычки</h2></div>'
+      +'<div class="filters">'+segButtons('win',WIN_SEGS,S.win)+segSelect('src',S.src)+'</div>'
+      +'<div class="card">'+html
+      +(base?'<div class="kv"><span>открыли приложение <b>'+nf(f.app)+'</b></span><span>писали боту <b>'+nf(f.bot)+'</b></span></div>':'')
+      +'</div><p class="note" style="margin:8px 4px 0">Каждая ступень — часть предыдущей. Окно — когда человек пришёл.</p>';
+  }
+
+  /* ---------- График динамики ---------- */
   var METRICS={
-    growth:{ title:'Рост базы', type:'area', series:[
-      {key:'total',label:'Всего людей',color:'var(--brand)'},
-      {key:'withData',label:'С операциями',color:'var(--amber)'} ] },
-    active:{ title:'Активность', type:'area', series:[
-      {key:'wau',label:'Заходили за 7 дней',color:'var(--brand)'},
-      {key:'writers',label:'Записывали за 7 дней',color:'var(--amber)'},
-      {key:'dau',label:'Заходили за день',color:'var(--rose)'} ] },
-    inflow:{ title:'Приток', type:'bars', series:[
-      {key:'new',label:'Новые за день',color:'var(--brand)'} ] }
+    growth:{ title:'Всего людей', type:'area', series:[{key:'total',label:'Всего людей',c:'--s1'},{key:'withData',label:'С операциями',c:'--s2'}] },
+    active:{ title:'Активность', type:'line', series:[{key:'wau',label:'Заходили за 7 дней',c:'--s1'},{key:'writers',label:'Писали за 7 дней',c:'--s2'},{key:'dau',label:'Заходили за день',c:'--s3'}] },
+    inflow:{ title:'Новые за день', type:'bars', series:[{key:'new',label:'Новые за день',c:'--s1'}] }
   };
-  var METRIC_SEGS=[{key:'growth',label:'Рост'},{key:'active',label:'Активность'},{key:'inflow',label:'Приток'}];
-  var RANGE_SEGS=[{key:7,label:'7 дн.'},{key:30,label:'30 дн.'},{key:60,label:'60 дн.'}];
-  var PEOPLE_SEGS=[{key:'all',label:'Все'},{key:'ops',label:'С операциями'},{key:'zero',label:'Нулевые'},
-    {key:'ref',label:'По ссылке'},{key:'alive',label:'Активные'}];
+  var CHART_SEGS=[['growth','Рост'],['active','Активность'],['inflow','Приток']];
+  var RANGE_SEGS=[[14,'14 дн'],[30,'30 дн'],[60,'60 дн']];
+  function histRows(){
+    var h=(D.history||[]).slice(-S.range);
+    return h;
+  }
+  function growthBlock(){
+    var conf=METRICS[S.chart], rows=histRows();
+    var body;
+    if(rows.length<2) body='<div class="empty">История копится со дня первых ночных снимков — нужно хотя бы двое суток.</div>';
+    else body='<div class="chartwrap"><div class="chart" id="chart"></div></div><div class="legend" id="legend"></div>'
+      +(S.table?'<div class="tablev">'+historyTable(conf,rows)+'</div>':'');
+    return '<div class="sec"><h2>Динамика</h2><span class="aside">на конец суток</span></div>'
+      +'<div class="filters">'+segButtons('chart',CHART_SEGS,S.chart)+segButtons('range',RANGE_SEGS,S.range)+'</div>'
+      +'<div class="card">'+body
+      +(rows.length>=2?'<div style="margin-top:8px"><button class="linkbtn" data-act="table">'+(S.table?'Скрыть таблицу':'Показать таблицей')+'</button></div>':'')
+      +'</div>';
+  }
+  function historyTable(conf,rows){
+    var html='<table><thead><tr><th>Дата</th>'+conf.series.map(function(s){ return '<th class="r">'+esc(s.label)+'</th>'; }).join('')+'</tr></thead><tbody>';
+    for(var i=rows.length-1;i>=0;i--){
+      html+='<tr><td>'+dshort(rows[i].date)+'</td>'+conf.series.map(function(s){
+        var v=rows[i][s.key]; return '<td class="r tnum">'+(v==null?'—':nf(v))+'</td>';
+      }).join('')+'</tr>';
+    }
+    return html+'</tbody></table>';
+  }
 
-  /**
-   * Ось: подбираем круглый ШАГ, а не круглый максимум. Круглый максимум, делённый
-   * на четыре, даёт подписи вида 0·6·13·19·25 — читать такую шкалу невозможно.
-   */
+  /** Ось с круглым ШАГОМ: круглый максимум, делённый на четыре, даёт 0·6·13·19·25. */
   function axisFor(v){
     if(v<=4) return { step:1, max:Math.max(1,Math.ceil(v)) };
-    var target=v/4;
-    var pow=Math.pow(10,Math.floor(Math.log(target)/Math.LN10));
+    var target=v/4, pow=Math.pow(10,Math.floor(Math.log(target)/Math.LN10));
     var steps=[1,1.5,2,2.5,3,4,5,7.5,10];
-    for(var i=0;i<steps.length;i++){
-      var st=steps[i]*pow;
-      if(st>=target) return { step:st, max:st*4 };
-    }
+    for(var i=0;i<steps.length;i++){ var st=steps[i]*pow; if(st>=target) return { step:st, max:st*4 }; }
     return { step:pow*10, max:pow*40 };
   }
 
-  function renderChart(){
-    var conf=METRICS[metric];
-    $('chart-title').textContent=conf.title;
-    var hist=(D.history||[]).slice(-range);
-    if(hist.length<2){
-      $('chart').innerHTML='<div class="empty">История копится со дня установки снимков — нужно хотя бы двое суток.</div>';
-      $('legend').innerHTML='';
-      $('chart-note').innerHTML='';
-      return;
-    }
-    /* viewBox строим по фактической ширине блока. Фиксированный viewBox с
-       равномерным масштабированием на телефоне схлопывал график до 80 пикселей
-       высоты — вместо кривой получалась полоска. */
-    var host0=$('chart');
-    var W=Math.max(280, Math.round((host0 && host0.clientWidth) || 880));
-    var narrow=isNarrow();
-    var H=narrow?220:200, padL=narrow?28:34, padR=8, padT=14, padB=narrow?26:24;
+  function drawChart(){
+    var host=$('chart'); if(!host) return;
+    var conf=METRICS[S.chart], rows=histRows(), n=rows.length;
+    var W=Math.max(260,host.clientWidth||600), narrow=W<520;
+    var H=narrow?200:220, padL=30, padR=narrow?8:12, padT=12, padB=26;
+    var labelSpace=conf.type==='bars'?0:(narrow?0:96);
+    var plotR=W-padR-labelSpace;
     var max=1,i,j;
-    for(i=0;i<hist.length;i++) for(j=0;j<conf.series.length;j++){
-      var v=Number(hist[i][conf.series[j].key])||0; if(v>max) max=v;
-    }
-    var ax=axisFor(max);
-    max=ax.max;
-    var n=hist.length, step=n>1?(W-padL-padR)/(n-1):0;
-    var X=function(i2){ return padL+step*i2; };
+    for(i=0;i<n;i++) for(j=0;j<conf.series.length;j++){ var v=Number(rows[i][conf.series[j].key]); if(v>max) max=v; }
+    var ax=axisFor(max); max=ax.max;
+    var step=n>1?(plotR-padL)/(n-1):0;
+    var X=function(k){ return padL+step*k; };
     var Y=function(v){ return H-padB-((Number(v)||0)/max)*(H-padT-padB); };
-
-    // preserveAspectRatio по умолчанию: растягивать по X нельзя — обводки и цифры
-    // осей поехали бы по горизонтали тем сильнее, чем шире окно.
-    var svg='<svg class="chart" viewBox="0 0 '+W+' '+H+'">';
-    svg+='<defs>';
-    for(j=0;j<conf.series.length;j++){
-      svg+='<linearGradient id="g'+j+'" x1="0" y1="0" x2="0" y2="1">'
-        +'<stop offset="0%" stop-color="'+conf.series[j].color+'" stop-opacity="'+(j===0?0.28:0.14)+'"/>'
-        +'<stop offset="100%" stop-color="'+conf.series[j].color+'" stop-opacity="0"/></linearGradient>';
+    var col=function(s){ return cssVar(s.c); };
+    var svg='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'" role="img" aria-label="'+esc(conf.title)+'">';
+    for(var g=0; g*ax.step<=max+0.001; g++){
+      var gy=Y(ax.step*g).toFixed(1);
+      svg+='<line x1="'+padL+'" y1="'+gy+'" x2="'+plotR+'" y2="'+gy+'" stroke="var(--grid)" stroke-width="1"/>';
+      if(!narrow || g%2===0 || ax.max<=4) svg+='<text x="'+(padL-6)+'" y="'+(Number(gy)+4)+'" fill="var(--ink-3)" font-size="11" text-anchor="end" font-family="Manrope" style="font-variant-numeric:tabular-nums">'+nf(Math.round(ax.step*g))+'</text>';
     }
-    svg+='</defs>';
-
-    // сетка и подписи оси
-    for(var gi=0;gi*ax.step<=max+0.001;gi++){
-      var gv=Math.round(ax.step*gi), gy=Y(ax.step*gi);
-      if(narrow && gi%2===1 && ax.max>4){
-        svg+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--line)" stroke-width="1"/>';
-        continue;
-      }
-      svg+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--line)" stroke-width="1"/>';
-      svg+='<text x="4" y="'+(gy+4)+'" fill="var(--ink-subtle)" font-size="10" font-family="Manrope">'+gv+'</text>';
-    }
-
     if(conf.type==='bars'){
-      var bw=Math.max(2,Math.min(16,step*0.6));
+      var bw=Math.max(2,Math.min(14,step*0.62));
       for(i=0;i<n;i++){
-        var bv=Number(hist[i][conf.series[0].key])||0;
-        var by=Y(bv), bh=Math.max(bv>0?2:0,(H-padB)-by);
-        if(bh<=0) continue;
-        svg+='<rect x="'+(X(i)-bw/2).toFixed(1)+'" y="'+(H-padB-bh).toFixed(1)+'" width="'+bw.toFixed(1)
-          +'" height="'+bh.toFixed(1)+'" rx="'+Math.min(3,bw/2).toFixed(1)+'" fill="'+conf.series[0].color+'" opacity=".85"/>';
+        var bv=Number(rows[i][conf.series[0].key])||0; if(bv<=0) continue;
+        var by=Y(bv), bh=(H-padB)-by, r=Math.min(4,bw/2);
+        var x0=X(i)-bw/2;
+        svg+='<path d="M'+x0.toFixed(1)+' '+(H-padB)+'V'+(by+r).toFixed(1)+'Q'+x0.toFixed(1)+' '+by.toFixed(1)+' '+(x0+r).toFixed(1)+' '+by.toFixed(1)
+          +'H'+(x0+bw-r).toFixed(1)+'Q'+(x0+bw).toFixed(1)+' '+by.toFixed(1)+' '+(x0+bw).toFixed(1)+' '+(by+r).toFixed(1)+'V'+(H-padB)+'Z" fill="'+col(conf.series[0])+'"/>';
       }
     } else {
       for(j=conf.series.length-1;j>=0;j--){
-        var s=conf.series[j], pts='', area='';
+        var s=conf.series[j], d='', started=false, last=null;
         for(i=0;i<n;i++){
-          var x=X(i).toFixed(1), y=Y(hist[i][s.key]).toFixed(1);
-          pts+=(i?' L':'M')+x+' '+y;
+          var val=rows[i][s.key];
+          if(val==null){ started=false; continue; }
+          d+=(started?' L':'M')+X(i).toFixed(1)+' '+Y(val).toFixed(1); started=true; last=i;
         }
-        area=pts+' L'+X(n-1).toFixed(1)+' '+(H-padB)+' L'+X(0).toFixed(1)+' '+(H-padB)+' Z';
-        svg+='<path d="'+area+'" fill="url(#g'+j+')"/>';
-        svg+='<path d="'+pts+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+        if(!d) continue;
+        if(conf.type==='area' && j===0){
+          var firstI=0; while(firstI<n && rows[firstI][s.key]==null) firstI++;
+          svg+='<path d="'+d+' L'+X(last).toFixed(1)+' '+(H-padB)+' L'+X(firstI).toFixed(1)+' '+(H-padB)+' Z" fill="'+col(s)+'" opacity=".10"/>';
+        }
+        svg+='<path d="'+d+'" fill="none" stroke="'+col(s)+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+        if(last!=null){
+          svg+='<circle cx="'+X(last).toFixed(1)+'" cy="'+Y(rows[last][s.key]).toFixed(1)+'" r="4" fill="'+col(s)+'" stroke="var(--card)" stroke-width="2"/>';
+        }
+      }
+      // Подписи у конца линий — только на широком экране, где им есть место.
+      if(!narrow){
+        var ends=[];
+        for(j=0;j<conf.series.length;j++){
+          var lj=n-1; while(lj>=0 && rows[lj][conf.series[j].key]==null) lj--;
+          if(lj>=0) ends.push({ y:Y(rows[lj][conf.series[j].key]), v:rows[lj][conf.series[j].key], s:conf.series[j] });
+        }
+        ends.sort(function(a,b){ return a.y-b.y; });
+        for(j=1;j<ends.length;j++) if(ends[j].y-ends[j-1].y<15) ends[j].y=ends[j-1].y+15;
+        for(j=0;j<ends.length;j++){
+          svg+='<text x="'+(plotR+8)+'" y="'+(ends[j].y+4).toFixed(1)+'" font-size="12" font-family="Manrope" fill="var(--ink-2)"><tspan font-weight="700" fill="var(--ink)">'+nf(ends[j].v)+'</tspan> '+esc(ends[j].s.label.split(' ')[0])+'</text>';
+        }
       }
     }
-
-    // подписи дат: первая, средняя, последняя
     var marks=narrow?[0,n-1]:[0,Math.floor((n-1)/2),n-1];
     for(i=0;i<marks.length;i++){
-      var mi=marks[i], anchor=i===0?'start':(i===marks.length-1?'end':'middle');
-      svg+='<text x="'+X(mi).toFixed(1)+'" y="'+(H-6)+'" fill="var(--ink-subtle)" font-size="10" font-family="Manrope" text-anchor="'+anchor+'">'
-        +esc(hist[mi].date.slice(5).split('-').reverse().join('.'))+'</text>';
+      var anchor=i===0?'start':(i===marks.length-1?'end':'middle');
+      svg+='<text x="'+X(marks[i]).toFixed(1)+'" y="'+(H-6)+'" fill="var(--ink-3)" font-size="11" font-family="Manrope" text-anchor="'+anchor+'">'+dshort(rows[marks[i]].date)+'</text>';
     }
-    svg+='<line id="cross" x1="0" y1="'+padT+'" x2="0" y2="'+(H-padB)+'" stroke="var(--ink-subtle)" stroke-width="1" opacity="0"/>';
+    svg+='<line id="cross" x1="0" y1="'+padT+'" x2="0" y2="'+(H-padB)+'" stroke="var(--axis)" stroke-width="1" opacity="0"/>';
     svg+='</svg>';
-    $('chart').innerHTML=svg;
-
-    $('legend').innerHTML=conf.series.map(function(s2){
-      return '<span><b style="background:'+s2.color+'"></b>'+esc(s2.label)+'</span>';
+    host.innerHTML=svg;
+    var lg=$('legend');
+    if(lg) lg.innerHTML=conf.series.length<2 ? '' : conf.series.map(function(s2){
+      return '<span><i'+(conf.type==='bars'?' class="box"':'')+' style="background:'+col(s2)+'"></i>'+esc(s2.label)+'</span>';
     }).join('');
 
-    /* Старые снимки делались по прежним определениям: «всего» считалось по одним
-       только облачным ключам, а «записывали» не считалось вовсе. Молча показать
-       ступеньку на стыке — значит заставить гадать, что случилось в тот день. */
-    var legacy=null;
-    for(i=0;i<hist.length;i++) if(hist[i].writers===undefined) legacy=hist[i].date;
-    $('chart-note').innerHTML = legacy
-      ? 'Снимки по '+esc(legacy.split('-').reverse().join('.'))+' включительно сделаны по прежним определениям '
-        + '(«всего» — только синхронизированные, «записывали» не считалось). На стыке возможна ступенька.'
-      : '';
-
-    // подсказка по наведению
-    var host=$('chart'), tip=$('tip'), svgEl=host.querySelector('svg'), cross=host.querySelector('#cross');
-    host.onmousemove=function(e){
-      var r=svgEl.getBoundingClientRect();
-      var rel=(e.clientX-r.left)/r.width*W;
-      var idx=Math.round((rel-padL)/(step||1));
-      if(idx<0) idx=0; if(idx>n-1) idx=n-1;
-      var row=hist[idx];
-      cross.setAttribute('x1',X(idx)); cross.setAttribute('x2',X(idx)); cross.setAttribute('opacity','.35');
-      var html='<div class="d">'+esc(row.date.split('-').reverse().join('.'))+'</div>';
-      conf.series.forEach(function(s3){
-        html+='<div class="r"><b style="display:inline-block;width:8px;height:8px;border-radius:3px;background:'+s3.color+'"></b>'
-          +esc(s3.label)+': '+nf(row[s3.key]||0)+'</div>';
-      });
-      tip.innerHTML=html; tip.style.opacity='1';
-      var px=(X(idx)/W)*r.width;
-      tip.style.left=Math.min(Math.max(px-60,0),r.width-150)+'px';
-      tip.style.top='6px';
-    };
-    host.onmouseleave=function(){ tip.style.opacity='0'; if(cross) cross.setAttribute('opacity','0'); };
-  }
-
-  /* ---------- Когорты ---------- */
-  function renderCohorts(){
-    var c=D.cohorts||[];
-    if(!c.length){ $('cohorts').innerHTML='<div class="empty">нет данных</div>'; return; }
-    var html='';
-    if(isNarrow()){
-      html+='<div class="lst">';
-      for(var i=c.length-1;i>=0;i--){
-        var r=c[i], act=r.joined?(r.activated/r.joined)*100:0;
-        var est=r.approx>0?' <span class="tag est">≈'+r.approx+'</span>':'';
-        html+='<div class="li"><div class="body">'
-          +'<div class="l1"><span class="nm">'+esc(r.week.split('-').reverse().slice(0,2).join('.'))+'</span>'+est+'</div>'
-          +'<div class="l2">'+(r.joined
-              ? 'пришло <b>'+nf(r.joined)+'</b> · записали <b>'+nf(r.activated)+'</b> · живы <b>'+nf(r.alive)+'</b>'
-              : 'никто не пришёл')+'</div>'
-          +(r.joined?'<div class="track" style="margin-top:7px"><div class="fill" style="width:'
-              +Math.max(1,act).toFixed(1)+'%"></div></div>':'')
-          +'</div></div>';
-      }
-      html+='</div>';
-    } else {
-      html+='<table><thead><tr><th>Неделя</th><th class="r">Пришло</th><th class="r">Записали операцию</th>'
-        +'<th class="r">Живы сейчас</th><th style="width:34%">Дошли до операции</th></tr></thead><tbody>';
-      for(var j=c.length-1;j>=0;j--){
-        var r2=c[j], act2=r2.joined?(r2.activated/r2.joined)*100:0;
-        var note=r2.approx>0?' <span class="tag est" title="у стольких людей дата регистрации оценочная">≈'+r2.approx+'</span>':'';
-        html+='<tr><td><b>'+esc(r2.week.split('-').reverse().join('.'))+'</b>'+note+'</td>'
-          +'<td class="r tabular">'+nf(r2.joined)+'</td>'
-          +'<td class="r tabular">'+nf(r2.activated)+'</td>'
-          +'<td class="r tabular">'+nf(r2.alive)+'</td>'
-          +'<td><div class="track"><div class="fill" style="width:'+Math.max(1,act2).toFixed(1)+'%"></div></div></td></tr>';
-      }
-      html+='</tbody></table>';
+    // Подсказка по всему ряду в точке: перекрестие находит дату само.
+    var svgEl=host.querySelector('svg'), cross=host.querySelector('#cross');
+    function at(clientX){
+      var r=svgEl.getBoundingClientRect(), rel=(clientX-r.left)/r.width*W;
+      var idx=Math.round((rel-padL)/(step||1)); if(idx<0) idx=0; if(idx>n-1) idx=n-1;
+      var row=rows[idx];
+      cross.setAttribute('x1',X(idx)); cross.setAttribute('x2',X(idx)); cross.setAttribute('opacity','1');
+      var html='<div class="d">'+dshort(row.date)+'</div>'+conf.series.map(function(s3){
+        return '<div class="r"><i style="background:'+col(s3)+'"></i><b>'+(row[s3.key]==null?'—':nf(row[s3.key]))+'</b>'+esc(s3.label)+'</div>';
+      }).join('');
+      showTip(html, r.left+X(idx)/W*r.width, r.top+12);
     }
-    html+=expl('Как читать когорты',
-      'Последние 8 недель. Строка — неделя, на которой человек пришёл. «Живы» — заходили за последние 7 дней. '
-      +'Полоса — доля тех, кто дошёл до первой операции. «≈» — столько человек в когорте с оценочной датой '
-      +'регистрации: они появились раньше, чем мы начали её записывать.');
-    $('cohorts').innerHTML=html;
+    host.onpointermove=function(e){ at(e.clientX); };
+    host.onpointerdown=function(e){ at(e.clientX); };
+    host.onpointerleave=function(){ hideTip(); cross.setAttribute('opacity','0'); };
   }
 
-  /* ---------- Люди ---------- */
-  var PCOLS=[
-    { key:'name', label:'Пользователь' },
-    { key:'firstSeen', label:'Пришёл', r:true },
-    { key:'lastSeen', label:'Был', r:true },
-    { key:'ops', label:'Операций', r:true },
-    { key:'lastTx', label:'Последняя запись', r:true },
-    { key:'xp', label:'XP', r:true },
-    { key:'refs', label:'Привёл', r:true }
-  ];
-  /** Свёрнутое пояснение. Развернёт тот, кому оно нужно; остальным не мешает. */
-  function expl(title, body){
-    return '<details class="expl"><summary>'+esc(title)+'</summary><div class="body">'+body+'</div></details>';
+  /** Спарклайн: ряд — нейтральный, последняя точка — акцент. Пустые дни — разрыв. */
+  function drawSparks(){
+    var els=document.querySelectorAll('[data-spark]');
+    for(var e=0;e<els.length;e++){
+      var el=els[e], vals=D.spark[el.getAttribute('data-spark')]||[];
+      var W=Math.max(80,el.clientWidth||160), H=34, n=vals.length, max=1, min=Infinity, i;
+      for(i=0;i<n;i++) if(vals[i]!=null){ if(vals[i]>max) max=vals[i]; if(vals[i]<min) min=vals[i]; }
+      if(min===Infinity){ el.innerHTML=''; continue; }
+      min=Math.min(min,0);
+      var X=function(k){ return 4+(W-8)*(n>1?k/(n-1):0); };
+      var Y=function(v){ return H-4-((v-min)/((max-min)||1))*(H-8); };
+      var d='', on=false, last=-1;
+      for(i=0;i<n;i++){ if(vals[i]==null){ on=false; continue; } d+=(on?' L':'M')+X(i).toFixed(1)+' '+Y(vals[i]).toFixed(1); on=true; last=i; }
+      el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'"><path d="'+d+'" fill="none" stroke="var(--context)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+        +(last>=0?'<circle cx="'+X(last).toFixed(1)+'" cy="'+Y(vals[last]).toFixed(1)+'" r="4" fill="var(--mark)" stroke="var(--card)" stroke-width="2"/>':'')+'</svg>';
+      el.setAttribute('title','последние '+n+' дней');
+    }
   }
 
-  function statusOf(p){
-    var d=(Date.now()-p.lastSeen)/DAY;
-    if(d<=7) return 'a'; if(d<=30) return 's'; return 'c';
+  function bindHours(){
+    var host=$('hours'); if(!host) return;
+    function pick(target){
+      var c=target && target.closest ? target.closest('.hcol') : null; if(!c) return;
+      var h=Number(c.getAttribute('data-hour')), t=D.today;
+      var v=h<t.hours.length?t.hours[h]:null;
+      var prev=host.querySelector('.hot'); if(prev) prev.classList.remove('hot'); c.classList.add('hot');
+      var r=c.getBoundingClientRect();
+      showTip('<div class="d">'+two(h)+':00–'+two(h)+':59 МСК</div>'
+        +'<div class="r"><i style="background:var(--mark)"></i><b>'+(v==null?'—':nf(v))+'</b>сегодня</div>'
+        +'<div class="r"><i style="background:var(--context)"></i><b>'+nf(t.hoursY[h]||0)+'</b>вчера</div>', r.left+r.width/2, r.top);
+    }
+    host.onpointermove=function(e){ pick(e.target); };
+    host.onpointerdown=function(e){ pick(e.target); };
+    host.onpointerleave=function(){ hideTip(); var p=host.querySelector('.hot'); if(p) p.classList.remove('hot'); };
   }
-  function renderPeople(){
-    var all=D.people||[], q=($('q').value||'').trim().toLowerCase();
-    var list=all.filter(function(p){
-      if(pfilter==='ops' && !(p.ops>0)) return false;
-      if(pfilter==='zero' && p.ops>0) return false;
-      if(pfilter==='ref' && !p.fromRef) return false;
-      if(pfilter==='alive' && statusOf(p)!=='a') return false;
-      if(q){
-        var hay=(p.name+' '+(p.username||'')).toLowerCase();
-        if(hay.indexOf(q)<0) return false;
+
+  /* ================================================================== */
+  /* Удержание                                                           */
+  /* ================================================================== */
+  /* Последовательная шкала одной гаммы; сжатие корнем — удержание обычно
+     маленькое, и линейная шкала красила бы почти всё в один бледный тон. */
+  var HEAT_LIGHT=['#E5F4EB','#C6E8D4','#9BD8B6','#62BC97','#2D8866','#246E54','#1D5743'];
+  var HEAT_DARK=['#1E2C25','#21402F','#25573F','#2D7A5A','#3CA37B','#6CC39E','#B8E5CC'];
+  function heatStep(p){ return Math.max(0,Math.min(6,Math.floor(Math.sqrt(p)*7))); }
+  function heatColor(p){ var i=heatStep(p); return isDark()?HEAT_DARK[i]:HEAT_LIGHT[i]; }
+  function heatInk(p){ var i=heatStep(p); if(isDark()) return i>=4?'#0E0F0E':'#ECEEEA'; return i>=4?'#FFFFFF':'#141614'; }
+
+  /** Сегодня по МСК — номер суток, как на сервере. */
+  function todayIdx(){ return Math.floor(((D?D.generatedAt:Date.now())+3*3600000)/DAY); }
+  function dayIdx(dateStr){ var p=String(dateStr).split('-'); return Math.floor(Date.UTC(Number(p[0]),Number(p[1])-1,Number(p[2]))/DAY); }
+  /** Ячейка ещё в будущем: этот день (или неделя) после прихода не прожит. */
+  function cellFuture(row,c,daily){
+    if(daily) return dayIdx(row.date)+D.retDays[c]>=todayIdx();
+    return dayIdx(row.week)+7*D.retWeeks[c]>=todayIdx();
+  }
+  function viewRetention(){
+    var r=D.retention[S.retSrc]||D.retention.all, daily=S.retMode==='d';
+    var cols=daily?D.retDays.map(function(k){ return 'D'+k; }):D.retWeeks.map(function(k){ return k+'-я нед'; });
+    var rows=daily?r.daily:r.weekly;
+    var html='<table class="heat"><thead><tr><th class="c0">'+(daily?'Пришли':'Неделя')+'</th>'
+      +cols.map(function(c){ return '<th>'+c+'</th>'; }).join('')+'</tr></thead><tbody>';
+    var any=false;
+    for(var i=0;i<rows.length;i++){
+      var row=rows[i];
+      var label=daily?dshort(row.date):('с '+dshort(row.week));
+      var sub=row.size?nf(row.size)+' чел.':'никого';
+      if(!daily && row.size) sub+=' · записали '+pct(row.act,row.size);
+      html+='<tr><td class="c0">'+label+'<small>'+sub+'</small></td>';
+      for(var c=0;c<row.cells.length;c++){
+        var cell=row.cells[c];
+        if(!row.size){ html+='<td class="future"></td>'; continue; }
+        if(!cell){
+          html+=cellFuture(row,c,daily) ? '<td class="future" data-tipcell="'+i+'-'+c+'"></td>' : '<td class="na" data-tipcell="'+i+'-'+c+'">—</td>';
+          continue;
+        }
+        any=true;
+        var p=cell[1]/cell[0];
+        html+='<td class="cell" data-tipcell="'+i+'-'+c+'" style="background:'+heatColor(p)+';color:'+heatInk(p)+'">'+Math.round(p*100)+'%<small>'+cell[1]+'/'+cell[0]+'</small></td>';
       }
+      html+='</tr>';
+    }
+    html+='</tbody></table>';
+    var keyRow='<div class="kv" style="margin-top:10px"><span><i class="dotkey" style="box-shadow:inset 0 0 0 1px var(--hair)"></i>ещё не наступило</span><span><i class="dotkey" style="background:var(--sunken)"></i>нет данных</span></div>';
+    var scale='<div class="scale"><span>0%</span><span class="bar" style="background:linear-gradient(90deg,'+(isDark()?HEAT_DARK:HEAT_LIGHT).join(',')+')"></span><span>100%</span></div>';
+    var since=D.trackFrom?('Посуточная активность записывается с '+dshort(D.trackFrom)+'. Раньше этого дня ячейки пустые — данных нет, а не «никто не вернулся».'):'Посуточная активность начала записываться только что — первые ячейки появятся завтра.';
+    var lc=D.lifecycle, total=D.kpi.total||1;
+    var stack='<div class="stack">'
+      +'<div style="width:'+(lc.active/total*100)+'%;background:'+(isDark()?'#5DB996':'#2D8866')+'"></div>'
+      +'<div style="width:'+(lc.sleeping/total*100)+'%;background:'+(isDark()?'#2D7A5A':'#9BD8B6')+'"></div>'
+      +'<div style="width:'+(lc.gone/total*100)+'%;background:var(--context)"></div></div>';
+    return '<div class="sec"><h2>Возвращаются ли люди</h2><span class="aside">доля пришедших</span></div>'
+      +'<div class="filters">'+segButtons('ret',[['d','По дням'],['w','По неделям']],S.retMode)+segSelect('retsrc',S.retSrc)+'</div>'
+      +'<div class="card">'+html+(any?scale:'')+keyRow+'<p class="note" style="margin:10px 0 0">'+esc(since)+'</p></div>'
+      +'<div class="sec"><h2>Что с базой сейчас</h2></div>'
+      +'<div class="card">'+stack
+      +'<div class="kv">'
+      +'<span><i class="dotkey" style="background:'+(isDark()?'#5DB996':'#2D8866')+'"></i>заходили за неделю <b>'+nf(lc.active)+'</b></span>'
+      +'<span><i class="dotkey" style="background:'+(isDark()?'#2D7A5A':'#9BD8B6')+'"></i>7–30 дней назад <b>'+nf(lc.sleeping)+'</b></span>'
+      +'<span><i class="dotkey" style="background:var(--context)"></i>больше месяца <b>'+nf(lc.gone)+'</b></span></div>'
+      +'<div class="kv"><span>ни одной операции <b>'+nf(lc.zero)+'</b></span><span>заблокировали бота <b>'+nf(D.kpi.blocked)+'</b></span><span>выключили напоминания <b>'+nf(D.kpi.remindersOff)+'</b></span></div>'
+      +'</div>';
+  }
+  function bindHeat(){
+    var cells=document.querySelectorAll('[data-tipcell]');
+    var r=D.retention[S.retSrc]||D.retention.all, daily=S.retMode==='d', rows=daily?r.daily:r.weekly;
+    function show(el){
+      var p=el.getAttribute('data-tipcell').split('-'), row=rows[Number(p[0])], c=Number(p[1]), cell=row.cells[c];
+      var head=daily?('Пришли '+dshort(row.date)+' · '+nf(row.size)+' чел.'):('Неделя с '+dshort(row.week)+' · '+nf(row.size)+' чел.');
+      var what=daily?('на '+D.retDays[c]+'-й день после прихода'):('на '+D.retWeeks[c]+'-й неделе после прихода');
+      var body=cell?('<div class="r"><b>'+Math.round(cell[1]/cell[0]*100)+'%</b>вернулись '+what+'</div><div class="r">'+cell[1]+' из '+cell[0]+'</div>')
+        :(cellFuture(row,c,daily)?'<div class="r">'+what+' — этот день ещё не прожит</div>':'<div class="r">'+what+' — данных нет: это было до начала записи</div>');
+      var b=el.getBoundingClientRect();
+      showTip('<div class="d">'+head+'</div>'+body, b.left+b.width/2, b.top);
+    }
+    for(var i=0;i<cells.length;i++){
+      cells[i].onpointerenter=function(){ show(this); };
+      cells[i].onpointerdown=function(){ show(this); };
+      cells[i].onpointerleave=hideTip;
+    }
+  }
+
+  /* ================================================================== */
+  /* Источники                                                           */
+  /* ================================================================== */
+  function cleanTag(v){ return String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,32); }
+  function viewSources(){
+    if(!S.tag) S.tag='ads_'+MON_EN[mskParts(Date.now()).m];
+    var tag=S.tag;
+    var botUrl='https://t.me/'+BOT+'?start='+tag, appUrl='https://t.me/'+BOT+'?startapp='+tag;
+    var builder='<div class="sec"><h2>Ссылка для рекламы</h2></div>'
+      +'<div class="card"><label class="note" for="tagin">Метка: латиница, цифры, «_» и «-»</label>'
+      +'<input class="field" id="tagin" data-act="tag" value="'+esc(tag)+'" autocomplete="off" autocapitalize="off" spellcheck="false" style="margin-top:6px" />'
+      +'<div style="margin-top:6px">'
+      +'<div class="linkrow"><div class="u"><b>Через бота — рекомендуем</b><span id="u-bot">'+esc(botUrl)+'</span></div><button class="btn" data-act="copy" data-v="bot">Копировать</button></div>'
+      +'<div class="linkrow"><div class="u"><b>Сразу в приложение</b><span id="u-app">'+esc(appUrl)+'</span></div><button class="btn ghost" data-act="copy" data-v="app">Копировать</button></div>'
+      +'</div><p class="note" style="margin:6px 0 0">Через бота человек нажимает «Старт» и попадает в чат: там работают запись трат сообщением и напоминания. '
+      +'Сразу в приложение — на один шаг короче. Метка запоминается один раз — за первым касанием, поэтому старые пользователи в улов рекламы не попадут.</p></div>';
+
+    var list=D.sources||[];
+    var rows=list.map(function(s){
+      var d1=s.d1&&s.d1[0]>=3?pct(s.d1[1],s.d1[0]):'—';
+      var since=s.first?(dmsk(s.first)+(s.last&&dmsk(s.last)!==dmsk(s.first)?' — '+dmsk(s.last):'')):'';
+      return '<button class="row" data-act="srcfunnel" data-v="'+esc(s.key)+'"><div class="row-main">'
+        +'<div class="who"><div class="l1"><span class="nm">'+esc(s.label)+'</span>'+(s.key.indexOf('src:')===0?'<span class="tag src">метка</span>':'')+'</div>'
+        +'<div class="l2">пришло <b>'+nf(s.n)+'</b>'+(s.fresh7&&s.fresh7!==s.n?' · за неделю '+nf(s.fresh7):'')+(since?' · '+esc(since):'')+'</div>'
+        +'<div class="l2">записали <b>'+pct(s.act,s.n)+'</b> · вернулись <b>'+pct(s.back,s.n)+'</b> · D1 <b>'+d1+'</b>'+(s.bot?' · боту '+nf(s.bot):'')+'</div></div>'
+        +IC.chev+'</div></button>';
+    }).join('');
+    return builder
+      +'<div class="sec"><h2>Откуда люди</h2><span class="aside">нажмите — воронка</span></div>'
+      +(rows?'<div class="group">'+rows+'</div>':'<div class="card empty">Пока нет ни одного человека</div>')
+      +'<p class="note" style="margin:10px 4px 0">Записали — хоть одна операция в приложении или боту. Вернулись — заходили ещё в какой-то день после прихода. D1 — вернулись ровно на следующий день (по когортам последних двух недель).</p>';
+  }
+  function updateLinks(){
+    var tag=cleanTag(S.tag);
+    var b=$('u-bot'), a=$('u-app');
+    if(b) b.textContent='https://t.me/'+BOT+'?start='+tag;
+    if(a) a.textContent='https://t.me/'+BOT+'?startapp='+tag;
+  }
+  function copy(text){
+    function fallback(){
+      var ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); toast('Скопировано'); }catch(e){ toast('Не получилось — выделите ссылку вручную'); }
+      document.body.removeChild(ta);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){ toast('Скопировано'); },fallback);
+    else fallback();
+  }
+
+  /* ================================================================== */
+  /* Люди                                                                */
+  /* ================================================================== */
+  var PF=[['all','Все'],['new','Новые'],['ops','С операциями'],['zero','Без операций'],['bot','Бот'],['ad','По рекламе']];
+  var PSORT=[['ls','По последнему визиту'],['fs','По дате прихода'],['ops','По операциям'],['w','По последней записи'],['xp','По опыту']];
+  function opsOf(p){ return Math.max(p.o||0,p.b||0); }
+  function statusDot(p){
+    var d=(Date.now()-p.ls)/DAY;
+    return d<=7?'var(--mark)':(d<=30?(isDark()?'#2D7A5A':'#9BD8B6'):'var(--context)');
+  }
+  function personRow(p){
+    var initial=esc((p.n||'?').trim().charAt(0).toUpperCase()||'?');
+    var tags=(p.s?'<span class="tag src">'+esc(p.s)+'</span>':'')+(p.r?'<span class="tag">по приглашению</span>':'')
+      +(p.b?'<span class="tag">бот</span>':'')+(p.a?'':'<span class="tag">без приложения</span>')+(p.x?'<span class="tag blk">заблокировал</span>':'');
+    var ops=opsOf(p);
+    var l2=ops?('<b>'+nf(ops)+'</b> оп.'+(p.w?' · последняя '+ago(p.w):'')+(p.d?' · дней активности '+nf(p.d):'')):'операций нет';
+    return '<button class="row" data-act="person" data-v="'+esc(p.i)+'"><div class="ava'+(ops?' on':'')+'">'+initial+'</div><div class="row-main">'
+      +'<div class="who"><div class="l1"><span class="nm">'+esc(p.n)+'</span>'+(p.u?'<span class="un">@'+esc(p.u)+'</span>':'')+tags+'</div>'
+      +'<div class="l2">'+l2+'</div>'
+      +'<div class="l2"><span class="sdot" style="background:'+statusDot(p)+'"></span>был '+ago(p.ls)+' · пришёл '+(p.e?'≈':'')+dmsk(p.fs)+'</div></div>'
+      +IC.chev+'</div></button>';
+  }
+  function filteredPeople(){
+    var all=D.people||[], q=S.pq.trim().toLowerCase(), weekAgo=Date.now()-7*DAY;
+    var list=all.filter(function(p){
+      if(S.pf==='new' && p.fs<weekAgo) return false;
+      if(S.pf==='ops' && !opsOf(p)) return false;
+      if(S.pf==='zero' && opsOf(p)) return false;
+      if(S.pf==='bot' && !p.b) return false;
+      if(S.pf==='ad' && !p.s) return false;
+      if(q){ var hay=(p.n+' '+(p.u||'')+' '+(p.s||'')+' '+p.i).toLowerCase(); if(hay.indexOf(q)<0) return false; }
       return true;
     });
+    var key=S.ps;
     list.sort(function(a,b){
-      var av=a[psort], bv=b[psort];
-      if(psort==='name'){ av=String(av||'').toLowerCase(); bv=String(bv||'').toLowerCase(); return av<bv?-pdir:(av>bv?pdir:0); }
-      return ((Number(av)||0)-(Number(bv)||0))*pdir;
+      var av=key==='ops'?opsOf(a):(a[key]||0), bv=key==='ops'?opsOf(b):(b[key]||0);
+      return bv-av;
     });
-
-    // Двести карточек в столбик — полтора десятка экранов пролистывания ради
-    // хвоста, который никому не нужен. На телефоне показываем начало списка.
-    var cap=isNarrow()?pcap:200;
-    var shown=list.slice(0,cap);
-    function person(p){
-      return {
-        initial: esc((p.name||'?').trim().charAt(0).toUpperCase()||'?'),
-        st: statusOf(p),
-        tags: (p.fromRef?' <span class="tag ref">по ссылке</span>':'')+(p.blocked?' <span class="tag blk">заблокировал</span>':''),
-        lastTx: (p.lastTx===undefined||p.lastTx===null) ? (p.hasCard?'нет операций':'—') : ago(p.lastTx*DAY),
-        // Для строки списка фраза собирается целиком: «запись нет операций» —
-        // не по-русски, а прочерк рядом со словом «запись» ничего не сообщает.
-        txPhrase: (p.lastTx===undefined||p.lastTx===null) ? '' : ' · последняя ' + ago(p.lastTx*DAY)
-      };
+    return list;
+  }
+  function plistInner(shown){ return shown.length ? shown.map(personRow).join('') : '<div class="empty">Никого не нашлось</div>'; }
+  function moreBtn(shown,total){ return shown<total ? '<button class="more" data-act="more">Показать ещё '+nf(Math.min(30,total-shown))+'</button>' : ''; }
+  function countText(n){ return nf(n)+(n!==D.peopleTotal?' из '+nf(D.peopleTotal):''); }
+  function viewPeople(){
+    var t=D.today, today='';
+    if(t.newcomers.length){
+      today='<div class="sec"><h2>Пришли сегодня</h2><span class="aside">'+nf(D.kpi.newToday)+' чел.</span></div><div class="group">'
+        +t.newcomers.slice(0,8).map(function(x){
+          var st=x.act?'записал(а) операцию':(x.app?'открыл(а) приложение':'нажал(а) «Старт»');
+          return '<button class="row" data-act="person" data-v="'+esc(x.i)+'"><div class="ava'+(x.act?' on':'')+'">'+esc((x.n||'?').charAt(0).toUpperCase())+'</div><div class="row-main">'
+            +'<div class="who"><div class="l1"><span class="nm">'+esc(x.n)+'</span>'+(x.s?'<span class="tag src">'+esc(x.s)+'</span>':'')+(x.r?'<span class="tag">по приглашению</span>':'')+(x.bot?'<span class="tag">бот</span>':'')+'</div>'
+            +'<div class="l2">'+tmsk(x.at)+' · '+st+'</div></div>'+IC.chev+'</div></button>';
+        }).join('')+'</div>';
     }
+    var list=filteredPeople(), shown=list.slice(0,S.pcap);
+    var sortOpts=PSORT.map(function(o){ return '<option value="'+o[0]+'"'+(S.ps===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('');
+    return today
+      +'<div class="sec"><h2>Все люди</h2><span class="aside" id="pcount">'+countText(list.length)+'</span></div>'
+      +'<div class="filters"><input class="search" id="pq" data-act="pq" placeholder="Имя, @ник, метка или id" value="'+esc(S.pq)+'" autocomplete="off" /><select class="select" data-act="psort">'+sortOpts+'</select></div>'
+      +'<div class="filters"><div class="chipbar">'+PF.map(function(f){ return '<button data-act="pf" data-v="'+f[0]+'"'+(S.pf===f[0]?' class="on"':'')+'>'+f[1]+'</button>'; }).join('')+'</div></div>'
+      +'<div class="group" id="plist">'+plistInner(shown)+'</div>'
+      +'<div id="pmore">'+moreBtn(shown.length,list.length)+'</div>'
+      +(D.peopleTotal>(D.people||[]).length?'<p class="note" style="margin:10px 4px 0">В списке '+nf(D.people.length)+' самых свежих из '+nf(D.peopleTotal)+'.</p>':'');
+  }
 
-    if(isNarrow()){
-      // Телефон: те же данные строками сверху вниз. Сортировка — родным
-      // селектом, он на iOS открывается привычным колесом.
-      var opts=PCOLS.filter(function(c){ return c.key!=='name' }).map(function(c){
-        return '<option value="'+c.key+'"'+(psort===c.key?' selected':'')+'>'+esc(c.label)+'</option>';
-      }).join('');
-      $('people-sort').innerHTML='<select class="sortsel" id="psort">'+opts+'</select>';
-      var sel=$('psort');
-      if(sel) sel.onchange=function(){ psort=this.value; pdir=-1; renderPeople(); };
-
-      var items=shown.map(function(p){
-        var v=person(p);
-        return '<div class="li"><div class="ava'+(p.ops>0?'':' off')+'">'+v.initial+'</div>'
-          +'<div class="body"><div class="l1"><span class="nm">'+esc(p.name)+'</span>'
-          +(p.username?'<span class="un">@'+esc(p.username)+'</span>':'')+v.tags+'</div>'
-          +'<div class="l2"><b>'+nf(p.ops)+'</b> оп.'+v.txPhrase
-          +(p.refs?' · привёл <b>'+nf(p.refs)+'</b>':'')+'</div>'
-          +'<div class="l2"><span class="sdot '+v.st+'"></span>был '+ago(p.lastSeen)
-          +' · пришёл '+(p.approx?'≈':'')+dstr(p.firstSeen)+'</div></div></div>';
-      }).join('');
-      $('people-table').innerHTML='';
-      $('people-list').innerHTML=items?'<div class="lst">'+items+'</div>':'<div class="empty">никого не нашлось</div>';
-    } else {
-      $('people-sort').innerHTML='';
-      $('people-list').innerHTML='';
-      var head='<thead><tr>'+PCOLS.map(function(c){
-        return '<th class="sortable '+(c.r?'r ':'')+(psort===c.key?'on':'')+'" data-k="'+c.key+'">'+esc(c.label)
-          +(psort===c.key?(pdir<0?' ↓':' ↑'):'')+'</th>';
-      }).join('')+'</tr></thead>';
-
-      var rows=shown.map(function(p){
-        var v=person(p);
-        return '<tr><td><div class="who"><div class="ava'+(p.ops>0?'':' off')+'">'+v.initial+'</div>'
-          +'<div style="min-width:0"><div class="nm">'+esc(p.name)+v.tags+'</div>'
-          +(p.username?'<div class="un">@'+esc(p.username)+'</div>':'')+'</div></div></td>'
-          +'<td class="r tabular" title="'+esc(new Date(p.firstSeen).toLocaleString('ru-RU'))+'">'+(p.approx?'≈ ':'')+dstr(p.firstSeen)+'</td>'
-          +'<td class="r tabular"><span class="sdot '+v.st+'"></span>'+ago(p.lastSeen)+'</td>'
-          +'<td class="r tabular"><b>'+nf(p.ops)+'</b></td>'
-          +'<td class="r tabular">'+esc(v.lastTx)+'</td>'
-          +'<td class="r tabular">'+kf(p.xp)+'</td>'
-          +'<td class="r tabular">'+(p.refs?nf(p.refs):'—')+'</td></tr>';
-      }).join('');
-
-      $('people-table').innerHTML=head+'<tbody>'+(rows||'<tr><td colspan="7" class="empty">никого не нашлось</td></tr>')+'</tbody>';
-      var ths=$('people-table').querySelectorAll('th.sortable');
-      for(var i=0;i<ths.length;i++){
-        ths[i].onclick=function(){
-          var k=this.getAttribute('data-k');
-          if(psort===k) pdir=-pdir; else { psort=k; pdir=k==='name'?1:-1; }
-          renderPeople();
-        };
-      }
+  /* ---------- Карточка человека ---------- */
+  function openPerson(id){
+    hideTip();
+    sheetOpen=true; $('sheet').hidden=false; document.body.style.overflow='hidden';
+    $('sheet-card').innerHTML='<div class="grab"></div><div class="empty"><span class="spin" style="display:inline-block"></span></div>';
+    if(TG && TG.BackButton){ try{ TG.BackButton.show(); }catch(e){} }
+    api('/admin/person',{id:id}).then(function(p){
+      if(!sheetOpen) return;
+      if(!p||!p.ok){ $('sheet-card').innerHTML='<div class="grab"></div><div class="empty">Не нашёл этого человека</div>'; return; }
+      $('sheet-card').innerHTML=personSheet(p);
+    }).catch(function(){ if(sheetOpen) $('sheet-card').innerHTML='<div class="grab"></div><div class="empty">Нет связи с сервером</div>'; });
+  }
+  function closeSheet(){
+    sheetOpen=false; $('sheet').hidden=true; document.body.style.overflow='';
+    if(TG && TG.BackButton){ try{ TG.BackButton.hide(); }catch(e){} }
+  }
+  var LANG={ru:'русский',en:'английский'}, THEMES={auto:'как в системе',light:'светлая',dark:'тёмная'};
+  function personSheet(p){
+    var c=p.card||{}, g=p.game||{};
+    var chips=(p.src?'<span class="tag src">пришёл по метке '+esc(p.src)+'</span>':'')+(p.fromRef?'<span class="tag">по приглашению</span>':'')
+      +(!p.src&&!p.fromRef?'<span class="tag">пришёл сам</span>':'')+(p.botOps?'<span class="tag">пишет боту</span>':'')
+      +(p.inApp?'':'<span class="tag">приложение не открывал</span>')+(p.blocked?'<span class="tag blk">заблокировал бота</span>':'')
+      +(p.remindersOff?'<span class="tag">напоминания выключены</span>':'')+(p.approx?'<span class="tag">дата прихода оценочная</span>':'');
+    // Полоса активности: 5 недель по 7 дней, последний — сегодня.
+    var cells=[], i;
+    for(i=0;i<p.strip.length;i++){
+      var v=p.strip[i], cls=v===1?'y':(v===0?'':'u');
+      if(v===null && p.firstSeen>p.stripFrom+(i+1)*DAY) cls='x';
+      cells.push('<span class="'+cls+(i===p.strip.length-1?' t':'')+'"></span>');
     }
-
-    var more = shown.length < list.length
-      ? '<button class="iconbtn" id="pmore" style="margin-top:12px">Показать ещё '
-        + nf(Math.min(20, list.length-shown.length)) + '</button>'
-      : '';
-    $('people-more').innerHTML=more;
-    var mb=$('pmore');
-    if(mb) mb.onclick=function(){ pcap+=20; renderPeople(); };
-
-    $('people-note').innerHTML='Показано '+nf(shown.length)+' из '+nf(list.length)+' (в базе '+nf(all.length)+')'
-      + expl('Что значат пометки',
-          '«≈» у даты — регистрация оценочная: человек появился раньше, чем мы начали её записывать. '
-          + '«Запись» — дата последней операции. Она честнее, чем «был»: открыть приложение можно и не записав ничего. '
-          + 'Точка слева: зелёная — заходил за неделю, жёлтая — от недели до месяца, серая — дольше месяца.');
+    // Недели целиком до прихода не рисуем: у новичка это четыре пустые строки.
+    var firstReal=0; while(firstReal<p.strip.length && p.firstSeen>p.stripFrom+(firstReal+1)*DAY) firstReal++;
+    // Дни с прихода, слева направо: так у новичка видно «три дня — был, не был,
+    // был», а не одинокий хвост в конце пустой сетки.
+    var cal=cells.slice(firstReal).join('');
+    var weeks=Math.ceil((p.strip.length-firstReal)/7);
+    var rows=[];
+    function row(t,v,s){ rows.push('<div class="row"><div class="row-main"><div class="who"><div class="t">'+esc(t)+'</div>'+(s?'<div class="s">'+s+'</div>':'')+'</div><div class="v">'+v+'</div></div></div>'); }
+    row('Пришёл',esc(dtmsk(p.firstSeen)));
+    row('Был последний раз',esc(ago(p.lastSeen)),esc(dtmsk(p.lastSeen))+' МСК');
+    row('Операций в приложении',nf(p.ops),c.dd?('дней с записями: '+nf(c.dd)):'');
+    if(p.botOps||p.botLast) row('Записей через бота',nf(p.botOps),p.botLast?('последняя '+esc(ago(p.botLast))):'');
+    if(p.lastWrite) row('Последняя запись',esc(dmsk(p.lastWrite)));
+    row('Уровень и опыт',nf(g.level)+' · '+nf(g.xp)+' XP',g.streakBest?('рекорд серии '+nf(g.streakBest)+' дн.'):'');
+    if(g.refs) row('Привёл друзей',nf(g.refs));
+    var plan=[]; if(c.bud) plan.push('бюджет'); if(c.lim) plan.push('лимиты: '+c.lim); if(c.gl) plan.push('цели: '+c.gl); if(c.iv) plan.push('активы'); if(c.cat) plan.push('свои категории: '+c.cat);
+    if(plan.length) row('Планирование','',esc(plan.join(', ')));
+    var setup=[]; if(c.cur) setup.push(c.cur); if(c.lang) setup.push(LANG[c.lang]||c.lang); if(c.th) setup.push(THEMES[c.th]||c.th);
+    if(setup.length) row('Настройки','',esc(setup.join(' · '))+(c.cc>1?(' · валют в операциях: '+nf(c.cc)):''));
+    var secs=(p.sections||[]).map(function(s){ return '<span class="tag">'+esc(s.label)+' · '+nf(s.n)+'</span>'; }).join('');
+    var tgLink=p.username?('<a href="https://t.me/'+esc(p.username)+'" data-act="tglink" data-v="'+esc(p.username)+'">@'+esc(p.username)+'</a> · '):'';
+    return '<div class="grab"></div>'
+      +'<div class="ph"><div class="ava'+(p.ops||p.botOps?' on':'')+'">'+esc((p.name||'?').charAt(0).toUpperCase())+'</div>'
+      +'<div style="min-width:0;flex:1"><h3>'+esc(p.name)+'</h3><div class="note">'+tgLink+'id '+esc(p.id)+'</div></div>'
+      +'<button class="icon" data-act="close" aria-label="Закрыть">'+IC.close+'</button></div>'
+      +'<div class="chips">'+chips+'</div>'
+      +'<div class="sec" style="margin-top:18px"><h2>Активность</h2><span class="aside">'+(weeks>=5?'за 5 недель':'с прихода')+'</span></div>'
+      +'<div class="cal">'+cal+'</div>'
+      +'<div class="kv" style="margin-top:8px"><span><i class="dotkey" style="background:var(--mark)"></i>был</span><span><i class="dotkey" style="background:var(--sunken)"></i>не был</span><span><i class="dotkey" style="box-shadow:inset 0 0 0 1px var(--hair)"></i>неизвестно</span></div>'
+      +'<div class="group" style="margin-top:16px">'+rows.join('')+'</div>'
+      +(secs?'<div class="sec"><h2>Что открывал</h2></div><div class="chips" style="margin-top:0">'+secs+'</div>':'');
   }
 
-  /* ---------- Разделы ---------- */
-  function renderSections(){
-    var s=D.sections||[], total=D.users.total||1, max=1;
-    for(var i=0;i<s.length;i++) if(s[i].users>max) max=s[i].users;
-    if(!s.length){ $('sections').innerHTML='<div class="empty">данные ещё собираются</div>'; return; }
-    var html='<div class="cardhead"><h3>Что открывают</h3><div class="hint">сплошная часть — те, кто заходил за 30 дней</div></div>';
-    for(i=0;i<s.length;i++){
-      var r=s[i], w=(r.users/max)*100, wa=(r.active/max)*100;
-      html+='<div class="bar"><div class="bl">'+esc(r.label)+'</div>'
-        +'<div class="bt"><div class="bf pale" style="width:'+Math.max(1,w).toFixed(1)+'%"></div>'
-        +'<div class="bf2" style="width:'+Math.max(0,wa).toFixed(1)+'%"></div></div>'
-        +'<div class="bn tabular">'+nf(r.users)+' · '+pc((r.users/total)*100)+'</div></div>';
+  /* ================================================================== */
+  /* Продукт                                                             */
+  /* ================================================================== */
+  function bars(items,opts){
+    opts=opts||{};
+    var max=1,i; for(i=0;i<items.length;i++){ var m=opts.max!=null?opts.max:items[i].n; if(m>max) max=m; }
+    return items.map(function(it,idx){
+      var w=it.n/max*100, c=opts.colors?opts.colors[idx]:(opts.color||'var(--mark)');
+      var under=it.under!=null?'<div class="bf" style="width:'+(it.under/max*100).toFixed(1)+'%;background:var(--context)"></div>':'';
+      return '<div class="bar"><div class="bl">'+esc(it.label)+'</div><div class="bt">'+under
+        +'<div class="bf" style="width:'+(it.n?Math.max(1.5,w):0).toFixed(1)+'%;background:'+c+'"></div></div>'
+        +'<div class="bn tnum">'+nf(it.n)+(it.sub?' <small>'+esc(it.sub)+'</small>':'')+'</div></div>';
+    }).join('');
+  }
+  function viewProduct(){
+    var b=D.bot, w=D.webhook, k=D.kpi, pr=D.product, total=k.total||1;
+    var wh='';
+    if(w){
+      var tone=!w.registered||!w.ok?(w.pending>0&&w.registered?'warn':'bad'):'good';
+      var icon=tone==='good'?IC.good:IC.bad;
+      var txt=!w.registered?'Вебхук не зарегистрирован — бот не получает сообщений'
+        :(w.ok?'Вебхук в порядке, очередь пуста':('В очереди '+nf(w.pending)+' сообщений'+(w.lastError?' · последняя ошибка: '+w.lastError:'')));
+      wh='<div class="ins '+(tone==='warn'?'bad':tone)+'" style="padding-top:12px;border-top:1px solid var(--hair);margin-top:12px">'+icon+'<p>'+esc(txt)+'</p></div>';
     }
-    $('sections').innerHTML=html;
-  }
+    var botBlock='<div class="sec"><h2>Бот</h2><span class="aside">запись сообщением</span></div>'
+      +'<div class="grid g4">'
+      +tile('Пишут боту за неделю',nf(b.users7),'','<span>всего писали '+nf(b.users)+'</span>')
+      +tile('Записей через бота',nf(b.ops),'','<span>за всё время</span>')
+      +tile('Только бот',nf(b.onlyBot),'','<span>пишут, но приложение не открывали</span>')
+      +tile('Нажали «Старт» и ушли',nf(b.startOnly),'','<span>ни записи, ни приложения</span>')
+      +'</div>'+(wh?'<div class="card" style="margin-top:12px;padding-top:4px">'+wh+'</div>':'');
 
-  /* ---------- Настройки и распределение операций ---------- */
-  var LANG={ru:'Русский',en:'English'}, THEMES={auto:'Как в системе',light:'Светлая',dark:'Тёмная'};
-  function distBlock(title,items,map){
-    if(!items || !items.length) return '';
-    var max=1,i; for(i=0;i<items.length;i++) if(items[i].n>max) max=items[i].n;
-    var html='<div class="note" style="margin:14px 0 6px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">'+esc(title)+'</div>';
-    for(i=0;i<items.length;i++){
-      var it=items[i], lb=(map&&map[it.key])||it.key;
-      html+='<div class="bar"><div class="bl">'+esc(lb)+'</div>'
-        +'<div class="bt"><div class="bf" style="width:'+Math.max(1,(it.n/max)*100).toFixed(1)+'%"></div></div>'
-        +'<div class="bn tabular">'+nf(it.n)+'</div></div>';
+    var secs=pr.sections.map(function(s){ return { label:s.label, n:s.active, under:s.users, sub:'из '+nf(s.users) }; });
+    var sectionBlock='<div class="sec"><h2>Разделы</h2><span class="aside">кто открывал</span></div><div class="card">'
+      +(secs.length?bars(secs)+'<div class="legend"><span><i class="box" style="background:var(--context)"></i>открывали когда-либо</span><span><i class="box" style="background:var(--mark)"></i>из них заходили за 30 дней</span></div>':'<div class="empty">данные ещё собираются</div>')+'</div>';
+
+    var pl=pr.planning, base=pl.cards||1;
+    var planBlock='<div class="card"><div class="cardhead"><h3>Настроили планирование</h3><span class="note">из '+nf(pl.cards)+' с данными</span></div>'
+      +bars([{label:'Бюджет месяца',n:pl.budget,sub:pct(pl.budget,base)},{label:'Лимиты категорий',n:pl.limits,sub:pct(pl.limits,base)},{label:'Цели',n:pl.goals,sub:pct(pl.goals,base)},{label:'Активы',n:pl.invest,sub:pct(pl.invest,base)},{label:'Свои категории',n:pl.cats,sub:pct(pl.cats,base)}],{max:base})
+      +'</div>';
+    var ob=pr.opsBuckets, rampL=['var(--context)','#9BD8B6','#5DB996','#2D8866','#1D5743'], rampD=['var(--context)','#2D7A5A','#3CA37B','#6CC39E','#B8E5CC'];
+    var opsBlock='<div class="card"><div class="cardhead"><h3>Сколько у людей операций</h3></div>'
+      +bars([{label:'Ни одной',n:ob[0]},{label:'1–4',n:ob[1]},{label:'5–19',n:ob[2]},{label:'20–99',n:ob[3]},{label:'100 и больше',n:ob[4]}],{colors:isDark()?rampD:rampL})
+      +'</div>';
+    var db=pr.daysBuckets;
+    var daysBlock='<div class="card"><div class="cardhead"><h3>В скольких днях есть записи</h3><span class="note">глубина привычки</span></div>'
+      +bars([{label:'1 день',n:db[0]},{label:'2–3 дня',n:db[1]},{label:'4–7 дней',n:db[2]},{label:'8–30 дней',n:db[3]},{label:'больше 30',n:db[4]}],{colors:(isDark()?rampD:rampL).slice(0).map(function(c,i){ return i===0?(isDark()?'#25573F':'#C6E8D4'):c; })})
+      +'</div>';
+    var st=pr.settings;
+    function dist(title,items,map){
+      if(!items||!items.length) return '';
+      // Хвост сворачиваем в «Другие»: восемь полос валют на телефоне — экран прокрутки.
+      var head=items.slice(0,4), rest=items.slice(4).reduce(function(a,x){ return a+x.n; },0);
+      var rowsD=head.map(function(x){ return { label:(map&&map[x.key])||x.key, n:x.n }; });
+      if(rest) rowsD.push({ label:'Другие', n:rest });
+      return '<div class="note" style="margin:14px 0 4px;font-weight:600">'+esc(title)+'</div>'+bars(rowsD);
     }
-    return html;
-  }
-  function renderSettings(){
-    var s=D.settings||{};
-    var html='<div class="cardhead"><h3>Как настроено</h3><div class="hint">по собранным карточкам</div></div>';
-    html+=distBlock('Валюта',s.currency);
-    html+=distBlock('Язык',s.lang,LANG);
-    html+=distBlock('Тема',s.theme,THEMES);
-    html+=distBlock('Версия хранилища',s.version);
-    $('settings').innerHTML=html;
-
-    var b=D.opsBuckets||[0,0,0,0,0];
-    var labels=['Ни одной','1–4','5–19','20–99','100 и больше'];
-    var max=1,i; for(i=0;i<b.length;i++) if(b[i]>max) max=b[i];
-    var h2='<div class="cardhead"><h3>Сколько у людей операций</h3></div>';
-    for(i=0;i<b.length;i++){
-      h2+='<div class="bar"><div class="bl">'+labels[i]+'</div>'
-        +'<div class="bt"><div class="bf" style="width:'+Math.max(1,(b[i]/max)*100).toFixed(1)+'%;background:'+(i===0?'var(--rose)':'var(--brand)')+'"></div></div>'
-        +'<div class="bn tabular">'+nf(b[i])+'</div></div>';
+    var setBlock='<div class="card"><div class="cardhead"><h3>Как настроено</h3></div>'
+      +dist('Валюта',st.currency)+dist('Язык',st.lang,{ru:'Русский',en:'English'})+dist('Тема',st.theme,{auto:'Как в системе',light:'Светлая',dark:'Тёмная'})+dist('Версия хранилища',st.version)+'</div>';
+    var g=D.game;
+    function top(list,val,unit){
+      if(!list.length) return '<div class="empty">пока пусто</div>';
+      return '<div class="group">'+list.map(function(e,i){
+        return '<button class="row" data-act="person" data-v="'+esc(e.i)+'"><div class="ava">'+(i+1)+'</div><div class="row-main"><div class="who"><div class="nm">'+esc(e.n)+'</div>'
+          +(e.u?'<div class="l2">@'+esc(e.u)+'</div>':'')+'</div><div class="v">'+nf(e[val])+'<small>'+unit+'</small></div></div></button>';
+      }).join('')+'</div>';
     }
-    var g=D.game||{};
-    h2+='<div class="note" style="margin-top:16px">Всего XP '+kf(g.sumXp)+' · монет '+kf(g.sumCoins)
-      +' · средний уровень '+(g.avgLevel||0)+' · приглашений '+nf((D.referrals||{}).total||0)+'</div>';
-    $('ops').innerHTML=h2;
+    return botBlock+sectionBlock
+      +'<div class="sec"><h2>Глубина использования</h2></div><div class="grid g2 start">'+planBlock+opsBlock+daysBlock+setBlock+'</div>'
+      +'<div class="sec"><h2>Игра</h2></div><p class="note" style="margin:-4px 4px 10px">Опыта у всех '+nf(g.sumXp)+' · монет '+nf(g.sumCoins)+' · средний уровень '+g.avgLevel+'</p>'
+      +'<div class="grid g2 start"><div><div class="note" style="margin:0 4px 8px;font-weight:600">По опыту</div>'+top(D.topXp,'xp','XP')+'</div>'
+      +'<div><div class="note" style="margin:0 4px 8px;font-weight:600">По приглашениям</div>'+top(D.topRefs,'refs','друзей')+'</div></div>';
   }
 
-  /* ---------- Топы ---------- */
-  function renderTops(){
-    var narrow=isNarrow();
-    function ava(e){ return '<div class="ava">'+esc((e.name||'?').charAt(0).toUpperCase())+'</div>'; }
-    var xp=D.topXp||[], rf=D.topRefs||[], html;
+  /* ---------- После отрисовки ---------- */
+  function afterRender(){
+    if(S.tab==='overview'){ drawSparks(); drawChart(); bindHours(); }
+    if(S.tab==='product') drawSparks();
+    if(S.tab==='retention') bindHeat();
+  }
 
-    if(narrow){
-      html=xp.map(function(e){
-        return '<div class="li">'+ava(e)+'<div class="body"><div class="l1"><span class="nm">'+esc(e.name)+'</span>'
-          +(e.username?'<span class="un">@'+esc(e.username)+'</span>':'')+'</div>'
-          +'<div class="l2">уровень '+(e.level||0)+' · '+nf(e.ops||0)+' оп.</div></div>'
-          +'<div class="side">'+kf(e.xp)+'<small>XP</small></div></div>';
-      }).join('');
-      $('top-xp').innerHTML=html?'<div class="lst">'+html+'</div>':'<div class="empty">нет данных</div>';
-
-      html=rf.map(function(e){
-        return '<div class="li">'+ava(e)+'<div class="body"><div class="l1"><span class="nm">'+esc(e.name)+'</span>'
-          +(e.username?'<span class="un">@'+esc(e.username)+'</span>':'')+'</div></div>'
-          +'<div class="side">'+nf(e.refs||0)+'<small>друзей</small></div></div>';
-      }).join('');
-      $('top-refs').innerHTML=html?'<div class="lst">'+html+'</div>':'<div class="empty">пока никто не приглашал</div>';
-      return;
+  /* ---------- Действия ---------- */
+  function haptic(){ try{ if(TG && TG.HapticFeedback) TG.HapticFeedback.selectionChanged(); }catch(e){} }
+  document.addEventListener('click',function(e){
+    var el=e.target.closest ? e.target.closest('[data-act]') : null;
+    if(!el) { if(!e.target.closest || !e.target.closest('.hours,.chart,.heat')) hideTip(); return; }
+    var act=el.getAttribute('data-act'), v=el.getAttribute('data-v');
+    if(el.tagName==='SELECT'||el.tagName==='INPUT') return;
+    if(act==='tab'){ S.tab=v; haptic(); render(); window.scrollTo(0,0); }
+    else if(act==='win'){ S.win=v; haptic(); render(); }
+    else if(act==='chart'){ S.chart=v; haptic(); render(); }
+    else if(act==='range'){ S.range=Number(v); haptic(); render(); }
+    else if(act==='table'){ S.table=!S.table; render(); }
+    else if(act==='ret'){ S.retMode=v; haptic(); render(); }
+    else if(act==='pf'){ S.pf=v; S.pcap=30; haptic(); render(); }
+    else if(act==='more'){ S.pcap+=30; render(); }
+    else if(act==='person'){ openPerson(v); }
+    else if(act==='close'){ closeSheet(); }
+    else if(act==='srcfunnel'){ S.src=v; S.tab='overview'; haptic(); render(); var f=document.querySelector('.step'); if(f) f.scrollIntoView({block:'center'}); }
+    else if(act==='copy'){ var t=cleanTag(S.tag); if(!t){ toast('Сначала придумайте метку'); return; } copy('https://t.me/'+BOT+(v==='bot'?'?start=':'?startapp=')+t); }
+    else if(act==='tglink'){ if(TG && TG.openTelegramLink){ e.preventDefault(); TG.openTelegramLink('https://t.me/'+v); } }
+    else if(act==='digest'){
+      el.disabled=true;
+      api('/admin/digest',{}).then(function(r){ el.disabled=false; toast(r&&r.ok?'Сводка отправлена в Telegram':'Не удалось отправить'); })
+        .catch(function(){ el.disabled=false; toast('Не удалось отправить'); });
     }
-
-    html='<table><thead><tr><th>Пользователь</th><th class="r">Ур.</th><th class="r">XP</th><th class="r">Опер.</th></tr></thead><tbody>';
-    html+=xp.map(function(e){
-      return '<tr><td><div class="who">'+ava(e)+'<div style="min-width:0">'
-        +'<div class="nm">'+esc(e.name)+'</div>'+(e.username?'<div class="un">@'+esc(e.username)+'</div>':'')+'</div></div></td>'
-        +'<td class="r tabular">'+(e.level||0)+'</td><td class="r tabular">'+kf(e.xp)+'</td><td class="r tabular">'+nf(e.ops||0)+'</td></tr>';
-    }).join('')||'<tr><td colspan="4" class="empty">нет данных</td></tr>';
-    $('top-xp').innerHTML=html+'</tbody></table>';
-
-    html='<table><thead><tr><th>Пользователь</th><th class="r">Привёл</th></tr></thead><tbody>';
-    html+=rf.map(function(e){
-      return '<tr><td><div class="who">'+ava(e)+'<div style="min-width:0">'
-        +'<div class="nm">'+esc(e.name)+'</div>'+(e.username?'<div class="un">@'+esc(e.username)+'</div>':'')+'</div></div></td>'
-        +'<td class="r tabular"><b>'+nf(e.refs||0)+'</b></td></tr>';
-    }).join('')||'<tr><td colspan="2" class="empty">пока никто не приглашал</td></tr>';
-    $('top-refs').innerHTML=html+'</tbody></table>';
-  }
-
-  /* ---------- Сборка ---------- */
-  function render(){
-    renderHero(); renderFunnel(); renderLifecycle();
-    segsAll();
-    renderChart(); renderCohorts(); renderPeople(); renderSections(); renderSettings(); renderTops();
-    paintBanner();
-
-    var cov=D.coverage||{};
-    $('coverage').innerHTML=expl('Откуда берутся эти числа',
-      'Данные собираются сами: когда человек открывает приложение, воркер запоминает про него несколько '
-      +'чисел — сколько операций, когда была последняя, какие разделы открывал, как настроено. Денежных '
-      +'сумм среди них нет и не будет. Сейчас такие данные есть по <b>'+nf(cov.withCard)+'</b> из '
-      +nf(cov.cloudKeys)+' синхронизированных'
-      +(cov.launchOnly>0 ? '; ещё '+nf(cov.launchOnly)+' чел. только запускали приложение и ни разу не '
-        +'синхронизировались — про них известны лишь запуск и XP' : '')
-      +'. Отставших дашборд добирает сам при открытии.');
-    $('updated').textContent='обновлено '+new Date(D.generatedAt||Date.now()).toLocaleString('ru-RU');
-  }
-  function segsAll(){
-    segs('metric-segs',METRIC_SEGS,metric,function(k){ metric=k; renderChart(); segsAll(); });
-    segs('range-segs',RANGE_SEGS,range,function(k){ range=k; renderChart(); segsAll(); });
-    segs('people-segs',PEOPLE_SEGS,pfilter,function(k){ pfilter=k; pcap=20; renderPeople(); segsAll(); });
-  }
-
-  /* ---------- Загрузка ---------- */
-  /** Один запрос статистики. Возвращает данные или null, если показывать нечего. */
-  function fetchStats(opts){
-    var key=null;
-    try{ key=sessionStorage.getItem(KEY); }catch(e){}
-    if(!key){ showLogin(); return Promise.resolve(null); }
-    return fetch('/admin/stats',{
-      method:'POST',
-      headers:{'X-Admin-Key':key,'Content-Type':'application/json'},
-      body:JSON.stringify(opts||{})
-    })
-      .then(function(res){
-        if(res.status===403){ try{ sessionStorage.removeItem(KEY); }catch(e){} showLogin('Неверный пароль'); return null; }
-        if(res.status===429){ showLogin('Слишком много попыток, подождите минуту'); return null; }
-        return res.json();
-      })
-      .then(function(d){ return (d && d.ok) ? d : null; })
-      .catch(function(){ return null; });
-  }
-
-  function load(opts){
-    $('dash').className='wrap loading';
-    fetchStats(opts).then(function(d){
-      $('dash').className='wrap';
-      if(d){ D=d; showDash(); render(); autoBackfill(); }
-    });
-  }
-
-  /*
-   * Дозаполнение идёт порциями: за один запрос воркер обрабатывает столько ключей,
-   * сколько помещается под потолок подзапросов. Заставлять человека нажимать кнопку
-   * восемь раз подряд незачем — крутим порции сами, пока база не пройдена целиком.
-   */
-  var bfBusy=false, bfDone=false, bfMsg='';
-
-  /**
-   * Карточки собираются сами. Порция за запрос ограничена потолком подзапросов
-   * Worker, поэтому крутим порции по кругу — но это забота страницы, а не
-   * человека: он открыл дашборд, чтобы смотреть, а не нажимать кнопки.
-   */
-  function autoBackfill(){
-    if(bfBusy || bfDone) return;
-    var cov=(D&&D.coverage)||{};
-    if(((cov.cloudKeys||0)-(cov.withCard||0))<=0){ bfDone=true; return; }
-    bfBusy=true; bfMsg='собираю данные'; paintBanner();
-    var filled=0, rounds=0;
-    function step(){
-      rounds++;
-      fetchStats({backfill:true}).then(function(d){
-        if(!d){ bfBusy=false; bfDone=true; bfMsg=''; paintBanner(); return; }
-        var bf=d.backfill||{};
-        filled+=bf.filled||0;
-        // Порция без просмотренных ключей означает, что двигаться больше некуда;
-        // потолок кругов — страховка от бесконечного цикла.
-        if(bf.done || !bf.scanned || rounds>=40){
-          bfBusy=false; bfDone=true; bfMsg='';
-          D=d; render(); return;
-        }
-        bfMsg='собираю данные'; D=d; render(); step();
-      });
+  });
+  document.addEventListener('change',function(e){
+    var el=e.target, act=el.getAttribute && el.getAttribute('data-act');
+    if(act==='src'){ S.src=el.value; render(); }
+    else if(act==='retsrc'){ S.retSrc=el.value; render(); }
+    else if(act==='psort'){ S.ps=el.value; render(); }
+  });
+  document.addEventListener('input',function(e){
+    var el=e.target, act=el.getAttribute && el.getAttribute('data-act');
+    if(act==='pq'){
+      S.pq=el.value; S.pcap=30;
+      // Перерисовываем только список, чтобы поле поиска не теряло фокус.
+      var list=filteredPeople(), shown=list.slice(0,S.pcap), host=$('plist');
+      if(host){
+        host.innerHTML=plistInner(shown);
+        $('pmore').innerHTML=moreBtn(shown.length,list.length);
+        $('pcount').textContent=countText(list.length);
+      } else render();
+    } else if(act==='tag'){
+      var clean=cleanTag(el.value);
+      if(clean!==el.value) el.value=clean;
+      S.tag=clean; updateLinks();
     }
-    step();
-  }
+  });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape' && sheetOpen) closeSheet(); });
+  window.addEventListener('scroll',hideTip,{passive:true});
 
-  /** Тонкая строка состояния. Пока идёт сбор — предупреждает, что числа ещё растут. */
-  function paintBanner(){
-    var cov=(D&&D.coverage)||{}, host=$('cov-banner');
-    if(!host) return;
-    var missing=(cov.cloudKeys||0)-(cov.withCard||0);
-    if(!missing && !bfBusy){ host.innerHTML=''; return; }
-    host.innerHTML='<div class="banner"><div class="txt">'
-      +(bfBusy?'<span class="spin"></span>':'')
-      +'Собраны данные по <b>'+nf(cov.withCard)+'</b> из '+nf(cov.cloudKeys)+' человек. '
-      +'Пока идёт сбор, «записывают операции», разделы и настройки занижены.'
-      +'</div></div>';
-  }
-
+  /* ---------- Старт ---------- */
   function doLogin(){
     var v=$('login-pass').value.trim();
     if(!v){ $('login-err').textContent='Введите пароль'; return; }
-    try{ sessionStorage.setItem(KEY,v); }catch(e){}
-    load();
+    try{
+      if($('login-remember').checked) localStorage.setItem(KEY,v); else sessionStorage.setItem(KEY,v);
+    }catch(e){}
+    $('login-err').textContent='';
+    load({fresh:true});
   }
 
+  /** initData из адресной строки: так его передаёт Telegram, открывая страницу кнопкой. */
+  function readTgInit(){
+    try{
+      var h=location.hash ? location.hash.slice(1) : '';
+      var v=new URLSearchParams(h).get('tgWebAppData');
+      return v || '';
+    }catch(e){ return ''; }
+  }
+  function loadTgSdk(){
+    var s=document.createElement('script');
+    s.src='https://telegram.org/js/telegram-web-app.js';
+    s.onload=function(){
+      TG=window.Telegram && window.Telegram.WebApp;
+      if(!TG) return;
+      try{ TG.ready(); TG.expand(); }catch(e){}
+      var saved=null; try{ saved=localStorage.getItem(THEME); }catch(e){}
+      applyTheme(saved || (TG.colorScheme==='light'?'light':'dark'),false);
+      if(D) render();
+      try{ TG.BackButton.onClick(closeSheet); }catch(e){}
+    };
+    document.head.appendChild(s);
+  }
+
+  tipEl=$('tip');
   initTheme();
-  $('theme-btn').onclick=function(){
-    applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');
-    if(D) renderChart();
-  };
+  tgInit=readTgInit();
+  if(tgInit) loadTgSdk();
+  $('theme').onclick=function(){ applyTheme(isDark()?'light':'dark',true); if(D) render(); };
+  $('refresh').onclick=function(){ load({fresh:true}); };
+  $('logout').onclick=function(){ try{ localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); }catch(e){} D=null; showLogin(); };
   $('login-btn').onclick=doLogin;
   $('login-pass').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
-  $('logout').onclick=function(){ try{ sessionStorage.removeItem(KEY); }catch(e){} showLogin(); };
-  $('refresh').onclick=function(){ load(); };
-  $('q').addEventListener('input',function(){ pcap=20; if(D) renderPeople(); });
+  $('status').onclick=function(){
+    var w=D&&D.webhook; if(!w) return;
+    toast(!w.registered?'Вебхук не зарегистрирован':(w.ok?'Бот получает сообщения, очередь пуста':('В очереди '+w.pending+(w.lastError?': '+w.lastError:''))));
+  };
 
-  // Поворот телефона меняет режим вёрстки (список ↔ таблица) и ширину графика,
-  // поэтому после изменения размера перерисовываем целиком.
+  // Поворот телефона и смена ширины меняют геометрию графиков — перерисовываем.
   var rt=null, lastW=window.innerWidth;
   window.addEventListener('resize',function(){
-    if(window.innerWidth===lastW) return;
-    lastW=window.innerWidth;
-    clearTimeout(rt);
-    rt=setTimeout(function(){ if(D) render(); },180);
+    if(window.innerWidth===lastW) return; lastW=window.innerWidth;
+    clearTimeout(rt); rt=setTimeout(function(){ if(D) render(); },180);
+  });
+  // Сами обновляемся раз в минуту, пока страница на экране и человек ничего не вводит.
+  setInterval(function(){
+    if(!D || document.visibilityState!=='visible' || sheetOpen) return;
+    var a=document.activeElement; if(a && (a.tagName==='INPUT'||a.tagName==='SELECT')) return;
+    load();
+  },60000);
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible' && D && Date.now()-lastLoad>60000) load();
   });
 
-  load();
+  if(tgInit || savedKey()) load({fresh:true}); else showLogin();
 })();
 </script>
 </body>

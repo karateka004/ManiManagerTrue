@@ -6,7 +6,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "lint": "tsc --noEmit && node scripts/check-admin-js.mjs && node scripts/check-categories.mjs && node scripts/check-currencies.mjs && node scripts/test-entry.mjs && node --import ./scripts/ts-resolve.mjs scripts/test-reply.mjs"
+    "lint": "tsc --noEmit && node --import ./scripts/ts-resolve.mjs scripts/check-admin-js.mjs && node scripts/check-categories.mjs && node scripts/check-currencies.mjs && node scripts/test-entry.mjs && node --import ./scripts/ts-resolve.mjs scripts/test-reply.mjs && node --import ./scripts/ts-resolve.mjs scripts/test-analytics.mjs",
+    "admin:preview": "node --import ./scripts/ts-resolve.mjs scripts/admin-preview.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240924.0",

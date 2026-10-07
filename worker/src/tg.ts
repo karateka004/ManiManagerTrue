@@ -85,6 +85,8 @@ export async function sendMessage(
   chatId: string | number,
   text: string,
   replyMarkup?: unknown,
+  /** Без звука: сообщение придёт, но телефон не зазвенит (ночная сводка). */
+  silent?: boolean,
 ): Promise<{ ok: boolean; status: number }> {
   const r = await call(env, 'sendMessage', {
     chat_id: chatId,
@@ -92,6 +94,7 @@ export async function sendMessage(
     parse_mode: 'HTML',
     disable_web_page_preview: true,
     ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    ...(silent ? { disable_notification: true } : {}),
   })
   return { ok: r.ok, status: r.status }
 }

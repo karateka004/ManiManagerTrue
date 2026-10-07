@@ -24,9 +24,33 @@
 
 import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
-import { answerQuestion, APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
+import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
 import { isRateLimited } from './limits'
+import {
+  BACKFILL_SLICE,
+  DATA_PREFIX,
+  activityStrip,
+  assemble as assembleParts,
+  backfillCards,
+  buildUserCard,
+  collectPeople,
+  computeDashboard,
+  dayReport,
+  digestText,
+  fitMeta,
+  parseUpdatedAt,
+  readHistory,
+  recordSnapshot,
+  sectionsOf,
+  snapshotRow,
+  type Collected,
+  type DataMeta,
+  type WebhookHealth,
+} from './analytics'
+import { MSK_OFFSET_MS, markDay, mskDay, mskDayStart, startOfTodayMskMs } from './days'
+import { SRC_PREFIX, campaignTag, startParamOf, type SourceMeta } from './sources'
+import type { InboxMeta } from './inbox'
 import {
   escapeHtml,
   getWebhookInfo,
@@ -85,6 +109,17 @@ interface LeaderEntry {
   firstSeen?: number
   /** firstSeen — оценка (запись существовала до появления поля). */
   fsx?: 1
+  /**
+   * Метка рекламной ссылки, по которой человек впервые открыл приложение
+   * (sources.ts). Только для аналитики — в публичный рейтинг не уходит.
+   */
+  src?: string
+  /**
+   * Дни запусков приложения: маска и день её нулевого бита (days.ts). По ним
+   * считается честное удержание D1…D30. Только для аналитики.
+   */
+  vm?: string
+  vd?: number
 }
 
 /** Ключ и лимит размера таблицы лидеров в KV. */
@@ -356,15 +391,25 @@ export default {
             'Content-Type': 'text/html; charset=utf-8',
             // Внутренний инструмент: self + inline (графики/скрипт рисуются на странице).
             // Шрифт тот же, что в приложении, — иначе дашборд выглядел бы чужим.
+            // telegram.org — скрипт WebApp: открытый из бота, дашборд входит по
+            // подписи владельца без пароля. Встраивать страницу разрешено только
+            // веб-версии Telegram (она открывает мини-аппы во фрейме).
             'Content-Security-Policy':
               "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-              "font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'",
-            'X-Frame-Options': 'DENY',
+              "font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://telegram.org; " +
+              "connect-src 'self'; img-src 'self' data:; frame-ancestors 'self' https://web.telegram.org",
+            'Cache-Control': 'no-store',
           },
         })
       }
       if (url.pathname === '/admin/stats' && req.method === 'POST') {
         return await handleAdminStats(req, env, origin)
+      }
+      if (url.pathname === '/admin/person' && req.method === 'POST') {
+        return await handleAdminPerson(req, env, origin)
+      }
+      if (url.pathname === '/admin/digest' && req.method === 'POST') {
+        return await handleAdminDigest(req, env, origin)
       }
       if (url.pathname === '/' || url.pathname === '/health') {
         return json({ ok: true, service: 'koshel-worker' }, { status: 200 }, env, origin)
@@ -550,6 +595,17 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   const previousXp = clampInt(previousEntry?.xp)
   const xp = Math.max(capped, previousXp)
 
+  const now = Date.now()
+  // День запуска — в маску дней. Новой записи в KV это не стоит: карточка и так
+  // переписывается при первом за сутки запуске (см. проверку ниже).
+  const visits = markDay(
+    previousEntry?.vm !== undefined ? { m: previousEntry.vm, d: previousEntry.vd } : undefined,
+    mskDay(now),
+  )
+  // Метка рекламной ссылки — только при самом первом запуске: считаем первое
+  // касание, и старый пользователь, нажавший на рекламу, не попадёт в её улов.
+  const src = previousEntry ? previousEntry.src : (campaignTag(startParamOf(body.initData ?? '')) ?? undefined)
+
   const entry: LeaderEntry = {
     id: user.id,
     name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Без имени',
@@ -563,12 +619,15 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
     coins: Math.min(clampInt(body.coins), HARD_MAX_COINS),
     streakBest: Math.min(clampInt(body.streakBest), 3650), // 10 лет — заведомо выше реального
     refs,
-    at: Date.now(),
+    at: now,
     // Дата первого запуска: ставим один раз и больше не трогаем. Для тех, кто
     // уже был в рейтинге до появления поля, берём дату последнего обновления —
     // это оценка «не позже чем», и аналитика помечает такие когорты приблизительными.
-    firstSeen: previousEntry?.firstSeen ?? (previousEntry ? previousEntry.at : Date.now()),
+    firstSeen: previousEntry?.firstSeen ?? (previousEntry ? previousEntry.at : now),
     ...(previousEntry && previousEntry.firstSeen === undefined ? { fsx: 1 as const } : previousEntry?.fsx ? { fsx: 1 as const } : {}),
+    ...(src ? { src } : {}),
+    vm: visits.m,
+    vd: visits.d,
   }
 
   // Профиль уходит при каждом запуске приложения, а меняется редко. Писать
@@ -699,6 +758,16 @@ async function readLeaderboardTotal(env: Env, fallback: number): Promise<number>
   return typeof metadata?.total === 'number' ? Math.max(metadata.total, fallback) : fallback
 }
 
+/**
+ * Карточка для чужих глаз. Метка источника, дни визитов и дата прихода нужны
+ * только аналитике владельца: рейтинг видят все участники, и показывать им, когда
+ * и как часто заходит каждый, незачем.
+ */
+function publicEntry(e: LeaderEntry): Omit<LeaderEntry, 'src' | 'vm' | 'vd' | 'firstSeen' | 'fsx'> {
+  const { src: _src, vm: _vm, vd: _vd, firstSeen: _fs, fsx: _fsx, ...rest } = e
+  return rest
+}
+
 /** Отдать топ участников + позицию вызывающего (по XP и по рефералам). */
 async function handleLeaderboard(req: Request, env: Env, origin: string | null): Promise<Response> {
   const initData = await readInitData(req)
@@ -720,8 +789,8 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
   const board = (sorted: LeaderEntry[]) => {
     const rankIdx = sorted.findIndex((e) => String(e.id) === myId)
     return {
-      top: sorted.slice(0, TOP),
-      me: rankIdx >= 0 ? { rank: rankIdx + 1, ...sorted[rankIdx] } : null,
+      top: sorted.slice(0, TOP).map(publicEntry),
+      me: rankIdx >= 0 ? { rank: rankIdx + 1, ...publicEntry(sorted[rankIdx]) } : null,
     }
   }
 
@@ -747,8 +816,7 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
  * прочитать нельзя.
  */
 
-/** Префикс ключа KV для пользовательских данных. */
-const DATA_PREFIX = 'data:'
+/* Префикс ключа KV для пользовательских данных — DATA_PREFIX из analytics.ts. */
 /** Потолок размера блоба (символов) — защита от разрастания значения KV. */
 const MAX_BLOB = 2_000_000
 
@@ -782,158 +850,7 @@ function blobStreakBest(blob: string): number {
   }
 }
 
-/* ---------- Аналитическая карточка пользователя ----------
-   Дашборду нужны не сами данные человека, а несколько чисел про них: сколько
-   операций, когда была последняя, какие разделы открывались, заданы ли бюджет и
-   цели. Раньше админка ради этого читала и разбирала КАЖДЫЙ блоб на каждый свой
-   запрос — это N обращений к KV и десятки мегабайт JSON на одну загрузку
-   страницы; на нынешней базе такой запрос упирается в лимит подзапросов Worker.
-
-   Считаем карточку там, где блоб и так уже в руках и уже разбирается, — в момент
-   записи (`/data/put`), и кладём её в МЕТАДАННЫЕ ключа. Метаданные приходят
-   вместе со списком ключей, поэтому вся аналитика собирается одним `list`.
-
-   Сумм денег здесь нет и не будет: приложение прямо обещает пользователю, что
-   доходы и расходы никуда не отправляются. Считаем только количества и даты. */
-
-/** Короткие коды событий — метаданные KV ограничены 1024 байтами, имена туда не влезут. */
-const EVENT_CODE: Record<string, string> = {
-  visit_analytics: 'a',
-  visit_charts: 'c',
-  use_period: 'p',
-  add_category: 'k',
-  set_budget: 'b',
-  add_goal: 'g',
-  customize: 'z',
-  open_planning: 'l',
-  open_achievements: 'h',
-  open_leaderboard: 'r',
-  use_repeat: 'e',
-  use_search: 's',
-}
-
-interface UserCard {
-  /** Операций всего. */
-  ops: number
-  /** Дата первой/последней операции в epoch-днях (не мс — экономим байты). */
-  ft?: number
-  lt?: number
-  /** Валюта, язык и тема — как настроил пользователь. */
-  cur?: string
-  lang?: string
-  th?: string
-  /** Задан общий месячный бюджет. */
-  bud?: 1
-  /** Сколько категорийных лимитов задано. */
-  lim?: number
-  gl?: number
-  iv?: number
-  cat?: number
-  sb?: number
-  dm?: 1
-  rm?: 0
-  /** Сколько разных валют встречается в операциях. */
-  cc?: number
-  /** Счётчики событий по коротким кодам (только ненулевые). */
-  ev?: Record<string, number>
-  /** Версия persist-стора — видно, кто ещё не обновился. */
-  v?: number
-}
-
-interface DataMeta {
-  updatedAt?: number
-  firstSeen?: number
-  /** Аналитическая карточка. Появляется у ключа при первой же записи после выката. */
-  c?: UserCard
-}
-
-/** Потолок метаданных KV — 1024 байта. Держимся ниже с запасом. */
-const META_BUDGET = 950
-
-const EPOCH_DAY = 86_400_000
-
-/** Собрать карточку из persist-блоба. null — блоб не разобрать. */
-function buildUserCard(blob: string): UserCard | null {
-  let state: Record<string, unknown>
-  let version: unknown
-  try {
-    const parsed = JSON.parse(blob) as { state?: Record<string, unknown>; version?: unknown }
-    if (!parsed || typeof parsed.state !== 'object' || !parsed.state) return null
-    state = parsed.state
-    version = parsed.version
-  } catch {
-    return null
-  }
-
-  const len = (x: unknown) => (Array.isArray(x) ? x.length : 0)
-  const str = (x: unknown) => (typeof x === 'string' && x.length <= 12 ? x : undefined)
-
-  const txs = Array.isArray(state.transactions) ? (state.transactions as { date?: unknown; currency?: unknown }[]) : []
-  let first = Infinity
-  let last = -Infinity
-  const currencies = new Set<string>()
-  for (const t of txs) {
-    const ms = typeof t?.date === 'string' ? Date.parse(t.date) : NaN
-    if (Number.isFinite(ms)) {
-      if (ms < first) first = ms
-      if (ms > last) last = ms
-    }
-    if (typeof t?.currency === 'string' && currencies.size < 12) currencies.add(t.currency)
-  }
-
-  const budgets = (state.budgets ?? {}) as Record<string, unknown>
-  const limits = Object.keys(budgets).filter((k) => Number(budgets[k]) > 0).length
-
-  const events = (state.events ?? {}) as Record<string, unknown>
-  const ev: Record<string, number> = {}
-  for (const key of Object.keys(events)) {
-    const code = EVENT_CODE[key]
-    const n = Math.floor(Number(events[key]) || 0)
-    if (code && n > 0) ev[code] = Math.min(n, 99_999)
-  }
-
-  const streakBest = Math.floor(Number((state.streak as { best?: unknown } | undefined)?.best) || 0)
-
-  const card: UserCard = { ops: txs.length }
-  if (first !== Infinity) card.ft = Math.floor(first / EPOCH_DAY)
-  if (last !== -Infinity) card.lt = Math.floor(last / EPOCH_DAY)
-  if (str(state.currency)) card.cur = str(state.currency)
-  if (str(state.lang)) card.lang = str(state.lang)
-  if (str(state.themeMode)) card.th = str(state.themeMode)
-  if (Number(state.monthlyBudget) > 0) card.bud = 1
-  if (limits > 0) card.lim = limits
-  if (len(state.goals)) card.gl = len(state.goals)
-  if (len(state.investments)) card.iv = len(state.investments)
-  if (len(state.customCategories)) card.cat = len(state.customCategories)
-  if (streakBest > 0) card.sb = Math.min(streakBest, 3650)
-  if (state.demoMode === true) card.dm = 1
-  if (state.remindersEnabled === false) card.rm = 0
-  if (currencies.size > 0) card.cc = currencies.size
-  if (Object.keys(ev).length) card.ev = ev
-  if (typeof version === 'number') card.v = version
-  return card
-}
-
-/**
- * Метаданные под лимит KV. Если карточка вдруг не влезла — сначала жертвуем
- * событиями, потом карточкой целиком: даты активности важнее, на них держится
- * рассылка напоминаний.
- */
-function fitMeta(meta: DataMeta): DataMeta {
-  if (JSON.stringify(meta).length <= META_BUDGET) return meta
-  if (meta.c?.ev) {
-    const trimmed: DataMeta = { ...meta, c: { ...meta.c } }
-    delete trimmed.c!.ev
-    if (JSON.stringify(trimmed).length <= META_BUDGET) return trimmed
-  }
-  return { updatedAt: meta.updatedAt, firstSeen: meta.firstSeen }
-}
-
-/** Безопасная epoch-ms метка из недоверенного ввода (clampInt тут не годится — режет до 1e9). */
-function parseUpdatedAt(x: unknown): number {
-  const n = Math.floor(Number(x))
-  return Number.isFinite(n) && n > 0 ? n : Date.now()
-}
+/* Аналитическая карточка (buildUserCard, fitMeta, DataMeta) — в analytics.ts. */
 
 /** Отдать сохранённые данные пользователя (или null, если их ещё нет). */
 async function handleDataGet(req: Request, env: Env, origin: string | null): Promise<Response> {
@@ -1016,7 +933,12 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   // Метаданные несут всё, что нужно аналитике и рассылке: активность, дату
   // первого визита и компактную карточку. Благодаря им дашборд собирает статистику
   // одним `list`, ни разу не читая сами блобы (см. buildUserCard).
-  const meta = fitMeta({ updatedAt, firstSeen, c: buildUserCard(blob) ?? undefined })
+  // Синхронизация — тоже след активности: отмечаем день в маске той же записью.
+  const visits = markDay(
+    existing.metadata?.vm !== undefined ? { m: existing.metadata.vm, d: existing.metadata.vd } : undefined,
+    mskDay(Date.now()),
+  )
+  const meta = fitMeta({ updatedAt, firstSeen, c: buildUserCard(blob) ?? undefined, vm: visits.m, vd: visits.d })
   await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: meta })
   return json({ ok: true, updatedAt }, { status: 200 }, env, origin)
 }
@@ -1166,8 +1088,6 @@ const REMINDER_TEXTS = [
   'Вечерний чек-ин. Напиши сюда, что потратил: аптека 480',
   'Деньги любят учёт. Одно сообщение — и записано: бензин 2500',
 ]
-/** Сдвиг МСК от UTC (у МСК нет перехода на летнее время). */
-const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
 /**
  * Окно рассылки: cron бежит почасно в 12–17 UTC = 15:00–20:00 МСК. Каждый
  * пользователь привязан к своему часу-слоту (REM_SLOTS штук) детерминированным
@@ -1175,12 +1095,6 @@ const MSK_OFFSET_MS = 3 * 60 * 60 * 1000
  */
 const REM_WINDOW_START_UTC = 12
 const REM_SLOTS = 6
-
-/** Начало текущих суток по МСК в epoch ms. */
-function startOfTodayMskMs(nowMs: number): number {
-  const dayStartMsk = Math.floor((nowMs + MSK_OFFSET_MS) / 86_400_000) * 86_400_000
-  return dayStartMsk - MSK_OFFSET_MS
-}
 
 /** Текст напоминания на сегодня: ротация по номеру дня МСК (у всех одинаковый, меняется ежедневно). */
 function pickReminderText(nowMs: number): string {
@@ -1446,594 +1360,272 @@ async function remindOne(env: Env, id: string, text: string): Promise<void> {
   }
 }
 
+
 /* ------------------------------------------------------------------ */
-/* Аналитика: единая таблица пользователей, снимки, админ-API           */
+/* Аналитика владельца: дашборд, карточка человека, сводка              */
 /* ------------------------------------------------------------------ */
 /*
- * Принцип: все метрики считаются из ОДНОГО множества людей. Раньше «всего»
- * брали из ключей `data:*`, а «с операциями» — из рейтинга, и процент одного от
- * другого получался бессмысленным: это разные популяции (в рейтинг попадают при
- * запуске, ключ `data:` появляется только после первой синхронизации).
- *
- * Сбор стоит несколько подзапросов независимо от размера базы: перечисление
- * ключей отдаёт метаданные вместе со списком, а карточка пользователя (ops,
- * даты, разделы, настройки) уже лежит в метаданных — см. buildUserCard.
+ * Расчёты живут в analytics.ts. Здесь — доступ, кэш и сбор входных данных.
  */
-
-const METRICS_PREFIX = 'metrics:'
-const METRICS_TTL_SEC = 65 * 86400 // авто-прунинг старых снимков (~2 мес) через TTL KV
-const DAY_MS = 86_400_000
 
 /**
- * Названия событий-вовлечения. Ключи — РЕАЛЬНЫЕ счётчики из `store.events`
- * (см. вызовы track() и bumpEvent() в src/store/transactions.ts). Прежний список
- * наполовину состоял из id заданий (`first_tx`, `see_analytics`, `try_period`…),
- * которые никогда не инкрементятся, — эти строки в дашборде были всегда пустыми,
- * а реальные `use_repeat`/`use_search` выводились сырыми ключами.
+ * Кто может смотреть аналитику. Два пути:
+ *   - пароль (секрет ADMIN_KEY) в заголовке X-Admin-Key — из любого браузера;
+ *   - подпись Telegram владельца в X-Tg-Init-Data — когда дашборд открыт
+ *     кнопкой из бота (/admin или кнопка под утренней сводкой). Пароль тогда не
+ *     нужен: подпись подделать нельзя, а id владельца известен.
  */
-const EVENT_LABELS: Record<string, string> = {
-  visit_analytics: 'Аналитика',
-  visit_charts: 'Динамика',
-  use_period: 'Смена периода',
-  use_search: 'Поиск по операциям',
-  use_repeat: 'Повтор операции',
-  open_planning: 'Планирование',
-  set_budget: 'Бюджет и лимиты',
-  add_goal: 'Цели',
-  add_category: 'Свои категории',
-  customize: 'Оформление',
-  open_achievements: 'Достижения',
-  open_leaderboard: 'Лидерборд',
-}
-/** Обратная карта: короткий код в карточке → имя события. */
-const CODE_EVENT: Record<string, string> = Object.fromEntries(
-  Object.entries(EVENT_CODE).map(([ev, code]) => [code, ev]),
-)
-
-interface MetricsRow {
-  date: string
-  total: number
-  withData: number
-  new: number
-  dau: number
-  wau: number
-  mau: number
-  blocked: number
-  /** Сколько человек записали хоть одну операцию за последние 7 дней. */
-  writers?: number
-}
-
-/** Строка даты YYYY-MM-DD по МСК для epoch ms. */
-function mskDateStr(ms: number): string {
-  const d = new Date(ms + MSK_OFFSET_MS)
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(d.getUTCDate()).padStart(2, '0')
-  return `${d.getUTCFullYear()}-${m}-${day}`
-}
-
-/** Все id по префиксу ключа (значения не читаем — только имена). */
-async function idsByPrefix(env: Env, prefix: string): Promise<Set<string>> {
-  const out = new Set<string>()
-  let cursor: string | undefined
-  do {
-    const page = await env.REFERRALS.list({ prefix, cursor })
-    for (const k of page.keys) out.add(k.name.slice(prefix.length))
-    cursor = page.list_complete ? undefined : page.cursor
-  } while (cursor)
-  return out
-}
-
-/** Человек в аналитике: слияние облачного ключа, карточки и записи рейтинга. */
-interface Person {
-  id: string
-  name: string
-  username?: string
-  /** epoch ms первого и последнего появления. */
-  firstSeen: number
-  lastSeen: number
-  /** Дата регистрации — оценка (пользователь появился раньше, чем мы начали её писать). */
-  approx: boolean
-  ops: number
-  xp: number
-  level: number
-  refs: number
-  /** Пришёл по чьей-то реферальной ссылке. */
-  fromRef: boolean
-  /** Заблокировал бота. */
-  blocked: boolean
-  card?: UserCard
-}
-
-/**
- * Единая таблица пользователей. Источники:
- *  - ключи `data:<id>` — метаданные (активность, дата первого визита, карточка);
- *  - рейтинг — имя, XP, уровень, операции, рефералы и дата запуска (профиль
- *    уходит при КАЖДОМ старте, поэтому здесь есть и те, кто ещё не синхронизировался);
- *  - `claimed:<id>` — кто пришёл по приглашению;
- *  - `blocked:<id>` — кто заблокировал бота.
- */
-async function collectPeople(env: Env): Promise<{ people: Person[]; withCard: number; cloudKeys: number }> {
-  const meta = new Map<string, DataMeta>()
-  let cursor: string | undefined
-  do {
-    const page = await env.REFERRALS.list<DataMeta>({ prefix: DATA_PREFIX, cursor })
-    for (const k of page.keys) meta.set(k.name.slice(DATA_PREFIX.length), k.metadata ?? {})
-    cursor = page.list_complete ? undefined : page.cursor
-  } while (cursor)
-
-  const [lb, referred, blocked] = await Promise.all([
-    readAllLeaderEntries(env),
-    idsByPrefix(env, 'claimed:'),
-    idsByPrefix(env, 'blocked:'),
-  ])
-
-  const ids = new Set<string>([...meta.keys(), ...Object.keys(lb)])
-  const people: Person[] = []
-  let withCard = 0
-
-  for (const id of ids) {
-    const m = meta.get(id)
-    const e = lb[id]
-    const cloudAt = typeof m?.updatedAt === 'number' ? m.updatedAt : 0
-    const launchAt = e?.at ?? 0
-    const lastSeen = Math.max(cloudAt, launchAt)
-
-    // Дата регистрации: берём самую раннюю из известных. Оценкой считаем случай,
-    // когда обе метки появились уже после того, как человек начал пользоваться, —
-    // тогда «когорта» у него условная, и дашборд говорит об этом честно.
-    const candidates = [m?.firstSeen, e?.firstSeen].filter((x): x is number => typeof x === 'number' && x > 0)
-    const firstSeen = candidates.length ? Math.min(...candidates) : lastSeen
-    const approx = e?.fsx === 1 || candidates.length === 0
-
-    if (m?.c) withCard++
-    people.push({
-      id,
-      name: e?.name ?? 'Без имени',
-      username: e?.username,
-      firstSeen,
-      lastSeen,
-      approx,
-      ops: m?.c ? m.c.ops : (e?.ops ?? 0),
-      xp: e?.xp ?? 0,
-      level: e?.level ?? 1,
-      refs: e?.refs ?? 0,
-      fromRef: referred.has(id),
-      blocked: blocked.has(id),
-      card: m?.c,
-    })
-  }
-
-  people.sort((a, b) => b.lastSeen - a.lastSeen)
-  return { people, withCard, cloudKeys: meta.size }
-}
-
-/**
- * Ночная аналитика: снимок суток плюс небольшая порция дозаполнения карточек.
- * Порция маленькая, чтобы ночной запуск не упёрся в лимит подзапросов; за
- * несколько ночей база догоняется сама, а срочно это делается кнопкой в дашборде.
- */
-async function nightlyAnalytics(env: Env, nowMs: number): Promise<void> {
-  await recordDailySnapshot(env, nowMs)
-  try {
-    await backfillCards(env, BACKFILL_SLICE)
-  } catch (e) {
-    console.error('[worker] backfill failed', e)
-  }
-}
-
-/** Снимок метрик завершившихся суток МСК (cron 00:00 МСК) — история для графиков. */
-async function recordDailySnapshot(env: Env, nowMs: number): Promise<void> {
-  const todayStart = startOfTodayMskMs(nowMs)
-  const endedStart = todayStart - DAY_MS
-  const { people } = await collectPeople(env)
-  const dayNow = Math.floor(nowMs / DAY_MS)
-
-  let dau = 0
-  let wau = 0
-  let mau = 0
-  let newCount = 0
-  let writers = 0
-  let withData = 0
-  let blocked = 0
-  for (const p of people) {
-    if (p.lastSeen >= endedStart && p.lastSeen < todayStart) dau++
-    if (p.lastSeen >= nowMs - 7 * DAY_MS) wau++
-    if (p.lastSeen >= nowMs - 30 * DAY_MS) mau++
-    if (p.firstSeen >= endedStart && p.firstSeen < todayStart) newCount++
-    if (p.ops > 0) withData++
-    if (p.blocked) blocked++
-    if (p.card?.lt !== undefined && dayNow - p.card.lt <= 7) writers++
-  }
-
-  const row: MetricsRow = {
-    date: mskDateStr(endedStart),
-    total: people.length,
-    withData,
-    new: newCount,
-    dau,
-    wau,
-    mau,
-    blocked,
-    writers,
-  }
-  // Дублируем строку в metadata — чтобы дашборд читал историю из list без N чтений.
-  await env.REFERRALS.put(`${METRICS_PREFIX}${row.date}`, JSON.stringify(row), {
-    metadata: row,
-    expirationTtl: METRICS_TTL_SEC,
-  })
-  await appendHistory(env, row)
-}
-
-/**
- * Скользящая история в ОДНОМ ключе. Раньше дашборд собирал график из метаданных
- * ключей `metrics:*` — это работает, пока строка снимка влезает в лимит
- * метаданных KV (1024 байта) и пока ключи не вычищены по TTL. Один массив
- * читается одним запросом, не зависит от лимита метаданных и переживает
- * прунинг посуточных ключей.
- */
-const HISTORY_KEY = 'metrics-history'
-const HISTORY_MAX = 120
-
-async function readHistory(env: Env): Promise<MetricsRow[]> {
-  try {
-    const raw = await env.REFERRALS.get(HISTORY_KEY)
-    const parsed = raw ? (JSON.parse(raw) as unknown) : []
-    return Array.isArray(parsed) ? (parsed as MetricsRow[]) : []
-  } catch {
-    return []
-  }
-}
-
-async function appendHistory(env: Env, row: MetricsRow): Promise<void> {
-  const rows = (await readHistory(env)).filter((r) => r && r.date !== row.date)
-  rows.push(row)
-  rows.sort((a, b) => (a.date < b.date ? -1 : 1))
-  await env.REFERRALS.put(HISTORY_KEY, JSON.stringify(rows.slice(-HISTORY_MAX)))
-}
-
-/* ---------- Дозаполнение карточек ---------- */
-/*
- * Карточка появляется у ключа при первой записи после выката. У тех, кто с тех пор
- * не заходил, её нет, и в разрезах они не видны. Проходим базу порциями: читаем
- * блоб, считаем карточку, кладём значение обратно с новыми метаданными.
- *
- * Порция маленькая намеренно — у Worker есть потолок подзапросов на один вызов,
- * и упереться в него на большой базе значит не получить вообще ничего.
- *
- * Гонка с одновременной записью пользователя теоретически возможна (мы вернём его
- * прежний блоб), но она самоисправляется: локальная метка времени у клиента
- * останется новее серверной, и при следующем запуске он зальёт свои данные заново.
- */
-const BACKFILL_CURSOR_KEY = 'admin:backfill-cursor'
-// 12 ключей за нажатие = 24 обращения к KV. Вместе со сбором статистики в том же
-// запросе это заведомо ниже потолка подзапросов Worker — лучше несколько нажатий,
-// чем один запрос, который целиком упадёт на большой базе.
-const BACKFILL_SLICE = 12
-
-async function backfillCards(env: Env, slice: number): Promise<{ scanned: number; filled: number; done: boolean }> {
-  const startCursor = (await env.REFERRALS.get(BACKFILL_CURSOR_KEY)) ?? undefined
-  const page = await env.REFERRALS.list<DataMeta>({ prefix: DATA_PREFIX, cursor: startCursor, limit: 200 })
-
-  let scanned = 0
-  let filled = 0
-  for (const k of page.keys) {
-    if (filled >= slice) break
-    scanned++
-    if (k.metadata?.c) continue
-    const got = await env.REFERRALS.getWithMetadata<DataMeta>(k.name)
-    if (!got.value) continue
-    let stored: { blob?: string; updatedAt?: number }
-    try {
-      stored = JSON.parse(got.value) as { blob?: string; updatedAt?: number }
-    } catch {
-      continue
-    }
-    if (typeof stored.blob !== 'string') continue
-    const card = buildUserCard(stored.blob)
-    if (!card) continue
-    const updatedAt = parseUpdatedAt(stored.updatedAt)
-    const meta = fitMeta({
-      updatedAt,
-      firstSeen: got.metadata?.firstSeen ?? updatedAt,
-      c: card,
-    })
-    await env.REFERRALS.put(k.name, got.value, { metadata: meta })
-    filled++
-  }
-
-  // Курсор двигаем только когда страница пройдена целиком, иначе на следующем
-  // заходе перепрыгнули бы ключи, до которых не добрались из-за лимита порции.
-  const finishedPage = scanned >= page.keys.length
-  const done = finishedPage && page.list_complete
-  if (done) await env.REFERRALS.delete(BACKFILL_CURSOR_KEY)
-  else if (finishedPage && !page.list_complete) await env.REFERRALS.put(BACKFILL_CURSOR_KEY, page.cursor)
-
-  return { scanned, filled, done }
-}
-
-/* ---------- Админ-API ---------- */
-
-/** Доля в процентах с одним знаком. */
-function pct(part: number, whole: number): number {
-  return whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0
-}
-
-/** Понедельник недели (МСК) в epoch ms — ключ когорты. */
-function weekStartMsk(ms: number): number {
-  const dayStart = Math.floor((ms + MSK_OFFSET_MS) / DAY_MS) * DAY_MS - MSK_OFFSET_MS
-  // 1970-01-01 — четверг, поэтому сдвигаем на 3 дня, чтобы неделя начиналась с понедельника.
-  const dayIndex = Math.floor((dayStart + MSK_OFFSET_MS) / DAY_MS)
-  const dow = (dayIndex + 3) % 7
-  return dayStart - dow * DAY_MS
-}
-
-/** Админ-API: агрегированная аналитика. Защита — секрет ADMIN_KEY + лёгкий IP-rate-limit. */
-async function handleAdminStats(req: Request, env: Env, origin: string | null): Promise<Response> {
+async function isAdmin(req: Request, env: Env): Promise<boolean> {
   const key = req.headers.get('X-Admin-Key') ?? ''
-  if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) {
-    return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
-  }
+  if (key && env.ADMIN_KEY && timingSafeEqual(key, env.ADMIN_KEY)) return true
+  const initData = req.headers.get('X-Tg-Init-Data') ?? ''
+  if (!initData) return false
+  const user = await verifyInitData(initData, env.BOT_TOKEN)
+  return !!user && String(user.id) === String(env.OWNER_CHAT_ID ?? '').trim()
+}
+
+async function adminGate(req: Request, env: Env, origin: string | null, scope: string, perMin: number): Promise<Response | null> {
+  if (!(await isAdmin(req, env))) return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
   const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown'
-  if (await isRateLimited(env, 'admin', ip, 60, 60)) return tooMany(env, origin)
+  if (await isRateLimited(env, scope, ip, perMin, 60)) return tooMany(env, origin)
+  return null
+}
 
-  const body = (await req.json().catch(() => ({}))) as { backfill?: boolean }
+/**
+ * Собранная таблица людей живёт в памяти изолята 20 секунд. Дашборд обновляется
+ * сам раз в минуту и перерисовывается при каждом переключении — без кэша каждое
+ * такое действие заново перечисляло бы всю базу.
+ */
+const COLLECT_TTL_MS = 20_000
+let collectedCache: { at: number; c: Collected } | null = null
 
-  // Дозаполнение карточек по кнопке — до сбора статистики, чтобы результат
-  // сразу был виден в этом же ответе.
+async function collectFresh(env: Env, maxAgeMs: number): Promise<Collected> {
+  const now = Date.now()
+  if (collectedCache && now - collectedCache.at <= maxAgeMs) return collectedCache.c
+  const c = await collectPeople(env, readAllLeaderEntries(env))
+  collectedCache = { at: now, c }
+  return c
+}
+
+/**
+ * Здоровье вебхука — ответ Telegram на getWebhookInfo, раз в минуту. После
+ * рассылки это первое, что надо видеть: если бот не успевает, люди пишут ему, а
+ * ответа не получают, и ни в одной другой цифре это не отразится.
+ */
+let webhookCache: { at: number; h: WebhookHealth | null } | null = null
+
+async function webhookHealth(env: Env): Promise<WebhookHealth | null> {
+  const now = Date.now()
+  if (webhookCache && now - webhookCache.at < 60_000) return webhookCache.h
+  let h: WebhookHealth | null = null
+  try {
+    const info = (await getWebhookInfo(env)) as {
+      result?: { url?: string; pending_update_count?: number; last_error_message?: string; last_error_date?: number }
+    } | null
+    const r = info?.result
+    if (r) {
+      const pending = r.pending_update_count ?? 0
+      const lastErrorAt = r.last_error_date ? r.last_error_date * 1000 : undefined
+      // Старая ошибка — история, а не проблема: Telegram помнит последнюю
+      // ошибку, даже если с тех пор всё доставлялось.
+      const recentError = !!lastErrorAt && now - lastErrorAt < 30 * 60_000
+      h = {
+        registered: !!r.url,
+        pending,
+        ...(r.last_error_message ? { lastError: r.last_error_message.slice(0, 160) } : {}),
+        ...(lastErrorAt ? { lastErrorAt } : {}),
+        ok: !!r.url && pending < 50 && !recentError,
+      }
+    }
+  } catch {
+    h = null
+  }
+  webhookCache = { at: now, h }
+  return h
+}
+
+/** Дашборд: всё, что нужно странице, одним ответом. */
+async function handleAdminStats(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const denied = await adminGate(req, env, origin, 'admin', 60)
+  if (denied) return denied
+
+  const body = (await req.json().catch(() => ({}))) as { backfill?: boolean; fresh?: boolean }
+
+  // Дозаполнение карточек — до сбора, чтобы результат был виден в этом же ответе.
   let backfill: { scanned: number; filled: number; done: boolean } | null = null
-  if (body.backfill) backfill = await backfillCards(env, BACKFILL_SLICE)
+  if (body.backfill) {
+    backfill = await backfillCards(env, BACKFILL_SLICE)
+    if (backfill.filled) collectedCache = null
+  }
 
   const now = Date.now()
-  const todayStart = startOfTodayMskMs(now)
-  const dayNow = Math.floor(now / DAY_MS)
-  const d7 = now - 7 * DAY_MS
-  const d14 = now - 14 * DAY_MS
-  const d30 = now - 30 * DAY_MS
+  const [c, history, webhook] = await Promise.all([
+    collectFresh(env, body.fresh ? 0 : COLLECT_TTL_MS),
+    readHistory(env),
+    webhookHealth(env),
+  ])
+  return json(
+    { ...computeDashboard(c, history, now, webhook), backfill },
+    { status: 200, headers: { 'Cache-Control': 'no-store' } },
+    env,
+    origin,
+  )
+}
 
-  const { people, withCard, cloudKeys } = await collectPeople(env)
-  const total = people.length
+/**
+ * Карточка одного человека по нажатию в списке. Читаем его ключи напрямую —
+ * шесть обращений к KV на одно нажатие, а не всю базу.
+ */
+async function handleAdminPerson(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const denied = await adminGate(req, env, origin, 'aperson', 60)
+  if (denied) return denied
 
-  /* ---------- Базовые счётчики ---------- */
-  let dau = 0
-  let wau = 0
-  let mau = 0
-  let newToday = 0
-  let new7 = 0
-  let newPrev7 = 0
-  let new30 = 0
-  let withOps = 0
-  let fromRef = 0
-  let blocked = 0
-  let remindersOff = 0
-  let writers7 = 0
-  let writers30 = 0
-  let sleeping = 0
-  let churned = 0
-  let zeroOps = 0
+  const body = (await req.json().catch(() => ({}))) as { id?: unknown }
+  const id = String(body.id ?? '')
+  if (!/^\d{1,20}$/.test(id)) return json({ ok: false, error: 'bad_id' }, { status: 400 }, env, origin)
 
-  /* Воронка. Каждый шаг — это ПОДМНОЖЕСТВО предыдущего (условие складывается с
-     условиями всех шагов выше), иначе «воронка» местами расширялась бы и потери
-     между шагами теряли смысл. Признаки, которые в такую цепочку не встают
-     (например, заданный бюджет), считаем отдельными числами, а не ступенями. */
-  let f1 = 0 // записали операцию
-  let f2 = 0 // …и вернулись в другой день
-  let f3 = 0 // …и набрали 5 операций
-  let f4 = 0 // …и записывали за последние 30 дней
-  let planned = 0 // задали бюджет, лимит или цель (отдельная метрика)
+  // data:<id> перечисляем, а не читаем: значение — весь блоб человека (до 2 МБ),
+  // а нужны только метаданные.
+  const [dataPage, own, inbox, src, claimed, blocked, remind] = await Promise.all([
+    env.REFERRALS.list<DataMeta>({ prefix: `${DATA_PREFIX}${id}`, limit: 20 }),
+    env.REFERRALS.getWithMetadata<LeaderEntry>(`${LB_USER_PREFIX}${id}`),
+    env.REFERRALS.getWithMetadata<InboxMeta>(`inbox:${id}`),
+    env.REFERRALS.getWithMetadata<SourceMeta>(`${SRC_PREFIX}${id}`),
+    env.REFERRALS.get(`claimed:${id}`),
+    env.REFERRALS.get(`blocked:${id}`),
+    env.REFERRALS.get(`remind:${id}`),
+  ])
+  const dataMeta = dataPage.keys.find((k) => k.name === `${DATA_PREFIX}${id}`)?.metadata ?? undefined
+  const lbEntry =
+    own.metadata && typeof own.metadata.id === 'number' ? own.metadata : (await readLeaderboard(env))[id]
 
-  // «Вернулись хотя бы раз»: считаем только по тем, кто зарегистрировался
-  // минимум сутки назад — у сегодняшних новичков шанса вернуться ещё не было.
-  let returnBase = 0
-  let returned = 0
+  const one = assembleOne(id, dataMeta, lbEntry, inbox.metadata, src.metadata, !!claimed, !!blocked)
+  const p = one.people[0]
+  if (!p) return json({ ok: false, error: 'not_found' }, { status: 404 }, env, origin)
 
-  const sections: Record<string, { users: number; total: number; active: number }> = {}
-  const currency: Record<string, number> = {}
-  const lang: Record<string, number> = {}
-  const theme: Record<string, number> = {}
-  const versions: Record<string, number> = {}
-  const opsBuckets = [0, 0, 0, 0, 0] // 0 / 1–4 / 5–19 / 20–99 / 100+
-
-  let sumXp = 0
-  let sumLevel = 0
-  let totalRefs = 0
-
-  for (const p of people) {
-    if (p.lastSeen >= todayStart) dau++
-    if (p.lastSeen >= d7) wau++
-    if (p.lastSeen >= d30) mau++
-    else churned++
-    if (p.lastSeen < d7 && p.lastSeen >= d30) sleeping++
-    if (p.firstSeen >= todayStart) newToday++
-    if (p.firstSeen >= d7) new7++
-    if (p.firstSeen >= d14 && p.firstSeen < d7) newPrev7++
-    if (p.firstSeen >= d30) new30++
-    if (p.fromRef) fromRef++
-    if (p.blocked) blocked++
-
-    sumXp += p.xp
-    sumLevel += p.level
-    totalRefs += p.refs
-
-    const c = p.card
-    if (c) {
-      if (c.rm === 0) remindersOff++
-      if (c.lt !== undefined) {
-        if (dayNow - c.lt <= 7) writers7++
-        if (dayNow - c.lt <= 30) writers30++
-      }
-      if (c.cur) currency[c.cur] = (currency[c.cur] ?? 0) + 1
-      if (c.lang) lang[c.lang] = (lang[c.lang] ?? 0) + 1
-      if (c.th) theme[c.th] = (theme[c.th] ?? 0) + 1
-      if (c.v !== undefined) versions[String(c.v)] = (versions[String(c.v)] ?? 0) + 1
-      if (c.ev) {
-        const activeNow = p.lastSeen >= d30
-        for (const code of Object.keys(c.ev)) {
-          const ev = CODE_EVENT[code]
-          if (!ev) continue
-          const s = sections[ev] ?? { users: 0, total: 0, active: 0 }
-          s.users += 1
-          s.total += c.ev[code]
-          if (activeNow) s.active += 1
-          sections[ev] = s
-        }
-      }
-      if (c.bud || c.lim || c.gl) planned++
-    }
-
-    const ops = p.ops
-    if (ops > 0) withOps++
-    else zeroOps++
-    if (ops === 0) opsBuckets[0]++
-    else if (ops < 5) opsBuckets[1]++
-    else if (ops < 20) opsBuckets[2]++
-    else if (ops < 100) opsBuckets[3]++
-    else opsBuckets[4]++
-
-    const cameBack = Math.floor((p.lastSeen + MSK_OFFSET_MS) / DAY_MS) > Math.floor((p.firstSeen + MSK_OFFSET_MS) / DAY_MS)
-    const writes30 = p.card?.lt !== undefined && dayNow - p.card.lt <= 30
-    if (ops >= 1) {
-      f1++
-      if (cameBack) {
-        f2++
-        if (ops >= 5) {
-          f3++
-          if (writes30) f4++
-        }
-      }
-    }
-    if (p.firstSeen < todayStart) {
-      returnBase++
-      if (cameBack) returned++
-    }
-  }
-
-  /* ---------- Рейтинг: монеты и топы ---------- */
-  const lb = await readAllLeaderEntries(env)
-  const entries = Object.values(lb)
-  const sumCoins = entries.reduce((s, e) => s + (e.coins || 0), 0)
-  const topXp = [...entries]
-    .sort((a, b) => b.xp - a.xp)
-    .slice(0, 10)
-    .map((e) => ({ name: e.name, username: e.username, level: e.level, xp: e.xp, ops: e.ops }))
-  const topRefs = [...entries]
-    .filter((e) => (e.refs || 0) > 0)
-    .sort((a, b) => (b.refs || 0) - (a.refs || 0))
-    .slice(0, 10)
-    .map((e) => ({ name: e.name, username: e.username, refs: e.refs }))
-
-  /* ---------- Когорты по неделям ---------- */
-  const cohortMap = new Map<number, { joined: number; activated: number; alive: number; approx: number }>()
-  const firstWeek = weekStartMsk(now - 56 * DAY_MS)
-  for (const p of people) {
-    const w = weekStartMsk(p.firstSeen)
-    if (w < firstWeek) continue
-    const c = cohortMap.get(w) ?? { joined: 0, activated: 0, alive: 0, approx: 0 }
-    c.joined++
-    if (p.ops > 0) c.activated++
-    if (p.lastSeen >= d7) c.alive++
-    if (p.approx) c.approx++
-    cohortMap.set(w, c)
-  }
-  // Недели без единого новичка тоже показываем нулевой строкой: пропуск в таблице
-  // читался бы как «этой недели не было», а не как «на этой неделе никто не пришёл».
-  const cohorts: { week: string; joined: number; activated: number; alive: number; approx: number }[] = []
-  for (let w = firstWeek; w <= weekStartMsk(now); w += 7 * DAY_MS) {
-    const c = cohortMap.get(w) ?? { joined: 0, activated: 0, alive: 0, approx: 0 }
-    cohorts.push({ week: mskDateStr(w), ...c })
-  }
-
-  /* ---------- История снимков ----------
-     Основной источник — скользящий массив. Посуточные ключи читаем следом ради
-     тех двух месяцев, что накопились до его появления: их метаданные уже есть в
-     ответе list, лишних обращений это не стоит. */
-  const byDate = new Map<string, MetricsRow>()
-  let mcur: string | undefined
-  do {
-    const page = await env.REFERRALS.list<MetricsRow>({ prefix: METRICS_PREFIX, cursor: mcur })
-    for (const k of page.keys) if (k.metadata?.date) byDate.set(k.metadata.date, k.metadata)
-    mcur = page.list_complete ? undefined : page.cursor
-  } while (mcur)
-  for (const r of await readHistory(env)) if (r?.date) byDate.set(r.date, r)
-  const history = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
-
-  const sectionList = Object.keys(sections)
-    .map((ev) => ({
-      key: ev,
-      label: EVENT_LABELS[ev] ?? ev,
-      users: sections[ev].users,
-      active: sections[ev].active,
-      total: sections[ev].total,
-    }))
-    .sort((a, b) => b.users - a.users || b.total - a.total)
-
-  const dist = (m: Record<string, number>) =>
-    Object.keys(m)
-      .map((k) => ({ key: k, n: m[k] }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 8)
-
+  // С какого дня маски знают правду — берём общий, если база недавно собиралась:
+  // по одному человеку его не определить.
+  const trackFrom = collectedCache?.c.trackFrom ?? one.trackFrom
+  const now = Date.now()
+  const today = mskDay(now)
+  const span = 35
+  const card = p.card
   return json(
     {
       ok: true,
-      generatedAt: now,
-      backfill,
-      coverage: { withCard, cloudKeys, total, pct: pct(withCard, cloudKeys), launchOnly: total - cloudKeys },
-      users: {
-        total,
-        blocked,
-        withOps,
-        withOpsPct: pct(withOps, total),
-        zeroOps,
-        fromRef,
-        organic: total - fromRef,
-        remindersOff,
-      },
-      newUsers: { today: newToday, d7: new7, prev7: newPrev7, d30: new30 },
-      active: { dau, wau, mau, stickiness: pct(dau, mau), writers7, writers30 },
-      lifecycle: { active: wau, sleeping, churned, zeroOps },
-      funnel: [
-        { key: 'open', label: 'Открыли приложение', users: total },
-        { key: 'tx1', label: 'Записали операцию', users: f1 },
-        { key: 'back', label: '…и вернулись в другой день', users: f2 },
-        { key: 'tx5', label: '…и набрали 5 операций', users: f3 },
-        { key: 'live', label: '…и пишут до сих пор', users: f4 },
-      ],
-      planned,
-      retention: { returnedPct: pct(returned, returnBase), returned, base: returnBase },
-      cohorts,
-      referrals: { total: totalRefs },
-      game: { sumXp, sumCoins, avgLevel: total ? Math.round((sumLevel / total) * 10) / 10 : 0 },
-      topXp,
-      topRefs,
-      sections: sectionList,
-      settings: {
-        currency: dist(currency),
-        lang: dist(lang),
-        theme: dist(theme),
-        version: dist(versions),
-      },
-      opsBuckets,
-      history: history.slice(-60),
-      people: people.slice(0, 300).map((p) => ({
-        id: p.id,
-        name: p.name,
-        username: p.username,
-        firstSeen: p.firstSeen,
-        lastSeen: p.lastSeen,
-        approx: p.approx,
-        ops: p.ops,
-        xp: p.xp,
-        level: p.level,
-        refs: p.refs,
-        fromRef: p.fromRef,
-        blocked: p.blocked,
-        lastTx: p.card?.lt,
-        hasCard: !!p.card,
-      })),
-      dayNow,
+      id: p.id,
+      name: p.name,
+      username: p.username,
+      firstSeen: p.firstSeen,
+      lastSeen: p.lastSeen,
+      approx: p.approx,
+      src: p.src,
+      fromRef: p.fromRef,
+      blocked: p.blocked,
+      remindersOff: remind === '0' || card?.rm === 0,
+      inApp: p.inApp,
+      ops: p.ops,
+      botOps: p.botOps,
+      botFirst: p.bot?.f,
+      botLast: p.bot?.l,
+      lastWrite: p.lastWrite,
+      card: card
+        ? {
+            ft: card.ft,
+            lt: card.lt,
+            dd: card.dd,
+            cur: card.cur,
+            lang: card.lang,
+            th: card.th,
+            bud: card.bud,
+            lim: card.lim,
+            gl: card.gl,
+            iv: card.iv,
+            cat: card.cat,
+            sb: card.sb,
+            dm: card.dm,
+            cc: card.cc,
+            v: card.v,
+          }
+        : null,
+      sections: sectionsOf(card),
+      game: { xp: p.xp, level: p.level, coins: p.coins, streakBest: p.streakBest, refs: p.refs },
+      strip: activityStrip(p, trackFrom, today, span),
+      stripFrom: mskDayStart(today - span + 1),
+      trackFrom: trackFrom === null ? null : mskDayStart(trackFrom),
     },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
     env,
     origin,
   )
+}
+
+/** Один человек через ту же сборку, что и вся база: правила слияния одни. */
+function assembleOne(
+  id: string,
+  data: DataMeta | undefined,
+  lb: LeaderEntry | undefined,
+  inbox: InboxMeta | null,
+  src: SourceMeta | null,
+  claimed: boolean,
+  blocked: boolean,
+): Collected {
+  return assembleParts(
+    data ? [[id, data]] : [],
+    lb ? { [id]: lb } : {},
+    [[id, inbox]],
+    [[id, src]],
+    claimed ? [id] : [],
+    blocked ? [id] : [],
+  )
+}
+
+/** Сводка в Telegram прямо сейчас — по кнопке в дашборде (итоги текущих суток). */
+async function handleAdminDigest(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const denied = await adminGate(req, env, origin, 'adigest', 5)
+  if (denied) return denied
+  const now = Date.now()
+  const c = await collectFresh(env, 0)
+  const ok = await sendDigest(env, digestText(dayReport(c, mskDay(now), now)))
+  return json({ ok }, { status: ok ? 200 : 502 }, env, origin)
+}
+
+/**
+ * Отправить сводку владельцу с кнопкой, открывающей дашборд прямо в Telegram.
+ * Ночная (`silent`) приходит без звука: крон срабатывает в полночь, а читать её
+ * будут утром.
+ */
+async function sendDigest(env: Env, text: string, silent = false): Promise<boolean> {
+  const owner = String(env.OWNER_CHAT_ID ?? '').trim()
+  if (!owner) return false
+  const r = await sendMessage(
+    env,
+    owner,
+    text,
+    { inline_keyboard: [[{ text: 'Открыть аналитику', web_app: { url: ADMIN_URL } }]] },
+    silent,
+  )
+  return r.ok
+}
+
+/**
+ * Ночь (00:00 МСК): снимок завершившихся суток для графиков, порция
+ * дозаполнения карточек и утренняя сводка владельцу. Сбор один на всё.
+ */
+async function nightlyAnalytics(env: Env, nowMs: number): Promise<void> {
+  const c = await collectPeople(env, readAllLeaderEntries(env))
+  const ended = mskDay(nowMs) - 1
+  await recordSnapshot(env, snapshotRow(c, ended, nowMs))
+  try {
+    await backfillCards(env, BACKFILL_SLICE)
+  } catch (e) {
+    console.error('[worker] backfill failed', e)
+  }
+  if ((env.ADMIN_DIGEST ?? 'on').trim() !== 'off') {
+    try {
+      await sendDigest(env, digestText(dayReport(c, ended, nowMs)), true)
+    } catch (e) {
+      console.error('[worker] digest failed', e)
+    }
+  }
 }
