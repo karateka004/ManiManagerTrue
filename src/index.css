@@ -226,7 +226,8 @@
   .grouped > * + .row .row-main {
     border-top: 1px solid var(--hairline);
   }
-  button.row {
+  button.row,
+  .row[role='button'] {
     @apply transition-colors active:bg-surface-sunken;
   }
 

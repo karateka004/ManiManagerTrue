@@ -41,14 +41,19 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
     placed.current = true
   }
 
-  // До отрисовки: первый кадр уже с плашкой на месте.
+  // До отрисовки: первый кадр уже с плашкой на месте. Только при смене выбора:
+  // измерение после каждой перерисовки (шторка операции перерисовывается на
+  // каждое нажатие клавиши) заставляло браузер пересчитывать раскладку всего
+  // экрана посреди ввода — +50 мс на слабом телефоне.
   useLayoutEffect(() => {
     place(true)
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
 
-  // Ширина трека поменялась (поворот экрана, догрузился шрифт) — переставить
-  // без анимации. Первый вызов наблюдателя пропускаем: он приходит сразу после
-  // подписки и сбил бы идущий переход.
+  // Размеры поменялись (поворот экрана, догрузился шрифт, сменился язык и
+  // подписи стали другой ширины) — переставить без анимации. Наблюдаем и
+  // трек, и сами пункты. Первый вызов наблюдателя пропускаем: он приходит
+  // сразу после подписки и сбил бы идущий переход.
   useEffect(() => {
     const track = trackRef.current
     if (!track || typeof ResizeObserver === 'undefined') return
@@ -61,8 +66,9 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
       place(false)
     })
     ro.observe(track)
-    // Шрифт свой и грузится отдельно: пока он не пришёл, ширина подписей —
-    // по системному шрифту. Догрузился — переставить по настоящим размерам.
+    for (const child of Array.from(track.children)) {
+      if (child !== pillRef.current) ro.observe(child)
+    }
     let alive = true
     document.fonts?.ready.then(() => {
       if (alive) place(false)
@@ -74,7 +80,6 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  void active
   return { trackRef, pillRef }
 }
 

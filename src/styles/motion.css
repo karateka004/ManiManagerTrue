@@ -49,8 +49,10 @@
 
 /* Подсветка нажатой строки — сразу при касании, гаснет плавно. Раньше было
    150 мс в обе стороны, и при коротком тапе подсветку не успевали увидеть. */
-button.row { transition: background-color 220ms ease-out; }
-button.row:active { transition-duration: 0ms; }
+button.row,
+.row[role='button'] { transition: background-color 220ms ease-out; }
+button.row:active,
+.row[role='button']:active { transition-duration: 0ms; }
 
 /* ---------- Переходы между вкладками ----------
    Вправо по панели — экран приезжает справа, влево — слева; вложенный экран

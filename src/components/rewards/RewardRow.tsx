@@ -40,15 +40,29 @@ export function RewardRow({ reward, priceOverride, onOpen }: Props) {
     onOpen(reward, priceOverride)
   }
 
-  const onEquip = (e: React.MouseEvent) => {
+  const onEquip = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (!owned || equipped) return
     hapticTap()
     equipReward(reward.kind, reward.id)
   }
 
+  // Строка — не <button>: внутри неё настоящая кнопка «Надеть», а кнопка в
+  // кнопке — невалидная вложенность (скринридер читает их одной). Поэтому
+  // строка — div с ролью кнопки и клавиатурой.
   return (
-    <button type="button" onClick={open} className="row">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          open()
+        }
+      }}
+      className="row cursor-pointer"
+    >
       <span className="mr-3 shrink-0">
         <RewardThumb reward={reward} dim={!owned && !affordable} />
       </span>
@@ -72,14 +86,13 @@ export function RewardRow({ reward, priceOverride, onOpen }: Props) {
               <Check size={15} strokeWidth={2.8} className="pop" /> {t('roadpass.equipped')}
             </span>
           ) : (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               onClick={onEquip}
               className="press shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink"
             >
               {t('roadpass.equip')}
-            </span>
+            </button>
           )
         ) : (
           <span
@@ -94,6 +107,6 @@ export function RewardRow({ reward, priceOverride, onOpen }: Props) {
           </span>
         )}
       </span>
-    </button>
+    </div>
   )
 }
