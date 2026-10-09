@@ -290,7 +290,10 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
     // Первая запись за день приносит монеты (RECORD_COINS) — скажем об этом.
     const gained = useStore.getState().coins - coinsBefore
     markTouched(categoryId)
-    playSaveEffect(saveRef.current)
+    // Эффект из магазина — праздник привычки, а не трат: первая запись дня
+    // (за неё и монеты) и доход. Каждый расход с конфетти и правка с
+    // фейерверком — странный сигнал для приложения про экономию.
+    if (!before && (kind === 'income' || gained > 0)) playSaveEffect(saveRef.current)
 
     // Тост с отменой: случайно записанное убирается одним нажатием, а не
     // поиском строки и крестиком. Правку «отменить» — вернуть прежние поля.
@@ -298,12 +301,9 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
     const signed = (kind === 'expense' ? '−' : '+') + formatMoney(numeric, txCurrency).replace('−', '')
     showToast({
       icon: gained > 0 ? 'coins' : 'check',
-      text: before
-        ? tr('toast.saved_edit')
-        : gained > 0
-          ? `${tr('toast.saved')} · +${gained} ${coinsWord(lang, gained)}`
-          : tr('toast.saved'),
-      sub: `${cat ? catName(cat.id, cat.name) : ''} · ${signed}`,
+      text: before ? tr('toast.saved_edit') : tr('toast.saved'),
+      // «+2 монеты» — во второй строке: в первой на 320 px оно обрезалось.
+      sub: `${cat ? catName(cat.id, cat.name) + ' · ' : ''}${signed}${gained > 0 ? ` · +${gained} ${coinsWord(lang, gained)}` : ''}`,
       action: {
         label: tr('toast.undo'),
         run: () => {
@@ -475,7 +475,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
               </div>
             )}
             <div
-              className="no-scrollbar grid auto-cols-[84px] grid-flow-col grid-rows-2 gap-x-1 gap-y-1 overflow-x-auto px-4 pb-1"
+              className="no-scrollbar grid auto-cols-[76px] grid-flow-col grid-rows-2 gap-x-1 gap-y-1 overflow-x-auto px-4 pb-1"
               style={{
                 WebkitMaskImage: 'linear-gradient(90deg, #000 calc(100% - 28px), transparent)',
                 maskImage: 'linear-gradient(90deg, #000 calc(100% - 28px), transparent)',

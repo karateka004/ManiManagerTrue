@@ -7,6 +7,8 @@ import { canClaim, effectiveStreak, streakReward, streakWeek } from '../../lib/s
 import { Row } from '../ui/Group'
 import { CoinAmount } from './CoinAmount'
 import { burst, flyCoins, floatText, BRAND_FX } from '../../lib/fx'
+import { showToast } from '../../lib/toast'
+import { getReward, STREAK_GIFTS } from '../../lib/rewards'
 
 /**
  * Серия дня — строка хаба «Прогресс».
@@ -19,6 +21,7 @@ import { burst, flyCoins, floatText, BRAND_FX } from '../../lib/fx'
 export function StreakRow() {
   const streak = useStore((s) => s.streak)
   const claimDailyStreak = useStore((s) => s.claimDailyStreak)
+  const equipReward = useStore((s) => s.equipReward)
   const lang = useStore((s) => s.lang)
   const t = useT()
 
@@ -47,12 +50,35 @@ export function StreakRow() {
       // Рубеж серии (3/7/14/30 дней) — небольшое конфетти поверх монеток.
       if (reward.milestone) burst(at, { colors: BRAND_FX, count: 22, spread: 110, confetti: true })
     }
+    // Подарок за рубеж — тостом с «Надеть»: вещь уже в купленном.
+    const gift = getReward(reward.gift)
+    if (gift) {
+      showToast({
+        icon: 'gift',
+        text: t('streak.gift', { n: reward.milestone }),
+        sub: t('reward.' + gift.id + '.name'),
+        duration: 7000,
+        action: { label: t('roadpass.equip'), run: () => equipReward(gift.kind, gift.id) },
+      })
+    }
   }
+
+  // Ближайший рубеж с подарком: до него три дня или меньше — говорим о нём
+  // вместо рекорда (это повод не пропустить завтра).
+  const giftDay = Object.keys(STREAK_GIFTS)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .find((d) => d > active)
+  const giftSoon = giftDay !== undefined && giftDay - active <= 3
 
   const subtitle =
     active > 0
       ? t('streak.in_row', { n: active, word: daysWord(lang, active) }) +
-        (streak.best > active ? ' · ' + t('roadpass.streak_record', { best: streak.best }) : '')
+        (giftSoon
+          ? ' · ' + t('streak.gift_hint', { n: giftDay })
+          : streak.best > active
+            ? ' · ' + t('roadpass.streak_record', { best: streak.best })
+            : '')
       : streak.best > 0
         ? t('roadpass.streak_record', { best: streak.best })
         : t('streak.none')

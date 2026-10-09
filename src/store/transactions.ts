@@ -11,6 +11,8 @@ import {
   getReward,
   rewardPrice,
   discountedPrice,
+  pickGift,
+  STREAK_GIFTS,
   type RewardKind,
 } from '../lib/rewards'
 import { computeXp, levelFor } from '../lib/levels'
@@ -268,7 +270,7 @@ interface Actions {
    * Забрать ежедневную награду серии (идемпотентно за день).
    * Возвращает начисленную награду или null, если сегодня уже забирали.
    */
-  claimDailyStreak: () => { coins: number; xp: number; milestone: number } | null
+  claimDailyStreak: () => { coins: number; xp: number; milestone: number; gift: string | null } | null
   /**
    * Задать валюту быстрого выбора в слот 0..2. Первый вызов фиксирует текущий
    * автоподбор, дальше правится только выбранный слот.
@@ -795,12 +797,16 @@ export const useStore = create<State & Actions>()(
         const s = get()
         const result = nextStreak(s.streak)
         if (!result) return null // сегодня уже забирали
+        // Рубеж серии (7/14/30 дней) — ещё и вещь из магазина в подарок.
+        const giftRarity = STREAK_GIFTS[result.reward.milestone]
+        const gift = giftRarity ? pickGift(s.owned, giftRarity) : null
         set({
           streak: result.state,
           coins: Math.max(0, s.coins + result.reward.coins),
           bonusXp: Math.max(0, s.bonusXp + result.reward.xp),
+          ...(gift ? { owned: [...s.owned, gift] } : {}),
         })
-        return result.reward
+        return { ...result.reward, gift }
       },
 
       equipReward: (kind, id) =>

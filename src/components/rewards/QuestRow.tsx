@@ -43,9 +43,15 @@ export function QuestRows({
     )
   }
 
+  // Перезаряжающиеся слоты — одной строкой: после «Забрать всё» иначе
+  // стояли три одинаковых «Следующее задание · через 8 ч».
+  const cooling = slots.filter((s): s is Extract<QuestSlot, { kind: 'locked' }> => s.kind !== 'quest')
+  const soonest = cooling.length ? Math.min(...cooling.map((s) => s.unlockAt)) : 0
+  const firstCooling = slots.findIndex((s) => s.kind !== 'quest')
+
   return (
     <>
-      {slots.map((slot) =>
+      {slots.map((slot, i) =>
         slot.kind === 'quest' ? (
           <QuestRow
             key={slot.quest.def.id}
@@ -55,15 +61,23 @@ export function QuestRows({
             onClaim={(from) => onClaim(slot.quest, from)}
             onAction={onAction ? () => onAction(slot.quest) : undefined}
           />
-        ) : (
+        ) : i === firstCooling ? (
           <Row
-            key={`locked-${slot.unlockAt}`}
+            // «Забрать всё» забирает несколько заданий в одну миллисекунду —
+            // у их перезарядок одинаковое время, поэтому в ключе и номер слота.
+            key={`locked-${slot.unlockAt}-${i}`}
             className="tab-enter"
             icon={<Lock size={18} strokeWidth={2} />}
-            title={<span className="text-ink-muted">{t('quest.locked_title')}</span>}
-            subtitle={t('quest.locked_desc', { time: formatLeft(slot.unlockAt - now, t) })}
+            title={
+              <span className="text-ink-muted">
+                {cooling.length > 1 ? t('quest.locked_many', { n: cooling.length }) : t('quest.locked_title')}
+              </span>
+            }
+            subtitle={t(cooling.length > 1 ? 'quest.locked_many_desc' : 'quest.locked_desc', {
+              time: formatLeft(soonest - now, t),
+            })}
           />
-        ),
+        ) : null,
       )}
     </>
   )

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import { useStore } from '../../store/transactions'
-import { RARITY, rewardPrice, type RewardDef } from '../../lib/rewards'
+import { rewardPrice, type RewardDef } from '../../lib/rewards'
 import { coinsWord, useT } from '../../lib/i18n'
 import { hapticNotify, hapticTap } from '../../lib/telegram'
 import { burst, replay, RARITY_FX } from '../../lib/fx'
@@ -59,7 +59,6 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
   const discounted = price < full
   const affordable = coins >= price
   const equipped = equippedId === reward.id
-  const rarity = RARITY[reward.rarity]
 
   const buy = () => {
     if (owned) return
@@ -97,30 +96,14 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
           <div className="text-[20px] font-extrabold leading-tight text-ink">{t('reward.' + reward.id + '.name')}</div>
           <div className="caption mt-1 text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
         </div>
-        {/* Редкость — словом и её цветом: цена её и так выдаёт, но название
-            честнее точки. */}
-        <span className="caption-sm mt-1 shrink-0 font-bold" style={{ color: rarity.color }}>
+        {/* Редкость — словом и её цветом. Цвета текста свои (rarity-text-*):
+            янтарь редкости на белом читался бы при контрасте 2,2:1. */}
+        <span className={`caption-sm rarity-text-${reward.rarity} mt-1 shrink-0 font-bold`}>
           {t('rarity.' + reward.rarity)}
         </span>
       </div>
 
-      {!owned && full > 0 && (
-        <div ref={priceRef} className="mt-4 flex items-center justify-between rounded-2xl bg-surface-sunken/70 px-4 py-3">
-          <span className="flex items-center gap-2 text-[15px] font-bold tabular-nums text-ink">
-            {discounted && (
-              <span className="text-[13px] font-semibold text-ink-subtle line-through">{full.toLocaleString('ru-RU')}</span>
-            )}
-            <CoinAmount value={price} size={15} />
-          </span>
-          <span className={`caption tabular-nums ${affordable ? 'text-ink-subtle' : 'font-semibold text-expense-deep dark:text-expense-soft'}`}>
-            {affordable
-              ? t('shop.left_after', { n: (coins - price).toLocaleString('ru-RU'), word: coinsWord(lang, coins - price) })
-              : t('shop.not_enough', { n: (price - coins).toLocaleString('ru-RU'), word: coinsWord(lang, price - coins) })}
-          </span>
-        </div>
-      )}
-
-      <div className="mt-4">
+      <div ref={priceRef} className="mt-5">
         {owned ? (
           equipped ? (
             <div
@@ -136,6 +119,7 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
             </button>
           )
         ) : (
+          // Цена — один раз, в кнопке (со скидкой — зачёркнутая полная рядом).
           <button
             type="button"
             onClick={buy}
@@ -145,11 +129,13 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
             }`}
           >
             {affordable ? (
-              <span className="inline-flex items-center gap-1.5">
-                {t('shop.buy')} <CoinAmount value={price} size={15} />
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                {t('shop.buy')}
+                {discounted && <span className="font-semibold line-through opacity-60">{full.toLocaleString('ru-RU')}</span>}
+                <CoinAmount value={price} size={15} />
               </span>
             ) : (
-              t('shop.earn_more')
+              t('shop.not_enough_btn', { n: (price - coins).toLocaleString('ru-RU'), word: coinsWord(lang, price - coins) })
             )}
           </button>
         )}
@@ -160,12 +146,19 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
         )}
       </div>
 
-      {/* Баланс монет — барабаном: после покупки видно, как он уменьшился. */}
+      {/* Одна подпись о монетах: до покупки — сколько останется из скольких,
+          после — сколько есть (барабаном: видно, как сумма уменьшилась). */}
       <div className="caption mt-3 flex items-center justify-center gap-1 tabular-nums text-ink-subtle">
-        {t('shop.balance')}
-        <span className="inline-flex items-center gap-1 font-semibold text-ink-muted">
-          <Odometer text={coins.toLocaleString('ru-RU')} /> {coinsWord(lang, coins)}
-        </span>
+        {!owned && affordable ? (
+          t('shop.left_of', { left: (coins - price).toLocaleString('ru-RU'), all: coins.toLocaleString('ru-RU') })
+        ) : (
+          <>
+            {t('shop.balance')}
+            <span className="inline-flex items-center gap-1 font-semibold text-ink-muted">
+              <Odometer text={coins.toLocaleString('ru-RU')} /> {coinsWord(lang, coins)}
+            </span>
+          </>
+        )}
       </div>
     </div>
   )

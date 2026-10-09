@@ -46,6 +46,9 @@ export function BalanceCard() {
       <div
         className={`hero-surface relative overflow-hidden rounded-4xl px-6 py-5 ${skin}`}
         onPointerMove={skin === 'skin-holo' ? onHoloMove : undefined}
+        // Вертикаль — прокрутке, горизонталь — пальцу на голограмме: без этого
+        // браузер забирал жест через ~10 px, и блик почти не двигался.
+        style={skin === 'skin-holo' ? { touchAction: 'pan-y' } : undefined}
       >
 
         <div className="relative">

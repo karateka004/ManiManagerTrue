@@ -11,9 +11,9 @@ const ICONS: Record<NonNullable<Toast['icon']>, typeof Check> = {
 }
 
 /**
- * Место для тоста — над плавающей панелью вкладок. Инверсная плашка (тёмная
- * в светлой теме и светлая в тёмной): она лежит поверх контента и не должна
- * сливаться с карточками под ней.
+ * Место для тоста — над плавающей панелью вкладок. В светлой теме — тёмная
+ * плашка, в тёмной — приподнятая серая (почти белая плашка ночью слепила):
+ * она лежит поверх контента и не должна сливаться с карточками под ней.
  *
  * Появление и уход — CSS (.toast-in / .toast-out): текст тоста — информация,
  * его нельзя оставить невидимым из-за незапустившейся анимации.
@@ -32,13 +32,13 @@ export function Toaster() {
     >
       <div
         key={toast.id}
-        className={`pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-ink py-2.5 pl-3.5 pr-2 text-surface-raised shadow-fab ${
+        className={`pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-ink py-2.5 pl-3.5 pr-2 text-surface-raised shadow-fab dark:bg-[rgb(52_54_50)] dark:text-ink ${
           toast.leaving ? 'toast-out' : 'toast-in'
         }`}
         onClick={() => hideToast(toast.id)}
       >
         {Icon && (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-raised/15">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-raised/15 dark:bg-ink/10">
             <Icon size={15} strokeWidth={2.6} />
           </span>
         )}
@@ -55,7 +55,7 @@ export function Toaster() {
               toast.action!.run()
               hideToast(toast.id)
             }}
-            className="press shrink-0 rounded-xl px-3 py-2 text-[14px] font-bold text-brand-300 dark:text-brand-700"
+            className="press shrink-0 rounded-xl px-3 py-2 text-[14px] font-bold text-brand-300"
           >
             {toast.action.label}
           </button>

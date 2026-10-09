@@ -50,9 +50,14 @@ const DICT: Dict = {
   'shop.left_after': { ru: 'останется {n} {word}', en: '{n} {word} left after' },
   'shop.not_enough': { ru: 'не хватает {n} {word}', en: '{n} {word} short' },
   'shop.earn_more': { ru: 'Пока не хватает монет', en: 'Not enough coins yet' },
+  'shop.not_enough_btn': { ru: 'Не хватает {n} {word}', en: '{n} {word} short' },
+  'shop.left_of': { ru: 'останется {left} из {all}', en: '{left} of {all} left after' },
   'shop.bought': { ru: 'Куплено и надето', en: 'Bought and equipped' },
   'shop.balance': { ru: 'У тебя', en: 'You have' },
-  'shop.effect_try': { ru: 'Нажми — покажу ещё раз', en: 'Tap to replay' },
+  'shop.effect_try': {
+    ru: 'Играет на первой записи дня и на доходе. Нажми — покажу ещё раз',
+    en: 'Plays on your first entry of the day and on income. Tap to replay',
+  },
   'shop.earn': {
     ru: 'Монеты дают за серию дня, задания и приглашения, а ещё +{n} {word} за первую запись каждого дня.',
     en: 'Coins come from the daily streak, tasks and invites — plus {n} {word} for your first entry each day.',
@@ -278,6 +283,8 @@ const DICT: Dict = {
   'quest.subscribe': { ru: 'Подписаться', en: 'Subscribe' },
   'quest.locked_title': { ru: 'Следующее задание', en: 'Next quest' },
   'quest.locked_desc': { ru: 'Откроется через {time}', en: 'Unlocks in {time}' },
+  'quest.locked_many': { ru: 'Следующие задания · {n}', en: 'Next quests · {n}' },
+  'quest.locked_many_desc': { ru: 'Откроются через {time}', en: 'Unlock in {time}' },
   /* Обратный отсчёт до открытия слота */
   'time.hm': { ru: '{h} ч {m} мин', en: '{h} h {m} min' },
   'time.m': { ru: '{m} мин', en: '{m} min' },
@@ -292,6 +299,8 @@ const DICT: Dict = {
   'progress.of': { ru: '{n} из {total}', en: '{n} of {total}' },
   'streak.in_row': { ru: '{n} {word} подряд', en: '{n} {word} in a row' },
   'streak.none': { ru: 'Серия ещё не начата', en: 'No streak yet' },
+  'streak.gift': { ru: 'Подарок за {n} дней подряд', en: 'A gift for a {n}-day streak' },
+  'streak.gift_hint': { ru: 'Подарок из магазина на {n}-й день', en: 'A shop gift on day {n}' },
   'unit.h': { ru: 'ч', en: 'h' },
   'unit.m': { ru: 'мин', en: 'm' },
 
@@ -541,7 +550,7 @@ const DICT: Dict = {
 
   /* Новый уровень */
   'lvlup.kicker': { ru: 'Новый уровень', en: 'Level up' },
-  'lvlup.title': { ru: 'Уровень {level} · {name}', en: 'Level {level} · {name}' },
+  'lvlup.kicker_n': { ru: 'Новый уровень · {level}', en: 'Level up · {level}' },
   'lvlup.title_ready': { ru: 'Титул «{name}» ждёт тебя на «Прогрессе»', en: 'The “{name}” title is waiting for you in Progress' },
   'lvlup.title_days': { ru: 'Титул «{name}» откроется при серии {n} дней', en: 'The “{name}” title unlocks with a {n}-day streak' },
   'lvlup.cta': { ru: 'Продолжить', en: 'Continue' },
@@ -732,7 +741,7 @@ const DICT: Dict = {
   'reward.effect_sparks.name': { ru: 'Искры', en: 'Sparks' },
   'reward.effect_sparks.hint': { ru: 'Вспышка цвета акцента', en: 'A burst in your accent colour' },
   'reward.effect_confetti.name': { ru: 'Конфетти', en: 'Confetti' },
-  'reward.effect_confetti.hint': { ru: 'Маленький праздник на каждую запись', en: 'A little party for every entry' },
+  'reward.effect_confetti.hint': { ru: 'Маленький праздник для привычки', en: 'A little party for the habit' },
   'reward.effect_stars.name': { ru: 'Звездопад', en: 'Starfall' },
   'reward.effect_stars.hint': { ru: 'Звёзды летят из кнопки «Записать»', en: 'Stars fly out of the Save button' },
 
@@ -936,7 +945,7 @@ const DICT: Dict = {
   'home.today_exhausted': { ru: 'Бюджет месяца исчерпан', en: 'Monthly budget used up' },
   'home.today_month_over': { ru: 'Сверх бюджета месяца: {over}', en: 'Over the monthly budget by {over}' },
   'home.today_spent_only': { ru: 'Сегодня потрачено {spent}', en: 'Spent today: {spent}' },
-  'home.today_days': { ru: 'осталось дней: {days}', en: '{days} days left' },
+  'home.today_days': { ru: 'ещё {days} дн.', en: '{days} d left' },
 
   /* Плашка демо-режима */
   'demo.banner': { ru: 'Демо-режим: показаны примерные данные', en: 'Demo mode: sample data shown' },

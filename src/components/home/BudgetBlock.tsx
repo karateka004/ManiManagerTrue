@@ -78,7 +78,7 @@ export function BudgetBlock({ onOpen }: { onOpen: (tab: PlanTab) => void }) {
             <span className="caption text-ink-subtle">
               {exhausted ? t('home.today_kicker') : overToday ? t('home.today_over_label') : t('home.today_left_label')}
             </span>
-            <span className="caption-sm text-ink-subtle">{t('home.today_days', { days: daysLeft })}</span>
+            <span className="caption-sm shrink-0 whitespace-nowrap text-ink-subtle">{t('home.today_days', { days: daysLeft })}</span>
           </div>
 
           {exhausted ? (

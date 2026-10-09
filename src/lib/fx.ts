@@ -147,7 +147,8 @@ export function flyCoins(from: Point | Element | null | undefined, n = 6, onArri
     return
   }
   const L = getLayer()
-  const count = Math.max(3, Math.min(10, n))
+  // Не больше пяти: десяток монет — уже не награда, а рябь на экране.
+  const count = Math.max(3, Math.min(5, n))
   const dur = 760
   for (let i = 0; i < count; i++) {
     const c = document.createElement('span')

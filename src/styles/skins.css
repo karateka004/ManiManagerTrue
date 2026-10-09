@@ -99,9 +99,9 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(26% 20% at 78% 22%, rgb(45 212 191 / 0.5), transparent 70%),
+    radial-gradient(26% 20% at 78% 22%, rgb(45 212 191 / 0.72), transparent 70%),
     radial-gradient(30% 16% at 70% 38%, rgb(52 211 153 / 0.3), transparent 72%),
-    radial-gradient(22% 18% at 88% 46%, rgb(139 92 246 / 0.38), transparent 70%);
+    radial-gradient(22% 18% at 88% 46%, rgb(139 92 246 / 0.55), transparent 70%);
   transform: rotate(-14deg);
   animation: aurora-drift 14s ease-in-out 1 alternate both;
 }
@@ -156,6 +156,17 @@
 .hero-surface.skin-live.skin-aurora::before { animation-iteration-count: infinite; animation-duration: 9s; }
 .hero-surface.skin-live.skin-holo::before { animation: holo-sweep 4.5s ease-in-out infinite alternate; }
 
+/* Текст редкости — свои оттенки: цвет точки редкости (#F59E0B и т. п.)
+   на белом даёт контраст 2–4:1. Здесь 5–7,6:1 в обеих темах. */
+.rarity-text-common { color: #475569; }
+.rarity-text-rare { color: #1d4ed8; }
+.rarity-text-epic { color: #6d28d9; }
+.rarity-text-legendary { color: #b45309; }
+.dark .rarity-text-common { color: #cbd5e1; }
+.dark .rarity-text-rare { color: #93c5fd; }
+.dark .rarity-text-epic { color: #c4b5fd; }
+.dark .rarity-text-legendary { color: #fbbf24; }
+
 /* =====================================================================
    Особые рамки (components/rewards/FrameRing)
    ===================================================================== */
@@ -176,20 +187,23 @@
 /* Вихрь: кольцо медленно вращается (сам аватар стоит). */
 .frame-anim-spin::before { animation: frame-spin 7s linear infinite; }
 @keyframes frame-spin { to { transform: rotate(360deg); } }
-/* Пульс: свечение цвета акцента дышит вокруг кольца. */
+/* Пульс: свечение цвета акцента дышит вокруг кольца. Мягкое пятно —
+   радиальным градиентом, а не blur: размытый слой, который бесконечно
+   масштабируется, на слабом Android перерисовывался бы каждый кадр.
+   Дышит только прозрачность, и не вечно — два вдоха при появлении. */
 .frame-anim-pulse::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: -6px;
   z-index: -2;
   border-radius: inherit;
-  background: rgb(var(--brand-400) / 0.55);
-  filter: blur(6px);
-  animation: frame-pulse 2.6s ease-in-out infinite;
+  background: radial-gradient(closest-side, rgb(var(--brand-400) / 0.55), transparent);
+  opacity: 0.35;
+  animation: frame-pulse 4s ease-in-out 2;
 }
 @keyframes frame-pulse {
-  0%, 100% { opacity: 0.25; transform: scale(0.96); }
-  50% { opacity: 0.9; transform: scale(1.04); }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 /* =====================================================================

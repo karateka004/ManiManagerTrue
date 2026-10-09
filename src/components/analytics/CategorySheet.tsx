@@ -92,12 +92,15 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
               <div className="flex w-full flex-1 items-end">
                 <span
                   aria-hidden
-                  className="block w-full rounded-t-lg rounded-b"
-                  style={{
-                    height: `${Math.max(3, (m.amount / max) * 100)}%`,
-                    background: color,
-                    opacity: last ? 1 : 0.4,
-                  }}
+                  className="grow-y-d block w-full rounded-t-lg rounded-b"
+                  style={
+                    {
+                      height: `${Math.max(3, (m.amount / max) * 100)}%`,
+                      background: color,
+                      opacity: last ? 1 : 0.4,
+                      '--d': 60 + i * 50,
+                    } as React.CSSProperties
+                  }
                 />
               </div>
               <span className={`truncate text-[10px] font-bold ${last ? 'text-ink' : 'text-ink-subtle'}`}>

@@ -161,7 +161,7 @@ function BudgetTab({ t }: { t: TFunc }) {
                 ширине из-за остановленного rAF она не должна (см. «Грабли»). */}
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
               <div
-                className={`h-full rounded-full transition-[width] duration-500 ${barColor}`}
+                className={`grow-x h-full rounded-full transition-[width] duration-500 ${barColor}`}
                 style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
               />
             </div>
@@ -214,7 +214,7 @@ function BudgetTab({ t }: { t: TFunc }) {
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
               <div
-                className={`h-full rounded-full ${limitsTotal > budget ? 'bg-amber-400' : 'bg-income'}`}
+                className={`grow-x h-full rounded-full ${limitsTotal > budget ? 'bg-amber-400' : 'bg-income'}`}
                 style={{ width: `${Math.min(100, budget > 0 ? (limitsTotal / budget) * 100 : 0)}%` }}
               />
             </div>
@@ -330,7 +330,7 @@ function LimitsTab({ t }: { t: TFunc }) {
           </div>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
             <div
-              className={`h-full rounded-full ${
+              className={`grow-x h-full rounded-full ${
                 spentUnderLimits > limitsTotal ? 'bg-expense' : 'bg-income'
               }`}
               style={{ width: `${Math.min(100, limitsTotal > 0 ? (spentUnderLimits / limitsTotal) * 100 : 0)}%` }}
@@ -455,7 +455,7 @@ function LimitRow({
         <div className="mt-2.5">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
             <div
-              className={`h-full rounded-full transition-all ${barColor}`}
+              className={`grow-x h-full rounded-full transition-[width,background-color] duration-500 ${barColor}`}
               style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
             />
           </div>
@@ -671,7 +671,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
 
       <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
-          className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
+          className="grow-x h-full rounded-full bg-brand-500 transition-[width] duration-500"
           style={{ width: `${Math.round(ratio * 100)}%` }}
         />
       </div>

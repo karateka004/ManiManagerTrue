@@ -61,11 +61,13 @@ export function LevelUpOverlay({ level, onClose }: { level: number; onClose: () 
         <div ref={badgeRef} className="lvlup-badge relative mx-auto w-fit">
           <RewardBadge level={level} size={88} glass />
         </div>
+        {/* Номер — в надстрочнике, в заголовке только звание: «Уровень 6 ·
+            Магнат» на 320 px рвалось, и точка повисала в конце строки. */}
         <div className="fade-up relative mt-5 text-[13px] font-semibold text-white/60" style={{ animationDelay: '260ms' }}>
-          {t('lvlup.kicker')}
+          {t('lvlup.kicker_n', { level })}
         </div>
-        <div id="lvlup-title" className="fade-up relative mt-1 text-[24px] font-extrabold leading-tight" style={{ animationDelay: '320ms' }}>
-          {t('lvlup.title', { level, name: t('level.t' + level) })}
+        <div id="lvlup-title" className="fade-up relative mt-1 text-[26px] font-extrabold leading-tight" style={{ animationDelay: '320ms' }}>
+          {t('level.t' + level)}
         </div>
         {titleLine && (
           <div className="fade-up relative mt-2 text-[14px] leading-snug text-white/75" style={{ animationDelay: '380ms' }}>

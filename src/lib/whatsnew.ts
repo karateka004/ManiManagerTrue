@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.0.0'
+export const APP_VERSION = '2.1.0'
 
 /** Ключи localStorage. */
 export const ONBOARDED_KEY = 'koshel:onboarded'
@@ -34,6 +34,55 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.1.0',
+    date: '2026-10-09',
+    title: { ru: 'Плавно и живо: движение и новый Магазин', en: 'Smooth and alive: motion and a new Shop' },
+    items: [
+      {
+        text: {
+          ru: 'Приложение стало плавным: вкладки въезжают с той стороны, куда нажал, суммы прокручиваются к новым цифрам, как на табло, а полосы и графики вырастают на глазах',
+          en: 'The app now moves smoothly: tabs slide in from the side you tapped, amounts roll to new digits like a departures board, and bars and charts grow into place',
+        },
+      },
+      {
+        text: {
+          ru: 'Шторки выезжают на пружине и закрываются свайпом вниз, а системная кнопка «Назад» в Telegram возвращает из Настроек, Магазина и шторок',
+          en: 'Sheets glide up on a spring and close with a swipe down, and Telegram’s Back button now returns from Settings, the Shop and sheets',
+        },
+      },
+      {
+        text: {
+          ru: 'Новая операция: клавиатура и «Записать» всегда на экране, категории — в две строки. Если чего-то не хватает, кнопка подскажет, чего именно. После записи можно нажать «Отменить», а удалённую операцию — вернуть',
+          en: 'New entry: the keypad and Save are always on screen, categories sit in two rows, and the button tells you what’s missing. After saving you can tap Undo, and a deleted entry can be restored',
+        },
+      },
+      {
+        text: {
+          ru: 'Магазин: обложки для карты баланса — от «Полуночи» до живого «Северного сияния» и «Голограммы», переливающейся под пальцем. Новые рамки: «Вихрь», «Пульс» в цвет акцента и «Неделя», которая показывает дни твоей серии. Ещё новые титулы и эффекты записи',
+          en: 'Shop: covers for your balance card, from Midnight to the living Aurora and a Hologram that shimmers under your finger. New frames: Vortex, Pulse in your accent colour and Week, which shows your streak days. Plus new titles and entry effects',
+        },
+      },
+      {
+        text: {
+          ru: 'Вещь можно примерить до покупки: обложку — на свою карту, рамку — на свой аватар, титул — на своё имя. Витрина дня больше не предлагает купленное и показывает, когда обновится',
+          en: 'Try before you buy: a cover on your own card, a frame on your avatar, a title under your name. The deal of the day no longer offers what you own and shows when it refreshes',
+        },
+      },
+      {
+        text: {
+          ru: '+2 монеты за первую запись каждого дня. На «Прогрессе» — «Забрать всё» одним нажатием, монетки летят прямо в копилку, а новый уровень теперь празднуется',
+          en: '+2 coins for your first entry each day. On Progress, Claim all in one tap, coins fly straight into your balance, and a new level now gets a celebration',
+        },
+      },
+      {
+        text: {
+          ru: 'Зелёный «всё хорошо» больше не зависит от купленной палитры: с розовым акцентом полоса бюджета не путается с перерасходом',
+          en: 'The green “all good” no longer depends on your palette: with the pink accent the budget bar can’t be mistaken for overspending',
+        },
+      },
+    ],
+  },
   {
     version: '2.0.0',
     date: '2026-10-07',

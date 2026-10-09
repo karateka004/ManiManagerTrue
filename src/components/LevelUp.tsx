@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useLevel } from './LevelBar'
 
 // Сам праздничный экран — ленивый чанк: нужен раз в несколько недель.
@@ -20,6 +20,9 @@ const KEY = 'koshel:celebratedLevel'
 export function LevelUpWatcher() {
   const { level } = useLevel()
   const [shown, setShown] = useState<number | null>(null)
+  // Уровень, который ждёт показа: запись в localStorage уже сделана, а сам
+  // экран откладывается — ref переживает повторный запуск эффекта.
+  const pending = useRef<number | null>(null)
 
   useEffect(() => {
     let stored = 0
@@ -32,9 +35,18 @@ export function LevelUpWatcher() {
       try { localStorage.setItem(KEY, String(level)) } catch { /* приватный режим */ }
       return
     }
-    if (level <= stored) return
-    try { localStorage.setItem(KEY, String(level)) } catch { /* приватный режим */ }
-    if (level - stored === 1 && document.visibilityState === 'visible') setShown(level)
+    if (level > stored) {
+      try { localStorage.setItem(KEY, String(level)) } catch { /* приватный режим */ }
+      if (level - stored === 1 && document.visibilityState === 'visible') pending.current = level
+    }
+    if (pending.current === null) return
+    // Уровень обычно приходит вместе с наградой (монетки летят к счётчику,
+    // закрывается шторка операции) — даём им доиграть, потом праздник.
+    const id = setTimeout(() => {
+      setShown(pending.current)
+      pending.current = null
+    }, 900)
+    return () => clearTimeout(id)
   }, [level])
 
   if (shown === null) return null

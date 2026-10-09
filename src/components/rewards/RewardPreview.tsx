@@ -28,13 +28,14 @@ export function RewardThumb({ reward, dim }: { reward: RewardDef; dim?: boolean 
   const filter = dim ? 'grayscale(0.6) opacity(0.7)' : undefined
   if (reward.kind === 'card') {
     return (
+      // Сама обложка, крупно и без «текста»: яркие полоски-заглушки были
+      // заметнее фона, и все тёмные карты выглядели одинаково.
       <span
-        className={`hero-surface block h-[30px] w-[46px] rounded-[9px] ${heroSkinClass(reward.id)}`}
+        className={`hero-surface block h-[36px] w-[56px] rounded-[10px] ${heroSkinClass(reward.id)}`}
         style={{ filter }}
         aria-hidden
       >
-        <span className="absolute left-[6px] top-[6px] h-[3px] w-[14px] rounded-full bg-white/50" />
-        <span className="absolute left-[6px] top-[13px] h-[5px] w-[22px] rounded-full bg-white/85" />
+        <span className="absolute bottom-[7px] left-[7px] h-[3px] w-[18px] rounded-full bg-white/35" />
       </span>
     )
   }
@@ -171,7 +172,7 @@ function EffectStage({ reward }: { reward: RewardDef }) {
       >
         {t('add.save_expense')}
       </button>
-      <div className="caption mt-2 text-center text-ink-subtle">{t('shop.effect_try')}</div>
+      <div className="caption mt-2 text-center leading-snug text-ink-subtle">{t('shop.effect_try')}</div>
     </div>
   )
 }

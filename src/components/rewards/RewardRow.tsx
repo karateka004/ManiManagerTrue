@@ -55,15 +55,15 @@ export function RewardRow({ reward, priceOverride, onOpen }: Props) {
 
       <span className="row-main">
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
+          <span className="block truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
+          {/* «Новое» — первым словом подписи, а не плашкой у названия: на
+              320 px плашка съедала название до «Гологра…». */}
+          <span className="caption mt-0.5 block truncate text-ink-subtle">
             {reward.fresh && !owned && (
-              <span className="shrink-0 rounded-full bg-brand-500/10 px-1.5 py-px text-[10px] font-bold text-brand-700 dark:bg-brand-400/15 dark:text-brand-300">
-                {t('shop.new')}
-              </span>
+              <span className="font-semibold text-brand-600 dark:text-brand-300">{t('shop.new')} · </span>
             )}
+            {t('reward.' + reward.id + '.hint')}
           </span>
-          <span className="caption mt-0.5 block truncate text-ink-subtle">{t('reward.' + reward.id + '.hint')}</span>
         </span>
 
         {owned ? (

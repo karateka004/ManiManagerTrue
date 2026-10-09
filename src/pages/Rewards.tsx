@@ -239,13 +239,13 @@ export function RewardsPage() {
             <RewardBadge level={lvl.level} size={44} glass />
             <div className="min-w-0 leading-tight">
               <div className="truncate text-lg font-extrabold">{t('level.t' + lvl.level)}</div>
-              <div className="caption mt-0.5 text-white/60">
+              <div className="caption mt-0.5 whitespace-nowrap text-white/60">
                 {t('profile.level', { level: lvl.level, max: LEVELS.length })}
               </div>
             </div>
           </div>
           <div className="flex shrink-0 items-baseline gap-1">
-            <span className="text-[28px] font-extrabold leading-none tabular-nums">
+            <span className="text-[28px] font-extrabold leading-none tabular-nums max-[359px]:text-[24px]">
               <Odometer text={lvl.xp.toLocaleString('ru-RU')} />
             </span>
             <span className="caption text-white/60">XP</span>

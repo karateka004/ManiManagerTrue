@@ -191,7 +191,7 @@ export const REWARDS: RewardDef[] = [
   // Эффекты записи операции (2.1).
   { id: 'effect_none', kind: 'effect', name: 'Без эффекта', rarity: 'common', unlockLevel: 1, hint: 'Запись без украшений', effect: 'none' },
   { id: 'effect_sparks', kind: 'effect', name: 'Искры', rarity: 'rare', unlockLevel: 1, hint: 'Вспышка цвета акцента', effect: 'sparks', fresh: true },
-  { id: 'effect_confetti', kind: 'effect', name: 'Конфетти', rarity: 'epic', unlockLevel: 1, hint: 'Маленький праздник на каждую запись', effect: 'confetti', fresh: true },
+  { id: 'effect_confetti', kind: 'effect', name: 'Конфетти', rarity: 'epic', unlockLevel: 1, hint: 'Маленький праздник для привычки', effect: 'confetti', fresh: true },
   { id: 'effect_stars', kind: 'effect', name: 'Звездопад', rarity: 'legendary', unlockLevel: 1, hint: 'Звёзды летят из кнопки «Записать»', effect: 'stars', fresh: true },
 
   // Титулы за уровень (source: 'level') — бесплатные, открываются прогрессом.
@@ -339,6 +339,31 @@ export function featuredToday(dateKey: string, owned: readonly string[] = []): s
     pool[j] = tmp
   }
   return pool.filter((id) => !owned.includes(id)).slice(0, FEATURED_COUNT)
+}
+
+/* ---------- Подарок за серию ---------- */
+
+/**
+ * Рубежи серии, за которые дарится вещь из магазина, и её редкость. Вместо
+ * сундука за монеты: подарок — за привычку заходить каждый день, а не за азарт.
+ */
+export const STREAK_GIFTS: Record<number, Exclude<Rarity, 'common' | 'legendary'>> = {
+  7: 'rare',
+  14: 'rare',
+  30: 'epic',
+}
+
+/**
+ * Случайная ещё не купленная вещь нужной редкости; если такой не осталось —
+ * следующей редкости (дарим лучше, а не ничего). null — всё уже есть.
+ */
+export function pickGift(owned: readonly string[], rarity: Rarity, rnd: () => number = Math.random): string | null {
+  const order: Rarity[] = ['rare', 'epic', 'legendary']
+  for (const r of order.slice(Math.max(0, order.indexOf(rarity)))) {
+    const pool = SHOP_REWARDS.filter((x) => x.rarity === r && !owned.includes(x.id))
+    if (pool.length) return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))].id
+  }
+  return null
 }
 
 /** Мс до полуночи по местному времени — витрина дня обновится в этот момент. */

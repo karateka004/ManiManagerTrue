@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Coins } from 'lucide-react'
+import { Clock3, Coins } from 'lucide-react'
 import { useStore, RECORD_COINS } from '../store/transactions'
 import { coinsWord, useT, type TFunc } from '../lib/i18n'
 import { hapticSelect } from '../lib/telegram'
@@ -95,6 +95,28 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
   const items = rewardsByKind(tab)
   const ownedCount = SHOP_REWARDS.filter((r) => owned.includes(r.id)).length
   const { trackRef, pillRef } = useSegPill<HTMLDivElement>(tab)
+  // Чипы видов не помещаются на узком экране — правый край тает, чтобы было
+  // видно, что ряд прокручивается (иначе «Эффекты» не найти).
+  const [chipsOverflow, setChipsOverflow] = useState(false)
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const check = () => setChipsOverflow(el.scrollWidth - el.clientWidth > 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+    check()
+    el.addEventListener('scroll', check, { passive: true })
+    window.addEventListener('resize', check)
+    document.fonts?.ready.then(check)
+    return () => {
+      el.removeEventListener('scroll', check)
+      window.removeEventListener('resize', check)
+    }
+  }, [trackRef])
+  // Выбранный вид — в видимую часть ряда.
+  useEffect(() => {
+    trackRef.current
+      ?.querySelector<HTMLElement>(':scope > .seg-on')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }, [tab, trackRef])
 
   const open = (reward: RewardDef, price?: number) => setProduct({ reward, price })
 
@@ -126,7 +148,14 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
               <span className="caption font-semibold text-ink-subtle">−{DAILY_DISCOUNT_PCT}%</span>
             </span>
           }
-          action={t('shop.deal_refresh', { time: until })}
+          action={
+            // Срок до новой витрины — коротко и с часами: «через …» не влезало
+            // рядом с заголовком на 320 px и переносило его на две строки.
+            <span className="flex items-center gap-1 tabular-nums" aria-label={t('shop.deal_refresh', { time: until })}>
+              <Clock3 size={13} strokeWidth={2.4} />
+              {until}
+            </span>
+          }
           bodyClassName="stagger"
         >
           {featured.map((r) => (
@@ -139,6 +168,14 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
       <div
         ref={trackRef}
         className="no-scrollbar relative mx-4 mt-6 flex gap-1 overflow-x-auto rounded-full bg-surface-sunken p-1"
+        style={
+          chipsOverflow
+            ? {
+                WebkitMaskImage: 'linear-gradient(90deg, #000 calc(100% - 32px), transparent)',
+                maskImage: 'linear-gradient(90deg, #000 calc(100% - 32px), transparent)',
+              }
+            : undefined
+        }
       >
         <span ref={pillRef} className="seg-pill" aria-hidden />
         {SHOP_KINDS.map((k) => (
