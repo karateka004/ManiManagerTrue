@@ -5,6 +5,8 @@ import { dayjs, formatMoney } from '../lib/format'
 import { useT, weekdaysShort, type Lang } from '../lib/i18n'
 import { parseDay } from '../lib/day'
 import { hapticSelect } from '../lib/telegram'
+import { useSegPill } from './ui/SegTrack'
+import { AnimatedMoney } from './ui/Odometer'
 
 /** Что показывать под числом дня. */
 type CalFilter = 'net' | 'income' | 'expense' | 'both'
@@ -44,6 +46,9 @@ export function MonthCalendar() {
   const currency = account ?? globalCurrency
   const [month, setMonth] = useState(() => dayjs().startOf('month'))
   const [filter, setFilter] = useState<CalFilter>('net')
+  // Куда листали: сетка месяца въезжает с этой стороны.
+  const [dir, setDir] = useState(0)
+  const { trackRef, pillRef } = useSegPill<HTMLDivElement>(filter)
 
   // Агрегация по дням текущего месяца.
   const { byDay, totals } = useMemo(() => {
@@ -101,33 +106,40 @@ export function MonthCalendar() {
       {/* Навигация по месяцам */}
       <div className="mb-3 flex items-center justify-between px-2">
         <button
-          onClick={() => { hapticSelect(); setMonth((m) => m.subtract(1, 'month')) }}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted active:bg-surface-sunken"
+          onClick={() => { hapticSelect(); setDir(-1); setMonth((m) => m.subtract(1, 'month')) }}
+          className="press-icon flex h-9 w-9 items-center justify-center rounded-full text-ink-muted active:bg-surface-sunken"
           aria-label={tr('cal.prev_month')}
         >
           <ChevronLeft size={20} />
         </button>
-        <span className="text-sm font-bold capitalize text-ink">{month.format('MMMM YYYY')}</span>
+        <span
+          key={month.format('YYYY-MM')}
+          className={`text-sm font-bold capitalize text-ink ${dir > 0 ? 'tab-in-r' : dir < 0 ? 'tab-in-l' : ''}`}
+        >
+          {month.format('MMMM YYYY')}
+        </span>
         <button
-          onClick={() => { hapticSelect(); setMonth((m) => m.add(1, 'month')) }}
+          onClick={() => { hapticSelect(); setDir(1); setMonth((m) => m.add(1, 'month')) }}
           disabled={isCurrentMonth}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted active:bg-surface-sunken disabled:opacity-30"
+          className="press-icon flex h-9 w-9 items-center justify-center rounded-full text-ink-muted active:bg-surface-sunken disabled:opacity-30"
           aria-label={tr('cal.next_month')}
         >
           <ChevronRight size={20} />
         </button>
       </div>
 
-      {/* Фильтр */}
-      <div className="mb-3 grid grid-cols-4 gap-1 rounded-full bg-surface-sunken p-1">
+      {/* Фильтр — плашка ездит, как у остальных сегментов */}
+      <div ref={trackRef} className="relative mb-3 grid grid-cols-4 gap-1 rounded-full bg-surface-sunken p-1">
+        <span ref={pillRef} className="seg-pill" aria-hidden />
         {FILTERS.map((f) => {
           const active = filter === f.id
           return (
             <button
               key={f.id}
               onClick={() => { hapticSelect(); setFilter(f.id) }}
-              className={`rounded-full py-1.5 text-[11px] font-semibold transition-colors ${
-                active ? 'bg-surface-raised text-ink shadow-soft dark:shadow-soft-dark' : 'text-ink-muted'
+              aria-pressed={active}
+              className={`seg-slot rounded-full py-1.5 text-[11px] font-semibold transition-colors duration-200 ${
+                active ? 'seg-on text-ink' : 'text-ink-muted'
               }`}
             >
               {tr(f.label)}
@@ -143,7 +155,10 @@ export function MonthCalendar() {
             <div key={w} className="text-center text-[10px] font-semibold text-ink-subtle">{w}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          key={month.format('YYYY-MM')}
+          className={`grid grid-cols-7 gap-1 ${dir > 0 ? 'tab-in-r' : dir < 0 ? 'tab-in-l' : ''}`}
+        >
           {cells.map((day, i) => {
             if (day === null) return <div key={`e${i}`} />
             const agg = byDay.get(day)
@@ -164,10 +179,10 @@ export function MonthCalendar() {
                   {hasAny && (
                     <span className="mt-0.5 flex flex-col items-center leading-tight">
                       {agg!.income > 0 && (
-                        <span className="whitespace-nowrap text-[8px] font-bold text-income-deep">+{compact(agg!.income, lang)}</span>
+                        <span className="whitespace-nowrap text-[8px] font-bold text-income-deep dark:text-income-light">+{compact(agg!.income, lang)}</span>
                       )}
                       {agg!.expense > 0 && (
-                        <span className="whitespace-nowrap text-[8px] font-bold text-expense-deep">−{compact(agg!.expense, lang)}</span>
+                        <span className="whitespace-nowrap text-[8px] font-bold text-expense-deep dark:text-expense-soft">−{compact(agg!.expense, lang)}</span>
                       )}
                     </span>
                   )}
@@ -190,7 +205,7 @@ export function MonthCalendar() {
                 {value !== null && (
                   <span
                     className={`mt-0.5 whitespace-nowrap text-[9px] font-bold leading-none ${
-                      positive ? 'text-income-deep' : negative ? 'text-expense-deep' : 'text-ink-subtle'
+                      positive ? 'text-income-deep dark:text-income-light' : negative ? 'text-expense-deep dark:text-expense-soft' : 'text-ink-subtle'
                     }`}
                   >
                     {positive ? '+' : negative ? '−' : ''}{compact(value, lang)}
@@ -215,17 +230,17 @@ export function MonthCalendar() {
         </span>
         {filter === 'both' ? (
           <span className="flex items-center gap-1.5 text-sm font-bold">
-            <span className="tabular text-income-deep">+{formatMoney(totals.income, currency)}</span>
+            <span className="tabular text-income-deep dark:text-income-light">+{formatMoney(totals.income, currency)}</span>
             <span className="text-ink-subtle">·</span>
-            <span className="tabular text-expense-deep">−{formatMoney(totals.expense, currency)}</span>
+            <span className="tabular text-expense-deep dark:text-expense-soft">−{formatMoney(totals.expense, currency)}</span>
           </span>
         ) : (
           <span
             className={`tabular text-sm font-bold ${
-              monthTotal > 0 ? 'text-income-deep' : monthTotal < 0 ? 'text-expense-deep' : 'text-ink'
+              monthTotal > 0 ? 'text-income-deep dark:text-income-light' : monthTotal < 0 ? 'text-expense-deep dark:text-expense-soft' : 'text-ink'
             }`}
           >
-            {formatMoney(monthTotal, currency, { sign: true })}
+            <AnimatedMoney value={monthTotal} currency={currency} sign />
           </span>
         )}
       </div>

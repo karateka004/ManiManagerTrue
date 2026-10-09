@@ -1,6 +1,7 @@
 import { useStore, selectTotalsByCurrency, type PeriodMode } from '../store/transactions'
-import { formatMoney } from '../lib/format'
-import { Money } from './ui/Money'
+import { AnimatedMoney } from './ui/Odometer'
+import { useHeroSkin } from '../lib/useHeroSkin'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 
@@ -19,6 +20,15 @@ export function BalanceCard() {
   const periodMode = useStore((s) => s.period.mode)
   const account = useStore((s) => s.account)
   const t = useT()
+  const skin = useHeroSkin()
+
+  // Голограмма: перелив идёт за пальцем по карте (переменная --holo-x для
+  // слоя ::before в styles/skins.css). На остальных обложках — ничего.
+  const onHoloMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const k = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+    e.currentTarget.style.setProperty('--holo-x', `${(-18 + k * 32).toFixed(1)}%`)
+  }
 
   const allEntries = Object.entries(byCurrency) as [Currency, { income: number; expense: number; balance: number }][]
   // Выбран счёт (валюта) — показываем только его (одновалютный вид). Если по этой
@@ -33,7 +43,10 @@ export function BalanceCard() {
           приложении, а framer крутит появление через requestAnimationFrame: в
           свёрнутом Telegram он стоит, и карточка оставалась бы невидимой
           (см. «Грабли» в CLAUDE.md). Появление и так даёт .tab-enter вкладки. */}
-      <div className="hero-surface relative overflow-hidden rounded-4xl px-6 py-5">
+      <div
+        className={`hero-surface relative overflow-hidden rounded-4xl px-6 py-5 ${skin}`}
+        onPointerMove={skin === 'skin-holo' ? onHoloMove : undefined}
+      >
 
         <div className="relative">
           <div className="caption text-white/70">{t(BALANCE_LABEL[periodMode])}</div>
@@ -44,8 +57,10 @@ export function BalanceCard() {
           ) : entries.length === 1 ? (
             /* Одна валюта — классический вид */
             <>
+              {/* Цифры-барабаны: добавил операцию или пролистал месяц — сумма
+                  прокручивается к новой. */}
               <div className="mt-1 text-display-lg text-white">
-                <Money value={entries[0][1].balance} currency={entries[0][0]} />
+                <AnimatedMoney value={entries[0][1].balance} currency={entries[0][0]} />
               </div>
               <div className="mt-4 flex items-center gap-4">
                 <Stat label={t('common.income')} amount={entries[0][1].income} currency={entries[0][0]} positive />
@@ -62,7 +77,7 @@ export function BalanceCard() {
                   <div className="flex items-baseline justify-between">
                     <span className="caption-sm text-white/60">{cur}</span>
                     <span className="tabular text-lg font-bold text-white">
-                      {formatMoney(totals.balance, cur)}
+                      <AnimatedMoney value={totals.balance} currency={cur} />
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-3">
@@ -98,7 +113,7 @@ function Stat({
       <div className={`text-white/65 ${compact ? 'caption-sm' : 'caption'}`}>{label}</div>
       <div className={`tabular font-bold ${compact ? 'text-xs' : 'text-sm'} ${positive ? 'text-white' : 'text-white/95'}`}>
         {positive ? '+ ' : '− '}
-        <Money value={Math.abs(amount)} currency={currency} />
+        <AnimatedMoney value={Math.abs(amount)} currency={currency} />
       </div>
     </div>
   )

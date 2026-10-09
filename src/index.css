@@ -171,7 +171,7 @@
     @apply inline-flex shrink-0 items-center gap-0.5 rounded-full py-[3px] pl-1.5 pr-2 text-[12px] font-semibold tabular-nums ring-1 ring-inset;
   }
   .delta-good {
-    @apply bg-income/10 text-income-deep ring-income/20 dark:bg-brand-400/15 dark:text-brand-300 dark:ring-brand-400/25;
+    @apply bg-income/10 text-income-deep ring-income/20 dark:bg-income/15 dark:text-income-light dark:ring-income/25;
   }
   .delta-bad {
     @apply bg-expense/10 text-expense-deep ring-expense/20 dark:bg-expense/15 dark:text-expense-soft dark:ring-expense/25;
@@ -234,7 +234,7 @@
      Активный — светлая плашка на сером треке. Сплошная заливка брендом делала
      каждый переключатель самым ярким пятном экрана, хотя это просто настройка. */
   .seg-track {
-    @apply flex rounded-full bg-surface-sunken p-1;
+    @apply relative flex rounded-full bg-surface-sunken p-1;
   }
   .seg-item {
     @apply flex-1 whitespace-nowrap rounded-full px-3 py-2 text-[14px] font-semibold text-ink-muted transition-colors;

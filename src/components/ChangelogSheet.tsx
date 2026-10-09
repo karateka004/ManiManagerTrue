@@ -1,5 +1,4 @@
-import { m, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
+import { BottomSheet, SheetHeader } from './ui/BottomSheet'
 import { useStore } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { RELEASES, cmpVersion, APP_VERSION } from '../lib/whatsnew'
@@ -24,78 +23,41 @@ export function ChangelogSheet({ open, onClose, seenVersion }: Props) {
   const lang = useStore((s) => s.lang)
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-          />
-          <m.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] flex-col rounded-t-5xl bg-surface-raised shadow-raised"
-            style={{ paddingBottom: 'var(--safe-bottom)' }}
-          >
-            <div className="flex justify-center pb-1 pt-3">
-              <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
-            </div>
+    <BottomSheet open={open} onClose={onClose} layout="flex" maxHeight="92vh" padBottom={0}>
+      <SheetHeader title={t('changelog.title')} subtitle={t('changelog.current', { v: APP_VERSION })} onClose={onClose} />
 
-            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
-              <div className="min-w-0 leading-tight">
-                <div className="text-[17px] font-extrabold text-ink">{t('changelog.title')}</div>
-                <div className="caption mt-0.5 text-ink-subtle">{t('changelog.current', { v: APP_VERSION })}</div>
-              </div>
-              <button
-                onClick={onClose}
-                aria-label={t('common.close')}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
-              >
-                <X size={18} strokeWidth={2.4} />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-              <div className="flex flex-col gap-3">
-                {RELEASES.map((r) => {
-                  const isNew = cmpVersion(r.version, seenVersion) > 0
-                  return (
-                    <div key={r.version} className="rounded-3xl bg-surface-sunken/60 p-4">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate text-sm font-bold text-ink">{r.title[lang]}</span>
-                          {isNew && (
-                            <span className="shrink-0 rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-                              {t('changelog.new')}
-                            </span>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-[11px] tabular text-ink-subtle">v{r.version}</span>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {r.items.map((it, i) => (
-                          <div key={i} className="flex items-start gap-2.5">
-                            {/* Точка вместо эмодзи у каждого пункта: 150 разных пиктограмм
-                                в одном списке читались как рябь, а не как перечень. */}
-                            <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-subtle" aria-hidden />
-                            <span className="text-[13px] leading-snug text-ink-muted">{it.text[lang]}</span>
-                          </div>
-                        ))}
-                      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">
+        <div className="flex flex-col gap-3">
+          {RELEASES.map((r) => {
+            const isNew = cmpVersion(r.version, seenVersion) > 0
+            return (
+              <div key={r.version} className="rounded-3xl bg-surface-sunken/60 p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-bold text-ink">{r.title[lang]}</span>
+                    {isNew && (
+                      <span className="shrink-0 rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                        {t('changelog.new')}
+                      </span>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[11px] tabular text-ink-subtle">v{r.version}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {r.items.map((it, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      {/* Точка вместо эмодзи у каждого пункта: 150 разных пиктограмм
+                          в одном списке читались как рябь, а не как перечень. */}
+                      <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-subtle" aria-hidden />
+                      <span className="text-[13px] leading-snug text-ink-muted">{it.text[lang]}</span>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>
+            )
+          })}
+        </div>
+      </div>
+    </BottomSheet>
   )
 }

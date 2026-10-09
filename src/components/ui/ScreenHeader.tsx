@@ -28,7 +28,7 @@ export function ScreenHeader({
         <button
           onClick={() => { hapticTap(); onBack() }}
           aria-label={t('common.back')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95"
+          className="press-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft"
         >
           <ChevronLeft size={20} strokeWidth={2.4} />
         </button>

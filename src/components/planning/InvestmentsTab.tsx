@@ -140,10 +140,10 @@ export function InvestmentsTab({ t }: { t: TFunc }) {
             ))}
           </div>
           <div className="mt-2 flex items-center gap-2 border-t border-hairline pt-2 text-[11px]">
-            <TrendingUp size={13} strokeWidth={2.4} className="shrink-0 text-income-deep" />
+            <TrendingUp size={13} strokeWidth={2.4} className="shrink-0 text-income-deep dark:text-income-light" />
             <span className="text-ink-subtle">
               {t('inv.yearly')}:{' '}
-              <span className="font-semibold text-income-deep">
+              <span className="font-semibold text-income-deep dark:text-income-light">
                 {(Object.entries(summary.yearlyByCur) as [Currency, number][])
                   .filter(([, v]) => v > 0)
                   .map(([cur, v]) => formatMoney(v, cur))
@@ -271,7 +271,7 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
         >
           <Pencil size={16} />
         </button>
-        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep" aria-label={t('common.delete')}>
+        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:text-expense-soft" aria-label={t('common.delete')}>
           <Trash2 size={17} />
         </button>
       </div>
@@ -301,7 +301,7 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
           <span className="text-xs text-ink-subtle">{getCurrency(item.currency).symbol}</span>
         </div>
         {yearly > 0 && (
-          <span className="shrink-0 rounded-2xl bg-income/10 px-3 py-2 text-[11px] font-bold tabular text-income-deep">
+          <span className="shrink-0 rounded-2xl bg-income/10 px-3 py-2 text-[11px] font-bold tabular text-income-deep dark:text-income-light">
             +{formatMoney(yearly, item.currency)}/{t('inv.year_short')}
           </span>
         )}
@@ -476,7 +476,7 @@ function CompoundCalculator({
           </div>
           <div>
             <div className="text-ink-subtle">{t('inv.calc_profit')}</div>
-            <div className="tabular font-semibold text-income-deep">+{formatMoney(res.profit, currency)}</div>
+            <div className="tabular font-semibold text-income-deep dark:text-income-light">+{formatMoney(res.profit, currency)}</div>
           </div>
         </div>
         <div className="mt-2 border-t border-hairline pt-2 text-[11px] text-ink-subtle">

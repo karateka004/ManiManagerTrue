@@ -5,7 +5,14 @@ import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
-import { DEFAULT_EQUIPPED, DEFAULT_OWNED, getReward, rewardPrice, discountedPrice } from '../lib/rewards'
+import {
+  DEFAULT_EQUIPPED,
+  DEFAULT_OWNED,
+  getReward,
+  rewardPrice,
+  discountedPrice,
+  type RewardKind,
+} from '../lib/rewards'
 import { computeXp, levelFor } from '../lib/levels'
 import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
@@ -112,14 +119,19 @@ interface State {
   bonusXp: number
   /** Игровая валюта «монеты» — награда за задания (под косметический магазин). */
   coins: number
+  /**
+   * День (YYYY-MM-DD), за который уже начислены монеты за запись операции —
+   * RECORD_COINS один раз в день, в который человек что-то записал.
+   */
+  coinDay: string | null
   /** Сколько рефералов уже «оплачено» фикс-наградой (для доначисления за новых). */
   rewardedReferrals: number
   /** ID заданий, награда за которые уже забрана (Claim). */
   claimedQuests: string[]
   /** Ежедневная серия (стрик) — ретеншн-движок. */
   streak: StreakState
-  /** Надетые косметические награды (роудпасс): акцент, титул, рамка аватара. */
-  equipped: { accent: string; title: string; frame: string }
+  /** Надетые косметические награды: акцент, титул, рамка аватара, обложка карты, эффект записи. */
+  equipped: { accent: string; title: string; frame: string; card: string; effect: string }
   /** Купленные (доступные к надеванию) награды. */
   owned: string[]
   /**
@@ -178,8 +190,13 @@ interface Actions {
    * дёргала три действия подряд, и одно сохранение стоило три полных прохода
    * подписчиков и три записи на диск.
    */
-  commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => void
+  commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => string
   removeTransaction: (id: string) => void
+  /**
+   * Вернуть удалённую операцию как была — с тем же id («Вернуть» в тосте после
+   * удаления). Если такая уже есть, ничего не делает.
+   */
+  restoreTransaction: (t: Transaction) => void
   /**
    * Добавить операции из файла. Только ДОБАВЛЯЕТ и никогда не заменяет: файл
    * может оказаться чужим, подменять им историю было бы разрушительно.
@@ -257,8 +274,8 @@ interface Actions {
    * автоподбор, дальше правится только выбранный слот.
    */
   setQuickCurrency: (slot: number, code: Currency) => void
-  /** Надеть косметическую награду (акцент/титул/рамка). */
-  equipReward: (kind: 'accent' | 'title' | 'frame', id: string) => void
+  /** Надеть косметическую награду (акцент/титул/рамка/обложка/эффект). */
+  equipReward: (kind: RewardKind, id: string) => void
   /**
    * Купить награду за монеты. `priceOverride` — скидочная цена витрины дня
    * (зажимается в диапазон [скидка, полная цена] для защиты от подмены из UI).
@@ -303,6 +320,14 @@ function quickCurrenciesOf(s: State): Currency[] {
 
 /** Фикс-награда за каждого присоединившегося реферала. */
 export const REF_REWARD = { xp: 25, coins: 10 } as const
+
+/**
+ * Монеты за день с записью (2.1). Раньше монеты шли только за серию и за
+ * задания: задания кончаются, и после первого месяца копилось ~150 в месяц —
+ * легендарная вещь из магазина оказывалась целью на полгода. Записи — главная
+ * привычка приложения, за неё и платим.
+ */
+export const RECORD_COINS = 2
 
 /** Инкремент счётчика события вовлечения (для заданий «за использование»). */
 const bumpEvent = (events: Record<string, number>, key: string): Record<string, number> => ({
@@ -418,6 +443,7 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
 
   // Счётчики прогресса: отрицательные и нечисловые ломают арифметику уровней.
   if (s.coins !== undefined) s.coins = clampNumber(s.coins, 0, 1e9, 0)
+  if (s.coinDay !== undefined && s.coinDay !== null && typeof s.coinDay !== 'string') delete s.coinDay
   if (s.bonusXp !== undefined) s.bonusXp = clampNumber(s.bonusXp, 0, 1e9, 0)
   if (s.rewardedReferrals !== undefined) s.rewardedReferrals = clampNumber(s.rewardedReferrals, 0, 1e9, 0)
   if (s.monthlyBudget !== undefined) s.monthlyBudget = clampNumber(s.monthlyBudget, 0, MAX_MONEY, 0)
@@ -514,6 +540,7 @@ export const useStore = create<State & Actions>()(
       customCategories: [],
       bonusXp: 0,
       coins: 0,
+      coinDay: null,
       rewardedReferrals: 0,
       claimedQuests: [],
       streak: { count: 0, best: 0, lastClaim: null },
@@ -561,14 +588,25 @@ export const useStore = create<State & Actions>()(
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
 
-      commitTransaction: (t, editingId) =>
+      restoreTransaction: (t) =>
+        set((s) => (s.transactions.some((x) => x.id === t.id) ? {} : { transactions: [t, ...s.transactions] })),
+
+      commitTransaction: (t, editingId) => {
+        // id новой операции нужен снаружи: «Отменить» в тосте после записи.
+        const id = editingId ?? cuid()
         set((s) => {
           const patch: Partial<State> = {}
           if (editingId) {
             patch.transactions = s.transactions.map((x) => (x.id === editingId ? { ...x, ...t } : x))
           } else {
-            patch.transactions = [{ ...t, id: cuid() }, ...s.transactions]
+            patch.transactions = [{ ...t, id }, ...s.transactions]
             if (t.currency) patch.lastTxCurrency = t.currency
+            // Первая запись за день — пара монет (см. RECORD_COINS).
+            const today = todayISO()
+            if (s.coinDay !== today) {
+              patch.coinDay = today
+              patch.coins = Math.max(0, s.coins + RECORD_COINS)
+            }
           }
           // Операция «задним числом» может выпасть за текущий период просмотра —
           // тогда сдвигаем период на её дату, иначе запись пропала бы из виду.
@@ -579,7 +617,9 @@ export const useStore = create<State & Actions>()(
             if (next) patch.period = next
           }
           return patch
-        }),
+        })
+        return id
+      },
 
       setPeriodMode: (mode) =>
         set((s) => {
@@ -813,7 +853,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 16,
+      version: 17,
       storage: createJSONStorage(() => throttledStorage),
       // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
       merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
@@ -892,6 +932,16 @@ export const useStore = create<State & Actions>()(
         // v16: быстрый выбор валют в форме операции (пусто = автоподбор по данным)
         if (persisted && version < 16) {
           if (!Array.isArray(persisted.quickCurrencies)) persisted.quickCurrencies = []
+        }
+        // v17 (2.1): обложка карты и эффект записи — новые виды косметики.
+        // Надетое по умолчанию и бесплатные предметы новых видов — в owned.
+        if (persisted && version < 17) {
+          if (persisted.equipped && typeof persisted.equipped === 'object') {
+            persisted.equipped = { ...DEFAULT_EQUIPPED, ...persisted.equipped }
+          }
+          if (Array.isArray(persisted.owned)) {
+            for (const id of DEFAULT_OWNED) if (!persisted.owned.includes(id)) persisted.owned.push(id)
+          }
         }
         return persisted
       },

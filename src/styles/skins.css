@@ -1,0 +1,225 @@
+/* =====================================================================
+   Обложки карты-героя и особые рамки аватара (Магазин 2.1).
+
+   Обложка — класс `skin-<id>` на `.hero-surface` (баланс на Главной, уровень
+   на «Прогрессе», экран нового уровня, примерка в Магазине). Правило для
+   всех: светлота фона под текстом не выше 0,08 — белые подписи (white/70)
+   должны читаться на худшем участке. Цвета у обложек свои, акцент на них не
+   действует; классика — прежняя карта в цветах акцента.
+
+   Живые слои (сияние, голограмма) — псевдоэлементы, двигается только их
+   transform. Без mix-blend-mode и без анимации фильтров: на слабом Android
+   это рывки. На Главной живая обложка проходит один цикл при появлении и
+   останавливается; бесконечно — только в примерке (`.skin-live`).
+   ===================================================================== */
+
+:root {
+  /* Зерно — то же, что у классической карты: убирает пластиковую гладкость. */
+  --hero-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.22'/></svg>");
+}
+
+.hero-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* ---------- Полночь (rare) ---------- */
+.hero-surface.skin-midnight {
+  background-image:
+    var(--hero-noise),
+    radial-gradient(1.2px 1.2px at 78% 22%, rgb(255 255 255 / 0.55), transparent 60%),
+    radial-gradient(1px 1px at 88% 40%, rgb(255 255 255 / 0.4), transparent 60%),
+    radial-gradient(1.4px 1.4px at 70% 12%, rgb(255 255 255 / 0.45), transparent 60%),
+    radial-gradient(1px 1px at 93% 16%, rgb(255 255 255 / 0.35), transparent 60%),
+    radial-gradient(65% 85% at 100% 0%, rgb(86 120 255 / 0.34), transparent 62%),
+    radial-gradient(50% 60% at 15% 110%, rgb(64 90 200 / 0.16), transparent 70%),
+    linear-gradient(160deg, #101a33 0%, #070a14 80%);
+  background-blend-mode: overlay, normal, normal, normal, normal, normal, normal, normal;
+}
+
+/* ---------- Титан (rare) ----------
+   Вместо «Карбона»: мелкое плетение на экранах с DPR 2,6 давало муар. */
+.hero-surface.skin-titan {
+  background-image:
+    var(--hero-noise),
+    linear-gradient(115deg, transparent 0 46%, rgb(255 255 255 / 0.07) 52%, transparent 60%),
+    radial-gradient(80% 100% at 100% 0%, rgb(200 210 225 / 0.16), transparent 60%),
+    linear-gradient(160deg, #2a2f36 0%, #15181c 55%, #0b0c0e 100%);
+  background-blend-mode: overlay, normal, normal, normal;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+/* ---------- Рассвет (rare) ----------
+   Сливовая база и янтарный свет — не красный: красный в приложении = расход. */
+.hero-surface.skin-dawn {
+  background-image:
+    var(--hero-noise),
+    radial-gradient(70% 95% at 100% 0%, rgb(255 166 102 / 0.4), transparent 62%),
+    radial-gradient(55% 70% at 70% 0%, rgb(255 120 140 / 0.14), transparent 70%),
+    linear-gradient(160deg, #35202c 0%, #150d12 78%);
+  background-blend-mode: overlay, normal, normal, normal;
+}
+
+/* ---------- Оникс (epic) ----------
+   Широкие размытые прожилки: тонкие на тёмном выглядели трещинами экрана. */
+.hero-surface.skin-onyx {
+  background-image:
+    var(--hero-noise),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 358 178' preserveAspectRatio='none'><defs><filter id='b' x='-20%' y='-20%' width='140%' height='140%'><feGaussianBlur stdDeviation='3'/></filter></defs><g fill='none' stroke='white' stroke-linecap='round'><path filter='url(%23b)' d='M190 -20 C 230 40, 250 70, 300 110 S 350 170, 390 200' stroke-opacity='.10' stroke-width='14'/><path filter='url(%23b)' d='M140 210 C 200 170, 240 160, 290 130 S 350 90, 390 95' stroke-opacity='.07' stroke-width='18'/><path d='M262 -10 C 272 30, 300 58, 318 96 S 330 150, 352 196' stroke-opacity='.16' stroke-width='.9'/></g></svg>"),
+    radial-gradient(60% 80% at 92% 18%, rgb(255 255 255 / 0.06), transparent 62%),
+    linear-gradient(160deg, #1b1b1d 0%, #0d0d0f 80%);
+  background-size: auto, 100% 100%, auto, auto;
+  background-blend-mode: overlay, normal, normal, normal;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+/* ---------- Чёрное золото (epic) ---------- */
+.hero-surface.skin-blackgold {
+  background-image:
+    var(--hero-noise),
+    linear-gradient(118deg, transparent 0 55%, rgb(255 214 140 / 0.1) 62%, transparent 70%),
+    radial-gradient(60% 80% at 100% 0%, rgb(214 172 82 / 0.26), transparent 62%),
+    linear-gradient(160deg, #17140e 0%, #0a0a0b 70%);
+  background-blend-mode: overlay, normal, normal, normal;
+  box-shadow: inset 0 0 0 1px rgb(214 172 82 / 0.4), inset 0 1px 0 rgb(255 230 170 / 0.18);
+}
+
+/* ---------- Северное сияние (legendary) ----------
+   Ленты только в правой части карты, слева и снизу — затемнение под текстом
+   (первый вариант со сполохами по всей карте не прошёл по контрасту). */
+.hero-surface.skin-aurora {
+  background-image: var(--hero-noise), linear-gradient(160deg, #06131c 0%, #040b11 100%);
+  background-blend-mode: overlay, normal;
+}
+.hero-surface.skin-aurora::before {
+  content: '';
+  position: absolute;
+  inset: -30% -25% -30% 10%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(26% 20% at 78% 22%, rgb(45 212 191 / 0.5), transparent 70%),
+    radial-gradient(30% 16% at 70% 38%, rgb(52 211 153 / 0.3), transparent 72%),
+    radial-gradient(22% 18% at 88% 46%, rgb(139 92 246 / 0.38), transparent 70%);
+  transform: rotate(-14deg);
+  animation: aurora-drift 14s ease-in-out 1 alternate both;
+}
+.hero-surface.skin-aurora::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(3 9 14 / 0.72) 0%, rgb(3 9 14 / 0.4) 48%, transparent 78%),
+    linear-gradient(0deg, rgb(3 9 14 / 0.55) 0%, transparent 45%);
+}
+@keyframes aurora-drift {
+  from { transform: rotate(-14deg) translate3d(-3%, 2%, 0); }
+  to { transform: rotate(-8deg) translate3d(3%, -2%, 0); }
+}
+
+/* ---------- Голограмма (legendary) ----------
+   Тёмная плёнка, а не серебро. Перелив проходит один раз, дальше его
+   двигает палец (--holo-x ставит BalanceCard по касанию). */
+.hero-surface.skin-holo {
+  background-image: var(--hero-noise), linear-gradient(160deg, #15171e 0%, #0b0c10 80%);
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+.hero-surface.skin-holo::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 40%,
+    rgb(96 230 255 / 0.2) 46%,
+    rgb(186 120 255 / 0.22) 51%,
+    rgb(255 120 200 / 0.18) 56%,
+    rgb(255 214 120 / 0.16) 61%,
+    transparent 67%
+  );
+  transform: translate3d(var(--holo-x, 14%), 0, 0);
+  transition: transform 500ms var(--ease-out);
+  animation: holo-sweep 6s ease-in-out 1;
+}
+@keyframes holo-sweep {
+  from { transform: translate3d(-18%, 0, 0); }
+  to { transform: translate3d(14%, 0, 0); }
+}
+
+/* Примерка в Магазине: живые обложки играют без остановки. */
+.hero-surface.skin-live.skin-aurora::before { animation-iteration-count: infinite; animation-duration: 9s; }
+.hero-surface.skin-live.skin-holo::before { animation: holo-sweep 4.5s ease-in-out infinite alternate; }
+
+/* =====================================================================
+   Особые рамки (components/rewards/FrameRing)
+   ===================================================================== */
+
+.frame-ring {
+  position: relative;
+  isolation: isolate;
+  border-radius: 999px;
+}
+.frame-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--ring);
+}
+/* Вихрь: кольцо медленно вращается (сам аватар стоит). */
+.frame-anim-spin::before { animation: frame-spin 7s linear infinite; }
+@keyframes frame-spin { to { transform: rotate(360deg); } }
+/* Пульс: свечение цвета акцента дышит вокруг кольца. */
+.frame-anim-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  z-index: -2;
+  border-radius: inherit;
+  background: rgb(var(--brand-400) / 0.55);
+  filter: blur(6px);
+  animation: frame-pulse 2.6s ease-in-out infinite;
+}
+@keyframes frame-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.96); }
+  50% { opacity: 0.9; transform: scale(1.04); }
+}
+
+/* =====================================================================
+   Экономия: слабое устройство и свёрнутый Telegram
+   ===================================================================== */
+
+/* Telegram свёрнут или вкладка скрыта — бесконечные украшения на паузе. */
+html.anim-paused .frame-ring::before,
+html.anim-paused .frame-ring::after,
+html.anim-paused .hero-surface::before,
+html.anim-paused .breathe,
+html.anim-paused .typing-dot {
+  animation-play-state: paused !important;
+}
+
+/* Слабое Android-устройство (класс LOW в User-Agent Telegram): без живых
+   слоёв и вечных анимаций — только статичная картинка. */
+html.perf-low .frame-ring::before,
+html.perf-low .frame-ring::after,
+html.perf-low .hero-surface::before,
+html.perf-low .breathe {
+  animation: none !important;
+}
+html.perf-low .frame-anim-pulse::after { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .frame-ring::before,
+  .frame-ring::after,
+  .hero-surface::before {
+    animation: none !important;
+  }
+  .hero-surface.skin-holo::before { transition: none; }
+}

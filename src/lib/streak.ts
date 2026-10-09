@@ -90,3 +90,24 @@ export function effectiveStreak(s: StreakState, now = dayjs()): number {
 export function nextMilestone(count: number): number | null {
   return STREAK_MILESTONES.find((m) => m > count) ?? null
 }
+
+/**
+ * Семь последних дней, сегодня — последним: true, если день входит в живую
+ * серию. Серия — это `count` дней подряд, заканчивая днём `lastClaim`.
+ * Используют полоски серии на «Прогрессе» и рамка «Неделя».
+ */
+export function streakWeek(s: StreakState, now = dayjs()): boolean[] {
+  const count = effectiveStreak(s, now) > 0 ? s.count : 0
+  const out: boolean[] = []
+  const last = s.lastClaim ? dayjs(s.lastClaim).startOf('day') : null
+  const today = now.startOf('day')
+  for (let i = 6; i >= 0; i--) {
+    if (!last || count <= 0) {
+      out.push(false)
+      continue
+    }
+    const back = last.diff(today.subtract(i, 'day'), 'day')
+    out.push(back >= 0 && back < count)
+  }
+  return out
+}

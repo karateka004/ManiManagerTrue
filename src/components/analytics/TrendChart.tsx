@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { m } from 'framer-motion'
+import { SegTrack } from '../ui/SegTrack'
+import { Odometer } from '../ui/Odometer'
+import { hapticSelect } from '../../lib/telegram'
 import { useStore, selectTrend, selectAnalyticsCurrency, type TrendGranularity, type TrendBucket } from '../../store/transactions'
 import { formatMoney } from '../../lib/format'
 import { useT } from '../../lib/i18n'
@@ -36,30 +38,22 @@ export function TrendChart() {
 
   return (
     <div>
-      {/* Granularity */}
-      <div className="mx-4 mt-2 flex gap-1 rounded-full bg-surface-sunken p-1">
+      {/* Гранулярность — сегмент с плашкой (раньше framer layoutId) */}
+      <SegTrack active={gran} className="mx-4 mt-2 gap-1">
         {GRANS.map((g) => {
           const active = gran === g.id
           return (
             <button
               key={g.id}
-              onClick={() => setGran(g.id)}
-              className={`relative flex-1 rounded-full py-1.5 text-xs font-semibold transition-colors ${
-                active ? 'text-ink' : 'text-ink-subtle'
-              }`}
+              onClick={() => { hapticSelect(); setGran(g.id) }}
+              aria-pressed={active}
+              className={`seg-item py-1.5 text-xs ${active ? 'seg-on' : 'text-ink-subtle'}`}
             >
-              {active && (
-                <m.span
-                  layoutId="charts-gran-pill"
-                  className="absolute inset-0 rounded-full bg-surface-raised shadow-soft dark:shadow-soft-dark"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                />
-              )}
-              <span className="relative z-10">{t(g.label)}</span>
+              {t(g.label)}
             </button>
           )
         })}
-      </div>
+      </SegTrack>
 
       {/* Summary cards */}
       <div className="mx-4 mt-4 grid grid-cols-3 gap-2">
@@ -72,39 +66,33 @@ export function TrendChart() {
         />
       </div>
 
-      {/* Series toggle */}
-      <div className="mx-4 mt-4 flex gap-1 rounded-full bg-surface-sunken p-1">
+      {/* Ряды — тоже сегмент с плашкой */}
+      <SegTrack active={series} className="mx-4 mt-4 gap-1">
         {SERIES.map((s) => {
           const active = series === s.id
           return (
             <button
               key={s.id}
-              onClick={() => setSeries(s.id)}
-              className={`relative flex-1 rounded-full py-1.5 text-xs font-semibold transition-colors ${
-                active ? 'text-ink' : 'text-ink-subtle'
-              }`}
+              onClick={() => { hapticSelect(); setSeries(s.id) }}
+              aria-pressed={active}
+              className={`seg-item py-1.5 text-xs ${active ? 'seg-on' : 'text-ink-subtle'}`}
             >
-              {active && (
-                <m.span
-                  layoutId="charts-series-pill"
-                  className="absolute inset-0 rounded-full bg-surface-raised shadow-soft dark:shadow-soft-dark"
-                  transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                />
-              )}
-              <span className="relative z-10">{t(s.label)}</span>
+              {t(s.label)}
             </button>
           )
         })}
-      </div>
+      </SegTrack>
 
-      {/* Chart */}
-      <div className="mx-4 mt-4">
+      {/* Chart: смена гранулярности — заново растущие столбики (key) */}
+      <div key={gran} className="mx-4 mt-4">
         <TrendBars buckets={buckets} series={series} />
       </div>
 
       <div className="mx-6 mt-4 text-center text-[11px] text-ink-subtle">
         {t('charts.avg_expense')}{' '}
-        <span className="tabular font-semibold text-ink">{formatMoney(stats.avgExpense, currency)}</span>
+        <span className="tabular font-semibold text-ink">
+          <Odometer text={formatMoney(stats.avgExpense, currency)} />
+        </span>
       </div>
     </div>
   )
@@ -114,7 +102,7 @@ function StatCard({ label, value, tone }: { label: string; value: string; tone: 
   return (
     <div className="card flex flex-col gap-0.5 p-3">
       <span className="caption-sm text-ink-subtle">{label}</span>
-      <span className={`tabular text-sm font-bold ${tone === 'income' ? 'text-income-deep' : 'text-expense-deep'}`}>
+      <span className={`tabular text-sm font-bold ${tone === 'income' ? 'text-income-deep dark:text-income-light' : 'text-expense-deep dark:text-expense-soft'}`}>
         {value}
       </span>
     </div>
@@ -158,30 +146,29 @@ function TrendBars({ buckets, series }: { buckets: TrendBucket[]; series: Series
               className="group flex h-full flex-1 flex-col items-center justify-end gap-1"
             >
               {isActive && (
-                <div className="mb-1 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[9px] font-semibold text-surface-raised">
+                <div className="pop mb-1 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[9px] font-semibold text-surface-raised">
                   {showExpense && <div className="tabular">−{formatMoney(b.expense, currency, { compact: true })}</div>}
                   {showIncome && <div className="tabular">+{formatMoney(b.income, currency, { compact: true })}</div>}
                 </div>
               )}
               <div className="flex w-full items-end justify-center gap-[2px]" style={{ height: '100%' }}>
+                {/* Высота — сразу настоящая (style), рост — CSS-каскадом.
+                    framer с initial height 0 при остановленном rAF оставлял
+                    график плоским. Смена высоты (ряды, данные) — transition. */}
                 {showIncome && (
-                  <m.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(b.income / max) * 100}%` }}
-                    transition={{ duration: 0.5, delay: i * 0.015, ease: 'easeOut' }}
-                    className={`w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-income to-income-deep ${
+                  <div
+                    className={`grow-y-d w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-income to-income-deep transition-[height,opacity] duration-500 ${
                       isActive ? '' : 'opacity-90'
                     }`}
+                    style={{ height: `${(b.income / max) * 100}%`, '--d': Math.min(i, 14) * 14 } as React.CSSProperties}
                   />
                 )}
                 {showExpense && (
-                  <m.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(b.expense / max) * 100}%` }}
-                    transition={{ duration: 0.5, delay: i * 0.015, ease: 'easeOut' }}
-                    className={`w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-expense to-expense-deep ${
+                  <div
+                    className={`grow-y-d w-full max-w-[22px] min-h-[2px] rounded-t-md bg-gradient-to-t from-expense to-expense-deep transition-[height,opacity] duration-500 ${
                       isActive ? '' : 'opacity-90'
                     }`}
+                    style={{ height: `${(b.expense / max) * 100}%`, '--d': Math.min(i, 14) * 14 } as React.CSSProperties}
                   />
                 )}
               </div>

@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
-import { m } from 'framer-motion'
 import { useStore, selectByCategoryAccount, selectAccountTotals, selectAnalyticsCurrency } from '../store/transactions'
-import { Money } from './ui/Money'
+import { AnimatedMoney } from './ui/Odometer'
 import { useT, useCatName, categoriesWord } from '../lib/i18n'
 import type { CategoryKind } from '../store/categories'
 
@@ -48,7 +47,7 @@ export function DonutChart({ kind }: Props) {
           />
           {/* Segments */}
           {segments.map((s, i) => (
-            <m.circle
+            <circle
               key={s.categoryId}
               cx={SIZE / 2}
               cy={SIZE / 2}
@@ -57,12 +56,13 @@ export function DonutChart({ kind }: Props) {
               stroke={s.color}
               strokeWidth={STROKE}
               strokeLinecap="butt"
-              initial={{ strokeDasharray: `0 ${CIRC}`, strokeDashoffset: 0 }}
-              animate={{
-                strokeDasharray: `${s.length} ${s.dashGap}`,
-                strokeDashoffset: -s.offset,
-              }}
-              transition={{ duration: 0.7, delay: 0.05 + i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+              // Итоговая дуга — атрибутами (сразу на месте), рост — CSS (.donut-seg).
+              // Раньше framer начинал с пустой дуги: при остановленном rAF кольцо
+              // оставалось пустым.
+              strokeDasharray={`${s.length} ${s.dashGap}`}
+              strokeDashoffset={-s.offset}
+              className="donut-seg"
+              style={{ '--circ': CIRC, '--d': 40 + Math.min(i, 8) * 40 } as React.CSSProperties}
             />
           ))}
         </svg>
@@ -72,7 +72,7 @@ export function DonutChart({ kind }: Props) {
           <span className="caption text-ink-subtle">
             {kind === 'income' ? t('common.income') : t('common.expense')}
           </span>
-          <span className="mt-1 text-display-md text-ink"><Money value={total} currency={currency} /></span>
+          <span className="mt-1 text-display-md text-ink"><AnimatedMoney value={total} currency={currency} /></span>
           <span className="mt-1 text-xs text-ink-muted">{categories.length} {categoriesWord(lang, categories.length)}</span>
         </div>
       </div>

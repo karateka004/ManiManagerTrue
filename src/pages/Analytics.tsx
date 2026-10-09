@@ -1,9 +1,8 @@
-import { useState } from 'react'
-import { m } from 'framer-motion'
+import { useRef, useState } from 'react'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
 import { DonutChart } from '../components/DonutChart'
 import { DonutChartWithIcons } from '../components/DonutChartWithIcons'
-import { AnalyticsTabs, type AnalyticsTab } from '../components/AnalyticsTabs'
+import { AnalyticsTabs, ANALYTICS_TABS, type AnalyticsTab } from '../components/AnalyticsTabs'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { TrendChart } from '../components/analytics/TrendChart'
 import { Overview } from '../components/analytics/Overview'
@@ -37,11 +36,17 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
   const t = useT()
   const catName = useCatName()
 
+  // Направление смены сегмента: правее — содержимое въезжает справа.
+  const dirRef = useRef(0)
+
   // Открытие «Динамики» = бывший заход на вкладку «Графики» (квест see_charts).
   const changeAnalyticsTab = (next: AnalyticsTab) => {
+    if (next === tab) return
     if (next === 'dynamics') track('visit_charts')
+    dirRef.current = ANALYTICS_TABS.indexOf(next) > ANALYTICS_TABS.indexOf(tab) ? 1 : -1
     setTab(next)
   }
+  const enter = dirRef.current > 0 ? 'tab-in-r' : dirRef.current < 0 ? 'tab-in-l' : 'tab-enter'
 
   return (
     <div className="pb-32">
@@ -56,23 +61,23 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
       <AnalyticsTabs value={tab} onChange={changeAnalyticsTab} />
 
       {isOverview ? (
-        <div key="overview" className="tab-enter">
+        <div key="overview" className={enter}>
           <Overview onPickCategory={setPickedCategory} />
         </div>
       ) : isCalendar ? (
         // CSS-fade (.tab-enter, базовая непрозрачность 1) вместо framer
         // `initial:opacity 0`: иначе при незапустившейся анимации (rAF в свёрнутом
         // webview) календарь оставался невидимым — «не видно сумм за месяц».
-        <div key="calendar" className="tab-enter">
+        <div key="calendar" className={enter}>
           <MonthCalendar />
         </div>
       ) : isDynamics ? (
-        <div key="dynamics" className="tab-enter">
+        <div key="dynamics" className={enter}>
           <TrendChart />
         </div>
       ) : (
         <>
-          <div key={tab + chartStyle} className="tab-enter">
+          <div key={tab + chartStyle} className={enter}>
             {chartStyle === 'icons' ? <DonutChartWithIcons kind={kind} /> : <DonutChart kind={kind} />}
           </div>
 
@@ -87,8 +92,8 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
 
           {/* Детальный список — только для стиля «compact»; у «icons» своя легенда-чипы в кольце */}
           {chartStyle === 'compact' && (
-          <div className="mx-4 mt-6 space-y-2">
-            {categories.map((c) => (
+          <div className="stagger mx-4 mt-6 space-y-2">
+            {categories.map((c, i) => (
           <div key={c.categoryId} className="card flex items-center gap-3 px-4 py-3">
             <div
               className="flex h-11 w-11 items-center justify-center rounded-2xl"
@@ -99,12 +104,12 @@ export function AnalyticsPage({ onEditTx }: { onEditTx: (t: Transaction) => void
             <div className="flex-1">
               <div className="font-semibold text-ink">{catName(c.categoryId, c.name)}</div>
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
-                <m.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(c.pct, 100)}%` }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                  className="h-full rounded-full"
-                  style={{ background: c.color }}
+                {/* Рост — CSS (scaleX из нуля), ширина — сразу настоящая. Раньше
+                    здесь был framer с initial width 0: при остановленном rAF
+                    полоса так и оставалась нулевой. */}
+                <div
+                  className="grow-x-d h-full rounded-full"
+                  style={{ width: `${Math.min(c.pct, 100)}%`, background: c.color, '--d': Math.min(i, 6) * 30 } as React.CSSProperties}
                 />
               </div>
             </div>
@@ -140,11 +145,12 @@ function DailyBars({ data }: { data: { day: string; amount: number }[] }) {
           // min-w-0 — чтобы 14 колонок ужимались под ширину карточки и не распирали строку на 320px
           <div key={d.day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
             <div className="flex w-full flex-1 items-end">
-              <m.div
-                initial={{ height: 0 }}
-                animate={{ height: `${(d.amount / max) * 100}%` }}
-                transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
-                className="w-full min-h-[3px] rounded-t-md bg-gradient-to-t from-brand-400 to-brand-300"
+              {/* Столбик: высота — сразу настоящая, рост — CSS-каскадом.
+                  Раньше framer начинал с height 0 и при остановленном rAF
+                  график оставался плоским. Цвет — расходный: это траты. */}
+              <div
+                className="grow-y-d w-full min-h-[3px] rounded-t-md bg-expense/70"
+                style={{ height: `${(d.amount / max) * 100}%`, '--d': i * 22 } as React.CSSProperties}
               />
             </div>
             {/* только число дня (DD) — «DD.MM» не влезает в узкую колонку на 320px */}

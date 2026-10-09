@@ -1,0 +1,497 @@
+/* =====================================================================
+   Движение — общие токены и утилиты анимаций (2.1).
+
+   Главное правило проекта остаётся в силе: данные не прячутся за
+   анимацией, которая может не стартовать. Поэтому всё здесь — CSS, а не
+   framer: CSS-анимации идут по времени документа, а не по кадрам
+   requestAnimationFrame. В свёрнутом webview они не «застревают» на первом
+   кадре — после возврата время уже ушло вперёд, и элемент в конечном
+   состоянии. framer-анимация в той же ситуации даже не начинается.
+
+   Где у анимации есть задержка (каскад строк), элемент на время задержки
+   прозрачен (fill-mode backwards) — это доли секунды, и только у
+   украшений появления. Числа и полосы НЕ прячутся: у них базовое
+   состояние — конечное, а анимация лишь показывает путь к нему.
+   ===================================================================== */
+
+:root {
+  /* Быстрый старт и мягкая посадка: так движется всё, что «приезжает». */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Симметричная — для того, что уезжает и возвращается (сдвиги, качание). */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* С лёгким перелётом — отпущенная кнопка, выбранный значок. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ---------- Нажатие ----------
+   Сжимается быстро и ровно, отпускается с пружиной. Раньше у каждой кнопки было
+   `active:scale-95` с одинаковой линейной кривой в обе стороны — нажатие
+   ощущалось как мигание, а не как упругая клавиша. Глубина зависит от размера:
+   широкая кнопка, сжатая на 5 %, «проваливается» на полпальца. */
+.press,
+.press-soft,
+.press-icon {
+  transition: transform 260ms var(--ease-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+.press:active,
+.press-soft:active,
+.press-icon:active {
+  transition-duration: 90ms;
+  transition-timing-function: var(--ease-out);
+}
+/* Обычные кнопки и чипы. */
+.press:active { transform: scale(0.97); }
+/* Широкое: строки, кнопка «Сохранить» во всю ширину. */
+.press-soft:active { transform: scale(0.985); }
+/* Круглые кнопки-иконки: маленькой цели нужен заметный отклик. */
+.press-icon:active { transform: scale(0.93); }
+
+/* Подсветка нажатой строки — сразу при касании, гаснет плавно. Раньше было
+   150 мс в обе стороны, и при коротком тапе подсветку не успевали увидеть. */
+button.row { transition: background-color 220ms ease-out; }
+button.row:active { transition-duration: 0ms; }
+
+/* ---------- Переходы между вкладками ----------
+   Вправо по панели — экран приезжает справа, влево — слева; вложенный экран
+   (Настройки, Магазин) — «вглубь», дальше и с лёгким масштабом. Базовая
+   непрозрачность 1, fill-mode нет: если анимация не отыграет, экран виден. */
+@keyframes tab-in-r {
+  from { opacity: 0; transform: translate3d(12px, 0, 0); }
+}
+@keyframes tab-in-l {
+  from { opacity: 0; transform: translate3d(-12px, 0, 0); }
+}
+@keyframes tab-in-deep {
+  from { opacity: 0; transform: translate3d(20px, 0, 0); }
+}
+@keyframes tab-in-back {
+  from { opacity: 0; transform: translate3d(-16px, 0, 0); }
+}
+/* Панель жмут постоянно — переход короткий: сдвиг читается, но не ждёшь. */
+.tab-in-r { animation: tab-in-r 200ms var(--ease-out); }
+.tab-in-l { animation: tab-in-l 200ms var(--ease-out); }
+.tab-in-deep { animation: tab-in-deep 260ms var(--ease-out); }
+.tab-in-back { animation: tab-in-back 240ms var(--ease-out); }
+/* Во время сдвига экран не должен давать горизонтальную прокрутку. */
+.tab-host { overflow-x: hidden; overflow-x: clip; }
+
+/* ---------- Нижняя панель ----------
+   Иконка выбранной вкладки вжимается и пружинит; капсула под ней ездит с
+   лёгким перелётом (TabBar). «+» при нажатии поворачивается на четверть. */
+@keyframes tab-icon-pop {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.8) translateY(1px); }
+  65% { transform: scale(1.14) translateY(-1px); }
+  100% { transform: scale(1); }
+}
+.tab-icon-pop { display: inline-flex; animation: tab-icon-pop 460ms var(--ease-out); }
+.fab-plus svg { transition: transform 320ms var(--ease-spring); }
+.fab-plus:active svg { transform: rotate(90deg); transition-duration: 140ms; }
+
+/* ---------- Каскад строк ----------
+   Дети появляются по очереди: шаг 24 мс, ступеней не больше шести — дальше
+   все разом. Длинный список не должен «выезжать» секунду. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+}
+.stagger > * {
+  animation: rise-in 360ms var(--ease-out) backwards;
+}
+.stagger > :nth-child(2) { animation-delay: 24ms; }
+.stagger > :nth-child(3) { animation-delay: 48ms; }
+.stagger > :nth-child(4) { animation-delay: 72ms; }
+.stagger > :nth-child(5) { animation-delay: 96ms; }
+.stagger > :nth-child(n + 6) { animation-delay: 120ms; }
+
+/* Одиночное появление — то же движение, что у строки каскада. */
+.rise-in { animation: rise-in 360ms var(--ease-out); }
+/* Каскад с задержкой из --d (мс) — когда строки не прямые дети одного
+   контейнера (между ними раскрытые подсписки). */
+.rise-in-d {
+  animation: rise-in 360ms var(--ease-out) backwards;
+  animation-delay: calc(var(--d, 0) * 1ms);
+}
+
+/* ---------- Полосы прогресса ----------
+   Растут из нуля при появлении. Базовое состояние — полная (истинная) длина:
+   не отыграет анимация — полоса просто сразу на месте. Ширину по-прежнему
+   задаёт style, а рост — transform, он не пересчитывает раскладку. */
+@keyframes grow-x { from { transform: scaleX(0); } }
+@keyframes grow-y { from { transform: scaleY(0); } }
+.grow-x {
+  transform-origin: left center;
+  animation: grow-x 520ms var(--ease-out);
+}
+.grow-y {
+  transform-origin: center bottom;
+  animation: grow-y 520ms var(--ease-out);
+}
+/* Каскад у столбиков: задержку задаёт --d (мс), на её время столбик пуст. */
+.grow-y-d {
+  transform-origin: center bottom;
+  animation: grow-y 480ms var(--ease-out) backwards;
+  animation-delay: calc(var(--d, 0) * 1ms);
+}
+.grow-x-d {
+  transform-origin: left center;
+  animation: grow-x 500ms var(--ease-out) backwards;
+  animation-delay: calc(var(--d, 0) * 1ms);
+}
+
+/* Кривая и ленты «прорисовываются» слева направо: срез clip-path уезжает.
+   Базовое состояние — без среза, график целиком. */
+@keyframes reveal-x { from { clip-path: inset(0 100% 0 0); } }
+.reveal-x { animation: reveal-x 760ms var(--ease-out); }
+@keyframes reveal-down { from { clip-path: inset(0 0 100% 0); } }
+.reveal-down { animation: reveal-down 620ms var(--ease-out); }
+
+/* Сегмент кольца растёт из начала своей дуги. Итоговые штрихи — атрибутами
+   (stroke-dasharray), анимация лишь начинает с пустой дуги. */
+@keyframes donut-seg { from { stroke-dasharray: 0 calc(var(--circ) * 1px); } }
+.donut-seg {
+  animation: donut-seg 700ms var(--ease-out) backwards;
+  animation-delay: calc(var(--d, 0) * 1ms);
+}
+
+/* ---------- Короткие отклики ---------- */
+@keyframes pop {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.pop { animation: pop 420ms var(--ease-out); }
+
+/* Новый знак суммы при вводе въезжает снизу — как на табло калькулятора.
+   Масштаб всего числа «мылил» текст на каждое нажатие. */
+@keyframes char-in {
+  from { opacity: 0.4; transform: translate3d(0, 35%, 0); }
+}
+.char-in { display: inline-block; animation: char-in 140ms var(--ease-out); }
+
+/* «Нет» — покачивание, когда сохранить ещё нельзя. */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+.shake { animation: shake 320ms var(--ease-in-out); }
+
+/* Подсветка обновлённой строки: вспыхивает фоном акцента и гаснет. */
+@keyframes flash-row {
+  0% { background-color: rgb(var(--brand-500) / 0); }
+  18% { background-color: rgb(var(--brand-500) / 0.14); }
+  100% { background-color: rgb(var(--brand-500) / 0); }
+}
+.flash-row { animation: flash-row 1400ms var(--ease-out); }
+
+/* ---------- Блик ----------
+   Полоса света проходит по кнопке «Забрать» раз в несколько секунд — видно,
+   что награда ждёт, но без мигания. Только на маленьких элементах. */
+.sheen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.45) 48%, transparent 66%);
+  transform: translateX(-120%);
+  /* Три прохода — и хватит: бесконечный блик на каждой кнопке превращает
+     экран в мигающую витрину. */
+  animation: sheen 3.6s var(--ease-in-out) 3;
+  animation-delay: 0.8s;
+}
+@keyframes sheen {
+  0% { transform: translateX(-120%); }
+  32%, 100% { transform: translateX(120%); }
+}
+
+/* Дыхание: кольцо вокруг того, что ждёт действия (сегодняшний день серии). */
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.breathe { animation: breathe 2.2s var(--ease-in-out) infinite; }
+
+/* ---------- Скелетон загрузки ---------- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--c-surface-sunken)) 25%,
+    rgb(var(--c-surface-sunken) / 0.45) 45%,
+    rgb(var(--c-surface-sunken)) 65%
+  );
+  background-size: 300% 100%;
+  animation: skeleton 1.3s ease-in-out infinite;
+  border-radius: 999px;
+}
+@keyframes skeleton {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+/* ---------- Плавное раскрытие ----------
+   Высота анимируется через grid-template-rows 0fr → 1fr: содержимое всё время
+   в DOM и в конечном состоянии видно без JS-измерений. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 360ms var(--ease-out);
+}
+.reveal[data-open='true'] { grid-template-rows: 1fr; }
+.reveal > * { min-height: 0; overflow: hidden; }
+
+/* ---------- Скользящая плашка сегментов (lib/useSegPill) ----------
+   Одна плашка ездит под выбранным пунктом, а не каждая кнопка заливается
+   своей: переключение читается как движение. Пока плашка не измерена,
+   работает обычный .seg-on — поэтому без JS сегмент всё равно рабочий. */
+.seg-pill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 999px;
+  background: rgb(var(--c-seg-on));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px var(--hairline);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 240ms var(--ease-out),
+    width 240ms var(--ease-out),
+    height 240ms var(--ease-out),
+    opacity 160ms ease;
+}
+[data-pilled] > .seg-item,
+[data-pilled] > .seg-slot { position: relative; z-index: 1; }
+[data-pilled] > .seg-on {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ---------- Цифры-барабаны (components/ui/Odometer) ----------
+   Каждая цифра — окно высотой в строку и лента 0–9 внутри. Цифру выставляет
+   transform ленты, переход — обычный CSS transition: конечная цифра стоит на
+   месте сразу, анимация только прокручивает к ней. Невидимый двойник цифры
+   держит ширину и базовую линию, чтобы барабан стоял в строке как текст. */
+.odo {
+  display: inline-block;
+  white-space: nowrap;
+  /* Одна маска на всё число (не на каждую цифру): края барабана тают. */
+  -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
+}
+.odo-d {
+  position: relative;
+  display: inline-block;
+}
+.odo-ph { visibility: hidden; }
+.odo-win {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.odo-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1000%;
+  display: flex;
+  flex-direction: column;
+  /* 450 мс и шаг 25 мс на цифру: всё число встаёт не дольше чем за 0,65 с —
+     дольше на экране висело бы неверное значение. */
+  transition: transform 450ms var(--ease-out);
+  transition-delay: calc(var(--odo-i, 0) * 25ms);
+}
+.odo-strip > span {
+  display: block;
+  height: 10%;
+  text-align: center;
+}
+/* Прокрутка «с нуля» при первом показе — только для игровых чисел (XP),
+   не для денег. Базовое положение — нужная цифра. */
+@keyframes odo-in { from { transform: translateY(0); } }
+.odo-roll .odo-strip {
+  animation: odo-in calc(480ms + var(--odo-i, 0) * 30ms) var(--ease-out);
+}
+
+/* ---------- Слой эффектов (lib/fx) ---------- */
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+.fx-p {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--sz, 8px);
+  height: var(--sz, 8px);
+  margin: calc(var(--sz, 8px) / -2) 0 0 calc(var(--sz, 8px) / -2);
+  border-radius: 999px;
+  will-change: transform, opacity;
+  animation: fx-burst var(--dur, 820ms) cubic-bezier(0.12, 0.7, 0.3, 1) forwards;
+}
+.fx-p.fx-rect { border-radius: 2px; }
+/* Звезда — четырёхлучевая «искра», как блик на стекле. */
+.fx-p.fx-star {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+}
+/* Монетка: золотой кружок с бликом (цвет фона — из background, блик поверх). */
+.fx-p.fx-coin-p {
+  background-image: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 0.75) 0 18%, transparent 42%) !important;
+  box-shadow: inset 0 0 0 1px rgb(150 90 0 / 0.35);
+}
+@keyframes fx-burst {
+  0% { transform: translate3d(var(--x0), var(--y0), 0) scale(0.3) rotate(0deg); opacity: 1; }
+  65% { opacity: 1; }
+  100% {
+    transform: translate3d(calc(var(--x0) + var(--dx)), calc(var(--y0) + var(--dy)), 0) scale(var(--s, 1)) rotate(var(--rot, 0deg));
+    opacity: 0;
+  }
+}
+/* Монетка, летящая к счётчику: дуга через верхнюю точку. */
+.fx-coin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #fff6c8 0%, #ffd45c 30%, #e9a316 72%, #b86f07 100%);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.35);
+  will-change: transform, opacity;
+  animation: fx-fly var(--dur, 760ms) cubic-bezier(0.5, 0, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0ms);
+  opacity: 0;
+}
+@keyframes fx-fly {
+  0% { transform: translate3d(var(--x0), var(--y0), 0) scale(0.6); opacity: 0; }
+  12% { opacity: 1; transform: translate3d(var(--x0), var(--y0), 0) scale(1); }
+  55% { transform: translate3d(var(--xm), var(--ym), 0) scale(1.05); opacity: 1; }
+  100% { transform: translate3d(var(--x1), var(--y1), 0) scale(0.55); opacity: 0.2; }
+}
+/* «+30 XP» — всплывает над кнопкой и тает. */
+.fx-float {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(var(--brand-600));
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+  transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -50%);
+  animation: fx-float 1300ms var(--ease-out) forwards;
+}
+@keyframes fx-float {
+  0% { opacity: 0; transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -30%); }
+  16% { opacity: 1; transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -110%); }
+  72% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -220%); }
+}
+
+/* ---------- Тосты (components/ui/Toaster) ---------- */
+@keyframes toast-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translate3d(0, 12px, 0); }
+}
+/* Без масштаба: масштаб размывает текст на время анимации. */
+.toast-in { animation: toast-in 240ms var(--ease-out); }
+.toast-out { animation: toast-out 200ms ease-in forwards; }
+
+/* ---------- Выпадающее меню ----------
+   Растёт из угла, к которому привязано (меню периодов «⋯»). */
+@keyframes menu-in {
+  from { opacity: 0; transform: translate3d(0, -6px, 0) scale(0.94); }
+}
+.menu-in { animation: menu-in 220ms var(--ease-out); transform-origin: top right; }
+
+/* ---------- Чат ассистента ----------
+   Пузырь приезжает со своей стороны; точки «печатает» прыгают по очереди. */
+@keyframes bubble-in-r {
+  from { opacity: 0; transform: translate3d(14px, 6px, 0) scale(0.96); }
+}
+@keyframes bubble-in-l {
+  from { opacity: 0; transform: translate3d(-14px, 6px, 0) scale(0.96); }
+}
+.bubble-in-r { animation: bubble-in-r 380ms var(--ease-out); transform-origin: bottom right; }
+.bubble-in-l { animation: bubble-in-l 380ms var(--ease-out); transform-origin: bottom left; }
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot { animation: typing-dot 1.1s ease-in-out infinite; }
+
+/* ---------- Празднование: лучи и вспышка ---------- */
+@keyframes rays-spin { to { transform: rotate(360deg); } }
+@keyframes glow-in {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes badge-drop {
+  0% { transform: translateY(-14px) scale(0.5) rotate(-12deg); }
+  55% { transform: translateY(0) scale(1.12) rotate(3deg); }
+  75% { transform: scale(0.97) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+}
+.fade-up { animation: fade-up 520ms var(--ease-out) backwards; }
+
+/* Экран нового уровня (components/LevelUp). */
+@keyframes overlay-in { from { opacity: 0; } }
+.overlay-in { animation: overlay-in 260ms ease-out; }
+@keyframes card-in {
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
+}
+.card-in { animation: card-in 420ms var(--ease-out); }
+.lvlup-badge { animation: badge-drop 760ms var(--ease-out) 80ms backwards; }
+.lvlup-glow { animation: glow-in 900ms var(--ease-out) 200ms backwards; }
+
+@keyframes fx-fade {
+  0% { opacity: 0; }
+  15%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---------- Меньше движения ----------
+   Человек попросил систему не двигать интерфейс — гасим всё декоративное.
+   Переходы цифр тоже: значение сразу встаёт на место. */
+@media (prefers-reduced-motion: reduce) {
+  .tab-in-r, .tab-in-l, .tab-in-deep, .tab-in-back,
+  .stagger > *, .rise-in, .rise-in-d, .grow-x, .grow-y, .grow-y-d, .grow-x-d, .reveal-x, .reveal-down, .donut-seg,
+  .pop, .char-in, .shake, .flash-row, .breathe, .fade-up, .tab-icon-pop,
+  .overlay-in, .card-in, .lvlup-badge, .lvlup-glow,
+  .bubble-in-r, .bubble-in-l, .menu-in,
+  .odo-roll .odo-strip, .toast-in {
+    animation: none !important;
+  }
+  .sheen::after { display: none; }
+  .fx-float {
+    animation: fx-fade 1300ms forwards;
+    transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
+  }
+  .odo-strip, .seg-pill, .reveal, .press, .press-soft, .press-icon { transition: none !important; }
+  .skeleton { animation: none; }
+}

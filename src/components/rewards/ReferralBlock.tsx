@@ -6,6 +6,7 @@ import { openTelegramLink, hapticTap, hapticSelect } from '../../lib/telegram'
 import { dayjs } from '../../lib/format'
 import type { TFunc } from '../../lib/i18n'
 import { Group, Row } from '../ui/Group'
+import { showToast } from '../../lib/toast'
 
 /**
  * Друзья: задания за приглашения, ссылка и список присоединившихся — одной
@@ -43,6 +44,7 @@ export function ReferralBlock({
       await navigator.clipboard.writeText(link)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+      showToast({ icon: 'link', text: t('toast.link_copied'), sub: link.replace(/^https?:\/\//, '') })
     } catch {
       /* clipboard недоступен */
     }
@@ -63,7 +65,7 @@ export function ReferralBlock({
             <button
               type="button"
               onClick={share}
-              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-2.5 text-[14px] font-bold text-white transition-transform active:scale-[0.98]"
+              className="press flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-2.5 text-[14px] font-bold text-white"
             >
               <Send size={16} strokeWidth={2.2} />
               {t('profile.share')}
@@ -71,7 +73,7 @@ export function ReferralBlock({
             <button
               type="button"
               onClick={copy}
-              className="rounded-full bg-surface-sunken px-4 py-2.5 text-[14px] font-bold text-ink transition-transform active:scale-[0.98]"
+              className="press rounded-full bg-surface-sunken px-4 py-2.5 text-[14px] font-bold text-ink"
             >
               {copied ? t('profile.copied') : t('profile.copy')}
             </button>

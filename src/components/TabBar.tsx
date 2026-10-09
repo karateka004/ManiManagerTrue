@@ -54,7 +54,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
             {activeIndex >= 0 && (
               <span
                 aria-hidden
-                className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-brand-500/10 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-brand-500/20 motion-reduce:transition-none"
+                className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-brand-500/10 transition-transform duration-[420ms] ease-[cubic-bezier(0.34,1.32,0.64,1)] dark:bg-brand-500/20 motion-reduce:transition-none"
                 style={{ transform: `translateX(${activeIndex * 100}%)` }}
               />
             )}
@@ -70,11 +70,15 @@ export function TabBar({ value, onChange, onAdd }: Props) {
                     onChange(item.id)
                   }}
                   aria-current={active ? 'page' : undefined}
-                  className={`relative flex min-w-0 flex-1 flex-col items-center gap-0.5 py-1 transition-colors ${
+                  className={`press-soft relative flex min-w-0 flex-1 flex-col items-center gap-0.5 py-1 transition-colors duration-300 ${
                     active ? 'text-brand-600 dark:text-brand-300' : 'text-ink-subtle'
                   }`}
                 >
-                  <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+                  {/* Иконка выбранной вкладки «подпрыгивает» — класс появляется
+                      в момент выбора, и анимация отыгрывает один раз. */}
+                  <span className={active ? 'tab-icon-pop' : undefined}>
+                    <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+                  </span>
                   <span className="max-w-full truncate text-[10px] font-semibold">{t(item.labelKey)}</span>
                 </button>
               )
@@ -88,7 +92,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
             onAdd()
           }}
           aria-label={t('nav.add')}
-          className="pointer-events-auto flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-fab transition-transform active:scale-95"
+          className="fab-plus press pointer-events-auto flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-fab"
         >
           <Plus size={26} strokeWidth={2.75} />
         </button>

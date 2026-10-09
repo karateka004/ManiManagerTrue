@@ -1,42 +1,102 @@
-import { useState } from 'react'
-import { CoinAmount } from '../components/rewards/CoinAmount'
-import { useStore } from '../store/transactions'
-import { useT } from '../lib/i18n'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Coins } from 'lucide-react'
+import { useStore, RECORD_COINS } from '../store/transactions'
+import { coinsWord, useT, type TFunc } from '../lib/i18n'
 import { hapticSelect } from '../lib/telegram'
 import { Group } from '../components/ui/Group'
 import { ScreenHeader } from '../components/ui/ScreenHeader'
+import { Odometer } from '../components/ui/Odometer'
+import { useSegPill } from '../components/ui/SegTrack'
 import { dayjs } from '../lib/format'
 import {
   rewardsByKind,
   getReward,
   featuredToday,
   discountedPrice,
+  msToMidnight,
   DAILY_DISCOUNT_PCT,
+  SHOP_KINDS,
   SHOP_REWARDS,
   type RewardDef,
   type RewardKind,
 } from '../lib/rewards'
 import { RewardRow } from '../components/rewards/RewardRow'
 
-const KIND_TABS: { id: RewardKind; key: string }[] = [
-  { id: 'accent', key: 'roadpass.kind_accent' },
-  { id: 'title', key: 'roadpass.kind_title' },
-  { id: 'frame', key: 'roadpass.kind_frame' },
-]
+// Шторка товара — отдельным чанком по первому открытию (в нём примерка).
+const ProductSheet = lazy(() => import('../components/rewards/ProductSheet').then((m) => ({ default: m.ProductSheet })))
 
-/** Полноэкранный магазин кастомизации (под-вид вкладки «Награды»). */
+const KIND_LABEL: Record<RewardKind, string> = {
+  card: 'shop.kind_card',
+  accent: 'shop.kind_accent',
+  frame: 'shop.kind_frame',
+  title: 'shop.kind_title',
+  effect: 'shop.kind_effect',
+}
+
+/** Ключ снимка витрины дня: набор фиксируется при первом заходе за день. */
+const DEAL_KEY = 'koshel:deal'
+
+/**
+ * Витрина дня — снимок на сутки. Купленное в набор не попадает (скидка на то,
+ * что у человека уже есть, витрину только занимала), но и после покупки
+ * витрина не перемешивается: купленная вещь остаётся на месте с пометкой.
+ */
+function useDailyDeal(owned: string[]): string[] {
+  const today = dayjs().format('YYYY-MM-DD')
+  return useMemo(() => {
+    try {
+      const raw = localStorage.getItem(DEAL_KEY)
+      const saved = raw ? (JSON.parse(raw) as { date?: string; ids?: unknown }) : null
+      if (saved?.date === today && Array.isArray(saved.ids) && saved.ids.every((x) => typeof x === 'string')) {
+        return saved.ids as string[]
+      }
+    } catch {
+      /* битый снимок — соберём заново */
+    }
+    const ids = featuredToday(today, owned)
+    try {
+      localStorage.setItem(DEAL_KEY, JSON.stringify({ date: today, ids }))
+    } catch {
+      /* приватный режим — витрина просто пересчитается */
+    }
+    return ids
+    // Снимок зависит только от дня: покупка не должна менять витрину.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today])
+}
+
+/** «через 5 ч 12 мин» до полуночи; тикает раз в полминуты, без секунд. */
+function useUntilMidnight(t: TFunc): string {
+  const [ms, setMs] = useState(() => msToMidnight())
+  useEffect(() => {
+    const id = setInterval(() => setMs(msToMidnight()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  const minutes = Math.max(1, Math.ceil(ms / 60_000))
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h > 0 ? t('time.hm', { h, m }) : t('time.m', { m })
+}
+
+/** Полноэкранный магазин кастомизации (под-вид вкладки «Прогресс»). */
 export function ShopScreen({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const lang = useStore((s) => s.lang)
   const coins = useStore((s) => s.coins)
   const owned = useStore((s) => s.owned)
-  const [tab, setTab] = useState<RewardKind>('accent')
+  const [tab, setTab] = useState<RewardKind>('card')
+  const [product, setProduct] = useState<{ reward: RewardDef; price?: number } | null>(null)
+  const seenProduct = useRef(false)
+  if (product) seenProduct.current = true
 
-  // Витрина дня — детерминирована по дате, меняется ежедневно.
-  const featured = featuredToday(dayjs().format('YYYY-MM-DD'))
-    .map((id) => getReward(id))
-    .filter((r): r is RewardDef => Boolean(r))
+  const dealIds = useDailyDeal(owned)
+  const featured = dealIds.map((id) => getReward(id)).filter((r): r is RewardDef => Boolean(r))
+  const until = useUntilMidnight(t)
   const items = rewardsByKind(tab)
   const ownedCount = SHOP_REWARDS.filter((r) => owned.includes(r.id)).length
+  const { trackRef, pillRef } = useSegPill<HTMLDivElement>(tab)
+
+  const open = (reward: RewardDef, price?: number) => setProduct({ reward, price })
 
   return (
     <div className="pb-28">
@@ -45,39 +105,81 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
         title={t('shop.title')}
         onBack={onBack}
         trailing={
-          <span className="flex shrink-0 items-center rounded-full bg-surface-sunken px-3 py-1.5 text-[13px] font-bold tabular-nums text-ink">
-            <CoinAmount value={coins} size={14} />
+          // Счётчик монет — барабаном: покупка видна как убывание суммы.
+          <span
+            data-coin-target
+            className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-3 py-1.5 text-[13px] font-bold tabular-nums text-ink"
+          >
+            <Coins size={14} strokeWidth={2.4} />
+            <Odometer text={coins.toLocaleString('ru-RU')} />
           </span>
         }
       />
 
-      {/* Витрина дня — группой строк, как всё остальное в 2.0 */}
+      {/* Витрина дня — группой строк, со сроком до обновления */}
       {featured.length > 0 && (
-        <Group className="mx-4 mt-5" title={t('shop.featured')} action={`−${DAILY_DISCOUNT_PCT}%`}>
+        <Group
+          className="mx-4 mt-5"
+          title={
+            <span className="flex items-baseline gap-2">
+              {t('shop.featured')}
+              <span className="caption font-semibold text-ink-subtle">−{DAILY_DISCOUNT_PCT}%</span>
+            </span>
+          }
+          action={t('shop.deal_refresh', { time: until })}
+          bodyClassName="stagger"
+        >
           {featured.map((r) => (
-            <RewardRow key={'f-' + r.id} reward={r} priceOverride={discountedPrice(r)} />
+            <RewardRow key={'f-' + r.id} reward={r} priceOverride={discountedPrice(r)} onOpen={open} />
           ))}
         </Group>
       )}
 
-      {/* Типы наград — тот же нейтральный сегмент, что в Настройках */}
-      <div className="seg-track mx-4 mt-6">
-        {KIND_TABS.map((k) => (
+      {/* Виды наград — чипы с плашкой, прокрутка вбок на узком экране */}
+      <div
+        ref={trackRef}
+        className="no-scrollbar relative mx-4 mt-6 flex gap-1 overflow-x-auto rounded-full bg-surface-sunken p-1"
+      >
+        <span ref={pillRef} className="seg-pill" aria-hidden />
+        {SHOP_KINDS.map((k) => (
           <button
-            key={k.id}
-            onClick={() => { hapticSelect(); setTab(k.id) }}
-            className={`seg-item px-2 py-1.5 text-[13px] ${tab === k.id ? 'seg-on' : ''}`}
+            key={k}
+            onClick={() => { hapticSelect(); setTab(k) }}
+            aria-pressed={tab === k}
+            className={`seg-slot shrink-0 grow whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-semibold transition-colors duration-200 ${
+              tab === k ? 'seg-on text-ink' : 'text-ink-muted'
+            }`}
           >
-            {t(k.key)}
+            {t(KIND_LABEL[k])}
           </button>
         ))}
       </div>
 
-      <Group className="mx-4 mt-3" footer={t('roadpass.owned_count', { n: ownedCount, total: SHOP_REWARDS.length })}>
+      {/* Смена вида — список заново каскадом (key) */}
+      <Group
+        key={tab}
+        className="mx-4 mt-3"
+        bodyClassName="stagger"
+        footer={t('roadpass.owned_count', { n: ownedCount, total: SHOP_REWARDS.length })}
+      >
         {items.map((r) => (
-          <RewardRow key={r.id} reward={r} />
+          <RewardRow key={r.id} reward={r} onOpen={open} />
         ))}
       </Group>
+
+      {/* Откуда берутся монеты — без этого цена в 600 читается как стена. */}
+      <div className="mx-4 mt-5 flex items-start gap-3 rounded-3xl bg-surface-sunken/60 px-4 py-3.5">
+        <Coins size={18} strokeWidth={2} className="mt-0.5 shrink-0 text-ink-subtle" />
+        <p className="caption leading-snug text-ink-muted">
+          {t('shop.earn', { n: RECORD_COINS, word: coinsWord(lang, RECORD_COINS) })}
+        </p>
+      </div>
+
+      {seenProduct.current && (
+        <Suspense fallback={null}>
+          <ProductSheet reward={product?.reward ?? null} priceOverride={product?.price} onClose={() => setProduct(null)} />
+        </Suspense>
+      )}
     </div>
   )
 }

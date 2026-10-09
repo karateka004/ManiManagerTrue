@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { TabBar, type Tab } from './components/TabBar'
 import { HomePage } from './pages/Home'
 import { useStore, type Transaction } from './store/transactions'
@@ -10,7 +10,24 @@ import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
 import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
+import { useBackButton } from './lib/useBackButton'
+import { Toaster } from './components/ui/Toaster'
+import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
+
+/**
+ * Порядок вкладок в панели — по нему выбирается направление перехода: вкладка
+ * правее приезжает справа, левее — слева. Настройки — «вглубь» Профиля.
+ */
+const TAB_ORDER: Record<Tab, number> = { home: 0, analytics: 1, rewards: 2, profile: 3, settings: 4 }
+type NavDir = 'init' | 'r' | 'l' | 'deep' | 'back'
+const ENTER_CLASS: Record<NavDir, string> = {
+  init: 'tab-enter',
+  r: 'tab-in-r',
+  l: 'tab-in-l',
+  deep: 'tab-in-deep',
+  back: 'tab-in-back',
+}
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
 // Импорты вынесены в функции, чтобы их же переиспользовать для префетча (прогрева).
@@ -143,7 +160,13 @@ export default function App() {
   useGrantPersonalGifts()
   useCloudSync()
   usePrefetchTabs()
-  const [tab, setTab] = useState<Tab>('home')
+  // Вкладка и направление, откуда она приехала (класс анимации появления).
+  const [nav, setNav] = useState<{ tab: Tab; dir: NavDir }>({ tab: 'home', dir: 'init' })
+  const tab = nav.tab
+  const navRef = useRef(nav)
+  navRef.current = nav
+  // Прокрутка каждой вкладки: вернулся на Главную — она там же, где была.
+  const scrollMemory = useRef<Partial<Record<Tab, number>>>({})
   const track = useStore((s) => s.track)
 
   // Шторка операции: «+» в панели создаёт новую, тап по строке на Главной —
@@ -189,17 +212,53 @@ export default function App() {
   }, [])
 
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
+  // Тап по уже открытой вкладке — плавно наверх, как в нативных приложениях.
   const changeTab = useCallback(
     (next: Tab) => {
+      const cur = navRef.current.tab
+      if (cur === next) {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
       if (next === 'analytics') track('visit_analytics')
-      setTab(next)
+      scrollMemory.current[cur] = window.scrollY
+      const dir: NavDir =
+        next === 'settings'
+          ? 'deep'
+          : cur === 'settings' && next === 'profile'
+            ? 'back'
+            : TAB_ORDER[next] > TAB_ORDER[cur]
+              ? 'r'
+              : 'l'
+      setNav({ tab: next, dir })
     },
     [track],
   )
 
+  // Окно прокрутки у всех вкладок общее, поэтому позицию каждой помним сами:
+  // вкладка открывается там, где её оставили (первый раз — с начала). До
+  // отрисовки — чтобы въезжающий экран не дёрнулся посреди анимации. Ленивая
+  // вкладка может дорисоваться чуть позже; тогда дожидаемся, пока страница
+  // станет достаточно длинной, и ставим позицию один раз.
+  useLayoutEffect(() => {
+    const target = scrollMemory.current[tab] ?? 0
+    window.scrollTo(0, target)
+    if (target === 0 || window.scrollY >= target - 1) return
+    let tries = 0
+    const id = setInterval(() => {
+      const room = document.documentElement.scrollHeight - window.innerHeight
+      if (room >= target) window.scrollTo(0, target)
+      if (room >= target || ++tries > 12) clearInterval(id)
+    }, 40)
+    return () => clearInterval(id)
+  }, [tab])
+
   const openProfile = useCallback(() => changeTab('profile'), [changeTab])
   const openSettings = useCallback(() => changeTab('settings'), [changeTab])
   const openRewards = useCallback(() => changeTab('rewards'), [changeTab])
+
+  // Настройки — вложенный экран: системная «Назад» Telegram возвращает в Профиль.
+  useBackButton(tab === 'settings', openProfile)
 
   return (
     <div className="min-h-screen" style={{ paddingTop: 'var(--safe-top)' }}>
@@ -212,10 +271,11 @@ export default function App() {
         (б) держал контент на `initial:opacity 0`, и при незапустившейся
         entrance-анимации вся вкладка (включая суммы в Аналитике/Календаре)
         оставалась невидимой. `key={tab}` ремонтирует поддерево при смене
-        вкладки и перезапускает CSS-анимацию `.tab-enter`, у которой базовая
-        непрозрачность — 1: контент виден всегда.
+        вкладки и перезапускает CSS-анимацию появления (`.tab-enter` при
+        запуске, дальше — по направлению: `.tab-in-r/-l`, Настройки —
+        `.tab-in-deep`). У всех базовая непрозрачность 1: контент виден всегда.
       */}
-      <div key={tab} className="tab-enter">
+      <div key={tab} className={`tab-host ${ENTER_CLASS[nav.dir]}`}>
         <ChunkErrorBoundary>
           <Suspense fallback={<PageFallback />}>
             {tab === 'home' && (
@@ -265,6 +325,9 @@ export default function App() {
       <Suspense fallback={null}>
         <IntroOverlay />
       </Suspense>
+
+      <LevelUpWatcher />
+      <Toaster />
     </div>
   )
 }

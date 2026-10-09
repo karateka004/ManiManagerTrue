@@ -53,6 +53,9 @@ interface TelegramWebApp {
   }
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void
   openTelegramLink: (url: string) => void
+  /** Bot API 7.7+: вертикальный свайп сворачивает мини-апп — его можно выключить. */
+  disableVerticalSwipes?: () => void
+  enableVerticalSwipes?: () => void
 }
 
 declare global {
@@ -142,6 +145,76 @@ export function hapticSelect() {
 
 export function hapticNotify(type: NotificationType) {
   tg.haptic.notificationOccurred(type)
+}
+
+/**
+ * Выключить сворачивание мини-аппа вертикальным свайпом, пока открыта шторка:
+ * её закрывают свайпом вниз, и тот же жест иначе сворачивал бы приложение.
+ * Счётчик — шторки бывают одна поверх другой (операция → редактор категорий);
+ * свайп возвращается, только когда закрылась последняя. Возвращает «отпустить».
+ */
+let swipeLocks = 0
+export function lockVerticalSwipes(): () => void {
+  const wa = tg.webApp
+  if (!wa?.disableVerticalSwipes || !wa.enableVerticalSwipes) return () => {}
+  if (swipeLocks++ === 0) {
+    try {
+      wa.disableVerticalSwipes()
+    } catch {
+      /* старый клиент */
+    }
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    if (--swipeLocks === 0) {
+      try {
+        wa.enableVerticalSwipes?.()
+      } catch {
+        /* старый клиент */
+      }
+    }
+  }
+}
+
+/**
+ * Системная кнопка «Назад» Telegram для вложенных экранов и шторок.
+ *
+ * Обработчики — стопкой: нажатие закрывает только верхний слой (шторку над
+ * Магазином, а не Магазин вместе с ней). Кнопка видна, пока в стопке кто-то
+ * есть. Telegram вызывает все подписанные обработчики, поэтому подписываемся
+ * один раз и сами выбираем верхний.
+ */
+const backStack: Array<() => void> = []
+let backBound = false
+function onTelegramBack() {
+  backStack[backStack.length - 1]?.()
+}
+export function pushBackHandler(fn: () => void): () => void {
+  const bb = tg.webApp?.BackButton
+  if (!bb) return () => {}
+  backStack.push(fn)
+  try {
+    if (!backBound) {
+      bb.onClick(onTelegramBack)
+      backBound = true
+    }
+    bb.show()
+  } catch {
+    /* старый клиент без BackButton */
+  }
+  return () => {
+    const i = backStack.lastIndexOf(fn)
+    if (i >= 0) backStack.splice(i, 1)
+    if (backStack.length === 0) {
+      try {
+        bb.hide()
+      } catch {
+        /* старый клиент */
+      }
+    }
+  }
 }
 
 /** Subscribe to Telegram themeChanged. Returns cleanup. Safe outside Telegram. */

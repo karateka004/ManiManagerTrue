@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { m, AnimatePresence } from 'framer-motion'
+import { BottomSheet, useSheetDrag } from './ui/BottomSheet'
 import { ArrowUp, MessageCircle, X } from 'lucide-react'
 import { askAssistant, type AskError } from '../lib/api'
 import { useT, type TFunc } from '../lib/i18n'
@@ -77,55 +77,39 @@ export function AssistantSheet({ open, onClose }: Props) {
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm"
-          />
-          <m.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-x-0 bottom-0 z-[80] flex h-[92vh] flex-col rounded-t-5xl bg-surface-raised shadow-raised"
-          >
-            <Head t={t} onClose={onClose} />
+    <BottomSheet open={open} onClose={onClose} layout="flex" height="92vh" maxHeight="92vh" padBottom={null}>
+      <Head t={t} onClose={onClose} />
 
-            <div ref={listRef} className="flex-1 overflow-y-auto px-4 pb-2">
-              {messages.length === 0 ? (
-                <Empty t={t} onPick={ask} busy={busy} />
-              ) : (
-                <div className="flex flex-col gap-3 py-2">
-                  {messages.map((msg) =>
-                    msg.from === 'me' ? <Mine key={msg.id} text={msg.text} /> : <Theirs key={msg.id} text={msg.text} />,
-                  )}
-                  {busy && <Thinking />}
-                </div>
-              )}
-            </div>
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2">
+        {messages.length === 0 ? (
+          <Empty t={t} onPick={ask} busy={busy} />
+        ) : (
+          <div className="flex flex-col gap-3 py-2">
+            {messages.map((msg) =>
+              msg.from === 'me' ? <Mine key={msg.id} text={msg.text} /> : <Theirs key={msg.id} text={msg.text} />,
+            )}
+            {busy && <Thinking />}
+          </div>
+        )}
+      </div>
 
-            <Composer t={t} value={draft} onChange={setDraft} onSend={() => ask(draft)} busy={busy} />
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>
+      <Composer t={t} value={draft} onChange={setDraft} onSend={() => ask(draft)} busy={busy} />
+    </BottomSheet>
   )
 }
 
 function Head({ t, onClose }: { t: TFunc; onClose: () => void }) {
+  // За шапку можно тянуть шторку вниз — как за ручку.
+  const startDrag = useSheetDrag()
   return (
-    <div className="flex items-center gap-3 px-5 pb-3 pt-5">
+    <div onPointerDown={startDrag} className="flex shrink-0 touch-none items-center gap-3 px-5 pb-3 pt-0.5">
       <MessageCircle size={20} strokeWidth={2.2} className="text-ink-subtle" />
       <div className="min-w-0 flex-1 text-[17px] font-extrabold text-ink">{t('ai.title')}</div>
       <button
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={onClose}
-        aria-label="×"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
+        aria-label={t('common.close')}
+        className="press flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-muted"
       >
         <X size={18} strokeWidth={2.4} />
       </button>
@@ -144,7 +128,7 @@ function Empty({ t, onPick, busy }: { t: TFunc; onPick: (q: string) => void; bus
             key={key}
             disabled={busy}
             onClick={() => onPick(t(key))}
-            className="rounded-2xl bg-surface-sunken px-4 py-3 text-left text-[15px] font-semibold text-ink transition-transform active:scale-[0.98] disabled:opacity-50"
+            className="press-soft rounded-2xl bg-surface-sunken px-4 py-3 text-left text-[15px] font-semibold text-ink disabled:opacity-50"
           >
             {t(key)}
           </button>
@@ -157,7 +141,7 @@ function Empty({ t, onPick, busy }: { t: TFunc; onPick: (q: string) => void; bus
 
 function Mine({ text }: { text: string }) {
   return (
-    <div className="flex justify-end">
+    <div className="bubble-in-r flex justify-end">
       <div className="max-w-[85%] rounded-3xl rounded-br-lg bg-brand-500 px-4 py-2.5 text-[15px] font-semibold text-white">
         {text}
       </div>
@@ -171,7 +155,7 @@ function Mine({ text }: { text: string }) {
  */
 function Theirs({ text }: { text: string }) {
   return (
-    <div className="flex justify-start">
+    <div className="bubble-in-l flex justify-start">
       <div className="max-w-[92%] rounded-3xl rounded-bl-lg bg-surface-sunken px-4 py-3 text-[15px] leading-relaxed text-ink">
         {text.split(/\n{2,}/).map((para, i) => (
           <p key={i} className={i > 0 ? 'mt-2.5' : undefined}>
@@ -210,12 +194,12 @@ function withAccent(text: string) {
  */
 function Thinking() {
   return (
-    <div className="flex justify-start">
+    <div className="bubble-in-l flex justify-start">
       <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-lg bg-surface-sunken px-4 py-4">
-        {[0, 150, 300].map((delay) => (
+        {[0, 160, 320].map((delay) => (
           <span
             key={delay}
-            className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-subtle"
+            className="typing-dot h-1.5 w-1.5 rounded-full bg-ink-subtle"
             style={{ animationDelay: `${delay}ms` }}
           />
         ))}
@@ -259,7 +243,7 @@ function Composer({
         onClick={onSend}
         disabled={busy || !value.trim()}
         aria-label={t('ai.send')}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition-transform active:scale-95 disabled:opacity-40"
+        className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition-opacity disabled:opacity-40"
       >
         <ArrowUp size={20} strokeWidth={2.6} />
       </button>

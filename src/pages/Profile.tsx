@@ -147,7 +147,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         <button
           onClick={() => { hapticTap(); onOpenSettings() }}
           aria-label={t('nav.settings')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95"
+          className="press-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft"
         >
           <Settings size={18} strokeWidth={2.2} />
         </button>
@@ -210,7 +210,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         >
           <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
             <span
-              className="block h-full rounded-full bg-brand-500 transition-[width] duration-500"
+              className="grow-x block h-full rounded-full bg-brand-500 transition-[width] duration-500"
               style={{ width: `${Math.round(lvl.ratio * 100)}%` }}
             />
           </span>
@@ -328,7 +328,7 @@ function FeedbackBlock({ t }: { t: TFunc }) {
     <Group className="mx-4 mt-6" title={t('profile.feedback')}>
       <div className="p-3">
         {state === 'sent' ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-[15px] font-medium text-income-deep dark:text-brand-300">
+          <div className="flex items-center gap-2 px-1 py-2 text-[15px] font-medium text-income-deep dark:text-income-light dark:text-brand-300">
             <Check size={18} strokeWidth={2.5} />
             {t('profile.feedback_thanks')}
           </div>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { m, AnimatePresence } from 'framer-motion'
-import { Flame, X } from 'lucide-react'
+import { Flame } from 'lucide-react'
+import { BottomSheet, SheetHeader } from './ui/BottomSheet'
+import { SegTrack } from './ui/SegTrack'
 import { getLeaderboard, type LeaderBoard, type LeaderEntry } from '../lib/api'
 import { LEVELS } from '../lib/levels'
 import { getReward, RARITY } from '../lib/rewards'
 import { RewardBadge } from './rewards/RewardBadge'
+import { FrameRing, hasFrameRing } from './rewards/FrameRing'
 import { tg, hapticSelect } from '../lib/telegram'
 import { useT, type TFunc } from '../lib/i18n'
 
@@ -72,100 +74,87 @@ export function LeaderboardSheet({ open, onClose }: Props) {
     board && board.me && !board.top.some((e) => e.id === board.me!.id) ? board.me : null
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-          />
-          <m.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] flex-col rounded-t-5xl bg-surface-raised shadow-raised"
-            style={{ paddingBottom: 'var(--safe-bottom)' }}
-          >
-            <div className="flex justify-center pb-1 pt-3">
-              <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
-            </div>
+    <BottomSheet open={open} onClose={onClose} layout="flex" maxHeight="92vh" padBottom={0}>
+      {/* 2.0: шапка как у остальных шторок — без значка в цветном квадрате. */}
+      <SheetHeader
+        title={t('lb.title')}
+        subtitle={state.status === 'ok' ? t('lb.participants', { n: state.total }) : t('lb.subtitle')}
+        onClose={onClose}
+      />
 
-            {/* 2.0: шапка как у остальных шторок — без значка в цветном квадрате. */}
-            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
-              <div className="min-w-0 leading-tight">
-                <div className="text-[17px] font-extrabold text-ink">{t('lb.title')}</div>
-                <div className="caption mt-0.5 text-ink-subtle">
-                  {state.status === 'ok' ? t('lb.participants', { n: state.total }) : t('lb.subtitle')}
+      {/* Переключатель досок */}
+      <div className="shrink-0 px-4 pb-3">
+        <SegTrack active={tab}>
+          <TabButton active={tab === 'xp'} onClick={() => { setTab('xp'); hapticSelect() }}>
+            {t('lb.by_xp')}
+          </TabButton>
+          <TabButton active={tab === 'refs'} onClick={() => { setTab('refs'); hapticSelect() }}>
+            {t('lb.by_refs')}
+          </TabButton>
+        </SegTrack>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+        {/* Загрузка — скелетон строк той же высоты, а не слово «Загрузка»:
+            список не прыгает, когда приходят данные. */}
+        {state.status === 'loading' && <SkeletonRows />}
+
+        {state.status === 'error' && (
+          <div className="py-12 text-center text-sm text-ink-subtle">
+            {tg.isInTelegram ? t('lb.error') : t('lb.error_tg')}
+          </div>
+        )}
+
+        {board && board.top.length === 0 && (
+          <div className="py-12 text-center text-sm text-ink-subtle">
+            {tab === 'refs' ? t('lb.empty_refs') : t('lb.empty_xp')}
+          </div>
+        )}
+
+        {board && board.top.length > 0 && (
+          // Каскад строк при открытии и при смене доски (key).
+          <div key={tab} className="card grouped stagger overflow-hidden">
+            {board.top.map((e, i) => (
+              <Row key={e.id} entry={e} rank={i + 1} isMe={e.id === myId} tab={tab} t={t} />
+            ))}
+
+            {meOutsideTop && (
+              <>
+                <div className="row">
+                  <div className="row-main caption justify-center text-ink-subtle">· · ·</div>
                 </div>
-              </div>
-              <button
-                onClick={onClose}
-                aria-label={t('common.close')}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
-              >
-                <X size={18} strokeWidth={2.4} />
-              </button>
-            </div>
+                <Row entry={meOutsideTop} rank={meOutsideTop.rank} isMe tab={tab} t={t} />
+              </>
+            )}
+          </div>
+        )}
 
-            {/* Переключатель досок */}
-            <div className="px-4 pb-3">
-              <div className="seg-track">
-                <TabButton active={tab === 'xp'} onClick={() => { setTab('xp'); hapticSelect() }}>
-                  {t('lb.by_xp')}
-                </TabButton>
-                <TabButton active={tab === 'refs'} onClick={() => { setTab('refs'); hapticSelect() }}>
-                  {t('lb.by_refs')}
-                </TabButton>
-              </div>
-            </div>
+        <p className="mt-4 px-2 text-center text-[11px] leading-relaxed text-ink-subtle">
+          {t('lb.privacy')}
+        </p>
+      </div>
+    </BottomSheet>
+  )
+}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-              {state.status === 'loading' && (
-                <div className="py-12 text-center text-sm text-ink-subtle">{t('lb.loading')}</div>
-              )}
-
-              {state.status === 'error' && (
-                <div className="py-12 text-center text-sm text-ink-subtle">
-                  {tg.isInTelegram ? t('lb.error') : t('lb.error_tg')}
-                </div>
-              )}
-
-              {board && board.top.length === 0 && (
-                <div className="py-12 text-center text-sm text-ink-subtle">
-                  {tab === 'refs' ? t('lb.empty_refs') : t('lb.empty_xp')}
-                </div>
-              )}
-
-              {board && board.top.length > 0 && (
-                <div className="card grouped overflow-hidden">
-                  {board.top.map((e, i) => (
-                    <Row key={e.id} entry={e} rank={i + 1} isMe={e.id === myId} tab={tab} t={t} />
-                  ))}
-
-                  {meOutsideTop && (
-                    <>
-                      <div className="row">
-                        <div className="row-main caption justify-center text-ink-subtle">· · ·</div>
-                      </div>
-                      <Row entry={meOutsideTop} rank={meOutsideTop.rank} isMe tab={tab} t={t} />
-                    </>
-                  )}
-                </div>
-              )}
-
-              <p className="mt-4 px-2 text-center text-[11px] leading-relaxed text-ink-subtle">
-                {t('lb.privacy')}
-              </p>
-            </div>
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>
+/** Заглушка списка на время загрузки: восемь строк-силуэтов. */
+function SkeletonRows() {
+  return (
+    <div className="card grouped overflow-hidden" aria-hidden>
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="row">
+          <div className="row-main gap-3">
+            <span className="skeleton h-5 w-5 shrink-0" />
+            <span className="skeleton h-9 w-9 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="skeleton block h-3 w-2/5" />
+              <span className="skeleton mt-2 block h-2.5 w-3/5" />
+            </span>
+            <span className="skeleton h-3.5 w-10 shrink-0" />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -210,17 +199,14 @@ function Row({
   const titleReward = entry.title && entry.title !== 'title_newbie' ? getReward(entry.title) : undefined
   const flexTitle = titleReward?.kind === 'title' ? titleReward : undefined
 
-  // Кастомизация кружка игрока: надетая рамка (градиентный ободок), а без неё —
-  // тонкий ободок цвета надетого акцента. Дефолты (без рамки / мятный) — без декора.
-  const frameDef = getReward(entry.frame)?.frame
-  const hasFrame = !!frameDef && frameDef.ring !== 'transparent'
+  // Кастомизация кружка игрока: надетая рамка (та же FrameRing, что у своего
+  // аватара), а без неё — тонкий ободок цвета надетого акцента. Дефолты (без
+  // рамки / мятный) — без декора. id приходят с сервера — проверяем по каталогу.
+  const frameId = getReward(entry.frame)?.kind === 'frame' ? entry.frame : undefined
+  const hasFrame = hasFrameRing(frameId)
   const accentPalette =
     !hasFrame && entry.accent && entry.accent !== 'accent_mint' ? getReward(entry.accent)?.palette : undefined
-  const ringStyle = hasFrame
-    ? { padding: 3, background: frameDef!.ring, boxShadow: frameDef!.glow }
-    : accentPalette
-      ? { padding: 2, background: `rgb(${accentPalette[500]})` }
-      : undefined
+  const ringStyle = accentPalette ? { padding: 2, background: `rgb(${accentPalette[500]})` } : undefined
   return (
     // 2.0: строка группы. Себя видно по тихой подложке и пометке «· ты», а не по
     // брендовой рамке вокруг отдельной карточки.
@@ -237,17 +223,25 @@ function Row({
           <span className="text-sm font-semibold tabular-nums text-ink-subtle">{rank}</span>
         )}
       </div>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={ringStyle}>
-        <div
-          className={`flex h-full w-full items-center justify-center rounded-full text-sm font-bold ${
-            ringStyle
-              ? 'bg-surface-raised text-brand-600 dark:text-brand-300'
-              : 'bg-surface-sunken text-ink-muted'
-          }`}
-        >
-          {initial}
+      {hasFrame ? (
+        <FrameRing frameId={frameId} size={36}>
+          <div className="flex h-full w-full items-center justify-center rounded-full bg-surface-raised text-sm font-bold text-ink-muted">
+            {initial}
+          </div>
+        </FrameRing>
+      ) : (
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={ringStyle}>
+          <div
+            className={`flex h-full w-full items-center justify-center rounded-full text-sm font-bold ${
+              ringStyle
+                ? 'bg-surface-raised text-brand-600 dark:text-brand-300'
+                : 'bg-surface-sunken text-ink-muted'
+            }`}
+          >
+            {initial}
+          </div>
         </div>
-      </div>
+      )}
       {/* Жетон уровня — заметнее эмодзи и сразу читается «насколько игрок прокачан» */}
       <RewardBadge level={lvl} size={26} />
       <div className="min-w-0 flex-1">

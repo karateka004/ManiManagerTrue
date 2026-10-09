@@ -5,8 +5,9 @@ import { hapticTap, hapticNotify } from '../lib/telegram'
 import { Group, Row } from '../components/ui/Group'
 import { ScreenHeader } from '../components/ui/ScreenHeader'
 import { useLevel } from '../components/LevelBar'
-import { RARITY, LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
+import { LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
 import { RewardBadge } from '../components/rewards/RewardBadge'
+import { burst, RARITY_FX } from '../lib/fx'
 
 /**
  * Полноэкранные «Титулы уровня» (под-вид вкладки «Награды», заменил заглушку De-Fi).
@@ -72,12 +73,13 @@ function LevelRewardRow({
   const levelOk = currentLevel >= reward.unlockLevel
   const daysOk = days >= needDays
   const unlocked = levelOk && daysOk
-  const rarity = RARITY[reward.rarity]
 
-  const onClaim = () => {
+  const onClaim = (from: Element) => {
     if (!unlocked || owned) return
     if (grantReward(reward.id)) {
       hapticNotify('success')
+      // Всплеск в цветах редкости титула — из кнопки, которую нажали.
+      burst(from, { colors: RARITY_FX[reward.rarity], count: 18, spread: 80 })
       equipReward('title', reward.id) // новый титул сразу надет — как покупка в магазине
     }
   }
@@ -91,16 +93,13 @@ function LevelRewardRow({
   return (
     <div className={`row ${unlocked ? '' : 'opacity-55'}`}>
       {/* Жетон уровня: градиент по редкости + номер уровня в углу */}
-      <span className="mr-3 shrink-0">
+      <span key={owned ? 'own' : 'no'} className={`mr-3 shrink-0 ${owned ? 'pop' : ''}`}>
         <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={40} dim={!unlocked} />
       </span>
 
       <div className="row-main">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: rarity.color }} />
-            <span className="truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</span>
-          </div>
+          <div className="truncate text-[15px] font-semibold text-ink">{t('reward.' + reward.id + '.name')}</div>
           {owned ? (
             <div className="caption mt-0.5 truncate text-ink-subtle">{t('reward.' + reward.id + '.hint')}</div>
           ) : (
@@ -127,19 +126,19 @@ function LevelRewardRow({
           </span>
         ) : !owned ? (
           <button
-            onClick={onClaim}
-            className="shrink-0 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white transition active:scale-95"
+            onClick={(e) => onClaim(e.currentTarget)}
+            className="press sheen shrink-0 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white"
           >
             {t('lvlrew.claim')}
           </button>
         ) : equipped ? (
           <span className="caption flex shrink-0 items-center gap-1 font-semibold text-ink-muted">
-            <Check size={15} strokeWidth={2.8} /> {t('roadpass.equipped')}
+            <Check size={15} strokeWidth={2.8} className="pop" /> {t('roadpass.equipped')}
           </span>
         ) : (
           <button
             onClick={onEquip}
-            className="shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink transition active:scale-95"
+            className="press shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink"
           >
             {t('roadpass.equip')}
           </button>

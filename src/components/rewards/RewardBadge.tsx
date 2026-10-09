@@ -1,8 +1,9 @@
 import type { ComponentType } from 'react'
 import {
-  Sprout, Calculator, PiggyBank, Briefcase, TrendingUp, Crown, Trophy,
+  Sprout, Calculator, PiggyBank, Briefcase, TrendingUp, Crown,
   GraduationCap, Gem, Landmark, Coins, Sparkles, Bitcoin, Swords, BadgeCheck,
   Star, Leaf, Anchor, Grape, Sunset, Flower, TreePalm, Pencil,
+  Feather, Vault, Mountain, CircleOff, PartyPopper,
   type LucideProps,
 } from 'lucide-react'
 import { RARITY, type AccentPalette, type Rarity } from '../../lib/rewards'
@@ -27,6 +28,15 @@ const ICON_BY_ID: Record<string, ComponentType<LucideProps>> = {
   title_shark: Swords,
   title_crypto: Bitcoin,
   title_ambassador: BadgeCheck,
+  title_minimal: Feather,
+  title_treasurer: Vault,
+  title_stoic: Mountain,
+
+  // Эффекты записи
+  effect_none: CircleOff,
+  effect_sparks: Sparkles,
+  effect_confetti: PartyPopper,
+  effect_stars: Star,
 
   // Титулы за уровень (совпадают с иконками уровней)
   title_lvl1: Sprout,
@@ -87,9 +97,15 @@ interface Props {
    * градиентом редкости — так в магазине сразу видно, что именно покупаешь.
    */
   palette?: AccentPalette
+  /**
+   * «Стеклянный» жетон для тёмных карт-героев: белая полупрозрачная заливка и
+   * обводка вместо градиента редкости. Синий «редкий» жетон на зелёной карте
+   * уровня спорил с ней цветом.
+   */
+  glass?: boolean
 }
 
-export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette }: Props) {
+export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette, glass }: Props) {
   const lvl = level ? Math.min(Math.max(1, Math.floor(level)), LEVEL_ICONS.length) : null
   const Icon = rewardId ? ICON_BY_ID[rewardId] : lvl ? LEVEL_ICONS[lvl - 1] : undefined
   const finalRarity: Rarity = rarity ?? (lvl ? levelRarity(lvl) : 'common')
@@ -117,7 +133,9 @@ export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette }
         {/* Скруглённый шестиугольник — форма «жетона», узнаваемая и спокойная */}
         <path
           d="M24 2.6c1.6 0 3.1.4 4.5 1.2l12 6.9a9 9 0 0 1 4.5 7.8v13.8a9 9 0 0 1-4.5 7.8l-12 6.9a9 9 0 0 1-9 0l-12-6.9a9 9 0 0 1-4.5-7.8V18.5a9 9 0 0 1 4.5-7.8l12-6.9A9 9 0 0 1 24 2.6z"
-          fill={`url(#${gid})`}
+          fill={glass ? 'rgb(255 255 255 / 0.12)' : `url(#${gid})`}
+          stroke={glass ? 'rgb(255 255 255 / 0.22)' : undefined}
+          strokeWidth={glass ? 1.2 : undefined}
         />
         {/* Мягкий блик сверху — объём без «пластика» */}
         <path
@@ -143,9 +161,9 @@ export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette }
           style={{
             width: Math.round(size * 0.42),
             height: Math.round(size * 0.42),
-            background: accent,
-            borderColor: 'rgb(var(--c-surface-raised))',
-            color: '#fff',
+            background: glass ? 'rgb(255 255 255 / 0.92)' : accent,
+            borderColor: glass ? 'transparent' : 'rgb(var(--c-surface-raised))',
+            color: glass ? 'rgb(11 14 12)' : '#fff',
           }}
         >
           {lvl}

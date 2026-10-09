@@ -1,12 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Flame } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { daysWord, useT } from '../../lib/i18n'
 import { hapticNotify } from '../../lib/telegram'
-import { dayjs } from '../../lib/format'
-import { canClaim, effectiveStreak, streakReward } from '../../lib/streak'
+import { canClaim, effectiveStreak, streakReward, streakWeek } from '../../lib/streak'
 import { Row } from '../ui/Group'
 import { CoinAmount } from './CoinAmount'
+import { burst, flyCoins, floatText, BRAND_FX } from '../../lib/fx'
 
 /**
  * Серия дня — строка хаба «Прогресс».
@@ -27,10 +27,26 @@ export function StreakRow() {
   // Награда за сегодня: продолжение серии, если она жива, иначе первый день.
   const next = streakReward(active > 0 ? streak.count + 1 : 1)
 
-  const week = useMemo(() => lastWeek(streak.lastClaim, active > 0 ? streak.count : 0), [streak.lastClaim, streak.count, active])
+  const week = useMemo(() => streakWeek(streak), [streak])
+
+  // Только что забрали — сегодняшняя полоска «вспыхивает» при заполнении.
+  const [justClaimed, setJustClaimed] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const onClaim = () => {
-    if (claimDailyStreak()) hapticNotify('success')
+    // Координаты кнопки — до изменения стора: после него кнопка исчезнет.
+    const from = btnRef.current?.getBoundingClientRect()
+    const reward = claimDailyStreak()
+    if (!reward) return
+    hapticNotify('success')
+    setJustClaimed(true)
+    if (from) {
+      const at = { x: from.left + from.width / 2, y: from.top + from.height / 2 }
+      floatText(at, `+${reward.coins}`)
+      flyCoins(at, Math.min(8, 3 + Math.round(reward.coins / 5)))
+      // Рубеж серии (3/7/14/30 дней) — небольшое конфетти поверх монеток.
+      if (reward.milestone) burst(at, { colors: BRAND_FX, count: 22, spread: 110, confetti: true })
+    }
   }
 
   const subtitle =
@@ -49,9 +65,10 @@ export function StreakRow() {
       trailing={
         claimable ? (
           <button
+            ref={btnRef}
             type="button"
             onClick={onClaim}
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white transition-transform active:scale-95"
+            className="press sheen flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white"
           >
             {t('quest.claim')}
             <span className="tabular-nums opacity-80">
@@ -61,35 +78,18 @@ export function StreakRow() {
         ) : undefined
       }
     >
+      {/* Сегодняшняя полоска, пока награда ждёт, мягко «дышит»; после
+          получения — заполняется с отскоком. */}
       <span className="mt-2 flex gap-1" aria-hidden>
         {week.map((on, i) => (
           <span
             key={i}
-            className={`h-1.5 w-5 rounded-full ${
-              on ? 'bg-brand-500' : i === 6 && claimable ? 'bg-brand-500/25' : 'bg-surface-sunken'
-            }`}
+            className={`h-1.5 w-5 rounded-full transition-colors duration-300 ${
+              on ? 'bg-brand-500' : i === 6 && claimable ? 'breathe bg-brand-500/40' : 'bg-surface-sunken'
+            } ${i === 6 && on && justClaimed ? 'pop' : ''}`}
           />
         ))}
       </span>
     </Row>
   )
-}
-
-/**
- * Семь последних дней, сегодня — последним: true, если день входит в живую
- * серию. Серия — это `count` дней подряд, заканчивая днём `lastClaim`.
- */
-function lastWeek(lastClaim: string | null, count: number): boolean[] {
-  const out: boolean[] = []
-  const last = lastClaim ? dayjs(lastClaim).startOf('day') : null
-  const today = dayjs().startOf('day')
-  for (let i = 6; i >= 0; i--) {
-    if (!last || count <= 0) {
-      out.push(false)
-      continue
-    }
-    const back = last.diff(today.subtract(i, 'day'), 'day')
-    out.push(back >= 0 && back < count)
-  }
-  return out
 }

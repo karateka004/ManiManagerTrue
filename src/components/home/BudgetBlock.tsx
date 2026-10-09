@@ -7,7 +7,7 @@ import {
   selectDailyAllowance,
   selectExceededBudgets,
 } from '../../store/transactions'
-import { Money } from '../ui/Money'
+import { AnimatedMoney } from '../ui/Odometer'
 import { formatMoney } from '../../lib/format'
 import { useCatName, useT } from '../../lib/i18n'
 import { hapticNotify, hapticSelect } from '../../lib/telegram'
@@ -86,10 +86,10 @@ export function BudgetBlock({ onOpen }: { onOpen: (tab: PlanTab) => void }) {
               {t('home.today_exhausted')}
             </div>
           ) : (
-            <Money
+            <AnimatedMoney
               value={Math.round(overToday ? -leftToday : leftToday)}
               currency={currency}
-              className={`mt-0.5 block text-[34px] font-bold leading-none tracking-tight ${
+              className={`mt-0.5 block text-[34px] font-bold leading-none tracking-tight transition-colors duration-300 ${
                 overToday ? 'text-expense-deep dark:text-expense-soft' : 'text-ink'
               }`}
             />
@@ -106,7 +106,7 @@ export function BudgetBlock({ onOpen }: { onOpen: (tab: PlanTab) => void }) {
           {/* Полоса месяца: дневной лимит без неё — число без контекста. */}
           <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
             <div
-              className={`h-full rounded-full transition-[width] duration-500 ${monthOver ? 'bg-expense' : 'bg-brand-500'}`}
+              className={`grow-x h-full rounded-full transition-[width,background-color] duration-500 ${monthOver ? 'bg-expense' : 'bg-income'}`}
               style={{ width: `${monthRatio * 100}%` }}
             />
           </div>
@@ -192,7 +192,7 @@ function PlanLinks({ onOpen, hideIfEmpty }: { onOpen: (tab: PlanTab) => void; hi
             <button
               type="button"
               onClick={() => onOpen(l.tab)}
-              className="caption rounded-md py-1 text-ink-muted transition-colors active:text-ink"
+              className="press caption rounded-md py-1 text-ink-muted transition-colors active:text-ink"
             >
               {l.label}
               {l.value && <span className="ml-1 font-semibold tabular-nums text-ink">{l.value}</span>}

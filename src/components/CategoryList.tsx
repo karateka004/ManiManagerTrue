@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import {
   useStore,
@@ -15,6 +15,10 @@ import { opsWord, useCatName, useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 import { hapticTap, hapticSelect } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
+import { Reveal } from './ui/Reveal'
+import { replay } from '../lib/fx'
+import { isFresh, useTouchedAt } from '../lib/touched'
+import { showToast } from '../lib/toast'
 
 /**
  * Категории периода — по одной группе на доходы и расходы.
@@ -35,6 +39,10 @@ export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx:
   // получала бы новый объект budget и memo на ней не срабатывал бы.
   const budgetByCat = useMemo(() => new Map(budgets.map((b) => [b.categoryId, b])), [budgets])
   const t = useT()
+  // Каскад строк и рост полос — только при первом показе списка. Потом класс
+  // снимается: иначе строка, сменившая место (React переставляет узел), снова
+  // проигрывала бы появление с задержкой по своему номеру.
+  const intro = useIntro()
 
   if (expenses.length === 0 && incomes.length === 0) {
     return <EmptyState />
@@ -44,16 +52,22 @@ export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx:
     <div className="mt-1 px-4">
       {expenses.length > 0 && (
         <Section title={t('common.expense')} cats={expenses} kind="expense">
-          {expenses.map((c) => (
-            <CategoryRow key={c.categoryId} cat={c} budget={budgetByCat.get(c.categoryId)} onEditTx={onEditTx} />
+          {expenses.map((c, i) => (
+            <CategoryRow
+              key={c.categoryId}
+              cat={c}
+              budget={budgetByCat.get(c.categoryId)}
+              onEditTx={onEditTx}
+              intro={intro ? i : -1}
+            />
           ))}
         </Section>
       )}
 
       {incomes.length > 0 && (
         <Section title={t('common.income')} cats={incomes} kind="income">
-          {incomes.map((c) => (
-            <CategoryRow key={c.categoryId} cat={c} onEditTx={onEditTx} />
+          {incomes.map((c, i) => (
+            <CategoryRow key={c.categoryId} cat={c} onEditTx={onEditTx} intro={intro ? expenses.length + i : -1} />
           ))}
         </Section>
       )}
@@ -63,6 +77,21 @@ export const CategoryList = memo(function CategoryList({ onEditTx }: { onEditTx:
     </div>
   )
 })
+
+/** Каскад уже показывали в этой сессии — повторно на каждом заходе он надоедает. */
+let introShown = false
+
+/** true первые ~0,8 с после самого первого показа списка за сессию. */
+function useIntro(): boolean {
+  const [intro, setIntro] = useState(() => !introShown)
+  useEffect(() => {
+    if (!intro) return
+    introShown = true
+    const id = setTimeout(() => setIntro(false), 800)
+    return () => clearTimeout(id)
+  }, [intro])
+  return intro
+}
 
 /**
  * Раздел: заголовок с итогом и группа строк. Расходы теперь идут первыми —
@@ -109,16 +138,29 @@ const CategoryRow = memo(function CategoryRow({
   cat,
   budget,
   onEditTx,
+  intro,
 }: {
   cat: CategoryAggregate
   budget?: BudgetStatus
   onEditTx: (t: Transaction) => void
+  /** Номер строки для каскада при первом показе; -1 — без анимации появления. */
+  intro: number
 }) {
   const [open, setOpen] = useState(false)
   const currency = useStore(selectAnalyticsCurrency)
   const lang = useStore((s) => s.lang)
   const tr = useT()
   const catName = useCatName()
+
+  // Сюда только что легла операция — строка вспыхивает фоном акцента.
+  const rowRef = useRef<HTMLButtonElement>(null)
+  const touchedAt = useTouchedAt(cat.categoryId)
+  useEffect(() => {
+    if (isFresh(touchedAt)) replay(rowRef.current, 'flash-row')
+  }, [touchedAt])
+
+  // Каскад: шаг 24 мс, не больше шести ступеней — дальше строки встают разом.
+  const delay = intro >= 0 ? Math.min(intro, 5) * 24 : -1
 
   const toggle = () => {
     hapticSelect()
@@ -134,7 +176,14 @@ const CategoryRow = memo(function CategoryRow({
 
   return (
     <>
-      <button type="button" onClick={toggle} className="row" aria-expanded={open}>
+      <button
+        ref={rowRef}
+        type="button"
+        onClick={toggle}
+        className={`row ${delay >= 0 ? 'rise-in-d' : ''}`}
+        style={delay >= 0 ? ({ '--d': delay } as React.CSSProperties) : undefined}
+        aria-expanded={open}
+      >
         <span
           className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{ background: cat.color + '22', color: cat.color }}
@@ -166,16 +215,25 @@ const CategoryRow = memo(function CategoryRow({
               категорию находят на диаграмме в Аналитике. */}
           <span className="mt-0.5 block h-[3px] w-full overflow-hidden rounded-full bg-surface-sunken">
             <span
-              className="block h-full rounded-full"
-              style={{ width: `${Math.max(2, Math.min(cat.pct, 100))}%`, background: cat.color }}
+              className={`block h-full rounded-full transition-[width] duration-500 ${delay >= 0 ? 'grow-x-d' : ''}`}
+              style={
+                {
+                  width: `${Math.max(2, Math.min(cat.pct, 100))}%`,
+                  background: cat.color,
+                  '--d': delay + 80,
+                } as React.CSSProperties
+              }
             />
           </span>
         </span>
       </button>
 
-      {/* Раскрытие без framer: внутри — данные, а их нельзя прятать за анимацией,
-          которая может не стартовать в свёрнутом webview (см. «Грабли»). */}
-      {open && <RowTransactions cat={cat} currency={currency} onEditTx={onEditTx} />}
+      {/* Раскрытие без framer: высота едет через grid-template-rows (Reveal),
+          операции в DOM сразу. Пока строка закрыта, список не смонтирован —
+          его селектор не считается (см. RowTransactions). */}
+      <Reveal open={open}>
+        <RowTransactions cat={cat} currency={currency} onEditTx={onEditTx} />
+      </Reveal>
     </>
   )
 })
@@ -197,10 +255,26 @@ function RowTransactions({
 }) {
   const transactions = useStore((s) => selectTransactionsByCategory(s, cat.categoryId))
   const removeTransaction = useStore((s) => s.removeTransaction)
+  const restoreTransaction = useStore((s) => s.restoreTransaction)
   const tr = useT()
+  const catName = useCatName()
+
+  // Удаление крестиком — с возможностью вернуть: промахнуться по маленькой
+  // кнопке легко, а операция пропадала молча.
+  const remove = (t: Transaction) => {
+    hapticTap('medium')
+    removeTransaction(t.id)
+    showToast({
+      icon: 'undo',
+      text: tr('toast.deleted'),
+      sub: `${catName(cat.categoryId, cat.name)} · ${formatMoney(t.amount, t.currency ?? currency)}`,
+      duration: 6000,
+      action: { label: tr('toast.restore'), run: () => restoreTransaction(t) },
+    })
+  }
 
   return (
-    <div className="tab-enter bg-surface-sunken/50 pb-1 pl-[68px] pr-2">
+    <div className="bg-surface-sunken/50 pb-1 pl-[68px] pr-2">
       {transactions.map((t) => (
         <div key={t.id} className="flex items-center gap-2 border-t border-hairline first:border-t-0">
           <button
@@ -222,10 +296,9 @@ function RowTransactions({
             type="button"
             onClick={(e) => {
               e.stopPropagation()
-              hapticTap('medium')
-              removeTransaction(t.id)
+              remove(t)
             }}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense"
             aria-label={tr('common.delete')}
           >
             <X size={15} strokeWidth={2.4} />

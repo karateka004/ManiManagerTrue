@@ -1,10 +1,12 @@
 /**
  * Награды «Дороги достижений» (роудпасс).
  *
- * Три типа косметики, которую можно НАДЕТЬ (equip):
+ * Пять типов косметики, которую можно НАДЕТЬ (equip):
  *   - accent — акцентная палитра приложения (меняет CSS-переменные --brand-*);
  *   - title  — косметический титул в профиле;
- *   - frame  — рамка вокруг аватара.
+ *   - frame  — рамка вокруг аватара (с 2.1 бывают живые: вращение, дыхание);
+ *   - card   — обложка тёмной карты-героя (баланс на Главной, уровень);
+ *   - effect — эффект при записи операции (искры, монетки, конфетти).
  *
  * У каждой награды есть рарность и уровень разблокировки: «просто так всё
  * быть не должно» — крутое открывается только с ростом уровня.
@@ -12,7 +14,20 @@
  */
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary'
-export type RewardKind = 'accent' | 'title' | 'frame'
+export type RewardKind = 'accent' | 'title' | 'frame' | 'card' | 'effect'
+
+/**
+ * Особая рамка (см. components/rewards/FrameRing и styles/skins.css):
+ *   spin  — кольцо медленно вращается;
+ *   pulse — дышит цветом акцента;
+ *   week  — семь сегментов, закрашены дни текущей серии (данные, а не узор).
+ * Анимируется только на крупном аватаре (от 56 px): на 40 px движение не
+ * разглядеть, и оно читается как мельтешение.
+ */
+export type FrameAnim = 'spin' | 'pulse' | 'week'
+
+/** Эффект записи операции (см. lib/saveEffect.ts). */
+export type SaveEffect = 'none' | 'sparks' | 'confetti' | 'stars'
 
 export interface RarityMeta {
   label: string
@@ -56,7 +71,13 @@ export interface RewardDef {
   /** Для accent — палитра. */
   palette?: AccentPalette
   /** Для frame — CSS-стиль кольца (применяется к аватару через style.background для ring). */
-  frame?: { ring: string; glow?: string }
+  frame?: { ring: string; glow?: string; anim?: FrameAnim }
+  /** Для card — id обложки: класс `skin-<id>` на .hero-surface ('' — классика). */
+  card?: string
+  /** Для effect — что проигрывается при записи операции. */
+  effect?: SaveEffect
+  /** Новинка релиза: в магазине помечается «Новое». */
+  fresh?: boolean
 }
 
 /* ---------- Акцентные палитры ---------- */
@@ -101,7 +122,6 @@ const GRAPHITE: AccentPalette = {
   400: '148 163 184', 500: '100 116 139', 600: '71 85 105', 700: '51 65 85',
   800: '30 41 59', 900: '15 23 42',
 }
-
 /** Палитра по id акцента (для применения в useTheme). */
 export const ACCENT_PALETTES: Record<string, AccentPalette> = {
   accent_mint: MINT,
@@ -136,15 +156,43 @@ export const REWARDS: RewardDef[] = [
   { id: 'title_investor', kind: 'title', name: 'Инвестор', rarity: 'rare', unlockLevel: 3, hint: 'Деньги работают на тебя', title: 'Инвестор' },
   { id: 'title_shark', kind: 'title', name: 'Акула бизнеса', rarity: 'epic', unlockLevel: 6, hint: 'В финансах — как рыба в воде', title: 'Акула бизнеса' },
   { id: 'title_crypto', kind: 'title', name: 'Криптомагнат', rarity: 'legendary', unlockLevel: 9, hint: 'Портфель в цифре', title: 'Криптомагнат' },
+  // 2.1 — короткие (до 14 знаков): длинный титул под именем режется многоточием.
+  { id: 'title_minimal', kind: 'title', name: 'Минималист', rarity: 'rare', unlockLevel: 1, hint: 'Меньше вещей — больше свободы', title: 'Минималист', fresh: true },
+  { id: 'title_treasurer', kind: 'title', name: 'Казначей', rarity: 'rare', unlockLevel: 1, hint: 'Каждая монета на учёте', title: 'Казначей', fresh: true },
+  { id: 'title_stoic', kind: 'title', name: 'Стоик', rarity: 'epic', unlockLevel: 1, hint: 'Распродажи тебя не берут', title: 'Стоик', fresh: true },
 
   // Рамки аватара
   { id: 'frame_none', kind: 'frame', name: 'Без рамки', rarity: 'common', unlockLevel: 1, hint: 'Простой вид', frame: { ring: 'transparent' } },
-  { id: 'frame_bronze', kind: 'frame', name: 'Бронза', rarity: 'rare', unlockLevel: 2, hint: 'Тёплый бронзовый ободок', frame: { ring: 'linear-gradient(135deg,#CD7F32,#E8B07A)' } },
-  { id: 'frame_silver', kind: 'frame', name: 'Серебро', rarity: 'rare', unlockLevel: 4, hint: 'Холодный серебряный блеск', frame: { ring: 'linear-gradient(135deg,#C0C0C0,#EDEDED)' } },
-  { id: 'frame_gold', kind: 'frame', name: 'Золото', rarity: 'epic', unlockLevel: 6, hint: 'Статусное золото', frame: { ring: 'linear-gradient(135deg,#F4C430,#FFE9A8)', glow: '0 0 12px rgba(244,196,48,0.5)' } },
+  // Металлы — коническим градиентом: блики по кругу, как на настоящем ободке,
+  // а не плоский переход из угла в угол.
+  { id: 'frame_bronze', kind: 'frame', name: 'Бронза', rarity: 'rare', unlockLevel: 2, hint: 'Тёплый бронзовый ободок', frame: { ring: 'conic-gradient(from 200deg,#8C5326,#E8B07A,#B87333,#F3CDA4,#8C5326,#CD7F32,#8C5326)' } },
+  { id: 'frame_silver', kind: 'frame', name: 'Серебро', rarity: 'rare', unlockLevel: 4, hint: 'Холодный серебряный блеск', frame: { ring: 'conic-gradient(from 200deg,#8E959C,#F4F6F8,#B6BCC2,#FFFFFF,#8E959C,#D3D8DC,#8E959C)' } },
+  { id: 'frame_gold', kind: 'frame', name: 'Золото', rarity: 'epic', unlockLevel: 6, hint: 'Статусное золото', frame: { ring: 'conic-gradient(from 200deg,#A87A12,#FFE9A8,#E2B23C,#FFF4CC,#A87A12,#F4C430,#A87A12)', glow: '0 0 12px rgba(244,196,48,0.45)' } },
   { id: 'frame_rainbow', kind: 'frame', name: 'Радуга', rarity: 'legendary', unlockLevel: 7, hint: 'Переливается всеми цветами', frame: { ring: 'conic-gradient(from 0deg,#F43F5E,#F59E0B,#22C55E,#3B82F6,#A855F7,#F43F5E)', glow: '0 0 14px rgba(168,85,247,0.45)' } },
   { id: 'frame_emerald', kind: 'frame', name: 'Изумруд', rarity: 'epic', unlockLevel: 5, hint: 'Драгоценная зелень', frame: { ring: 'linear-gradient(135deg,#10B981,#6EE7B7)', glow: '0 0 12px rgba(16,185,129,0.5)' } },
   { id: 'frame_neon', kind: 'frame', name: 'Неон', rarity: 'legendary', unlockLevel: 8, hint: 'Киберпанк-свечение', frame: { ring: 'linear-gradient(135deg,#22D3EE,#E879F9)', glow: '0 0 14px rgba(34,211,238,0.55)' } },
+  // 2.1 — особые рамки (CSS, только transform/opacity; анимация — от 56 px).
+  { id: 'frame_ice', kind: 'frame', name: 'Лёд', rarity: 'rare', unlockLevel: 1, hint: 'Прозрачный холодный блеск', frame: { ring: 'conic-gradient(from 200deg,#7DD3FC,#F0F9FF,#38BDF8,#E0F2FE,#7DD3FC,#BAE6FD,#7DD3FC)', glow: '0 0 10px rgba(56,189,248,0.35)' }, fresh: true },
+  { id: 'frame_week', kind: 'frame', name: 'Неделя', rarity: 'epic', unlockLevel: 1, hint: 'Семь делений — дни твоей серии', frame: { ring: 'rgb(var(--brand-500))', anim: 'week' }, fresh: true },
+  { id: 'frame_pulse', kind: 'frame', name: 'Пульс', rarity: 'epic', unlockLevel: 1, hint: 'Дышит цветом твоего акцента', frame: { ring: 'conic-gradient(from 210deg, rgb(var(--brand-300)), rgb(var(--brand-600)), rgb(var(--brand-300)))', anim: 'pulse' }, fresh: true },
+  { id: 'frame_vortex', kind: 'frame', name: 'Вихрь', rarity: 'legendary', unlockLevel: 1, hint: 'Кольцо, которое не стоит на месте', frame: { ring: 'conic-gradient(from 0deg,#22D3EE,#818CF8,#E879F9,#FB7185,#FBBF24,#22D3EE)', glow: '0 0 14px rgba(129,140,248,0.45)', anim: 'spin' }, fresh: true },
+
+  // Обложки карты-героя (2.1). Все тёмные: светлота фона под текстом не выше
+  // 0,08, подписи white/70 читаются на худшем участке (контраст от 4,5).
+  { id: 'card_classic', kind: 'card', name: 'Классика', rarity: 'common', unlockLevel: 1, hint: 'Глубина цвета акцента', card: '' },
+  { id: 'card_midnight', kind: 'card', name: 'Полночь', rarity: 'rare', unlockLevel: 1, hint: 'Чернильная синь и холодный свет', card: 'midnight', fresh: true },
+  { id: 'card_titan', kind: 'card', name: 'Титан', rarity: 'rare', unlockLevel: 1, hint: 'Холодный металл с бликом', card: 'titan', fresh: true },
+  { id: 'card_dawn', kind: 'card', name: 'Рассвет', rarity: 'rare', unlockLevel: 1, hint: 'Сливовый вечер и янтарный свет', card: 'dawn', fresh: true },
+  { id: 'card_onyx', kind: 'card', name: 'Оникс', rarity: 'epic', unlockLevel: 1, hint: 'Чёрный камень с мягкими прожилками', card: 'onyx', fresh: true },
+  { id: 'card_blackgold', kind: 'card', name: 'Чёрное золото', rarity: 'epic', unlockLevel: 1, hint: 'Золотая кромка на чёрном', card: 'blackgold', fresh: true },
+  { id: 'card_aurora', kind: 'card', name: 'Северное сияние', rarity: 'legendary', unlockLevel: 1, hint: 'Всполохи света в углу карты', card: 'aurora', fresh: true },
+  { id: 'card_holo', kind: 'card', name: 'Голограмма', rarity: 'legendary', unlockLevel: 1, hint: 'Переливается под пальцем', card: 'holo', fresh: true },
+
+  // Эффекты записи операции (2.1).
+  { id: 'effect_none', kind: 'effect', name: 'Без эффекта', rarity: 'common', unlockLevel: 1, hint: 'Запись без украшений', effect: 'none' },
+  { id: 'effect_sparks', kind: 'effect', name: 'Искры', rarity: 'rare', unlockLevel: 1, hint: 'Вспышка цвета акцента', effect: 'sparks', fresh: true },
+  { id: 'effect_confetti', kind: 'effect', name: 'Конфетти', rarity: 'epic', unlockLevel: 1, hint: 'Маленький праздник на каждую запись', effect: 'confetti', fresh: true },
+  { id: 'effect_stars', kind: 'effect', name: 'Звездопад', rarity: 'legendary', unlockLevel: 1, hint: 'Звёзды летят из кнопки «Записать»', effect: 'stars', fresh: true },
 
   // Титулы за уровень (source: 'level') — бесплатные, открываются прогрессом.
   // Два условия сразу: уровень И рекорд ежедневной серии (5/10/15/20, дальше шаг 10).
@@ -236,7 +284,12 @@ export const DEFAULT_EQUIPPED = {
   title: 'title_newbie',
   accent: 'accent_mint',
   frame: 'frame_none',
+  card: 'card_classic',
+  effect: 'effect_none',
 } as const
+
+/** Порядок разделов магазина: сначала то, что видно каждый день. */
+export const SHOP_KINDS: RewardKind[] = ['card', 'accent', 'frame', 'title', 'effect']
 
 /* ---------- Витрина дня (ежедневная ротация со скидкой) ---------- */
 
@@ -270,10 +323,13 @@ function mulberry32(seed: number): () => number {
 }
 
 /**
- * Набор «витрины дня» — детерминированно по дате (`YYYY-MM-DD`), одинаков для всех
- * в этот день и меняется ежедневно. Сидированный Фишер-Йейтс по покупаемым предметам.
+ * Набор «витрины дня» — детерминированно по дате (`YYYY-MM-DD`) и меняется
+ * ежедневно. Сидированный Фишер-Йейтс по покупаемым предметам; уже купленное
+ * пропускается — скидка на то, что у человека есть, витрину только занимала.
+ * Порядок одинаков для всех, поэтому у двух людей витрины совпадают, пока
+ * они не купили разное.
  */
-export function featuredToday(dateKey: string): string[] {
+export function featuredToday(dateKey: string, owned: readonly string[] = []): string[] {
   const rnd = mulberry32(hashSeed('shop:' + dateKey))
   const pool = [...BUYABLE_IDS]
   for (let i = pool.length - 1; i > 0; i--) {
@@ -282,7 +338,14 @@ export function featuredToday(dateKey: string): string[] {
     pool[i] = pool[j]
     pool[j] = tmp
   }
-  return pool.slice(0, Math.min(FEATURED_COUNT, pool.length))
+  return pool.filter((id) => !owned.includes(id)).slice(0, FEATURED_COUNT)
+}
+
+/** Мс до полуночи по местному времени — витрина дня обновится в этот момент. */
+export function msToMidnight(now: Date = new Date()): number {
+  const next = new Date(now)
+  next.setHours(24, 0, 0, 0)
+  return next.getTime() - now.getTime()
 }
 
 /** Цена со скидкой витрины дня (округление вниз до 5). */

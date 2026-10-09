@@ -82,7 +82,7 @@ export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) 
             <span className="tabular font-bold text-ink">{formatMoney(o.income, o.currency)}</span>
           </div>
           <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-surface-sunken">
-            <span aria-hidden className="bg-expense" style={{ width: `${spentShare}%` }} />
+            <span aria-hidden className="grow-x bg-expense" style={{ width: `${spentShare}%` }} />
             <span aria-hidden className="flex-1 bg-income" />
           </div>
           <div className="mt-1.5 flex justify-between text-[11px]">
@@ -90,7 +90,7 @@ export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) 
               {t('ov.flow_spent')} {formatMoney(o.spent, o.currency)}
             </span>
             {rest > 0 && (
-              <span className="text-income-deep dark:text-brand-300">
+              <span className="text-income-deep dark:text-income-light">
                 {t('ov.flow_rest_left')} {formatMoney(rest, o.currency)}
               </span>
             )}
@@ -104,7 +104,7 @@ export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) 
           width={FLOW_W}
           height={H}
           viewBox={`0 0 ${FLOW_W} ${H}`}
-          className="shrink-0"
+          className="reveal-x shrink-0"
           style={{ height: H }}
         >
           {/* Спина — это «потрачено»: из неё и растекаются ленты */}
@@ -138,7 +138,7 @@ export function FlowChart({ onPick }: { onPick: (categoryId: string) => void }) 
                           ? 'bg-surface-sunken text-ink-subtle'
                           : d > 0
                             ? 'bg-expense-soft text-expense-deep dark:bg-expense/20 dark:text-expense'
-                            : 'bg-income-soft text-income-deep dark:bg-brand-500/20 dark:text-brand-300'
+                            : 'bg-income-soft text-income-deep dark:bg-income/20 dark:text-income-light'
                       }`}
                     >
                       {Math.abs(d) < 5 ? t('ov.as_usual') : `${d > 0 ? '+' : '−'}${Math.abs(d)}%`}

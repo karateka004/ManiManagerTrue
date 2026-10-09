@@ -6,6 +6,7 @@ import { CategoryIcon } from '../icons/CategoryIcon'
 import { getCurrency, type Currency } from '../../lib/currencies'
 import { formatMoney, dayjs } from '../../lib/format'
 import { Money } from '../ui/Money'
+import { SegTrack } from '../ui/SegTrack'
 import { hapticTap, hapticSelect, hapticNotify } from '../../lib/telegram'
 import { useCatName, useT, type TFunc } from '../../lib/i18n'
 
@@ -133,7 +134,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
             {[1, 2, 3].map((i) => (
               <span
                 key={i}
-                className={`h-1 flex-1 rounded-full transition-colors ${
+                className={`h-1 flex-1 rounded-full transition-colors duration-500 ${
                   step >= i ? 'bg-brand-500' : 'bg-surface-sunken'
                 }`}
               />
@@ -142,14 +143,15 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
           <button
             onClick={close}
             aria-label={t('common.close')}
-            className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted active:scale-95"
+            className="press-icon -mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted"
           >
             <X size={16} strokeWidth={2.4} />
           </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5">
-          <div key={step} className="tab-enter">
+          {/* Шаги идут вперёд — каждый следующий въезжает справа. */}
+          <div key={step} className={step === 0 ? 'tab-enter' : 'tab-in-deep'}>
             {step === 0 && <StepWelcome t={t} onStart={() => { hapticTap(); setStep(1) }} />}
 
             {step === 1 && (
@@ -261,7 +263,7 @@ function StepIncome({
 
       {/* Валюта — один тап, чтобы дальше всё считалось правильно. Сегмент
           нейтральный: это настройка, а не главное действие экрана. */}
-      <div className="seg-track mt-3">
+      <SegTrack active={currency} className="mt-3">
         {QUICK_CURRENCIES.map((c) => (
           <button
             key={c}
@@ -271,7 +273,7 @@ function StepIncome({
             {getCurrency(c).symbol} {c}
           </button>
         ))}
-      </div>
+      </SegTrack>
 
       <div className="caption mt-5 text-ink-subtle">{t('qs.income_source')}</div>
       <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
@@ -342,7 +344,7 @@ function StepExpenses({
                 <button
                   onClick={() => onRemove(i)}
                   aria-label={t('common.delete')}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep dark:text-expense-soft"
                 >
                   <X size={15} />
                 </button>

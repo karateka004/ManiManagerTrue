@@ -24,12 +24,16 @@ export function QuestRows({
   t,
   onClaim,
   onAction,
+  quiet,
 }: {
   slots: QuestSlot[]
   now: number
   t: TFunc
-  onClaim: (q: QuestProgress) => void
+  /** `from` — кнопка, из которой летят монетки и всплывает «+XP». */
+  onClaim: (q: QuestProgress, from: Element | null) => void
   onAction?: (q: QuestProgress) => void
+  /** Кнопки «Забрать» — нейтральные: брендовая одна, «Забрать всё» в заголовке. */
+  quiet?: boolean
 }) {
   if (slots.length === 0) {
     return (
@@ -47,7 +51,8 @@ export function QuestRows({
             key={slot.quest.def.id}
             q={slot.quest}
             t={t}
-            onClaim={() => onClaim(slot.quest)}
+            quiet={quiet}
+            onClaim={(from) => onClaim(slot.quest, from)}
             onAction={onAction ? () => onAction(slot.quest) : undefined}
           />
         ) : (
@@ -69,11 +74,13 @@ function QuestRow({
   t,
   onClaim,
   onAction,
+  quiet,
 }: {
   q: QuestProgress
   t: TFunc
-  onClaim: () => void
+  onClaim: (from: Element | null) => void
   onAction?: () => void
+  quiet?: boolean
 }) {
   const lang = useStore((s) => s.lang)
   const { def, current, claimable, done } = q
@@ -97,8 +104,10 @@ function QuestRow({
         claimable ? (
           <button
             type="button"
-            onClick={onClaim}
-            className="shrink-0 rounded-full bg-brand-500 px-3.5 py-1.5 text-[13px] font-bold text-white transition-transform active:scale-95"
+            onClick={(e) => onClaim(e.currentTarget)}
+            className={`press shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold ${
+              quiet ? 'bg-surface-sunken text-ink' : 'sheen bg-brand-500 text-white'
+            }`}
           >
             {t('quest.claim')}
           </button>
@@ -106,7 +115,7 @@ function QuestRow({
           <button
             type="button"
             onClick={onAction}
-            className="shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink transition-transform active:scale-95"
+            className="press shrink-0 rounded-full bg-surface-sunken px-3.5 py-1.5 text-[13px] font-bold text-ink"
           >
             {t('quest.subscribe')}
           </button>

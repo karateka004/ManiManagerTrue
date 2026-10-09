@@ -1,51 +1,58 @@
+import { useMemo } from 'react'
 import { useStore } from '../store/transactions'
 import { tg } from '../lib/telegram'
-import { getReward } from '../lib/rewards'
 import { useT } from '../lib/i18n'
+import { streakWeek } from '../lib/streak'
 import { User } from 'lucide-react'
+import { FrameRing, hasFrameRing } from './rewards/FrameRing'
 
-/** Аватар пользователя Telegram: фото или инициалы + надетая рамка. */
-export function Avatar({ size = 40, onClick }: { size?: number; onClick?: () => void }) {
+/**
+ * Аватар пользователя Telegram: фото или инициалы + надетая рамка.
+ *
+ * `frameId` — показать другую рамку (примерка в Магазине); по умолчанию —
+ * надетая. Рамка «Неделя» закрашивает дни текущей серии.
+ */
+export function Avatar({
+  size = 40,
+  onClick,
+  frameId,
+}: {
+  size?: number
+  onClick?: () => void
+  frameId?: string
+}) {
   const t = useT()
   const user = tg.user
   // Без имени (вне Telegram) — силуэт, а не эмодзи: эмодзи рисует шрифт системы,
   // на каждом телефоне он свой и среди линейных иконок выглядит чужим.
   const initials = user?.first_name?.[0]?.toUpperCase() ?? null
   const photo = user?.photo_url
-  const frame = getReward(useStore((s) => s.equipped.frame))?.frame
-  const hasFrame = !!frame && frame.ring !== 'transparent'
-  const ringW = Math.max(2, Math.round(size * 0.07))
-  const innerSize = hasFrame ? size - ringW * 2 : size
+  const equippedFrame = useStore((s) => s.equipped.frame)
+  const frame = frameId ?? equippedFrame
+  const streak = useStore((s) => s.streak)
+  const week = useMemo(() => (frame === 'frame_week' ? streakWeek(streak) : undefined), [frame, streak])
+  const framed = hasFrameRing(frame)
 
-  const inner = (
-    <button
-      onClick={onClick}
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-sunken text-ink-muted active:scale-95 ${
-        hasFrame ? '' : 'shadow-soft'
-      }`}
-      style={{ width: innerSize, height: innerSize, fontSize: Math.round(innerSize * 0.42) }}
-      aria-label={t('nav.profile')}
-    >
-      {photo ? (
-        <img src={photo} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-      ) : (
-        initials ? (
+  return (
+    <FrameRing frameId={frame} size={size} week={week}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!onClick}
+        className={`press-icon flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-surface-sunken text-ink-muted ${
+          framed ? '' : 'shadow-soft'
+        }`}
+        style={{ fontSize: Math.round(size * 0.38) }}
+        aria-label={t('nav.profile')}
+      >
+        {photo ? (
+          <img src={photo} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+        ) : initials ? (
           <span className="font-bold">{initials}</span>
         ) : (
           <User size={Math.round(size * 0.46)} strokeWidth={2} aria-hidden />
-        )
-      )}
-    </button>
-  )
-
-  if (!hasFrame) return inner
-
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size, padding: ringW, background: frame!.ring, boxShadow: frame!.glow }}
-    >
-      {inner}
-    </div>
+        )}
+      </button>
+    </FrameRing>
   )
 }

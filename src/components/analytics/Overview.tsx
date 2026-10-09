@@ -18,7 +18,7 @@ import {
 } from '../../store/transactions'
 import type { Insight } from '../../lib/overview'
 import { dayjs, formatMoney } from '../../lib/format'
-import { Money } from '../ui/Money'
+import { AnimatedMoney } from '../ui/Odometer'
 import { daysWord, useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { FlowChart } from './FlowChart'
@@ -47,7 +47,7 @@ export const Overview = memo(function Overview({ onPickCategory }: { onPickCateg
       {o.insights.length > 0 && (
         <>
           <SectionTitle>{t('ov.insights')}</SectionTitle>
-          <div className="mx-4 rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
+          <div className="stagger mx-4 rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
             {o.insights.map((i, n) => (
               <InsightRow key={i.id} insight={i} first={n === 0} />
             ))}
@@ -112,7 +112,7 @@ function Hero() {
           <div>
             <div className="caption text-ink-subtle">{t('ov.spent')}</div>
             <div className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-ink">
-              <Money value={o.spent} currency={o.currency} />
+              <AnimatedMoney value={o.spent} currency={o.currency} />
             </div>
           </div>
           {delta !== null &&
@@ -183,14 +183,14 @@ function ForecastBar() {
     <div className="relative mt-2.5 h-2 overflow-hidden rounded-full bg-surface-sunken">
       <span
         aria-hidden
-        className="absolute inset-y-0 left-0 rounded-full"
+        className="grow-x absolute inset-y-0 left-0 rounded-full"
         style={{
           width: `${projPct}%`,
           background:
             'repeating-linear-gradient(115deg, rgb(233 115 115 / .40) 0 5px, rgb(233 115 115 / .12) 5px 10px)',
         }}
       />
-      <span aria-hidden className="absolute inset-y-0 left-0 rounded-full bg-expense" style={{ width: `${spentPct}%` }} />
+      <span aria-hidden className="grow-x absolute inset-y-0 left-0 rounded-full bg-expense" style={{ width: `${spentPct}%` }} />
     </div>
   )
 }
@@ -242,7 +242,7 @@ function Sparkline() {
       viewBox={`0 0 ${paths.W} ${paths.H}`}
       preserveAspectRatio="none"
       fill="none"
-      className="mt-3 block h-16 w-full"
+      className="reveal-x mt-3 block h-16 w-full"
     >
       <defs>
         <linearGradient id="ov-spark" x1="0" y1="0" x2="0" y2="1">

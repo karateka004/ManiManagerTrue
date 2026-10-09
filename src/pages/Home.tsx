@@ -1,5 +1,4 @@
 import { lazy, memo, Suspense, useRef, useState } from 'react'
-import { AnimatePresence, m } from 'framer-motion'
 import { MessageCircle, Search, Target } from 'lucide-react'
 import { BalanceCard } from '../components/BalanceCard'
 import { PeriodSwitcher } from '../components/PeriodSwitcher'
@@ -17,7 +16,7 @@ import {
 } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
-import { hapticSelect } from '../lib/telegram'
+import { hapticSelect, tg } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
 
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
@@ -94,8 +93,10 @@ function Header({
     <div className="px-4 pb-2 pt-5">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="kicker text-ink-subtle">
-            {showGoals ? t('home.cap_goal') : t('home.cap_date')}
+          {/* Надстрочник — приветствие по времени суток с именем, а не слово
+              «Дата» над датой: подпись должна что-то добавлять. */}
+          <div className="kicker truncate text-ink-subtle">
+            {showGoals ? t('home.cap_goal') : greeting(t)}
           </div>
           {showGoals ? <GoalCarousel goals={goals} currency={currency} /> : <DateHeader />}
         </div>
@@ -105,14 +106,14 @@ function Header({
         <button
           onClick={() => { hapticSelect(); onOpenAssistant() }}
           aria-label={t('ai.open')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+          className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft dark:shadow-soft-dark"
         >
           <MessageCircle size={18} strokeWidth={2.4} />
         </button>
         <button
           onClick={() => { hapticSelect(); onOpenSearch() }}
           aria-label={t('search.open')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft transition-transform active:scale-95 dark:shadow-soft-dark"
+          className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft dark:shadow-soft-dark"
         >
           <Search size={18} strokeWidth={2.4} />
         </button>
@@ -120,6 +121,14 @@ function Header({
       </div>
     </div>
   )
+}
+
+/** «Добрый вечер, Свят» — по часу на устройстве; без имени — просто приветствие. */
+function greeting(t: (k: string) => string): string {
+  const h = new Date().getHours()
+  const key = h < 5 ? 'home.greet_night' : h < 12 ? 'home.greet_morning' : h < 17 ? 'home.greet_day' : h < 23 ? 'home.greet_evening' : 'home.greet_night'
+  const name = tg.user?.first_name?.trim()
+  return name ? `${t(key)}, ${name}` : t(key)
 }
 
 /** Подзаголовок-дата: «Среда, 21 мая» (с большой буквы). */
@@ -167,25 +176,19 @@ function GoalCarousel({ goals, currency }: { goals: Goal[]; currency: Currency }
         if (Math.abs(dx) > 40) go(dx < 0 ? idx + 1 : idx - 1)
       }}
     >
-      <AnimatePresence mode="wait" initial={false} custom={dir}>
-        <m.div
-          key={goal.id}
-          custom={dir}
-          initial={{ opacity: 0, x: dir * 16 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: dir * -16 }}
-          transition={{ duration: 0.18 }}
-        >
-          <GoalBody goal={goal} currency={currency} netByCur={netByCur} />
-        </m.div>
-      </AnimatePresence>
+      {/* Смена цели — CSS-сдвиг в сторону свайпа. Раньше здесь был framer с
+          initial: opacity 0 и mode="wait": при остановленном rAF цель могла
+          остаться невидимой — а это данные (накоплено / сумма). */}
+      <div key={goal.id} className={dir > 0 ? 'tab-in-r' : dir < 0 ? 'tab-in-l' : undefined}>
+        <GoalBody goal={goal} currency={currency} netByCur={netByCur} />
+      </div>
 
       {multiple && (
         <div className="mt-1.5 flex gap-1">
           {goals.map((g, i) => (
             <span
               key={g.id}
-              className={`h-1 rounded-full transition-all ${i === idx ? 'w-4 bg-brand-500' : 'w-1 bg-ink-subtle/30'}`}
+              className={`h-1 rounded-full transition-all duration-300 ${i === idx ? 'w-4 bg-brand-500' : 'w-1 bg-ink-subtle/30'}`}
             />
           ))}
         </div>
@@ -210,7 +213,7 @@ function GoalBody({ goal, currency, netByCur }: { goal: Goal; currency: Currency
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-sunken">
-          <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
+          <div className="grow-x h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
         </div>
         <span className="shrink-0 text-[11px] font-semibold tabular text-ink-muted">{Math.round(pct)}%</span>
       </div>

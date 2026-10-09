@@ -22,6 +22,7 @@ export function Group({
   footer,
   children,
   className,
+  bodyClassName,
 }: {
   /** Заголовок над группой (.section-title). */
   title?: ReactNode
@@ -31,6 +32,8 @@ export function Group({
   footer?: ReactNode
   children: ReactNode
   className?: string
+  /** Классы самой карточки со строками (например, `stagger` — каскад появления). */
+  bodyClassName?: string
 }) {
   return (
     <section className={className}>
@@ -40,7 +43,7 @@ export function Group({
           {action && <div className="caption shrink-0 text-ink-subtle">{action}</div>}
         </div>
       )}
-      <div className="card grouped overflow-hidden">{children}</div>
+      <div className={clsx('card grouped overflow-hidden', bodyClassName)}>{children}</div>
       {footer && <p className="caption mt-2 px-1 text-ink-subtle">{footer}</p>}
     </section>
   )

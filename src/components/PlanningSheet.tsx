@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { m, AnimatePresence } from 'framer-motion'
-import { Target, Plus, Trash2, X, Link2, Wand2 } from 'lucide-react'
+import { Target, Plus, Trash2, Link2, Wand2 } from 'lucide-react'
 import { InvestmentsTab } from './planning/InvestmentsTab'
+import { BottomSheet, SheetHeader } from './ui/BottomSheet'
+import { SegTrack } from './ui/SegTrack'
 import {
   useStore,
   selectCategoriesByKind,
@@ -41,71 +42,37 @@ export function PlanningSheet({ open, onClose, initialTab }: Props) {
   }, [open, initialTab])
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-          />
-          <m.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92vh] flex-col rounded-t-5xl bg-surface-raised shadow-raised"
-            style={{ paddingBottom: 'var(--safe-bottom)' }}
-          >
-            <div className="flex justify-center pb-1 pt-3">
-              <div className="h-1.5 w-12 rounded-full bg-surface-sunken" />
-            </div>
+    <BottomSheet open={open} onClose={onClose} layout="flex" maxHeight="92vh" padBottom={0}>
+      {/* 2.0: без значка в зелёном квадрате и подзаголовка-перечисления —
+          вкладки ниже и так называют разделы. */}
+      <SheetHeader title={t('plan.title')} onClose={onClose} />
 
-            {/* 2.0: без значка в зелёном квадрате и подзаголовка-перечисления —
-                вкладки ниже и так называют разделы. */}
-            <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-1">
-              <div className="text-[17px] font-extrabold text-ink">{t('plan.title')}</div>
-              <button
-                onClick={onClose}
-                aria-label={t('common.close')}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-muted transition-transform active:scale-95"
-              >
-                <X size={18} strokeWidth={2.4} />
-              </button>
-            </div>
+      {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет).
+          Без иконок: четыре подписи с иконками на 320 px не помещались. */}
+      <div className="shrink-0 px-4 pb-3">
+        <SegTrack active={tab}>
+          <TabButton active={tab === 'limits'} onClick={() => { setTab('limits'); hapticSelect() }}>
+            {t('plan.tab_limits')}
+          </TabButton>
+          <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
+            {t('plan.tab_budget')}
+          </TabButton>
+          <TabButton active={tab === 'goals'} onClick={() => { setTab('goals'); hapticSelect() }}>
+            {t('plan.tab_goals')}
+          </TabButton>
+          <TabButton active={tab === 'invest'} onClick={() => { setTab('invest'); hapticSelect() }}>
+            {t('plan.tab_invest')}
+          </TabButton>
+        </SegTrack>
+      </div>
 
-            {/* Вкладки: лимиты → бюджет → цели → активы (порядок = приоритет).
-                Без иконок: четыре подписи с иконками на 320 px не помещались. */}
-            <div className="px-4 pb-3">
-              <div className="seg-track">
-                <TabButton active={tab === 'limits'} onClick={() => { setTab('limits'); hapticSelect() }}>
-                  {t('plan.tab_limits')}
-                </TabButton>
-                <TabButton active={tab === 'budget'} onClick={() => { setTab('budget'); hapticSelect() }}>
-                  {t('plan.tab_budget')}
-                </TabButton>
-                <TabButton active={tab === 'goals'} onClick={() => { setTab('goals'); hapticSelect() }}>
-                  {t('plan.tab_goals')}
-                </TabButton>
-                <TabButton active={tab === 'invest'} onClick={() => { setTab('invest'); hapticSelect() }}>
-                  {t('plan.tab_invest')}
-                </TabButton>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-              {tab === 'limits' && <LimitsTab t={t} />}
-              {tab === 'budget' && <BudgetTab t={t} />}
-              {tab === 'goals' && <GoalsTab t={t} />}
-              {tab === 'invest' && <InvestmentsTab t={t} />}
-            </div>
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>
+      <div key={tab} className="tab-enter min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">
+        {tab === 'limits' && <LimitsTab t={t} />}
+        {tab === 'budget' && <BudgetTab t={t} />}
+        {tab === 'goals' && <GoalsTab t={t} />}
+        {tab === 'invest' && <InvestmentsTab t={t} />}
+      </div>
+    </BottomSheet>
   )
 }
 
@@ -162,7 +129,7 @@ function BudgetTab({ t }: { t: TFunc }) {
   const over = budget > 0 && spent > budget
   const left = Math.max(0, budget - spent)
   const sym = getCurrency(currency).symbol
-  const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-brand-500'
+  const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-income'
 
   // Темп трат: сколько можно тратить в день до конца месяца и куда придём при
   // текущем среднедневном расходе. Это главный «навигационный» сигнал бюджета.
@@ -204,11 +171,11 @@ function BudgetTab({ t }: { t: TFunc }) {
                 <span className="font-semibold text-ink">{formatMoney(spent, currency)}</span>
               </span>
               {over ? (
-                <span className="font-semibold text-expense-deep">
+                <span className="font-semibold text-expense-deep dark:text-expense-soft">
                   {t('plan.budget_over')}: {formatMoney(spent - budget, currency)}
                 </span>
               ) : (
-                <span className="font-semibold text-income-deep">
+                <span className="font-semibold text-income-deep dark:text-income-light">
                   {t('plan.budget_left')}: {formatMoney(left, currency)}
                 </span>
               )}
@@ -247,7 +214,7 @@ function BudgetTab({ t }: { t: TFunc }) {
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
               <div
-                className={`h-full rounded-full ${limitsTotal > budget ? 'bg-amber-400' : 'bg-brand-500'}`}
+                className={`h-full rounded-full ${limitsTotal > budget ? 'bg-amber-400' : 'bg-income'}`}
                 style={{ width: `${Math.min(100, budget > 0 ? (limitsTotal / budget) * 100 : 0)}%` }}
               />
             </div>
@@ -278,7 +245,7 @@ function InfoBox({
   return (
     <div className="card p-3">
       <div className="caption-sm text-ink-subtle">{label}</div>
-      <div className={`tabular text-base font-bold ${tone === 'bad' ? 'text-expense-deep' : 'text-ink'}`}>{value}</div>
+      <div className={`tabular text-base font-bold ${tone === 'bad' ? 'text-expense-deep dark:text-expense-soft' : 'text-ink'}`}>{value}</div>
       <div className="mt-0.5 text-[10px] leading-snug text-ink-subtle">{hint}</div>
     </div>
   )
@@ -364,7 +331,7 @@ function LimitsTab({ t }: { t: TFunc }) {
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
             <div
               className={`h-full rounded-full ${
-                spentUnderLimits > limitsTotal ? 'bg-expense' : 'bg-brand-500'
+                spentUnderLimits > limitsTotal ? 'bg-expense' : 'bg-income'
               }`}
               style={{ width: `${Math.min(100, limitsTotal > 0 ? (spentUnderLimits / limitsTotal) * 100 : 0)}%` }}
             />
@@ -452,7 +419,7 @@ function LimitRow({
   const over = value > 0 && spent > value
   const left = Math.max(0, value - spent)
   const perDay = left / daysLeftInMonth()
-  const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-brand-500'
+  const barColor = over ? 'bg-expense' : ratio >= 0.8 ? 'bg-amber-400' : 'bg-income'
 
   // 2.0: строка группы, а не отдельная карточка — десять одинаковых коробок
   // подряд превращали вкладку в стопку. Значок в цвете категории остался:
@@ -497,11 +464,11 @@ function LimitRow({
               {formatMoney(spent, currency)} {t('plan.goal_of')} {formatMoney(value, currency)}
             </span>
             {over ? (
-              <span className="font-semibold text-expense-deep">
+              <span className="font-semibold text-expense-deep dark:text-expense-soft">
                 {t('plan.limit_over', { sum: formatMoney(spent - value, currency) })}
               </span>
             ) : (
-              <span className="font-semibold text-income-deep">
+              <span className="font-semibold text-income-deep dark:text-income-light">
                 {t('plan.limit_per_day', { sum: formatMoney(perDay, currency) })}
               </span>
             )}
@@ -697,7 +664,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
             {formatMoney(saved, cur)} {t('plan.goal_of')} {formatMoney(goal.target, cur)}
           </div>
         </div>
-        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep" aria-label={t('common.delete')}>
+        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:text-expense-soft" aria-label={t('common.delete')}>
           <Trash2 size={18} />
         </button>
       </div>
@@ -715,7 +682,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
           {done ? t('plan.goal_done') : t('plan.goal_synced')}
         </div>
       ) : done ? (
-        <div className="mt-2 text-center text-[12px] font-semibold text-income-deep">{t('plan.goal_done')}</div>
+        <div className="mt-2 text-center text-[12px] font-semibold text-income-deep dark:text-income-light">{t('plan.goal_done')}</div>
       ) : (
         <div className="mt-2 flex items-center gap-2">
           <div className="flex flex-1 items-center gap-1 rounded-full bg-surface-sunken px-3 py-2">
