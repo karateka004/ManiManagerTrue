@@ -271,7 +271,7 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
         >
           <Pencil size={16} />
         </button>
-        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:text-expense-soft" aria-label={t('common.delete')}>
+        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:active:text-expense-soft" aria-label={t('common.delete')}>
           <Trash2 size={17} />
         </button>
       </div>

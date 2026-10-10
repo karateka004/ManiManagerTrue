@@ -20,6 +20,7 @@ import clsx from 'clsx'
 import { hapticSelect, lockVerticalSwipes } from '../../lib/telegram'
 import { useT } from '../../lib/i18n'
 import { useBackButton } from '../../lib/useBackButton'
+import { hideToast } from '../../lib/toast'
 
 interface Props {
   open: boolean
@@ -98,7 +99,7 @@ export function BottomSheet({
   const shade = useTransform(dragY, [0, 360], [1, 0.1])
 
   // Системная «Назад» Telegram закрывает верхнюю шторку.
-  useBackButton(open, onClose)
+  useBackButton(open, onClose, true)
 
   // Новое открытие начинается с несдвинутого листа (после закрытия свайпом
   // сдвиг остался бы в motion value). До отрисовки — без прыжка в первом кадре.
@@ -108,18 +109,16 @@ export function BottomSheet({
 
   // Пока шторка открыта, вертикальный свайп Telegram (сворачивание мини-аппа)
   // выключен: иначе жест «закрыть шторку» сворачивал бы всё приложение.
+  // Зависимость — только open: onClose у вызывающих часто новая функция на
+  // каждый рендер, и эффект снимал бы и ставил блокировку на каждый ввод.
+  // Escape закрывает верхнюю шторку через стопку «Назад» (useBackButton).
   useEffect(() => {
     if (!open) return
-    const unlock = lockVerticalSwipes()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      unlock()
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open, onClose])
+    // Тост лежит над шторками (z-90) ровно там, где у шторки операции
+    // клавиатура: «Отменить» прошлой записи ловил бы нажатие по клавишам.
+    hideToast()
+    return lockVerticalSwipes()
+  }, [open])
 
   const startDrag = (e: ReactPointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return

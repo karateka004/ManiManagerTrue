@@ -11,6 +11,7 @@ import { computeXp, levelFor } from './lib/levels'
 import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 import { useBackButton } from './lib/useBackButton'
+import { resetRewardsNav, rewardsNav } from './lib/rewardsNav'
 import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
@@ -217,6 +218,12 @@ export default function App() {
     (next: Tab) => {
       const cur = navRef.current.tab
       if (cur === next) {
+        // Внутри «Прогресса» открыт Магазин или Титулы — сначала назад на
+        // хаб (туда, где его оставили), а уже следующий тап — наверх.
+        if (next === 'rewards' && rewardsNav.screen !== 'hub') {
+          resetRewardsNav(false)
+          return
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
@@ -255,7 +262,13 @@ export default function App() {
 
   const openProfile = useCallback(() => changeTab('profile'), [changeTab])
   const openSettings = useCallback(() => changeTab('settings'), [changeTab])
-  const openRewards = useCallback(() => changeTab('rewards'), [changeTab])
+  // Строка «Уровень» в Профиле: человек идёт смотреть уровень — открываем хаб
+  // с начала, даже если в прошлый раз ушёл с «Прогресса» из Магазина.
+  const openRewards = useCallback(() => {
+    resetRewardsNav(true)
+    scrollMemory.current.rewards = 0
+    changeTab('rewards')
+  }, [changeTab])
 
   // Настройки — вложенный экран: системная «Назад» Telegram возвращает в Профиль.
   useBackButton(tab === 'settings', openProfile)
@@ -347,7 +360,7 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-8 text-center">
         <div className="text-sm font-semibold text-ink-muted">
-          Не удалось загрузить раздел. Проверьте соединение и попробуйте ещё раз.
+          Не удалось загрузить раздел. Проверь соединение и попробуй ещё раз.
         </div>
         <button
           onClick={() => window.location.reload()}

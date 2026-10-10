@@ -115,6 +115,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   const track = useStore((s) => s.track)
   const removeTransaction = useStore((s) => s.removeTransaction)
   const restoreTransaction = useStore((s) => s.restoreTransaction)
+  const undoCommit = useStore((s) => s.undoCommit)
   const globalCurrency = useStore((s) => s.currency)
   const lastTxCurrency = useStore((s) => s.lastTxCurrency)
   const categories = useStore((s) => selectCategoriesByKind(s, kind))
@@ -285,7 +286,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
     // Одно изменение стора на всё сохранение: добавление/правка, запоминание
     // валюты и сдвиг периода для операции «задним числом» (см. commitTransaction).
     const before = editing
-    const coinsBefore = useStore.getState().coins
+    const { coins: coinsBefore, coinDay: coinDayBefore } = useStore.getState()
     const id = commitTransaction(payload, editing?.id ?? null)
     // Первая запись за день приносит монеты (RECORD_COINS) — скажем об этом.
     const gained = useStore.getState().coins - coinsBefore
@@ -313,7 +314,8 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
             const { id: _id, ...prev } = before
             commitTransaction({ note: undefined, tags: undefined, currency: undefined, ...prev }, before.id)
           } else {
-            removeTransaction(id)
+            // Монеты за первую запись дня уходят вместе с ней.
+            undoCommit(id, gained > 0 ? { coins: gained, coinDay: coinDayBefore } : null)
           }
         },
       },
@@ -555,7 +557,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
                 }`}
               >
                 <Calendar size={14} strokeWidth={2} />
-                <span className="capitalize">{dayjs(date).format('D MMM')}</span>
+                <span>{dayjs(date).format('D MMM')}</span>
                 <input
                   type="date"
                   max={todayKey}

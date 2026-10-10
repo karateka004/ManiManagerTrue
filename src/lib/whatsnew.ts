@@ -36,7 +36,7 @@ export interface ReleaseNote {
 export const RELEASES: ReleaseNote[] = [
   {
     version: '2.1.0',
-    date: '2026-10-09',
+    date: '2026-10-10',
     title: { ru: 'Плавно и живо: движение и новый Магазин', en: 'Smooth and alive: motion and a new Shop' },
     items: [
       {
@@ -79,6 +79,12 @@ export const RELEASES: ReleaseNote[] = [
         text: {
           ru: 'Зелёный «всё хорошо» больше не зависит от купленной палитры: с розовым акцентом полоса бюджета не путается с перерасходом',
           en: 'The green “all good” no longer depends on your palette: with the pink accent the budget bar can’t be mistaken for overspending',
+        },
+      },
+      {
+        text: {
+          ru: 'Баланс в минусе теперь со знаком «−»: раньше перерасход за месяц выглядел как плюс той же суммы',
+          en: 'A negative balance now shows its minus sign: before, overspending for the month looked like a positive amount',
         },
       },
     ],

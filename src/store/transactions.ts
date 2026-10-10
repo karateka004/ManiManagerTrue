@@ -200,6 +200,13 @@ interface Actions {
    */
   restoreTransaction: (t: Transaction) => void
   /**
+   * «Отменить» сразу после записи: убрать новую операцию и, если она была
+   * первой за день, забрать назад монеты за неё и вернуть прежний coinDay —
+   * иначе запись-отмена-запись приносила бы монеты, а следующая настоящая
+   * запись за день оставалась без них.
+   */
+  undoCommit: (id: string, refund: { coins: number; coinDay: string | null } | null) => void
+  /**
    * Добавить операции из файла. Только ДОБАВЛЯЕТ и никогда не заменяет: файл
    * может оказаться чужим, подменять им историю было бы разрушительно.
    * Повторы (тот же день, сумма, категория и заметка) пропускаются.
@@ -592,6 +599,17 @@ export const useStore = create<State & Actions>()(
 
       restoreTransaction: (t) =>
         set((s) => (s.transactions.some((x) => x.id === t.id) ? {} : { transactions: [t, ...s.transactions] })),
+
+      undoCommit: (id, refund) =>
+        set((s) => {
+          if (!s.transactions.some((t) => t.id === id)) return {}
+          const patch: Partial<State> = { transactions: s.transactions.filter((t) => t.id !== id) }
+          if (refund && refund.coins > 0) {
+            patch.coins = Math.max(0, s.coins - refund.coins)
+            patch.coinDay = refund.coinDay
+          }
+          return patch
+        }),
 
       commitTransaction: (t, editingId) => {
         // id новой операции нужен снаружи: «Отменить» в тосте после записи.

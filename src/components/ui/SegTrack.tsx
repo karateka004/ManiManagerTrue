@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type HTMLAttributes, type RefObject } from 'react'
 import clsx from 'clsx'
 
 /**
@@ -83,19 +83,48 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
   return { trackRef, pillRef }
 }
 
-/** Трек сегмента с плашкой: `<SegTrack active={tab}>…кнопки .seg-item…</SegTrack>`. */
+/**
+ * Держит выбранный пункт в видимой части ряда, который прокручивается вбок
+ * (вкладки Аналитики и виды Магазина на 320 px).
+ *
+ * Двигает только сам ряд: scrollIntoView прокручивал ещё и страницу — вкладка,
+ * вернувшаяся на запомненное место, уезжала к ряду. Первый показ — без
+ * анимации (и без движения вовсе, если пункт и так виден).
+ */
+export function useKeepSegVisible(trackRef: RefObject<HTMLElement>, active: unknown) {
+  const first = useRef(true)
+  useEffect(() => {
+    const smooth = !first.current
+    first.current = false
+    const track = trackRef.current
+    const on = track?.querySelector<HTMLElement>(':scope > .seg-on')
+    if (!track || !on) return
+    const max = track.scrollWidth - track.clientWidth
+    if (max <= 1) return
+    // Выбранный — по центру ряда: видно и соседей с обеих сторон, то есть
+    // что ряд продолжается.
+    const left = Math.max(0, Math.min(max, on.offsetLeft - (track.clientWidth - on.offsetWidth) / 2))
+    if (Math.abs(left - track.scrollLeft) < 1) return
+    if (smooth) track.scrollTo({ left, behavior: 'smooth' })
+    else track.scrollLeft = left
+  }, [active, trackRef])
+}
+
+/**
+ * Трек сегмента с плашкой: `<SegTrack active={tab}>…кнопки .seg-item…</SegTrack>`.
+ * Остальные атрибуты (role="radiogroup", aria-label) уходят на сам трек.
+ */
 export function SegTrack({
   active,
   className,
   children,
+  ...rest
 }: {
   active: unknown
-  className?: string
-  children: ReactNode
-}) {
+} & HTMLAttributes<HTMLDivElement>) {
   const { trackRef, pillRef } = useSegPill<HTMLDivElement>(active)
   return (
-    <div ref={trackRef} className={clsx('seg-track', className)}>
+    <div ref={trackRef} {...rest} className={clsx('seg-track', className)}>
       <span ref={pillRef} className="seg-pill" aria-hidden />
       {children}
     </div>

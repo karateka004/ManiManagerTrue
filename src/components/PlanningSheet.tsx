@@ -664,7 +664,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
             {formatMoney(saved, cur)} {t('plan.goal_of')} {formatMoney(goal.target, cur)}
           </div>
         </div>
-        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:text-expense-soft" aria-label={t('common.delete')}>
+        <button onClick={onDelete} className="shrink-0 text-ink-subtle active:text-expense-deep dark:active:text-expense-soft" aria-label={t('common.delete')}>
           <Trash2 size={18} />
         </button>
       </div>

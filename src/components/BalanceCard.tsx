@@ -6,7 +6,7 @@ import { useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 
 /** Подпись баланса под выбранный период (значение и так считается по периоду). */
-const BALANCE_LABEL: Record<PeriodMode, string> = {
+export const BALANCE_LABEL: Record<PeriodMode, string> = {
   day: 'balance.day',
   week: 'balance.week',
   month: 'balance.month',
@@ -63,7 +63,9 @@ export function BalanceCard() {
               {/* Цифры-барабаны: добавил операцию или пролистал месяц — сумма
                   прокручивается к новой. */}
               <div className="mt-1 text-display-lg text-white">
-                <AnimatedMoney value={entries[0][1].balance} currency={entries[0][0]} />
+                {/* sign только для минуса: formatMoney без него печатает модуль,
+                    и перерасход за месяц выглядел как «плюс» той же суммы. */}
+                <AnimatedMoney value={entries[0][1].balance} currency={entries[0][0]} sign={entries[0][1].balance < 0} />
               </div>
               <div className="mt-4 flex items-center gap-4">
                 <Stat label={t('common.income')} amount={entries[0][1].income} currency={entries[0][0]} positive />
@@ -80,7 +82,7 @@ export function BalanceCard() {
                   <div className="flex items-baseline justify-between">
                     <span className="caption-sm text-white/60">{cur}</span>
                     <span className="tabular text-lg font-bold text-white">
-                      <AnimatedMoney value={totals.balance} currency={cur} />
+                      <AnimatedMoney value={totals.balance} currency={cur} sign={totals.balance < 0} />
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-3">

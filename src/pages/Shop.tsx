@@ -6,7 +6,7 @@ import { hapticSelect } from '../lib/telegram'
 import { Group } from '../components/ui/Group'
 import { ScreenHeader } from '../components/ui/ScreenHeader'
 import { Odometer } from '../components/ui/Odometer'
-import { useSegPill } from '../components/ui/SegTrack'
+import { useKeepSegVisible, useSegPill } from '../components/ui/SegTrack'
 import { dayjs } from '../lib/format'
 import {
   rewardsByKind,
@@ -111,12 +111,8 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
       window.removeEventListener('resize', check)
     }
   }, [trackRef])
-  // Выбранный вид — в видимую часть ряда.
-  useEffect(() => {
-    trackRef.current
-      ?.querySelector<HTMLElement>(':scope > .seg-on')
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
-  }, [tab, trackRef])
+  // Выбранный вид — в видимую часть ряда (только сам ряд, не страницу).
+  useKeepSegVisible(trackRef, tab)
 
   const open = (reward: RewardDef, price?: number) => setProduct({ reward, price })
 

@@ -71,14 +71,16 @@ export function StreakRow() {
     .find((d) => d > active)
   const giftSoon = giftDay !== undefined && giftDay - active <= 3
 
+  // Рядом с подарком — счёт до него («4 из 7 до подарка»): это и длина серии,
+  // и повод не пропустить завтра, в одной короткой строке. Длинное «4 дня
+  // подряд · Подарок из магазина на 7-й день» рядом с кнопкой «Забрать»
+  // резалось до «Подарок и…», а с переносом на 320 px занимало четыре строки.
   const subtitle =
     active > 0
-      ? t('streak.in_row', { n: active, word: daysWord(lang, active) }) +
-        (giftSoon
-          ? ' · ' + t('streak.gift_hint', { n: giftDay })
-          : streak.best > active
-            ? ' · ' + t('roadpass.streak_record', { best: streak.best })
-            : '')
+      ? giftSoon
+        ? t('streak.gift_hint', { n: active, of: giftDay })
+        : t('streak.in_row', { n: active, word: daysWord(lang, active) }) +
+          (streak.best > active ? ' · ' + t('roadpass.streak_record', { best: streak.best }) : '')
       : streak.best > 0
         ? t('roadpass.streak_record', { best: streak.best })
         : t('streak.none')
@@ -88,6 +90,9 @@ export function StreakRow() {
       icon={<Flame size={18} strokeWidth={2} />}
       title={t('streak.title')}
       subtitle={subtitle}
+      // Подпись переносится, а не режется: «4 дня подряд · рекорд 12» рядом с
+      // кнопкой «Забрать» на 320 px не помещается в строку.
+      wrap
       trailing={
         claimable ? (
           <button

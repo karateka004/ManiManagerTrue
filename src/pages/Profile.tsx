@@ -328,7 +328,7 @@ function FeedbackBlock({ t }: { t: TFunc }) {
     <Group className="mx-4 mt-6" title={t('profile.feedback')}>
       <div className="p-3">
         {state === 'sent' ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-[15px] font-medium text-income-deep dark:text-income-light dark:text-brand-300">
+          <div className="flex items-center gap-2 px-1 py-2 text-[15px] font-medium text-income-deep dark:text-income-light">
             <Check size={18} strokeWidth={2.5} />
             {t('profile.feedback_thanks')}
           </div>

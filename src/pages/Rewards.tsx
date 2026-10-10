@@ -31,6 +31,7 @@ import { RewardBadge } from '../components/rewards/RewardBadge'
 import { Odometer } from '../components/ui/Odometer'
 import { flyCoins, floatText } from '../lib/fx'
 import { useBackButton } from '../lib/useBackButton'
+import { onRewardsReset, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
 import { useHeroSkin } from '../lib/useHeroSkin'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
@@ -66,15 +67,25 @@ export function RewardsPage() {
   const reconcileReferralRewards = useStore((s) => s.reconcileReferralRewards)
 
   const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
-  // Вложенный экран вкладки: Магазин или Титулы. `back` — вернулись на хаб
-  // (он въезжает слева, как в нативной навигации).
-  const [view, setView] = useState<{ screen: 'hub' | 'shop' | 'titles'; back: boolean }>({ screen: 'hub', back: false })
+  // Вложенный экран вкладки: Магазин или Титулы. `enter` — как он появился:
+  // вглубь (справа), назад на хаб (слева, как в нативной навигации) или без
+  // своей анимации — когда вкладка просто открылась заново.
+  // Открытый под-экран переживает уход с вкладки (см. lib/rewardsNav).
+  const [view, setView] = useState<{ screen: RewardsScreen; enter: 'none' | 'deep' | 'back' }>(() => ({
+    screen: rewardsNav.screen,
+    enter: 'none',
+  }))
+  useEffect(() => {
+    rewardsNav.screen = view.screen
+  }, [view.screen])
+  // Повторный тап по вкладке «Прогресс» из Магазина — назад на хаб (как в iOS).
+  useEffect(
+    () => onRewardsReset(() => setView((v) => (v.screen === 'hub' ? v : { screen: 'hub', enter: 'back' }))),
+    [],
+  )
   const shopOpen = view.screen === 'shop'
   const levelRewardsOpen = view.screen === 'titles'
-  const setShopOpen = (open: boolean) => setView({ screen: open ? 'shop' : 'hub', back: !open })
-  const setLevelRewardsOpen = (open: boolean) => setView({ screen: open ? 'titles' : 'hub', back: !open })
-  // Прокрутка хаба: вернулся из Магазина — хаб там же, где был.
-  const hubScroll = useRef(0)
+  const goTo = (screen: RewardsScreen) => setView({ screen, enter: screen === 'hub' ? 'back' : 'deep' })
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const seenLeaderboard = useRef(false)
   if (leaderboardOpen) seenLeaderboard.current = true
@@ -183,21 +194,26 @@ export function RewardsPage() {
 
   const openShop = () => {
     track('open_achievements')
-    hubScroll.current = window.scrollY
-    setShopOpen(true)
+    rewardsNav.hubScroll = window.scrollY
+    goTo('shop')
   }
   const openTitles = () => {
-    hubScroll.current = window.scrollY
-    setLevelRewardsOpen(true)
+    rewardsNav.hubScroll = window.scrollY
+    goTo('titles')
   }
 
-  // Вложенный экран открывается с начала, хаб — там, где его оставили.
+  // Вложенный экран открывается с начала, хаб — там, где его оставили. Только
+  // при переходе внутри вкладки: при открытии самой вкладки прокрутку ставит
+  // App, и этот эффект (он срабатывает раньше App) её бы сбил.
+  const shownScreen = useRef(view.screen)
   useLayoutEffect(() => {
-    window.scrollTo(0, view.screen === 'hub' ? hubScroll.current : 0)
+    if (shownScreen.current === view.screen) return
+    shownScreen.current = view.screen
+    window.scrollTo(0, view.screen === 'hub' ? rewardsNav.hubScroll : 0)
   }, [view.screen])
 
   // Системная «Назад» Telegram возвращает из Магазина и Титулов на хаб.
-  useBackButton(view.screen !== 'hub', () => setView({ screen: 'hub', back: true }))
+  useBackButton(view.screen !== 'hub', () => goTo('hub'))
   const openLeaderboard = () => { track('open_leaderboard'); setLeaderboardOpen(true) }
 
   // Титулы уровня: сколько получено и сколько можно забрать прямо сейчас. Условий
@@ -211,21 +227,22 @@ export function RewardsPage() {
 
   // Магазин и Титулы уровня — полноэкранные под-виды этой же вкладки (TabBar
   // остаётся снизу). Въезжают «вглубь», хаб при возврате — слева.
+  const deep = view.enter === 'deep' ? 'tab-in-deep' : ''
   if (shopOpen)
     return (
-      <div className="tab-in-deep">
-        <ShopScreen onBack={() => setShopOpen(false)} />
+      <div className={deep}>
+        <ShopScreen onBack={() => goTo('hub')} />
       </div>
     )
   if (levelRewardsOpen)
     return (
-      <div className="tab-in-deep">
-        <LevelRewardsScreen onBack={() => setLevelRewardsOpen(false)} />
+      <div className={deep}>
+        <LevelRewardsScreen onBack={() => goTo('hub')} />
       </div>
     )
 
   return (
-    <div className={`pb-28 ${view.back ? 'tab-in-back' : ''}`}>
+    <div className={`pb-28 ${view.enter === 'back' ? 'tab-in-back' : ''}`}>
       <div className="px-5 pb-1 pt-6">
         <div className="kicker">{t('rewards.kicker')}</div>
         <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('nav.rewards')}</div>

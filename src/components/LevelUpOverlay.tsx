@@ -7,6 +7,7 @@ import { burst, BRAND_FX } from '../lib/fx'
 import { hapticNotify } from '../lib/telegram'
 import { useBackButton } from '../lib/useBackButton'
 import { useHeroSkin } from '../lib/useHeroSkin'
+import { hideToast } from '../lib/toast'
 
 /**
  * Экран нового уровня: жетон «падает» на карту, вспышка света за ним и
@@ -20,19 +21,19 @@ export function LevelUpOverlay({ level, onClose }: { level: number; onClose: () 
   const skin = useHeroSkin()
   const title = LEVEL_REWARDS.find((r) => r.unlockLevel === level)
 
-  useBackButton(true, onClose)
+  // «Назад» Telegram и Escape — через общую стопку (закрывает только этот слой).
+  useBackButton(true, onClose, true)
 
+  // Один раз на показ: onClose у родителя — новая функция на каждый рендер,
+  // и с ней в зависимостях конфетти и вибрация повторялись бы.
   useEffect(() => {
     hapticNotify('success')
+    // Тост «Записано · Отменить» лёг бы поверх праздника (он выше слоем).
+    hideToast()
     // Конфетти — когда жетон «приземлился».
     const id = setTimeout(() => burst(badgeRef.current, { colors: [...BRAND_FX, '#FCD34D'], count: 34, spread: 150, confetti: true }), 420)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      clearTimeout(id)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
+    return () => clearTimeout(id)
+  }, [])
 
   const titleLine = title
     ? best >= (title.unlockDays ?? 0)

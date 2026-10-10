@@ -179,35 +179,66 @@ export function lockVerticalSwipes(): () => void {
 }
 
 /**
- * Системная кнопка «Назад» Telegram для вложенных экранов и шторок.
+ * «Назад» для вложенных экранов и шторок: системная кнопка Telegram и Escape.
  *
  * Обработчики — стопкой: нажатие закрывает только верхний слой (шторку над
  * Магазином, а не Магазин вместе с ней). Кнопка видна, пока в стопке кто-то
  * есть. Telegram вызывает все подписанные обработчики, поэтому подписываемся
  * один раз и сами выбираем верхний.
+ *
+ * Стопка живёт и без Telegram (браузер, старый клиент): по ней работает
+ * Escape. Раньше каждая шторка слушала Escape сама, и одно нажатие закрывало
+ * сразу обе — редактор категорий вместе со шторкой операции под ним.
  */
-const backStack: Array<() => void> = []
-let backBound = false
-function onTelegramBack() {
-  backStack[backStack.length - 1]?.()
+interface BackEntry {
+  fn: () => void
+  /** Шторка или экран поверх всего: Escape закрывает её и из поля ввода. */
+  modal: boolean
 }
-export function pushBackHandler(fn: () => void): () => void {
+const backStack: BackEntry[] = []
+let backBound = false
+let escapeBound = false
+function onBack() {
+  backStack[backStack.length - 1]?.fn()
+}
+function onEscape(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || e.defaultPrevented || backStack.length === 0) return
+  e.preventDefault()
+  // На вложенном экране (Настройки) Escape в поле ввода сначала только выводит
+  // из поля: человек мог передумать печатать, а уход с экрана стёр бы
+  // набранное. Шторку Escape закрывает сразу — как любое модальное окно.
+  const el = e.target instanceof HTMLElement ? e.target : null
+  const editing =
+    !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')
+  if (editing && !backStack[backStack.length - 1].modal) {
+    el!.blur()
+    return
+  }
+  onBack()
+}
+export function pushBackHandler(fn: () => void, modal = false): () => void {
+  const entry: BackEntry = { fn, modal }
+  backStack.push(entry)
+  if (!escapeBound && typeof window !== 'undefined') {
+    window.addEventListener('keydown', onEscape)
+    escapeBound = true
+  }
   const bb = tg.webApp?.BackButton
-  if (!bb) return () => {}
-  backStack.push(fn)
-  try {
-    if (!backBound) {
-      bb.onClick(onTelegramBack)
-      backBound = true
+  if (bb) {
+    try {
+      if (!backBound) {
+        bb.onClick(onBack)
+        backBound = true
+      }
+      bb.show()
+    } catch {
+      /* старый клиент без BackButton */
     }
-    bb.show()
-  } catch {
-    /* старый клиент без BackButton */
   }
   return () => {
-    const i = backStack.lastIndexOf(fn)
+    const i = backStack.lastIndexOf(entry)
     if (i >= 0) backStack.splice(i, 1)
-    if (backStack.length === 0) {
+    if (backStack.length === 0 && bb) {
       try {
         bb.hide()
       } catch {

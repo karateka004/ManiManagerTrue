@@ -344,7 +344,7 @@ function StepExpenses({
                 <button
                   onClick={() => onRemove(i)}
                   aria-label={t('common.delete')}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep dark:text-expense-soft"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep dark:active:text-expense-soft"
                 >
                   <X size={15} />
                 </button>

@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { formatMoney, type Currency } from '../../lib/format'
 
 /**
@@ -17,20 +17,17 @@ import { formatMoney, type Currency } from '../../lib/format'
  */
 export const Odometer = memo(function Odometer({
   text,
-  roll,
   className,
 }: {
   /** Готовая строка (уже отформатированная): цифры крутятся, остальное стоит. */
   text: string
-  /** Прокрутить цифры «с нуля» при первом показе. */
-  roll?: boolean
   className?: string
 }) {
   const chars = [...text]
   const n = chars.length
   let digitIndex = 0
   return (
-    <span className={`odo ${roll ? 'odo-roll' : ''} ${className ?? ''}`}>
+    <span className={`odo ${className ?? ''}`}>
       {/* Скринридеру — число целиком, а не россыпь лент с цифрами 0–9. */}
       <span className="sr-only">{text}</span>
       <span aria-hidden>
@@ -106,22 +103,4 @@ export function AnimatedMoney({
       {symbol && <span className="money-sym">{symbol}</span>}
     </span>
   )
-}
-
-/** Места, где прокрутка «с нуля» уже была за эту сессию (только игровые числа). */
-const rolled = new Set<string>()
-
-/**
- * true только при первом монтировании места `key` за сессию. Решение
- * принимается один раз на экземпляр (useState), чтобы перерисовка не снимала
- * и не возвращала класс посреди анимации. Отметка «уже крутили» ставится в
- * эффекте, а не при рендере: StrictMode рендерит дважды, и отметка из первого
- * прохода отменила бы прокрутку во втором.
- */
-export function useRollOnce(key: string | undefined): boolean {
-  const [roll] = useState(() => !!key && !rolled.has(key))
-  useEffect(() => {
-    if (key) rolled.add(key)
-  }, [key])
-  return roll
 }

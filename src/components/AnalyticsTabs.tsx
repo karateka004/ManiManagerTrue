@@ -1,7 +1,6 @@
-import { useEffect } from 'react'
 import { hapticSelect } from '../lib/telegram'
 import { useT } from '../lib/i18n'
-import { useSegPill } from './ui/SegTrack'
+import { useKeepSegVisible, useSegPill } from './ui/SegTrack'
 
 const TABS = [
   { id: 'overview', label: 'ov.tab' },
@@ -27,11 +26,8 @@ export function AnalyticsTabs({ value, onChange }: Props) {
   const { trackRef, pillRef } = useSegPill<HTMLDivElement>(value)
 
   // На узком экране выбранный сегмент может оказаться за краем прокрутки —
-  // подвозим его в видимую часть.
-  useEffect(() => {
-    const on = trackRef.current?.querySelector<HTMLElement>(':scope > .seg-on')
-    on?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
-  }, [value, trackRef])
+  // подвозим его в видимую часть (только сам ряд, не страницу).
+  useKeepSegVisible(trackRef, value)
 
   // Пять сегментов в Manrope на экране 320 px не влезали: «Календарь» уезжал за
   // край и оставался доступен только прокруткой, о которой ничто не намекает.

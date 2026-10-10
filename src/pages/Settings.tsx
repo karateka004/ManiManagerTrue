@@ -382,7 +382,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
         <Row
           title={t('settings.in_telegram').replace(/:\s*$/, '')}
           value={
-            <span className={tg.isInTelegram ? 'text-income-deep dark:text-income-light dark:text-brand-300' : 'text-ink-subtle'}>
+            <span className={tg.isInTelegram ? 'text-income-deep dark:text-income-light' : 'text-ink-subtle'}>
               {tg.isInTelegram ? t('common.yes') : t('common.no')}
             </span>
           }
@@ -435,7 +435,7 @@ function Segment<T extends string>({
   return (
     <section className="mx-4 mt-6">
       <SectionHead title={title} />
-      <SegTrack active={value}>
+      <SegTrack active={value} role="radiogroup" aria-label={title}>
         {options.map((opt) => (
           <button
             key={opt.id}

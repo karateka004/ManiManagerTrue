@@ -9,6 +9,7 @@ import { tg } from '../../lib/telegram'
 import { useT } from '../../lib/i18n'
 import { Money } from '../ui/Money'
 import { Avatar } from '../Avatar'
+import { BALANCE_LABEL } from '../BalanceCard'
 import { RewardBadge } from './RewardBadge'
 import { FrameRing } from './FrameRing'
 
@@ -127,14 +128,16 @@ function CardStage({ reward }: { reward: RewardDef }) {
   const t = useT()
   const byCurrency = useStore(selectTotalsByCurrency)
   const currency = useStore((s) => s.account ?? s.currency)
+  // Суммы — за период, выбранный на Главной, значит и подпись его же.
+  const periodMode = useStore((s) => s.period.mode)
   const totals = byCurrency[currency] ?? Object.values(byCurrency)[0] ?? { income: 0, expense: 0, balance: 0 }
   const cur = byCurrency[currency] ? currency : ((Object.keys(byCurrency)[0] as typeof currency | undefined) ?? currency)
 
   return (
     <div className={`hero-surface skin-live rounded-4xl px-6 py-5 ${heroSkinClass(reward.id)}`}>
-      <div className="caption text-white/70">{t('balance.month')}</div>
+      <div className="caption text-white/70">{t(BALANCE_LABEL[periodMode])}</div>
       <div className="mt-1 text-[38px] font-bold leading-none tracking-tight">
-        <Money value={totals.balance} currency={cur} />
+        <Money value={totals.balance} currency={cur} sign={totals.balance < 0} />
       </div>
       <div className="mt-4 flex items-center gap-4">
         <div>

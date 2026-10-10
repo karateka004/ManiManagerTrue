@@ -61,7 +61,7 @@ export function TrendChart() {
         <StatCard label={t('common.expense')} value={formatMoney(stats.expense, currency, { compact: true })} tone="expense" />
         <StatCard
           label={t('common.balance')}
-          value={formatMoney(stats.balance, currency, { compact: true })}
+          value={formatMoney(stats.balance, currency, { compact: true, sign: stats.balance < 0 })}
           tone={stats.balance >= 0 ? 'income' : 'expense'}
         />
       </div>
