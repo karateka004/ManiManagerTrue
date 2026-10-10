@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
-import { isCurrency, type Currency } from '../lib/currencies'
+import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
 import {
   DEFAULT_EQUIPPED,
@@ -481,26 +481,23 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
     }
   }
 
-  // Перечислимые поля: значение не из списка (порча, блоб из будущей версии с
-  // новым языком) — убираем ключ, merge подставит значение по умолчанию.
-  // Язык не из словаря раньше давал пустой интерфейс (translate искал entry['de']).
-  const ENUMS: Record<string, readonly unknown[]> = {
-    lang: ['ru', 'en'],
-    themeMode: ['auto', 'light', 'dark'],
-    chartStyle: ['compact', 'icons'],
-    homeHeaderMode: ['date', 'goal'],
-  }
-  for (const [key, allowed] of Object.entries(ENUMS)) {
-    if (s[key] !== undefined && !allowed.includes(s[key])) delete s[key]
-  }
-  for (const key of ['currency', 'lastTxCurrency']) {
-    if (s[key] !== undefined && !isCurrency(s[key])) delete s[key]
+  // Строковые поля-перечисления (язык, тема, валюты, стиль графика, шапка):
+  // убираем только значение НЕ ТОГО ТИПА — merge подставит значение по
+  // умолчанию. Незнакомую строку оставляем: это может быть язык или валюта из
+  // будущей версии (как когда-то PLN), и стерев её здесь, старое устройство
+  // по last-write-wins сбросило бы выбор и на новом. При чтении незнакомое
+  // значение безопасно подменяется: translate откатывается на ru, getCurrency —
+  // на первую валюту списка, тема и стиль — на значения по умолчанию.
+  for (const key of ['lang', 'themeMode', 'chartStyle', 'homeHeaderMode', 'currency', 'lastTxCurrency']) {
+    if (s[key] !== undefined && typeof s[key] !== 'string') delete s[key]
   }
   // Нет «последней валюты» (или она испорчена) — берём основную, а не доллар
   // из начального состояния.
-  if (s.lastTxCurrency === undefined && isCurrency(s.currency)) s.lastTxCurrency = s.currency
-  if (s.account !== undefined && s.account !== null && !isCurrency(s.account)) s.account = null
-  if (Array.isArray(s.quickCurrencies)) s.quickCurrencies = (s.quickCurrencies as unknown[]).filter(isCurrency)
+  if (s.lastTxCurrency === undefined && typeof s.currency === 'string') s.lastTxCurrency = s.currency
+  if (s.account !== undefined && s.account !== null && typeof s.account !== 'string') s.account = null
+  if (Array.isArray(s.quickCurrencies)) {
+    s.quickCurrencies = (s.quickCurrencies as unknown[]).filter((c) => typeof c === 'string')
+  }
   for (const key of ['demoMode', 'remindersEnabled']) {
     if (s[key] !== undefined && typeof s[key] !== 'boolean') delete s[key]
   }

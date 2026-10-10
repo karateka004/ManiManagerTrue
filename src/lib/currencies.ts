@@ -36,8 +36,3 @@ export function getCurrency(code: Currency): CurrencyMeta {
 }
 
 export const currencySymbol = (code: Currency): string => getCurrency(code).symbol
-
-/** Код из нашего списка валют (проверка данных, пришедших из хранилища или облака). */
-export function isCurrency(code: unknown): code is Currency {
-  return typeof code === 'string' && byCode.has(code)
-}

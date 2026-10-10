@@ -267,8 +267,9 @@ export function confirmAction(message: string): Promise<boolean> {
         // У окна Telegram потолок — 256 символов.
         wa.showConfirm!(message.slice(0, 256), (ok) => resolve(!!ok))
       } catch {
-        // Уже открыто другое окно клиента — спрашиваем по-простому.
-        resolve(window.confirm(message))
+        // Окно клиента уже открыто (двойной тап по «Удалить») — второе не
+        // показываем: считаем, что человек не подтвердил.
+        resolve(false)
       }
     })
   }

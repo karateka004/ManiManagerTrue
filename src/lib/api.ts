@@ -199,7 +199,9 @@ export interface CloudSnapshot {
 /** Забрать данные пользователя из облака (или null, если их там ещё нет). */
 export async function pullCloud(): Promise<CloudSnapshot | null> {
   if (!isBackendConfigured() || !tg.initData) return null
-  const res = await post('/data/get', { initData: tg.initData })
+  // Тянет весь блоб (до 1,5 МБ): общего таймаута не хватило бы на медленной
+  // сети, и синк у человека с большой историей не включался бы никогда.
+  const res = await post('/data/get', { initData: tg.initData }, 60000)
   return res?.ok && res.data ? (res.data as CloudSnapshot) : null
 }
 
@@ -375,7 +377,9 @@ export async function exportTransactions(
 ): Promise<ExportResult> {
   if (!isBackendConfigured() || !tg.initData) return 'no_backend'
   try {
-    const r = await post('/export', { initData: tg.initData, csv, filename, caption })
+    // Загрузка CSV плюс отправка файла ботом: обрыв по таймауту после того,
+    // как файл уже ушёл, кончился бы повторной отправкой — время с запасом.
+    const r = await post('/export', { initData: tg.initData, csv, filename, caption }, 60000)
     if (r?.ok) return 'ok'
     if (r?.error === 'blocked') return 'blocked'
     if (r?.error === 'too_large') return 'too_large'
