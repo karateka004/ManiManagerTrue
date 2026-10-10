@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      CSP под текущий стек. GitHub Pages не отдаёт HTTP-заголовки, поэтому CSP в meta.
+      style 'unsafe-inline' обязателен: framer-motion и темы (useAccent) пишут inline-стили.
+      frame-ancestors в meta игнорируется (и приложение живёт в webview Telegram) — не добавляем.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://koshel-worker.karateka004.workers.dev; base-uri 'self'; object-src 'none'; form-action 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#3CA37B" />
+    <title>Кошель — финансы</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script type="module" crossorigin src="./assets/index-DLb7x5UZ.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-0lX36Jlj.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-Ca6irNSm.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-QeyhxFrH.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
