@@ -7,7 +7,7 @@ import { getCurrency, type Currency } from '../../lib/currencies'
 import { formatMoney, dayjs } from '../../lib/format'
 import { Money } from '../ui/Money'
 import { SegTrack } from '../ui/SegTrack'
-import { hapticTap, hapticSelect, hapticNotify } from '../../lib/telegram'
+import { hapticTap, hapticSelect, hapticNotify, confirmAction } from '../../lib/telegram'
 import { useCatName, useT, type TFunc } from '../../lib/i18n'
 
 /**
@@ -38,6 +38,13 @@ type Cat = { id: string; name: string; icon: string; color: string }
 const PRIMARY_BTN =
   'flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.99] disabled:opacity-40'
 
+/**
+ * Сколько трат нужно для прогноза. Хватает одной: раньше требовалось две, и
+ * тот, у кого сегодня была одна покупка, застревал на шаге — выйти можно было
+ * только через «×». Порог один на кнопку и на её обработчик.
+ */
+const MIN_EXPENSES = 1
+
 export function QuickStart({ onDone }: { onDone: () => void }) {
   const t = useT()
   const [step, setStep] = useState(0)
@@ -67,9 +74,9 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     return { projected, safeDaily, daysTotal }
   }, [income, spentToday])
 
-  const close = () => {
+  const close = async () => {
     // Защита от случайного выхода: спрашиваем подтверждение.
-    if (!confirm(t('qs.exit_confirm'))) return
+    if (!(await confirmAction(t('qs.exit_confirm')))) return
     hapticSelect()
     onDone()
   }
@@ -97,7 +104,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   }
 
   const goForecast = () => {
-    if (expenses.length < 2) return
+    if (expenses.length < MIN_EXPENSES) return
     hapticTap()
     for (const e of expenses) {
       addTransaction({
@@ -304,7 +311,7 @@ function StepExpenses({
 }) {
   const catById = (id: string) => cats.find((c) => c.id === id)
   const catName = useCatName()
-  const enough = items.length >= 2
+  const enough = items.length >= MIN_EXPENSES
   const full = items.length >= 3
 
   return (

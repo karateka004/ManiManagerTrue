@@ -9,7 +9,7 @@ import {
 } from '../../store/transactions'
 import { getCurrency, type Currency } from '../../lib/currencies'
 import { formatMoney } from '../../lib/format'
-import { hapticSelect, hapticTap, hapticNotify } from '../../lib/telegram'
+import { hapticSelect, hapticTap, hapticNotify, confirmAction } from '../../lib/telegram'
 import { type TFunc } from '../../lib/i18n'
 
 /** Иконка и оттенок под тип актива. */
@@ -241,8 +241,8 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
     setAmountDraft(String(safe))
   }
 
-  const onDelete = () => {
-    if (!confirm(t('inv.delete_confirm'))) return
+  const onDelete = async () => {
+    if (!(await confirmAction(t('inv.delete_confirm')))) return
     hapticNotify('warning')
     removeInvestment(item.id)
   }

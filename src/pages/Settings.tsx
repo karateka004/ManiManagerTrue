@@ -7,7 +7,7 @@ import {
   selectQuickCurrencies,
 } from '../store/transactions'
 import type { Category } from '../store/categories'
-import { hapticTap, hapticNotify, hapticSelect, tg } from '../lib/telegram'
+import { hapticTap, hapticNotify, hapticSelect, tg, confirmAction } from '../lib/telegram'
 import { setReminders, exportTransactions } from '../lib/api'
 import { buildCsv } from '../lib/csv'
 import { parseTransactionsCsv, type ParsedRow } from '../lib/csvImport'
@@ -85,8 +85,8 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   // Какой слот быстрых валют сейчас меняем (null — список выбора скрыт).
   const [quickSlot, setQuickSlot] = useState<number | null>(null)
 
-  const handleClear = () => {
-    if (!confirm(t('settings.clear_confirm'))) return
+  const handleClear = async () => {
+    if (!(await confirmAction(t('settings.clear_confirm')))) return
     hapticNotify('warning')
     clearAll()
   }

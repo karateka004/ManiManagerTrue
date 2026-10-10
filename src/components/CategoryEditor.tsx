@@ -6,7 +6,7 @@ import { useStore } from '../store/transactions'
 import { CATEGORY_COLORS, type Category, type CategoryKind } from '../store/categories'
 import { CategoryIcon, ICON_KEYS, ICON_GROUPS } from './icons/CategoryIcon'
 import { useT } from '../lib/i18n'
-import { hapticSelect, hapticNotify, hapticTap } from '../lib/telegram'
+import { hapticSelect, hapticNotify, hapticTap, confirmAction } from '../lib/telegram'
 
 interface Props {
   open: boolean
@@ -54,9 +54,9 @@ export function CategoryEditor({ open, editing, defaultKind = 'expense', onClose
     onClose()
   }
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
     if (!editing) return
-    if (!confirm(t('cat.delete_confirm', { name: editing.name }))) return
+    if (!(await confirmAction(t('cat.delete_confirm', { name: editing.name })))) return
     hapticNotify('warning')
     removeCategory(editing.id)
     onClose()

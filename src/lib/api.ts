@@ -48,14 +48,28 @@ export function parseRefParam(param: string | null): string | null {
   return digits.length >= 1 && digits.length <= 12 ? digits : null
 }
 
-async function post(path: string, body: unknown): Promise<any> {
+/**
+ * Таймаут запроса к воркеру. Без него на плохой мобильной сети fetch висел
+ * минутами: рейтинг и ассистент бесконечно крутили загрузку, а зависший
+ * первый запрос синхронизации молча оставлял сессию без облака.
+ */
+const REQUEST_TIMEOUT_MS = 15000
+
+async function post(path: string, body: unknown, timeoutMs = REQUEST_TIMEOUT_MS): Promise<any> {
   if (!isBackendConfigured()) throw new Error('backend_not_configured')
-  const res = await fetch(`${WORKER_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return res.json()
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined
+  try {
+    const res = await fetch(`${WORKER_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl?.signal,
+    })
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** Отправить отзыв (попадёт владельцу бота в ЛС). */
@@ -201,7 +215,8 @@ export async function pushCloud(
   allowEmpty = false,
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
-  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty })
+  // Блоб бывает в сотни килобайт — на медленной сети отправке нужно время.
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty }, 30000)
 }
 
 /* ---------- Ассистент: вопросы про свои деньги ---------- */
@@ -223,7 +238,7 @@ const ASK_ERRORS: AskError[] = ['quota', 'unavailable', 'unclear', 'looks_like_r
 export async function askAssistant(text: string): Promise<AskResult> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false, error: 'unavailable' }
   try {
-    const res = await post('/ask', { initData: tg.initData, text })
+    const res = await post('/ask', { initData: tg.initData, text }, 25000)
     if (res?.ok && typeof res.answer === 'string' && res.answer.trim()) {
       return { ok: true, answer: res.answer }
     }

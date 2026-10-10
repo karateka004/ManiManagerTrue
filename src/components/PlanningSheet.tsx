@@ -17,7 +17,7 @@ import {
 import { getCurrency, type Currency } from '../lib/currencies'
 import { formatMoney, dayjs } from '../lib/format'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
-import { hapticSelect, hapticTap, hapticNotify } from '../lib/telegram'
+import { hapticSelect, hapticTap, hapticNotify, confirmAction } from '../lib/telegram'
 import { useCatName, useT, type TFunc } from '../lib/i18n'
 
 interface Props {
@@ -641,8 +641,8 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
     setAdd('')
   }
 
-  const onDelete = () => {
-    if (!confirm(t('plan.goal_delete_confirm'))) return
+  const onDelete = async () => {
+    if (!(await confirmAction(t('plan.goal_delete_confirm')))) return
     hapticNotify('warning')
     removeGoal(goal.id)
   }

@@ -5,6 +5,7 @@ import { dayjs } from '../lib/format'
 import { useT } from '../lib/i18n'
 import { hapticSelect, hapticTap } from '../lib/telegram'
 import { SegTrack } from './ui/SegTrack'
+import { useBackButton } from '../lib/useBackButton'
 
 // Календарь своего периода — ленивый чанк (см. RangeCalendar.tsx).
 const RangeCalendar = lazy(() => import('./RangeCalendar').then((m) => ({ default: m.RangeCalendar })))
@@ -34,6 +35,9 @@ export function PeriodSwitcher() {
     arrows && dayjs(period.anchor).isSame(dayjs(), period.mode as dayjs.OpUnitType)
 
   const [menuOpen, setMenuOpen] = useState(false)
+  // Меню поверх экрана — «Назад» Telegram и Escape закрывают его, а не уводят
+  // с вкладки (раньше подложка-ловушка оставалась висеть и съедала нажатия).
+  useBackButton(menuOpen, () => setMenuOpen(false), true)
   // «⋯» подсвечен, когда активен режим из меню (Год / Всё время / Период).
   const moreActive = period.mode === 'year' || period.mode === 'all' || period.mode === 'range'
 

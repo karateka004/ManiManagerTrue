@@ -556,6 +556,8 @@ const DICT: Dict = {
   'lvlup.cta': { ru: 'Продолжить', en: 'Continue' },
   'toast.restore': { ru: 'Вернуть', en: 'Restore' },
   'toast.link_copied': { ru: 'Ссылка скопирована', en: 'Link copied' },
+  'toast.copy_failed': { ru: 'Скопировать не получилось', en: 'Couldn’t copy the link' },
+  'toast.copy_failed_sub': { ru: 'Отправь ссылку кнопкой «Поделиться»', en: 'Send it with the Share button' },
 
   /* Редактор категорий */
   'cat.edit': { ru: 'Категория', en: 'Category' },
@@ -898,8 +900,8 @@ const DICT: Dict = {
   'qs.next': { ru: 'Дальше', en: 'Next' },
   'qs.expense_title': { ru: 'На что потратил сегодня?', en: 'What did you spend on today?' },
   'qs.expense_sub': {
-    ru: 'Добавь 2–3 траты — по ним посчитаем твой темп.',
-    en: 'Add 2–3 expenses — we’ll use them to gauge your pace.',
+    ru: 'Добавь 1–3 траты — по ним посчитаем твой темп.',
+    en: 'Add 1–3 expenses — we’ll use them to gauge your pace.',
   },
   'qs.add_expense': { ru: 'Добавить трату', en: 'Add expense' },
   'qs.expense_counter': { ru: 'Добавлено: {n} из 3', en: 'Added: {n} of 3' },
@@ -962,7 +964,10 @@ function interpolate(str: string, vars?: Record<string, string | number>): strin
 export function translate(lang: Lang, key: string, vars?: Record<string, string | number>): string {
   const entry = DICT[key]
   if (!entry) return key
-  return interpolate(entry[lang], vars)
+  // Язык не из словаря (испорченные данные, блоб из версии с новым языком) —
+  // по-русски. Раньше entry['de'] давал undefined: пустые подписи по всему
+  // приложению, а строки с подстановкой падали на undefined.replace.
+  return interpolate(entry[lang] ?? entry.ru, vars)
 }
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string

@@ -328,9 +328,13 @@ button.row:active,
 
 /* ---------- Плитки «Прогресса» (ui/Tile, rewards/TileScene) ----------
    Поле обложки — градиент цвета плитки; сцена живёт на обёртках <g>.
-   Появление (падение монет, рост пьедестала) — один раз; дальше тихие петли
-   (блёстки, пламя, сияние): только transform/opacity маленьких SVG, на паузе
-   в свёрнутом Telegram, выключены на слабых телефонах и при «меньше движения». */
+   Появление (падение монет, рост пьедестала) — один раз; дальше петли
+   (блёстки, пламя, сияние) играют ~10 секунд и замирают в исходной позе.
+   Бесконечные петли SVG держали главный поток занятым на 24% при CPU ×6
+   (трансформации SVG не уходят в композитор) — батарея и рывки прокрутки на
+   слабых Android. Каждая петля начинается и кончается исходным видом, поэтому
+   остановка не дёргается. На паузе в свёрнутом Telegram, выключены на слабых
+   телефонах и при «меньше движения». */
 .tile-art { background: linear-gradient(150deg, rgb(var(--tile-a) / 0.30) 0%, rgb(var(--tile-a) / 0.07) 100%); }
 .dark .tile-art { background: linear-gradient(150deg, rgb(var(--tile-a) / 0.34) 0%, rgb(var(--tile-a) / 0.08) 100%); }
 
@@ -350,30 +354,32 @@ button.row:active,
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
 }
-.ts-bob { animation: ts-bob 3.2s ease-in-out var(--d, 0ms) infinite; }
+.ts-bob { animation: ts-bob 3.2s ease-in-out var(--d, 0ms) 3; }
 @keyframes ts-twinkle {
-  0%, 100% { transform: scale(0.72) rotate(0deg); opacity: 0.55; }
-  50% { transform: scale(1.12) rotate(18deg); opacity: 1; }
+  0%, 100% { transform: none; opacity: 1; }
+  50% { transform: scale(0.7) rotate(18deg); opacity: 0.55; }
 }
-.ts-twinkle { animation: ts-twinkle 2.4s ease-in-out var(--d, 0ms) infinite; }
+.ts-twinkle { animation: ts-twinkle 2.4s ease-in-out var(--d, 0ms) 4; }
 @keyframes ts-flicker {
   0%, 100% { transform: scale(1, 1) skewX(0deg); }
   25% { transform: scale(1.04, 0.95) skewX(-2deg); }
   50% { transform: scale(0.97, 1.05) skewX(1.5deg); }
   75% { transform: scale(1.02, 0.98) skewX(-1deg); }
 }
-.ts-flicker { transform-origin: 50% 100%; animation: ts-flicker 1.7s ease-in-out var(--d, 0ms) infinite; }
+.ts-flicker { transform-origin: 50% 100%; animation: ts-flicker 1.7s ease-in-out var(--d, 0ms) 6; }
+/* Искра последний раз гаснет и остаётся погасшей (forwards): возвращение
+   точки на место в конце выглядело бы как вспышка. */
 @keyframes ts-ember {
   0% { transform: translateY(6px); opacity: 0; }
   25% { opacity: 1; }
   100% { transform: translateY(-24px); opacity: 0; }
 }
-.ts-ember { animation: ts-ember 2.6s ease-out var(--d, 0ms) infinite; }
+.ts-ember { animation: ts-ember 2.6s ease-out var(--d, 0ms) 4 both; }
 @keyframes ts-halo {
-  0%, 100% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.06); opacity: 1; }
+  0%, 100% { transform: none; opacity: 1; }
+  50% { transform: scale(0.9); opacity: 0.7; }
 }
-.ts-halo { animation: ts-halo 3.6s ease-in-out infinite; }
+.ts-halo { animation: ts-halo 3.6s ease-in-out 3; }
 html.anim-paused .ts-bob, html.anim-paused .ts-twinkle, html.anim-paused .ts-flicker,
 html.anim-paused .ts-ember, html.anim-paused .ts-halo { animation-play-state: paused; }
 html.perf-low .ts-bob, html.perf-low .ts-twinkle, html.perf-low .ts-flicker,

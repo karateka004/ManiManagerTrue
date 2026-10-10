@@ -56,6 +56,11 @@ interface TelegramWebApp {
   /** Bot API 7.7+: вертикальный свайп сворачивает мини-апп — его можно выключить. */
   disableVerticalSwipes?: () => void
   enableVerticalSwipes?: () => void
+  /** Версия Bot API клиента и проверка «не ниже». */
+  version?: string
+  isVersionAtLeast?: (version: string) => boolean
+  /** Bot API 6.2+: родное окно подтверждения клиента. */
+  showConfirm?: (message: string, callback?: (ok: boolean) => void) => void
 }
 
 declare global {
@@ -246,6 +251,28 @@ export function pushBackHandler(fn: () => void, modal = false): () => void {
       }
     }
   }
+}
+
+/**
+ * Подтверждение действия («Удалить цель?»). В Telegram — родное окно клиента
+ * (`showConfirm`, Bot API 6.2+): `window.confirm` в WebView мини-аппа есть не
+ * везде и может молча вернуть «нет» — и тогда, например, из быстрого старта
+ * было бы не выйти. Вне Telegram и в старых клиентах — обычный confirm.
+ */
+export function confirmAction(message: string): Promise<boolean> {
+  const wa = tg.webApp
+  if (wa?.showConfirm && wa.isVersionAtLeast?.('6.2')) {
+    return new Promise((resolve) => {
+      try {
+        // У окна Telegram потолок — 256 символов.
+        wa.showConfirm!(message.slice(0, 256), (ok) => resolve(!!ok))
+      } catch {
+        // Уже открыто другое окно клиента — спрашиваем по-простому.
+        resolve(window.confirm(message))
+      }
+    })
+  }
+  return Promise.resolve(window.confirm(message))
 }
 
 /** Subscribe to Telegram themeChanged. Returns cleanup. Safe outside Telegram. */

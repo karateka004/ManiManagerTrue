@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { copyText } from '../../lib/clipboard'
 import { Send } from 'lucide-react'
 import { buildReferralLink, type ReferralFriend } from '../../lib/api'
 import { REF_REWARD } from '../../store/transactions'
@@ -40,13 +41,13 @@ export function ReferralBlock({
 
   const copy = async () => {
     hapticSelect()
-    try {
-      await navigator.clipboard.writeText(link)
+    if (await copyText(link)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
       showToast({ icon: 'link', text: t('toast.link_copied'), sub: link.replace(/^https?:\/\//, '') })
-    } catch {
-      /* clipboard недоступен */
+    } else {
+      // Не вышло ни одним способом — говорим об этом и подсказываем выход.
+      showToast({ icon: 'link', text: t('toast.copy_failed'), sub: t('toast.copy_failed_sub') })
     }
   }
 

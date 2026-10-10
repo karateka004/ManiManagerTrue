@@ -213,6 +213,9 @@ async function mergeInbox(): Promise<void> {
         date: e.date,
       },
       null,
+      // Период на экране не сдвигаем: человек открыл приложение, а не
+      // записывал задним числом.
+      { focus: false },
     )
   }
 
@@ -224,6 +227,26 @@ async function mergeInbox(): Promise<void> {
   } catch {
     /* не подтвердилось — подтвердим при следующем сливе, повтор отсечёт done */
   }
+}
+
+let retryArmed = false
+let timedRetries = 0
+function armSyncRetry(): void {
+  if (retryArmed || typeof document === 'undefined') return
+  retryArmed = true
+  const retry = () => {
+    if (!retryArmed) return
+    retryArmed = false
+    document.removeEventListener('visibilitychange', onVisible)
+    clearTimeout(timer)
+    void initCloudSync()
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') retry()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  const timer = timedRetries < 3 ? setTimeout(retry, 30000) : undefined
+  if (timer !== undefined) timedRetries++
 }
 
 /**
@@ -243,6 +266,11 @@ export async function initCloudSync(): Promise<void> {
   try {
     cloud = await pullCloud()
   } catch {
+    // Сеть подвела. Раньше синк на этом заканчивался до следующего холодного
+    // старта, и правки всей сессии не уходили в облако. Теперь — повтор, когда
+    // приложение снова на экране или через полминуты (не больше трёх раз).
+    started = false
+    armSyncRetry()
     return
   }
 

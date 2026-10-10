@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
-import type { Currency } from '../lib/currencies'
+import { isCurrency, type Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
 import {
   DEFAULT_EQUIPPED,
@@ -192,7 +192,14 @@ interface Actions {
    * дёргала три действия подряд, и одно сохранение стоило три полных прохода
    * подписчиков и три записи на диск.
    */
-  commitTransaction: (t: Omit<Transaction, 'id'>, editingId: string | null) => string
+  commitTransaction: (
+    t: Omit<Transaction, 'id'>,
+    editingId: string | null,
+    opts?: {
+      /** Сдвинуть период на дату операции, если она вне видимого (по умолчанию да). */
+      focus?: boolean
+    },
+  ) => string
   removeTransaction: (id: string) => void
   /**
    * Вернуть удалённую операцию как была — с тем же id («Вернуть» в тосте после
@@ -449,6 +456,54 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
     const v = s[key]
     if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) delete s[key]
   }
+  // Надетое — всегда все пять видов строками: блоб, где вида не хватает (или он
+  // не строка), давал undefined в обложке карты, рамке и эффекте записи.
+  if (s.equipped !== undefined) {
+    const eq: Record<string, unknown> = { ...(s.equipped as Record<string, unknown>) }
+    for (const [k, def] of Object.entries(DEFAULT_EQUIPPED)) if (typeof eq[k] !== 'string') eq[k] = def
+    s.equipped = eq
+  }
+  // Серия: числа — числами, иначе арифметика рубежей и подарков даёт NaN.
+  if (s.streak !== undefined) {
+    const st = s.streak as Record<string, unknown>
+    s.streak = {
+      count: clampNumber(st.count, 0, 1e5, 0),
+      best: clampNumber(st.best, 0, 1e5, 0),
+      lastClaim: typeof st.lastClaim === 'string' ? st.lastClaim : null,
+    }
+  }
+  // Элементы списков без id (или не объекты) роняют ключи и поиск по id.
+  for (const key of ['goals', 'investments', 'customCategories']) {
+    if (Array.isArray(s[key])) {
+      s[key] = (s[key] as unknown[]).filter(
+        (x) => !!x && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string',
+      )
+    }
+  }
+
+  // Перечислимые поля: значение не из списка (порча, блоб из будущей версии с
+  // новым языком) — убираем ключ, merge подставит значение по умолчанию.
+  // Язык не из словаря раньше давал пустой интерфейс (translate искал entry['de']).
+  const ENUMS: Record<string, readonly unknown[]> = {
+    lang: ['ru', 'en'],
+    themeMode: ['auto', 'light', 'dark'],
+    chartStyle: ['compact', 'icons'],
+    homeHeaderMode: ['date', 'goal'],
+  }
+  for (const [key, allowed] of Object.entries(ENUMS)) {
+    if (s[key] !== undefined && !allowed.includes(s[key])) delete s[key]
+  }
+  for (const key of ['currency', 'lastTxCurrency']) {
+    if (s[key] !== undefined && !isCurrency(s[key])) delete s[key]
+  }
+  // Нет «последней валюты» (или она испорчена) — берём основную, а не доллар
+  // из начального состояния.
+  if (s.lastTxCurrency === undefined && isCurrency(s.currency)) s.lastTxCurrency = s.currency
+  if (s.account !== undefined && s.account !== null && !isCurrency(s.account)) s.account = null
+  if (Array.isArray(s.quickCurrencies)) s.quickCurrencies = (s.quickCurrencies as unknown[]).filter(isCurrency)
+  for (const key of ['demoMode', 'remindersEnabled']) {
+    if (s[key] !== undefined && typeof s[key] !== 'boolean') delete s[key]
+  }
 
   // Счётчики прогресса: отрицательные и нечисловые ломают арифметику уровней.
   if (s.coins !== undefined) s.coins = clampNumber(s.coins, 0, 1e9, 0)
@@ -569,8 +624,14 @@ export const useStore = create<State & Actions>()(
       lastTxCurrency: 'USD',
       account: null,
 
+      // Валюту записи запоминаем и здесь (как в commitTransaction): через этот
+      // путь пишет быстрый старт, и без этого первая ручная операция новичка,
+      // выбравшего евро, открывалась в долларах — появлялся второй «счёт».
       addTransaction: (t) =>
-        set((s) => ({ transactions: [{ ...t, id: cuid() }, ...s.transactions] })),
+        set((s) => ({
+          transactions: [{ ...t, id: cuid() }, ...s.transactions],
+          ...(t.currency ? { lastTxCurrency: t.currency } : {}),
+        })),
       updateTransaction: (id, patch) =>
         set((s) => ({
           transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
@@ -611,7 +672,7 @@ export const useStore = create<State & Actions>()(
           return patch
         }),
 
-      commitTransaction: (t, editingId) => {
+      commitTransaction: (t, editingId, opts) => {
         // id новой операции нужен снаружи: «Отменить» в тосте после записи.
         const id = editingId ?? cuid()
         set((s) => {
@@ -630,11 +691,15 @@ export const useStore = create<State & Actions>()(
           }
           // Операция «задним числом» может выпасть за текущий период просмотра —
           // тогда сдвигаем период на её дату, иначе запись пропала бы из виду.
-          const x = parseDay(t.date)
-          const { start, end } = periodBounds(s.period)
-          if (x < +start || x >= +end) {
-            const next = focusedPeriod(s.period, t.date)
-            if (next) patch.period = next
+          // Только для записи из формы: записи бота, слитые при запуске, период
+          // не трогают — иначе приложение открывалось бы на вчерашнем дне.
+          if (opts?.focus !== false) {
+            const x = parseDay(t.date)
+            const { start, end } = periodBounds(s.period)
+            if (x < +start || x >= +end) {
+              const next = focusedPeriod(s.period, t.date)
+              if (next) patch.period = next
+            }
           }
           return patch
         })
@@ -666,7 +731,10 @@ export const useStore = create<State & Actions>()(
           return next ? { period: next } : {}
         }),
 
-      setCurrency: (c) => set({ currency: c }),
+      // Пока операций нет, «последняя валюта» формы следует за основной:
+      // иначе новичок, сменивший валюту в настройках, записал бы первую
+      // операцию в долларах по умолчанию.
+      setCurrency: (c) => set((s) => (s.transactions.length === 0 ? { currency: c, lastTxCurrency: c } : { currency: c })),
       setChartStyle: (s) => set({ chartStyle: s }),
       setBudget: (categoryId, amount) =>
         set((s) => {
