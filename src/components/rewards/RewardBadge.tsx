@@ -61,6 +61,10 @@ const ICON_BY_ID: Record<string, ComponentType<LucideProps>> = {
   accent_graphite: Pencil,
 }
 
+/** Скруглённый шестиугольник жетона (viewBox 48×48). */
+const HEX =
+  'M24 2.6c1.6 0 3.1.4 4.5 1.2l12 6.9a9 9 0 0 1 4.5 7.8v13.8a9 9 0 0 1-4.5 7.8l-12 6.9a9 9 0 0 1-9 0l-12-6.9a9 9 0 0 1-4.5-7.8V18.5a9 9 0 0 1 4.5-7.8l12-6.9A9 9 0 0 1 24 2.6z'
+
 /** Иконка уровня 1..10 — та же система символов, что у титулов за уровень. */
 const LEVEL_ICONS: ComponentType<LucideProps>[] = [
   Sprout, PiggyBank, Coins, Calculator, Briefcase,
@@ -98,14 +102,14 @@ interface Props {
    */
   palette?: AccentPalette
   /**
-   * «Стеклянный» жетон для тёмных карт-героев: белая полупрозрачная заливка и
-   * обводка вместо градиента редкости. Синий «редкий» жетон на зелёной карте
-   * уровня спорил с ней цветом.
+   * Блик: светлая полоса один раз пробегает по жетону (герой «Прогресса»,
+   * экран нового уровня). Число — задержка, мс. Чтобы блик пробежал снова,
+   * жетон перемонтируют (key).
    */
-  glass?: boolean
+  shine?: boolean | number
 }
 
-export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette, glass }: Props) {
+export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette, shine }: Props) {
   const lvl = level ? Math.min(Math.max(1, Math.floor(level)), LEVEL_ICONS.length) : null
   const Icon = rewardId ? ICON_BY_ID[rewardId] : lvl ? LEVEL_ICONS[lvl - 1] : undefined
   const finalRarity: Rarity = rarity ?? (lvl ? levelRarity(lvl) : 'common')
@@ -129,20 +133,42 @@ export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette, 
             <stop offset="0%" stopColor={from} />
             <stop offset="100%" stopColor={to} />
           </linearGradient>
+          {shine !== undefined && shine !== false && (
+            <>
+              <clipPath id={gid + '-clip'}>
+                <path d={HEX} />
+              </clipPath>
+              <linearGradient id={gid + '-glint'} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+                <stop offset="50%" stopColor="#fff" stopOpacity="0.55" />
+                <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+              </linearGradient>
+            </>
+          )}
         </defs>
         {/* Скруглённый шестиугольник — форма «жетона», узнаваемая и спокойная */}
-        <path
-          d="M24 2.6c1.6 0 3.1.4 4.5 1.2l12 6.9a9 9 0 0 1 4.5 7.8v13.8a9 9 0 0 1-4.5 7.8l-12 6.9a9 9 0 0 1-9 0l-12-6.9a9 9 0 0 1-4.5-7.8V18.5a9 9 0 0 1 4.5-7.8l12-6.9A9 9 0 0 1 24 2.6z"
-          fill={glass ? 'rgb(255 255 255 / 0.12)' : `url(#${gid})`}
-          stroke={glass ? 'rgb(255 255 255 / 0.22)' : undefined}
-          strokeWidth={glass ? 1.2 : undefined}
-        />
+        <path d={HEX} fill={`url(#${gid})`} />
         {/* Мягкий блик сверху — объём без «пластика» */}
         <path
           d="M24 2.6c1.6 0 3.1.4 4.5 1.2l12 6.9c1.6.9 2.8 2.2 3.6 3.7-6 3.6-13 5.6-20.1 5.6s-14.1-2-20.1-5.6c.8-1.5 2-2.8 3.6-3.7l12-6.9A9 9 0 0 1 24 2.6z"
           fill="#fff"
           opacity="0.16"
         />
+        {/* Блик — внутри формы жетона (clipPath), прозрачный, пока не бежит:
+            при «меньше движения» его просто не видно. */}
+        {shine !== undefined && shine !== false && (
+          <g clipPath={`url(#${gid}-clip)`}>
+            <rect
+              className="badge-glint"
+              x="17"
+              y="-6"
+              width="14"
+              height="60"
+              fill={`url(#${gid}-glint)`}
+              style={typeof shine === 'number' ? { animationDelay: `${shine}ms` } : undefined}
+            />
+          </g>
+        )}
       </svg>
 
       {/* Символ поверх жетона */}
@@ -161,9 +187,9 @@ export function RewardBadge({ rewardId, level, rarity, size = 40, dim, palette, 
           style={{
             width: Math.round(size * 0.42),
             height: Math.round(size * 0.42),
-            background: glass ? 'rgb(255 255 255 / 0.92)' : accent,
-            borderColor: glass ? 'transparent' : 'rgb(var(--c-surface-raised))',
-            color: glass ? 'rgb(11 14 12)' : '#fff',
+            background: accent,
+            borderColor: 'rgb(var(--c-surface-raised))',
+            color: '#fff',
           }}
         >
           {lvl}

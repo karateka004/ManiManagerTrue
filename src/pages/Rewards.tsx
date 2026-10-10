@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Crown, ShoppingBag, Trophy } from 'lucide-react'
+import { Coins } from 'lucide-react'
 import {
   useStore,
   selectCategoriesUsed,
@@ -19,17 +19,18 @@ import {
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
 import { questBoard, questsLeft, BOARD_SIZE, QUEST_COOLDOWN_MS, type QuestProgress } from '../lib/quests'
-import { coinsWord, useT } from '../lib/i18n'
-import { Group, Row } from '../components/ui/Group'
-import { StreakRow } from '../components/rewards/StreakRow'
+import { useT } from '../lib/i18n'
+import { Group } from '../components/ui/Group'
+import { StreakTile } from '../components/rewards/StreakTile'
+import { Tile, TileBadge } from '../components/ui/Tile'
 import { QuestRows } from '../components/rewards/QuestRow'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
 import { LevelRewardsScreen } from './LevelRewards'
-import { LEVEL_REWARDS } from '../lib/rewards'
+import { DAILY_DISCOUNT_PCT, LEVEL_REWARDS } from '../lib/rewards'
 import { RewardBadge } from '../components/rewards/RewardBadge'
 import { Odometer } from '../components/ui/Odometer'
-import { flyCoins, floatText } from '../lib/fx'
+import { flyCoins, floatText, replay } from '../lib/fx'
 import { useBackButton } from '../lib/useBackButton'
 import { onRewardsReset, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
 import { useHeroSkin } from '../lib/useHeroSkin'
@@ -48,7 +49,6 @@ const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').the
  */
 export function RewardsPage() {
   const t = useT()
-  const lang = useStore((s) => s.lang)
   const transactions = useStore((s) => s.transactions)
   const coins = useStore((s) => s.coins)
   const claimedQuests = useStore((s) => s.claimedQuests)
@@ -158,6 +158,14 @@ export function RewardsPage() {
   const manyReady = claimable + claimableSpecial >= 2
 
   // Награда — с полётом монеток к счётчику «Магазина» и всплывающим «+XP».
+  // Опыт вырос (забрал задание или серию) — жетон уровня подпрыгивает.
+  const badgeRef = useRef<HTMLDivElement>(null)
+  const prevXp = useRef(lvl.xp)
+  useEffect(() => {
+    if (lvl.xp > prevXp.current) replay(badgeRef.current, 'badge-bump')
+    prevXp.current = lvl.xp
+  }, [lvl.xp])
+
   const celebrate = (from: Element | null, xp: number, coins: number) => {
     if (!from) return
     floatText(from, `+${xp} XP`)
@@ -253,7 +261,12 @@ export function RewardsPage() {
       <div className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${skin}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <RewardBadge level={lvl.level} size={44} glass />
+            {/* Жетон цветной (как в 2.0 — «стеклянный» из первой сборки 2.1 читался
+                как выключенный). При открытии «приземляется», при начислении опыта
+                подпрыгивает, и по нему пробегает блик (перемонтаж по key). */}
+            <div ref={badgeRef} className="badge-land shrink-0">
+              <RewardBadge key={lvl.xp} level={lvl.level} size={44} shine />
+            </div>
             <div className="min-w-0 leading-tight">
               <div className="truncate text-lg font-extrabold">{t('level.t' + lvl.level)}</div>
               <div className="caption mt-0.5 whitespace-nowrap text-white/60">
@@ -284,51 +297,53 @@ export function RewardsPage() {
         </div>
       </div>
 
-      <Group className="mx-4 mt-4">
-        <StreakRow />
-        <Row
-          icon={<ShoppingBag size={18} strokeWidth={2} />}
+      {/* Плитки 2×2: Магазин · Рейтинг · Серия · Титулы. В 2.0 их заменили
+          строками, в 2.1 вернули — с живыми сценами и с данными на каждой. */}
+      <div className="stagger mx-4 mt-4 grid grid-cols-2 gap-3">
+        <Tile
+          scene="coins"
+          accent="amber"
           title={t('shop.title')}
-          value={
-            // Сюда прилетают монетки после «Забрать» (data-coin-target).
-            <span data-coin-target className="inline-block text-ink-muted">
-              <Odometer text={coins.toLocaleString('ru-RU')} /> {coinsWord(lang, coins)}
-            </span>
+          // Неразрывные пробелы: на 320 px «−30%» не отрывается от «Витрина дня».
+          subtitle={t('shop.featured') + '\u00a0·\u00a0−' + DAILY_DISCOUNT_PCT + '%'}
+          badge={
+            <TileBadge>
+              {/* Сюда прилетают монетки после «Забрать» (data-coin-target). */}
+              <span data-coin-target className="inline-flex items-center gap-1">
+                <Coins size={12} strokeWidth={2.6} />
+                <Odometer text={coins.toLocaleString('ru-RU')} />
+              </span>
+            </TileBadge>
           }
-          chevron
           onClick={openShop}
         />
-        <Row
-          icon={<Trophy size={18} strokeWidth={2} />}
+        <Tile
+          scene="podium"
+          accent="sky"
           title={t('profile.leaderboard')}
-          value={
-            rank ? (
-              <span className="text-ink-muted">
-                {rank.total >= rank.rank
-                  ? t('progress.rank', { rank: rank.rank, total: rank.total })
-                  : t('progress.rank_only', { rank: rank.rank })}
-              </span>
-            ) : undefined
+          subtitle={
+            rank
+              ? rank.total >= rank.rank
+                ? t('progress.rank', { rank: rank.rank, total: rank.total })
+                : t('progress.rank_only', { rank: rank.rank })
+              : undefined
           }
-          chevron
           onClick={openLeaderboard}
         />
-        <Row
-          icon={<Crown size={18} strokeWidth={2} />}
+        <StreakTile />
+        <Tile
+          scene="crown"
+          accent="violet"
           title={t('lvlrew.title')}
-          value={
+          subtitle={t('progress.of', { n: titlesOwned, total: LEVEL_REWARDS.length })}
+          badge={
             titlesReady > 0 ? (
-              <span className="text-brand-600 dark:text-brand-300">{t('profile.claimable', { n: titlesReady })}</span>
-            ) : (
-              <span className="text-ink-muted">
-                {t('progress.of', { n: titlesOwned, total: LEVEL_REWARDS.length })}
-              </span>
-            )
+              <TileBadge className="text-brand-600 dark:text-brand-300">+{titlesReady}</TileBadge>
+            ) : undefined
           }
-          chevron
           onClick={openTitles}
         />
-      </Group>
+      </div>
 
       <Group
         className="mx-4 mt-6"

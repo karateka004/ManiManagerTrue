@@ -60,7 +60,8 @@ export function LevelUpOverlay({ level, onClose }: { level: number; onClose: () 
           style={{ background: 'radial-gradient(closest-side, rgb(var(--brand-300) / 0.55), transparent)' }}
         />
         <div ref={badgeRef} className="lvlup-badge relative mx-auto w-fit">
-          <RewardBadge level={level} size={88} glass />
+          {/* Цветной жетон уровня; блик пробегает, когда он «приземлился». */}
+          <RewardBadge level={level} size={88} shine={900} />
         </div>
         {/* Номер — в надстрочнике, в заголовке только звание: «Уровень 6 ·
             Магнат» на 320 px рвалось, и точка повисала в конце строки. */}

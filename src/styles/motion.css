@@ -326,6 +326,59 @@ button.row:active,
   text-align: center;
 }
 
+/* ---------- Плитки «Прогресса» (ui/Tile, rewards/TileScene) ----------
+   Поле обложки — градиент цвета плитки; сцена живёт на обёртках <g>.
+   Появление (падение монет, рост пьедестала) — один раз; дальше тихие петли
+   (блёстки, пламя, сияние): только transform/opacity маленьких SVG, на паузе
+   в свёрнутом Telegram, выключены на слабых телефонах и при «меньше движения». */
+.tile-art { background: linear-gradient(150deg, rgb(var(--tile-a) / 0.30) 0%, rgb(var(--tile-a) / 0.07) 100%); }
+.dark .tile-art { background: linear-gradient(150deg, rgb(var(--tile-a) / 0.34) 0%, rgb(var(--tile-a) / 0.08) 100%); }
+
+.ts-drop, .ts-rise, .ts-bob, .ts-twinkle, .ts-flicker, .ts-ember, .ts-halo {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+@keyframes ts-drop {
+  0% { transform: translateY(-30px); }
+  70% { transform: translateY(2px); }
+  100% { transform: none; }
+}
+.ts-drop { animation: ts-drop 620ms var(--ease-spring) var(--d, 0ms) backwards; }
+@keyframes ts-rise { from { transform: scaleY(0.15); } }
+.ts-rise { transform-origin: 50% 100%; animation: ts-rise 640ms var(--ease-spring) var(--d, 0ms) backwards; }
+@keyframes ts-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.ts-bob { animation: ts-bob 3.2s ease-in-out var(--d, 0ms) infinite; }
+@keyframes ts-twinkle {
+  0%, 100% { transform: scale(0.72) rotate(0deg); opacity: 0.55; }
+  50% { transform: scale(1.12) rotate(18deg); opacity: 1; }
+}
+.ts-twinkle { animation: ts-twinkle 2.4s ease-in-out var(--d, 0ms) infinite; }
+@keyframes ts-flicker {
+  0%, 100% { transform: scale(1, 1) skewX(0deg); }
+  25% { transform: scale(1.04, 0.95) skewX(-2deg); }
+  50% { transform: scale(0.97, 1.05) skewX(1.5deg); }
+  75% { transform: scale(1.02, 0.98) skewX(-1deg); }
+}
+.ts-flicker { transform-origin: 50% 100%; animation: ts-flicker 1.7s ease-in-out var(--d, 0ms) infinite; }
+@keyframes ts-ember {
+  0% { transform: translateY(6px); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-24px); opacity: 0; }
+}
+.ts-ember { animation: ts-ember 2.6s ease-out var(--d, 0ms) infinite; }
+@keyframes ts-halo {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+.ts-halo { animation: ts-halo 3.6s ease-in-out infinite; }
+html.anim-paused .ts-bob, html.anim-paused .ts-twinkle, html.anim-paused .ts-flicker,
+html.anim-paused .ts-ember, html.anim-paused .ts-halo { animation-play-state: paused; }
+html.perf-low .ts-bob, html.perf-low .ts-twinkle, html.perf-low .ts-flicker,
+html.perf-low .ts-ember, html.perf-low .ts-halo { animation: none; }
+
 /* ---------- Слой эффектов (lib/fx) ---------- */
 .fx-layer {
   position: fixed;
@@ -474,6 +527,30 @@ button.row:active,
 .lvlup-badge { animation: badge-drop 760ms var(--ease-out) 80ms backwards; }
 .lvlup-glow { animation: glow-in 900ms var(--ease-out) 200ms backwards; }
 
+/* Жетон уровня на «Прогрессе»: при открытии «приземляется» с пружиной, при
+   начислении опыта подпрыгивает. Только масштаб и поворот, без прозрачности —
+   если анимация не отыграет, жетон всё равно на месте и виден. */
+@keyframes badge-land {
+  0% { transform: scale(0.55) rotate(-16deg); }
+  60% { transform: scale(1.08) rotate(3deg); }
+  100% { transform: none; }
+}
+.badge-land { animation: badge-land 640ms var(--ease-spring); }
+@keyframes badge-bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14) rotate(-4deg); }
+  100% { transform: scale(1); }
+}
+.badge-bump { animation: badge-bump 460ms var(--ease-spring); }
+/* Блик по жетону (RewardBadge shine): полоса внутри формы проходит один раз.
+   В покое прозрачна — без анимации её просто нет. */
+@keyframes badge-glint {
+  0% { transform: translateX(-34px) skewX(-18deg); opacity: 0; }
+  20%, 80% { opacity: 1; }
+  100% { transform: translateX(34px) skewX(-18deg); opacity: 0; }
+}
+.badge-glint { opacity: 0; animation: badge-glint 950ms var(--ease-in-out) 380ms both; }
+
 @keyframes fx-fade {
   0% { opacity: 0; }
   15%, 75% { opacity: 1; }
@@ -487,7 +564,8 @@ button.row:active,
   .tab-in-r, .tab-in-l, .tab-in-deep, .tab-in-back,
   .stagger > *, .rise-in, .rise-in-d, .grow-x, .grow-y, .grow-y-d, .grow-x-d, .reveal-x, .reveal-down, .donut-seg,
   .pop, .char-in, .shake, .flash-row, .breathe, .fade-up, .tab-icon-pop,
-  .overlay-in, .card-in, .lvlup-badge, .lvlup-glow,
+  .overlay-in, .card-in, .lvlup-badge, .lvlup-glow, .badge-land, .badge-bump, .badge-glint,
+  .ts-drop, .ts-rise, .ts-bob, .ts-twinkle, .ts-flicker, .ts-ember, .ts-halo,
   .bubble-in-r, .bubble-in-l, .menu-in,
   .toast-in {
     animation: none !important;
