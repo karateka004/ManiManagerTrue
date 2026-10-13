@@ -54,8 +54,9 @@ export function TabBar({ value, onChange, onAdd }: Props) {
             {activeIndex >= 0 && (
               <span
                 aria-hidden
-                className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-brand-500/10 transition-transform duration-[420ms] ease-[cubic-bezier(0.34,1.32,0.64,1)] dark:bg-brand-500/20 motion-reduce:transition-none"
-                style={{ transform: `translateX(${activeIndex * 100}%)` }}
+                className="tab-capsule absolute inset-y-0 left-0 w-1/4 rounded-full bg-brand-500/10 transition-transform duration-[420ms] ease-[cubic-bezier(0.34,1.32,0.64,1)] dark:bg-brand-500/20 motion-reduce:transition-none"
+                // --tab-swipe — ход свайпа между экранами (App): капсула едет за пальцем.
+                style={{ transform: `translateX(calc((${activeIndex} + var(--tab-swipe, 0)) * 100%))` }}
               />
             )}
 

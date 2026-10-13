@@ -34,6 +34,7 @@ import { flyCoins, floatText, replay } from '../lib/fx'
 import { useBackButton } from '../lib/useBackButton'
 import { onRewardsReset, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
 import { useHeroSkin } from '../lib/useHeroSkin'
+import { useTabActive } from '../lib/tabActive'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
@@ -66,6 +67,9 @@ export function RewardsPage() {
   const skin = useHeroSkin()
   const reconcileReferralRewards = useStore((s) => s.reconcileReferralRewards)
 
+  // Вкладка может быть отрисована скрытой рядом с открытой (свайп, см. App):
+  // тогда она не ходит в сеть «при открытии», не трогает прокрутку и «Назад».
+  const active = useTabActive()
   const [referral, setReferral] = useState<{ count: number; friends: ReferralFriend[] } | null>(null)
   // Вложенный экран вкладки: Магазин или Титулы. `enter` — как он появился:
   // вглубь (справа), назад на хаб (слева, как в нативной навигации) или без
@@ -97,15 +101,16 @@ export function RewardsPage() {
     checkSubscription().then(setSubscribed).catch(() => {})
   }
   useEffect(() => {
+    if (!active) return
     recheckSub()
     // Вернулись из канала во вкладку — перепроверяем подписку.
     const onVis = () => { if (document.visibilityState === 'visible') recheckSub() }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
-  }, [])
+  }, [active])
 
   useEffect(() => {
-    if (!isBackendConfigured()) return
+    if (!active || !isBackendConfigured()) return
     let alive = true
     getReferralStats()
       .then((r) => {
@@ -115,12 +120,12 @@ export function RewardsPage() {
       })
       .catch(() => {})
     return () => { alive = false }
-  }, [reconcileReferralRewards])
+  }, [active, reconcileReferralRewards])
 
   // Закрепляем статистику участника в таблице лидеров (только геймификация, без сумм).
   const equipped = useStore((s) => s.equipped)
   useEffect(() => {
-    if (!isBackendConfigured() || !tg.isInTelegram) return
+    if (!active || !isBackendConfigured() || !tg.isInTelegram) return
     submitProfile({
       xp: lvl.xp,
       level: lvl.level,
@@ -131,7 +136,7 @@ export function RewardsPage() {
       frame: equipped.frame,
       accent: equipped.accent,
     }).catch(() => {})
-  }, [lvl.xp, lvl.level, transactions.length, coins, streak.best, equipped.title, equipped.frame, equipped.accent])
+  }, [active, lvl.xp, lvl.level, transactions.length, coins, streak.best, equipped.title, equipped.frame, equipped.accent])
 
   const metrics = {
     transactions: transactions.length,
@@ -217,11 +222,11 @@ export function RewardsPage() {
   useLayoutEffect(() => {
     if (shownScreen.current === view.screen) return
     shownScreen.current = view.screen
-    window.scrollTo(0, view.screen === 'hub' ? rewardsNav.hubScroll : 0)
-  }, [view.screen])
+    if (active) window.scrollTo(0, view.screen === 'hub' ? rewardsNav.hubScroll : 0)
+  }, [view.screen, active])
 
   // Системная «Назад» Telegram возвращает из Магазина и Титулов на хаб.
-  useBackButton(view.screen !== 'hub', () => goTo('hub'))
+  useBackButton(active && view.screen !== 'hub', () => goTo('hub'))
   const openLeaderboard = () => { track('open_leaderboard'); setLeaderboardOpen(true) }
 
   // Титулы уровня: сколько получено и сколько можно забрать прямо сейчас. Условий

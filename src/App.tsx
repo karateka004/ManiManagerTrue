@@ -1,10 +1,23 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  Component,
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { flushSync } from 'react-dom'
 import { TabBar, type Tab } from './components/TabBar'
 import { HomePage } from './pages/Home'
 import { useStore, type Transaction } from './store/transactions'
 import { useTheme, useAccent } from './lib/useTheme'
 import { useFormatLocale, useT } from './lib/i18n'
-import { tg, hapticSelect, hapticTap } from './lib/telegram'
+import { tg, hapticSelect, hapticTap, lockVerticalSwipes } from './lib/telegram'
 import { isBackendConfigured, notifyGift, parseRefParam, registerReferral, submitProfile } from './lib/api'
 import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
@@ -12,7 +25,8 @@ import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 import { useBackButton } from './lib/useBackButton'
 import { resetRewardsNav, rewardsNav } from './lib/rewardsNav'
-import { useSwipeNav } from './lib/useSwipeNav'
+import { useSwipeNav, type SwipeDir, type SwipeHost } from './lib/useSwipeNav'
+import { TabActiveContext } from './lib/tabActive'
 import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
@@ -24,13 +38,44 @@ import type { CategoryKind } from './store/categories'
 const TAB_ORDER: Record<Tab, number> = { home: 0, analytics: 1, rewards: 2, profile: 3, settings: 4 }
 /** Вкладки панели по порядку — их листает свайп. */
 const SWIPE_ORDER: Tab[] = ['home', 'analytics', 'rewards', 'profile']
-type NavDir = 'init' | 'r' | 'l' | 'deep' | 'back'
+/** Все экраны верхнего уровня — порядок панелей в DOM (ключи стабильны). */
+const ALL_TABS: Tab[] = ['home', 'analytics', 'rewards', 'profile', 'settings']
+/** `swipe` — экран приехал за пальцем и уже стоит на месте: своей анимации нет. */
+type NavDir = 'init' | 'r' | 'l' | 'deep' | 'back' | 'swipe'
 const ENTER_CLASS: Record<NavDir, string> = {
   init: 'tab-enter',
   r: 'tab-in-r',
   l: 'tab-in-l',
   deep: 'tab-in-deep',
   back: 'tab-in-back',
+  swipe: '',
+}
+
+/** Соседи экрана для свайпа: prev — палец вправо, next — влево. У Настроек — только Профиль. */
+function swipeNeighbors(tab: Tab): Record<SwipeDir, Tab | null> {
+  if (tab === 'settings') return { prev: 'profile', next: null }
+  const i = SWIPE_ORDER.indexOf(tab)
+  return { prev: SWIPE_ORDER[i - 1] ?? null, next: SWIPE_ORDER[i + 1] ?? null }
+}
+
+/** Какие экраны держать отрисованными: открытый и его соседей. */
+function keptFor(tab: Tab): Tab[] {
+  const n = swipeNeighbors(tab)
+  return ALL_TABS.filter((t) => t === tab || t === n.prev || t === n.next)
+}
+
+/** Сделать в простое; возвращает отмену. На iOS requestIdleCallback нет — таймер. */
+function whenIdle(fn: () => void): () => void {
+  const w = window as Window & {
+    requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number
+    cancelIdleCallback?: (id: number) => void
+  }
+  if (w.requestIdleCallback) {
+    const id = w.requestIdleCallback(fn, { timeout: 1000 })
+    return () => w.cancelIdleCallback?.(id)
+  }
+  const id = setTimeout(fn, 400)
+  return () => clearTimeout(id)
 }
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
@@ -43,10 +88,12 @@ const importSettings = () => import('./pages/Settings')
 // поэтому её чанк греем вместе со вкладками: первое открытие иначе стоит заметную паузу.
 const importAddSheet = () => import('./components/AddTransactionSheet')
 
-const AnalyticsPage = lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage })))
-const RewardsPage = lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage })))
-const ProfilePage = lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage })))
-const SettingsPage = lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage })))
+// memo: страницы живут скрытыми рядом с открытой (свайп), и смена открытой
+// вкладки не должна перерисовывать их целиком — пропсы у них не меняются.
+const AnalyticsPage = memo(lazyRetry(() => importAnalytics().then((m) => ({ default: m.AnalyticsPage }))))
+const RewardsPage = memo(lazyRetry(() => importRewards().then((m) => ({ default: m.RewardsPage }))))
+const ProfilePage = memo(lazyRetry(() => importProfile().then((m) => ({ default: m.ProfilePage }))))
+const SettingsPage = memo(lazyRetry(() => importSettings().then((m) => ({ default: m.SettingsPage }))))
 const IntroOverlay = lazyRetry(() => import('./components/Intro').then((m) => ({ default: m.IntroOverlay })))
 // Шторка операции живёт на уровне App, а не Главной: «плюс» в нижней панели
 // доступен с любой вкладки. Отдельный чанк, грузится по первому открытию.
@@ -217,8 +264,9 @@ export default function App() {
 
   // Переход на вкладку с отметкой действия-вовлечения (для заданий «за использование»).
   // Тап по уже открытой вкладке — плавно наверх, как в нативных приложениях.
+  // `via: 'swipe'` — экран уже приехал за пальцем, своя анимация появления не нужна.
   const changeTab = useCallback(
-    (next: Tab) => {
+    (next: Tab, via?: 'swipe') => {
       const cur = navRef.current.tab
       if (cur === next) {
         // Внутри «Прогресса» открыт Магазин или Титулы — сначала назад на
@@ -233,13 +281,15 @@ export default function App() {
       if (next === 'analytics') track('visit_analytics')
       scrollMemory.current[cur] = window.scrollY
       const dir: NavDir =
-        next === 'settings'
-          ? 'deep'
-          : cur === 'settings' && next === 'profile'
-            ? 'back'
-            : TAB_ORDER[next] > TAB_ORDER[cur]
-              ? 'r'
-              : 'l'
+        via === 'swipe'
+          ? 'swipe'
+          : next === 'settings'
+            ? 'deep'
+            : cur === 'settings' && next === 'profile'
+              ? 'back'
+              : TAB_ORDER[next] > TAB_ORDER[cur]
+                ? 'r'
+                : 'l'
       setNav({ tab: next, dir })
     },
     [track],
@@ -276,65 +326,101 @@ export default function App() {
   // Настройки — вложенный экран: системная «Назад» Telegram возвращает в Профиль.
   useBackButton(tab === 'settings', openProfile)
 
-  // Свайп вправо-влево — соседняя вкладка в порядке панели. На вложенных
-  // экранах (Настройки, Магазин, Титулы) свайп вправо — «назад», как в iOS.
-  const swipeRef = useRef<HTMLDivElement>(null)
-  const onSwipe = useCallback(
-    (dir: 'next' | 'prev') => {
-      const cur = navRef.current.tab
-      if (cur === 'settings' || (cur === 'rewards' && rewardsNav.screen !== 'hub')) {
-        if (dir !== 'prev') return false
+  // Сворачивание мини-аппа вертикальным свайпом выключено на всё время работы.
+  // На iPhone Telegram забирал себе косой свайп вбок, и приложение уезжало вниз
+  // карточкой. Выключать его только на время жеста поздно: свой жест Telegram опознаёт
+  // раньше, чем мы поймём, что жест горизонтальный. Свернуть и закрыть
+  // приложение по-прежнему можно, потянув за шапку Telegram. Шторки берут ту же
+  // блокировку со счётчиком — их закрытие её не снимет.
+  useEffect(() => lockVerticalSwipes(), [])
+
+  // Какие экраны держим отрисованными, кроме открытого: соседей по свайпу.
+  // Дорисовываем в простое после переключения — сам переход их не ждёт.
+  const [kept, setKept] = useState<Tab[]>([])
+  useEffect(() => {
+    const want = keptFor(tab)
+    return whenIdle(() => setKept((k) => (sameTabs(k, want) ? k : want)))
+  }, [tab])
+  const panelRefs = useRef<Partial<Record<Tab, HTMLDivElement | null>>>({})
+  const setPanelRef = useCallback((t: Tab, el: HTMLDivElement | null) => {
+    panelRefs.current[t] = el
+  }, [])
+
+  // Свайп вправо-влево — соседняя вкладка в порядке панели, как карусель (lib/useSwipeNav).
+  // На вложенных экранах свайп вправо — «назад», как в iOS: с Настроек под
+  // пальцем уже виден Профиль; из Магазина и Титулов — хаб «Прогресса».
+  const pagerRef = useRef<HTMLDivElement>(null)
+  const swipeHost = useMemo<SwipeHost>(
+    () => ({
+      current: () => panelRefs.current[navRef.current.tab] ?? null,
+      target: (dir) => {
+        const cur = navRef.current.tab
+        if (cur === 'rewards' && rewardsNav.screen !== 'hub') return dir === 'prev' ? { kind: 'back' } : null
+        const next = swipeNeighbors(cur)[dir]
+        if (!next) return null
+        return { kind: 'panel', panel: panelRefs.current[next] ?? null, scroll: scrollMemory.current[next] ?? 0 }
+      },
+      begin: () => {
+        const want = keptFor(navRef.current.tab)
+        setKept((k) => (want.every((t) => k.includes(t)) ? k : [...new Set([...k, ...want])]))
+      },
+      progress: (p, follow) => {
+        // Капсула нижней панели едет вместе с экранами. С Настроек — нет: там
+        // подсвечен Профиль, и «назад» в него капсулу не двигает. Переменная —
+        // на самой капсуле: на <html> её наследовал бы весь документ, и браузер
+        // пересчитывал бы стили всех трёх страниц на каждом кадре жеста.
+        const capsule = document.querySelector<HTMLElement>('.tab-capsule')
+        if (!capsule) return
+        const value = navRef.current.tab === 'settings' ? 0 : p
+        capsule.style.setProperty('--tab-swipe', value ? value.toFixed(4) : '0')
+        capsule.style.transition = follow ? 'none' : ''
+      },
+      commit: (dir) => {
+        const cur = navRef.current.tab
         hapticSelect()
-        if (cur === 'settings') changeTab('profile')
-        else resetRewardsNav(false)
-        return true
-      }
-      const next = SWIPE_ORDER[SWIPE_ORDER.indexOf(cur) + (dir === 'next' ? 1 : -1)]
-      if (!next) return false
-      hapticSelect()
-      changeTab(next)
-      return true
-    },
+        if (cur === 'rewards' && rewardsNav.screen !== 'hub') {
+          flushSync(() => resetRewardsNav(false))
+          return
+        }
+        const next = swipeNeighbors(cur)[dir]
+        if (!next) return
+        // Соседа не успели отрисовать — пусть появится обычной анимацией.
+        const ready = Boolean(panelRefs.current[next])
+        flushSync(() => changeTab(next, ready ? 'swipe' : undefined))
+      },
+    }),
     [changeTab],
   )
-  useSwipeNav(swipeRef, onSwipe)
+  useSwipeNav(pagerRef, swipeHost)
+
+  const pageProps = useMemo<PageProps>(
+    () => ({ openProfile, openEdit, openSearch, openAssistant, openSettings, openRewards }),
+    [openProfile, openEdit, openSearch, openAssistant, openSettings, openRewards],
+  )
 
   return (
     <div className="min-h-screen" style={{ paddingTop: 'var(--safe-top)' }}>
       <DemoBanner />
       {/*
-        Контейнер активной вкладки. Намеренно НЕ используем framer-motion
-        `AnimatePresence mode="wait"`: он (а) монтировал новую вкладку только
-        после завершения exit-анимации старой — если анимация не завершалась
-        (rAF приостановлен в свёрнутом webview), новая вкладка не появлялась;
-        (б) держал контент на `initial:opacity 0`, и при незапустившейся
-        entrance-анимации вся вкладка (включая суммы в Аналитике/Календаре)
-        оставалась невидимой. `key={tab}` ремонтирует поддерево при смене
-        вкладки и перезапускает CSS-анимацию появления (`.tab-enter` при
-        запуске, дальше — по направлению: `.tab-in-r/-l`, Настройки —
-        `.tab-in-deep`). У всех базовая непрозрачность 1: контент виден всегда.
+        Вкладки. Открытая — в потоке документа, её прокручивает окно. Соседние
+        отрисованы рядом, но скрыты и вне потока (.tab-panel[data-off]): свайп
+        показывает их сразу. Появление — CSS-класс на .tab-host, а не framer
+        `AnimatePresence`: тот монтировал новую вкладку только после exit-анимации
+        старой и держал её на `initial:opacity 0`, и при остановленном rAF
+        (свёрнутый webview) вкладка не появлялась. У CSS-классов базовая
+        непрозрачность 1: контент виден всегда.
       */}
-      <div ref={swipeRef} style={{ touchAction: 'pan-y pinch-zoom' }}>
-        <div key={tab} className={`tab-host ${ENTER_CLASS[nav.dir]}`}>
-          <ChunkErrorBoundary>
-            <Suspense fallback={<PageFallback />}>
-              {tab === 'home' && (
-                <HomePage
-                  onOpenProfile={openProfile}
-                  onEditTx={openEdit}
-                  onOpenSearch={openSearch}
-                  onOpenAssistant={openAssistant}
-                />
-              )}
-              {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
-              {tab === 'rewards' && <RewardsPage />}
-              {tab === 'profile' && (
-                <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />
-              )}
-              {tab === 'settings' && <SettingsPage onBack={openProfile} />}
-            </Suspense>
-          </ChunkErrorBoundary>
-        </div>
+      <div ref={pagerRef} className="tab-pager" style={{ touchAction: 'pan-y pinch-zoom' }}>
+        {ALL_TABS.filter((t) => t === tab || kept.includes(t)).map((t) => (
+          <TabPanel
+            key={t}
+            tab={t}
+            active={t === tab}
+            enter={t === tab ? ENTER_CLASS[nav.dir] : ''}
+            setRef={setPanelRef}
+            pages={pageProps}
+          />
+        ))}
       </div>
 
       {/* На «Настройках» подсвечиваем Профиль (у настроек нет своей вкладки). */}
@@ -372,6 +458,73 @@ export default function App() {
     </div>
   )
 }
+
+interface PageProps {
+  openProfile: () => void
+  openEdit: (t: Transaction) => void
+  openSearch: () => void
+  openAssistant: () => void
+  openSettings: () => void
+  openRewards: () => void
+}
+
+function sameTabs(a: Tab[], b: Tab[]): boolean {
+  return a.length === b.length && a.every((t, i) => t === b[i])
+}
+
+/**
+ * Панель одного экрана. memo: App перерисовывается на каждую шторку и поиск,
+ * а скрытым соседям это незачем — у них меняются только свои данные из стора.
+ *
+ * Скрытая панель — `inert` и `aria-hidden`: ни фокуса, ни озвучки, ни нажатий.
+ * Своим эффектам она сообщает это через TabActiveContext.
+ */
+const TabPanel = memo(function TabPanel({
+  tab,
+  active,
+  enter,
+  setRef,
+  pages,
+}: {
+  tab: Tab
+  active: boolean
+  enter: string
+  setRef: (t: Tab, el: HTMLDivElement | null) => void
+  pages: PageProps
+}) {
+  const ref = useCallback((el: HTMLDivElement | null) => setRef(tab, el), [setRef, tab])
+  return (
+    <div
+      ref={ref}
+      className="tab-panel"
+      data-off={active ? undefined : ''}
+      aria-hidden={active ? undefined : true}
+      // `inert` React 18 не знает — передаём строкой, как обычный атрибут.
+      {...(active ? null : ({ inert: '' } as Record<string, string>))}
+    >
+      <div className={`tab-host ${enter}`}>
+        <TabActiveContext.Provider value={active}>
+          <ChunkErrorBoundary>
+            <Suspense fallback={active ? <PageFallback /> : null}>
+              {tab === 'home' && (
+                <HomePage
+                  onOpenProfile={pages.openProfile}
+                  onEditTx={pages.openEdit}
+                  onOpenSearch={pages.openSearch}
+                  onOpenAssistant={pages.openAssistant}
+                />
+              )}
+              {tab === 'analytics' && <AnalyticsPage onEditTx={pages.openEdit} />}
+              {tab === 'rewards' && <RewardsPage />}
+              {tab === 'profile' && <ProfilePage onOpenSettings={pages.openSettings} onOpenRewards={pages.openRewards} />}
+              {tab === 'settings' && <SettingsPage onBack={pages.openProfile} />}
+            </Suspense>
+          </ChunkErrorBoundary>
+        </TabActiveContext.Provider>
+      </div>
+    </div>
+  )
+})
 
 /**
  * Крайний предохранитель: если чанк всё-таки не загрузился (и авто-reload из

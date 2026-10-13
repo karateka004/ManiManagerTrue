@@ -95,8 +95,9 @@ export function PeriodSwitcher() {
         {menuOpen && (
           <>
             {/* клик-вне закрывает */}
-            <button aria-hidden tabIndex={-1} onClick={() => setMenuOpen(false)} className="fixed inset-0 z-40 cursor-default" />
-            <div className="menu-in absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-2xl bg-surface-raised p-1 shadow-raised dark:shadow-raised-dark">
+            {/* data-swipe-ignore: пока меню открыто, свайп по экрану не листает вкладки. */}
+            <button aria-hidden tabIndex={-1} onClick={() => setMenuOpen(false)} data-swipe-ignore className="fixed inset-0 z-40 cursor-default" />
+            <div data-swipe-ignore className="menu-in absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-2xl bg-surface-raised p-1 shadow-raised dark:shadow-raised-dark">
               <MoreItem label={tr('period.year')} active={period.mode === 'year'} onClick={() => pickMore('year')} />
               <MoreItem label={tr('common.all_time')} active={period.mode === 'all'} onClick={() => pickMore('all')} />
               <MoreItem label={tr('period.custom')} active={period.mode === 'range'} onClick={() => pickMore('range')} />

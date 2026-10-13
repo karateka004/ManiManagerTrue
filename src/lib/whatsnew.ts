@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.4.0'
+export const APP_VERSION = '2.4.1'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,25 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.4.1',
+    date: '2026-10-14',
+    title: { ru: 'Свайп как карусель', en: 'Swiping, like a carousel' },
+    items: [
+      {
+        text: {
+          ru: 'Соседний экран едет вместе с пальцем, а отпустишь — встаёт на место без лишней анимации. Подсветка в нижней панели тоже идёт за пальцем',
+          en: 'The next screen now slides in right under your finger and settles in place when you let go. The highlight in the bottom bar follows along',
+        },
+      },
+      {
+        text: {
+          ru: 'На iPhone экран больше не застревает сдвинутым, а приложение не уезжает вниз, если свайп вышел немного косым. Свернуть приложение можно, потянув за шапку Telegram',
+          en: 'On iPhone the screen no longer gets stuck halfway, and the app no longer slides down on a slightly diagonal swipe. To minimize the app, drag the Telegram header',
+        },
+      },
+    ],
+  },
   {
     version: '2.4.0',
     date: '2026-10-13',
