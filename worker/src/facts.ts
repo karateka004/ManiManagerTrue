@@ -52,6 +52,24 @@ function dayText(day: number): string {
   return `${d.getUTCDate()} ${MONTHS_GEN_RU[d.getUTCMonth()]}`
 }
 
+/**
+ * Округление суммы для текста: до копеек, пока сумма меньше сотни (у евро и
+ * долларов «3,50 €» иначе становилось «4 €», и бот спорил сам с собой), дальше —
+ * до целых: «939,23 ₴» в среднем за день — шум.
+ */
+export function roundMoney(n: number): number {
+  return Math.abs(n) < 100 ? Math.round(n * 100) / 100 : Math.round(n)
+}
+
+/** «1 день», «3 дня», «5 дней». */
+export function plural(n: number, forms: [string, string, string]): string {
+  const a = Math.abs(n) % 100
+  const b = a % 10
+  const form = a > 10 && a < 20 ? forms[2] : b === 1 ? forms[0] : b >= 2 && b <= 4 ? forms[1] : forms[2]
+  return `${n} ${form}`
+}
+const DAYS: [string, string, string] = ['день', 'дня', 'дней']
+
 export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): Facts {
   const numbers = new Set<number>()
   const percents = new Set<number>()
@@ -59,8 +77,8 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
 
   /** Сумма в выжимку: округлённая, отформатированная и запомненная. */
   const m = (n: number): string => {
-    const v = Math.round(n)
-    numbers.add(Math.abs(v))
+    const v = roundMoney(n)
+    numbers.add(Math.abs(Math.round(v)))
     return formatMoney(v, cur)
   }
   /** Процент в выжимку. */
@@ -72,9 +90,9 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   const names = new Map(ctx.categories.map((c) => [c.id, c.name]))
   const cat = (id: string): string => `«${(lang === 'en' && CATEGORY_EN[id]) || names.get(id) || id}»`
 
-  if (!ctx.hasBlob && ctx.ops === 0) {
+  if (ctx.opsAny === 0 && ctx.pending === 0 && !ctx.goals.length && !(ctx.monthlyBudget > 0)) {
     return {
-      text: 'ДАННЫХ НЕТ: человек ещё ничего не записывал и приложение не открывал. Числа называть нельзя — их нет.',
+      text: 'ДАННЫХ НЕТ: записей пока нет ни одной. Числа называть нельзя — их нет; предложи записать первую трату.',
       numbers,
       percents,
     }
@@ -89,7 +107,11 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   const daysInMonth = ctx.daysPassed + ctx.daysLeft - 1
   const L: string[] = []
 
-  L.push(`ДЕНЬГИ ЧЕЛОВЕКА. Сегодня ${date} (${weekday}). Валюта: ${cur ?? 'неизвестна'}.`)
+  L.push(
+    cur
+      ? `ДЕНЬГИ ЧЕЛОВЕКА. Сегодня ${date} (${weekday}). Валюта: ${cur}.`
+      : `ДЕНЬГИ ЧЕЛОВЕКА. Сегодня ${date} (${weekday}). Валюта неизвестна — суммы пиши без знака валюты и не придумывай его.`,
+  )
   if (ctx.firstDay !== null) L.push(`Учёт ведётся с ${dayText(ctx.firstDay)} ${dateOf(ctx.firstDay).getUTCFullYear()} года; всего операций: ${ctx.ops}.`)
   L.push('Все суммы уже посчитаны — копируй их как есть, вместе со значком валюты.')
 
@@ -104,9 +126,12 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
 
   /* ---------- Месяц ---------- */
   L.push('')
-  L.push(`ЭТОТ МЕСЯЦ — ${month} (прошло ${ctx.daysPassed} из ${daysInMonth} дней)`)
-  L.push(`- расходы ${m(ctx.spentMonth)}${compare(ctx.spentMonth, ctx.spentPrevSameDays, ctx.daysPassed, prevMonthGen, m, p)}`)
-  L.push(`- доходы ${m(ctx.incomeMonth)}${compare(ctx.incomeMonth, ctx.incomePrevSameDays, ctx.daysPassed, prevMonthGen, m, p)}`)
+  L.push(`ЭТОТ МЕСЯЦ — ${month} (прошло ${ctx.daysPassed} из ${daysInMonth} ${daysInMonth % 10 === 1 && daysInMonth !== 11 ? 'дня' : 'дней'})`)
+  if (ctx.trackedDays < ctx.daysPassed) L.push(`- учёт в этом месяце ведётся ${plural(ctx.trackedDays, DAYS)} (с ${ctx.daysPassed - ctx.trackedDays + 1}-го числа)`)
+  // Сравнивать с прошлым месяцем честно, только если учёт покрывает его с 1-го.
+  const cmp = (a: number, b: number) => (ctx.prevComparable ? compare(a, b, ctx.daysPassed, prevMonthGen, m, p) : '')
+  L.push(`- расходы ${m(ctx.spentMonth)}${cmp(ctx.spentMonth, ctx.spentPrevSameDays)}`)
+  L.push(`- доходы ${m(ctx.incomeMonth)}${cmp(ctx.incomeMonth, ctx.incomePrevSameDays)}`)
   if (ctx.incomeMonth > 0) {
     const left = ctx.incomeMonth - ctx.spentMonth
     L.push(
@@ -115,11 +140,12 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
         : `- расходы превысили доходы месяца на ${m(-left)}`,
     )
   }
-  if (ctx.daysPassed >= 1 && ctx.spentMonth > 0) {
-    const perDay = ctx.spentMonth / ctx.daysPassed
+  if (ctx.trackedDays >= 1 && ctx.spentMonth > 0) {
+    // Делим на дни учёта, а не на число месяца: у начавшего 13-го это 1 день.
+    const perDay = ctx.spentMonth / ctx.trackedDays
     L.push(`- в среднем в день ${m(perDay)}`)
-    if (ctx.daysPassed >= 3 && ctx.daysLeft > 1) {
-      L.push(`- прогноз расходов на весь ${month} при таком темпе: ${m(perDay * daysInMonth)}`)
+    if (ctx.trackedDays >= 3 && ctx.daysLeft > 1) {
+      L.push(`- прогноз расходов на весь ${month} при таком темпе: ${m(ctx.spentMonth + perDay * (ctx.daysLeft - 1))}`)
     }
   }
   if (ctx.peakDay) {
@@ -137,8 +163,8 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   if (ctx.incomeByCategory.length) {
     L.push(`- доходы по источникам: ` + ctx.incomeByCategory.slice(0, 6).map((c) => `${cat(c.id)} ${m(c.sum)}`).join(', '))
   }
-  const movers = topMovers(ctx, cat, m, p)
-  if (movers) L.push(`- сильнее всего изменилось к тем же ${ctx.daysPassed} дням прошлого месяца: ${movers}`)
+  const movers = ctx.prevComparable ? topMovers(ctx, cat, m, p) : ''
+  if (movers) L.push(`- сильнее всего изменилось к тем же ${plural(ctx.daysPassed, ['дню', 'дням', 'дням'])} прошлого месяца: ${movers}`)
   const unusual = unusualCategories(ctx, cat, m)
   if (unusual) L.push(`- ${unusual}`)
   for (const o of ctx.otherCurrencies) {
@@ -167,8 +193,8 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
         ? `- на сегодня осталось ${m(left.leftToday)} из ${m(left.perDay)}`
         : `- сегодня ПЕРЕРАСХОД на ${m(-left.leftToday)} сверх дневного лимита ${m(left.perDay)}`,
     )
-    if (ctx.daysPassed >= 3 && ctx.daysLeft > 1 && ctx.spentMonth > 0) {
-      const forecast = (ctx.spentMonth / ctx.daysPassed) * daysInMonth
+    if (ctx.trackedDays >= 3 && ctx.daysLeft > 1 && ctx.spentMonth > 0) {
+      const forecast = ctx.spentMonth + (ctx.spentMonth / ctx.trackedDays) * (ctx.daysLeft - 1)
       const diff = ctx.monthlyBudget - forecast
       L.push(
         diff >= 0
@@ -195,7 +221,7 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   /* ---------- Прошлый месяц и история ---------- */
   if (ctx.spentPrevMonth > 0 || ctx.incomePrevMonth > 0) {
     L.push('')
-    L.push(`ПРОШЛЫЙ МЕСЯЦ — ${prevMonth}, целиком`)
+    L.push(ctx.prevFrom ? `ПРОШЛЫЙ МЕСЯЦ — ${prevMonth}, учёт с ${ctx.prevFrom}-го (не полный месяц)` : `ПРОШЛЫЙ МЕСЯЦ — ${prevMonth}, целиком`)
     L.push(`- расходы ${m(ctx.spentPrevMonth)}, доходы ${m(ctx.incomePrevMonth)}`)
     if (ctx.incomePrevMonth > 0) {
       const saved = ctx.incomePrevMonth - ctx.spentPrevMonth
@@ -271,7 +297,7 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
     for (const g of ctx.goals) {
       const gm = (n: number) => {
         numbers.add(Math.round(n))
-        return formatMoney(Math.round(n), g.currency ?? cur)
+        return formatMoney(roundMoney(n), g.currency ?? cur)
       }
       const done = g.saved >= g.target
       L.push(
@@ -296,7 +322,7 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   } else {
     L.push('- накопительных целей нет (ставятся в приложении: Профиль → Планирование → Цели)')
   }
-  if (ctx.pending > 0) L.push(`- ${ctx.pending} записей из чата ещё не перенесены в приложение (перенесутся при открытии), но в итогах выше уже учтены`)
+  if (ctx.pending > 0) L.push(`- ${plural(ctx.pending, ['запись', 'записи', 'записей'])} из чата ещё не перенесены в приложение (перенесутся при открытии), но в итогах выше уже учтены`)
 
   return { text: L.join('\n'), numbers, percents }
 }
@@ -312,9 +338,10 @@ function compare(
 ): string {
   if (before <= 0 || days < 3) return ''
   const delta = ((now - before) / before) * 100
-  if (Math.round(delta) === 0) return ` — столько же, сколько за те же ${days} дней ${prevMonthGen} (${m(before)})`
+  const span = plural(days, ['день', 'дня', 'дней'])
+  if (Math.round(delta) === 0) return ` — столько же, сколько за те же ${span} ${prevMonthGen} (${m(before)})`
   const word = delta > 0 ? `на ${p(delta)} больше` : `на ${p(-delta)} меньше`
-  return ` — ${word}, чем за те же ${days} дней ${prevMonthGen} (${m(before)}), разница ${m(Math.abs(now - before))}`
+  return ` — ${word}, чем за те же ${span} ${prevMonthGen} (${m(before)}), разница ${m(Math.abs(now - before))}`
 }
 
 /** Сколько категорий-движителей показываем. Три — это уже объяснение, а не список. */

@@ -65,9 +65,11 @@ const rejectsThinkingConfig = new Set<string>()
  */
 export type Thinking = 'LOW' | 'MEDIUM'
 
+const isGemini3 = (model: string) => /^gemini-([3-9]|\d{2,})/.test(model)
+
 function thinkingConfig(model: string, level: Thinking | undefined): Record<string, unknown> | undefined {
   if (!level || rejectsThinkingConfig.has(model)) return undefined
-  if (/^gemini-([3-9]|\d{2,})/.test(model)) return { thinkingLevel: level }
+  if (isGemini3(model)) return { thinkingLevel: level }
   if (/^gemini-2\./.test(model)) return { thinkingBudget: 0 }
   return undefined
 }
@@ -160,7 +162,7 @@ export async function generateJson(
     system: string
     contents: { role: 'user' | 'model'; parts: { text: string }[] }[]
     schema: unknown
-    temperature: number
+    temperature?: number
     maxOutputTokens: number
     timeoutMs?: number
     thinking?: Thinking
@@ -169,9 +171,11 @@ export async function generateJson(
   const generationConfig: Record<string, unknown> = {
     responseMimeType: 'application/json',
     responseSchema: opts.schema,
-    temperature: opts.temperature,
     maxOutputTokens: opts.maxOutputTokens,
   }
+  // Gemini 3 и новее просят температуру не трогать: ниже 1.0 они, по документации,
+  // склонны зацикливаться — а зацикленный JSON обрезается и теряется целиком.
+  if (!isGemini3(model) && opts.temperature !== undefined) generationConfig.temperature = opts.temperature
   const thinking = thinkingConfig(model, opts.thinking)
   if (thinking) generationConfig.thinkingConfig = thinking
 
@@ -182,7 +186,10 @@ export async function generateJson(
   }
   const timeout = opts.timeoutMs ?? TIMEOUT_MS
   let raw = await callModel(model, key, body, timeout)
-  if (raw.status === 400 && generationConfig.thinkingConfig) {
+  // В «не понимает thinkingConfig» модель попадает только при отказе именно из-за
+  // него: любой другой 400 иначе навсегда (до перезапуска изолята) лишал бы её
+  // нужного уровня размышлений.
+  if (raw.status === 400 && generationConfig.thinkingConfig && /thinking/i.test(raw.text ?? '')) {
     // Запоминаем отказ в памяти изолята: лишний поход в сеть случится один раз
     // после его запуска, а не на каждом сообщении.
     rejectsThinkingConfig.add(model)
@@ -191,8 +198,16 @@ export async function generateJson(
   }
   if (!raw.ok || !raw.text) return { ok: false, status: raw.status }
   try {
-    const data = JSON.parse(raw.text) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-    const payload = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('')
+    const data = JSON.parse(raw.text) as {
+      candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[]
+    }
+    const cand = data?.candidates?.[0]
+    // Упёрлись в потолок токенов (размышления тоже входят) — JSON обрезан.
+    if (cand?.finishReason === 'MAX_TOKENS') {
+      console.error(`[gemini] ${model}: ответ обрезан по MAX_TOKENS`)
+      return { ok: false, status: 200 }
+    }
+    const payload = cand?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('')
     if (!payload) return { ok: false, status: 200 }
     return { ok: true, value: JSON.parse(payload) }
   } catch {
@@ -254,7 +269,7 @@ async function callModel(
       // В лог — чтобы «бот перестал понимать» не пришлось выяснять наугад:
       // кончились деньги, протух ключ и сменившаяся модель выглядят одинаково.
       console.error('[gemini] ' + res.status + ' ' + text.slice(0, 200).replace(/\s+/g, ' '))
-      return { ok: false, status: res.status }
+      return { ok: false, status: res.status, text }
     }
     return { ok: true, status: res.status, text }
   } catch (e) {

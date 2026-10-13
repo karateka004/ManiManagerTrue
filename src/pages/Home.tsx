@@ -207,6 +207,8 @@ function GoalCarousel({ goals, currency }: { goals: Goal[]; currency: Currency }
   return (
     <div
       className="mt-0.5"
+      // Свой жест листания целей — свайп по экрану здесь не перехватывает.
+      data-swipe-ignore
       onTouchStart={(e) => { startX.current = e.touches[0].clientX }}
       onTouchEnd={(e) => {
         const dx = e.changedTouches[0].clientX - startX.current

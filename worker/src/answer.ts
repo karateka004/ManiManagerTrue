@@ -158,7 +158,8 @@ function buildAnswerSystem(facts: Facts, lang: Lang): string {
     '- Категории называй в кавычках, как в фактах («Кафе»), и не склоняй их.',
     '- Перерасход называй перерасходом, а не «осталось минус».',
     '- Совет — практический и привязанный к фактам: где урезать, какой лимит поставить, сколько можно тратить в день, сколько откладывать на цель. Общие советы — только если спросили «как экономить» или «как копить», коротко. Никаких советов про инвестиции, кредиты, налоги и конкретные банки.',
-    '- «Могу ли я купить X за N?» — сравни N с остатком на сегодня и до конца месяца из фактов и скажи прямо; бюджета нет — скажи, что без бюджета не посчитать, и как его задать.',
+    '- «Могу ли я купить X за N?» — сравни N с остатком на сегодня и до конца месяца из фактов и скажи прямо; бюджета нет — сравни со средним остатком за месяц, если он есть в фактах, и подскажи, как задать бюджет для точного ответа.',
+    '- «За неделю» без уточнения — с понедельника, как в приложении; «за 7 дней», «за последнюю неделю» — последние 7 дней.',
     '- Вопрос про приложение (как поставить бюджет, сменить валюту, выключить напоминания, где найти) — ответь по разделу «О ПРИЛОЖЕНИИ» короткими шагами в строках («Шаг 1» — …).',
     '- Приветствие, благодарность, «что ты умеешь» — ответь коротко и предложи пару вопросов в followups.',
     '- Вопрос не про деньги и не про приложение — скажи, что помогаешь с деньгами и Кошелём, и предложи, о чём спросить.',
@@ -169,7 +170,7 @@ function buildAnswerSystem(facts: Facts, lang: Lang): string {
     '- lead — суть в одном-двух коротких предложениях, с главным числом.',
     '- sections — от 0 до 3 блоков. heading — до 30 символов; icon — одно из: money, chart, calendar, budget, category, goal, income, warning, tip, help; rows — от 1 до 6 строк. label — коротко («Кафе», «Осталось на день», «Шаг 1»), value — значение из фактов, можно с короткой припиской в скобках («4 200 ₴ (34%)»). Не повторяй в строках то, что уже сказано в lead. На простой вопрос хватит lead и одного блока, а то и вовсе без блоков.',
     '- tip — одно практическое наблюдение или совет до 200 символов, или пустая строка. Не повторяй lead.',
-    '- followups — 2–3 коротких вопроса-продолжения до 32 символов от лица человека, на которые есть ответ в фактах или в разделе о приложении («А в прошлом месяце?», «На что уходит больше всего?», «Сколько можно в день?»). Не предлагай то, на что только что ответил.',
+    '- followups — 2–3 коротких вопроса-продолжения до 32 символов от лица человека и без рода («Сколько ушло на кафе?», а не «Сколько я потратил?»), на которые есть ответ в фактах или в разделе о приложении («А в прошлом месяце?», «На что уходит больше всего?», «Сколько можно в день?»). Не предлагай то, на что только что ответил.',
     '',
     APP_GUIDE,
     '',
@@ -215,17 +216,18 @@ export async function askAnswer(
     system: buildAnswerSystem(facts, lang),
     contents,
     schema: ANSWER_SCHEMA,
-    // Немного свободы формулировкам, но не числам: числа всё равно сверяются.
-    temperature: 0.3,
-    maxOutputTokens: 1500,
+    // С запасом: в предел входят и размышления модели, и на 1500 ответ мог
+    // оборваться посередине JSON — тогда отвечали правила.
+    maxOutputTokens: 4096,
     timeoutMs: ANSWER_TIMEOUT_MS,
     thinking: 'LOW' as const,
   }
+  const started = Date.now()
   let res = await generateJson(key, model, opts)
-  // Сильная модель не ответила по своей вине (нет такой, нет доступа, кончилась
-  // её квота, у неё сбой) — отвечаем лёгкой. Таймаут (status 0) сюда не входит:
-  // время уже потрачено, человек ждёт — дальше правила.
-  if (!res.ok && model !== fallbackModel && res.status !== 0 && res.status !== 200) {
+  // Сильная модель не ответила (нет такой, нет доступа, кончилась её квота, сбой,
+  // оборванный или битый ответ) — отвечаем лёгкой. Таймаут (status 0) сюда не
+  // входит, как и долгий отказ: время уже потрачено, человек ждёт — дальше правила.
+  if (!res.ok && model !== fallbackModel && res.status !== 0 && Date.now() - started < 8000) {
     if (res.status === 404 || res.status === 403) failedAnswerModels.add(model)
     res = await generateJson(key, fallbackModel, { ...opts, timeoutMs: 8000 })
   }
@@ -264,8 +266,10 @@ export function normalizeCard(raw: unknown): AnswerCard | null {
     if (heading && rows.length) sections.push({ heading, icon, rows })
   }
   const followups = (Array.isArray(r.followups) ? r.followups : [])
-    .map((f) => str(f, LIMITS.followup))
-    .filter((f) => f.length >= 3)
+    // Длинное продолжение выбрасываем, а не обрезаем: обрубок вопроса на кнопке
+    // хуже, чем две кнопки вместо трёх.
+    .map((f) => str(f, 200))
+    .filter((f) => f.length >= 3 && f.length <= LIMITS.followup)
     .filter((f, i, all) => all.indexOf(f) === i)
     .slice(0, LIMITS.followups)
   const card: AnswerCard = {
@@ -424,7 +428,7 @@ const TOPIC_RULES: [Topic, RegExp][] = [
   ['yesterday', rx(`(вчера|yesterday)`)],
   ['today', rx(`(сегодн|today)`)],
   ['week', rx(`(недел|week)`)],
-  ['income', rx(`(доход|заработ|зарплат|получил|income|earn|salary)`)],
+  ['income', rx(`(доход|заработ|зарплат|получил|пришл|поступ|income|earn|salary)`)],
   ['categories', rx(`(категор|на что|куда (уход|ушл|трач|деньги)|больше всего|по статьям|структур|categor|where (does|did|do)|biggest)`)],
   ['month', rx(`(месяц|итог|сколько|потратил|трачу|расход|обзор|статистик|отчет|отчёт|анализ|деньг|финанс|как (у меня )?дела|ситуаци|month|spent|spend|total|overview|summary|money|finance|how am i doing)`)],
 ]
@@ -432,8 +436,28 @@ const TOPIC_RULES: [Topic, RegExp][] = [
 /** О чём вопрос — по словам. Грубо, но без модели лучше грубо, чем «не нашёл сумму». */
 export function topicOf(text: string): Topic {
   const t = text.toLowerCase().replace(/ё/g, 'е')
-  for (const [topic, re] of TOPIC_RULES) if (re.test(t)) return topic
-  return 'unknown'
+  // «Привет, сколько я потратил за неделю?» — вопрос про неделю, а не приветствие:
+  // вежливость побеждает только в коротком сообщении или когда больше не за что зацепиться.
+  const short = wordCount(t) <= 3
+  let polite: Topic | null = null
+  for (const [topic, re] of TOPIC_RULES) {
+    if (!re.test(t)) continue
+    if (topic !== 'greeting' && topic !== 'thanks') return topic
+    if (short) return topic
+    polite ??= topic
+  }
+  return polite ?? 'unknown'
+}
+
+const wordCount = (t: string) => t.split(/[\s,.!?]+/).filter(Boolean).length
+
+/**
+ * «Привет», «спасибо!» — на это отвечают правила, без модели: ответ тот же,
+ * а вызов модели из суточной квоты человека не тратится.
+ */
+export function isSmallTalk(text: string): boolean {
+  const topic = topicOf(text)
+  return (topic === 'greeting' || topic === 'thanks') && wordCount(text.toLowerCase()) <= 3
 }
 
 const MONTHS = {
@@ -444,7 +468,7 @@ const MONTHS = {
 /** Тексты карточек без модели. Подстановки — {x}. */
 const RT = {
   ru: {
-    q_today: 'Сколько я потратил сегодня?',
+    q_today: 'Сколько ушло сегодня?',
     q_week: 'А за неделю?',
     q_month: 'А за месяц?',
     q_prev: 'А в прошлом месяце?',
@@ -452,7 +476,7 @@ const RT = {
     q_cats: 'На что уходит больше всего?',
     q_left: 'Сколько осталось на сегодня?',
     q_help: 'Что ты умеешь?',
-    q_income: 'Сколько я заработал?',
+    q_income: 'Сколько пришло за месяц?',
     q_goal: 'Когда накоплю на цель?',
     nodata_t: 'Начнём с первой траты',
     nodata_l: 'Записей пока нет. Напиши трату обычными словами — например, «кофе 300», — и я начну считать.',
@@ -640,7 +664,7 @@ export function rulesCard(question: string, ctx: UserContext, nowMs: number, lan
   const Month = monthName[0].toUpperCase() + monthName.slice(1)
   const prevIdx = (monthIdx + 11) % 12
   const PrevMonth = MONTHS[lang][prevIdx][0].toUpperCase() + MONTHS[lang][prevIdx].slice(1)
-  const noData = !ctx.hasBlob && ctx.ops === 0
+  const noData = ctx.opsAny === 0 && ctx.pending === 0 && !ctx.goals.length && !(ctx.monthlyBudget > 0)
   const card = (c: Omit<AnswerCard, 'source'>): AnswerCard => ({ ...c, source: 'rules' })
 
   if (topic === 'help') {

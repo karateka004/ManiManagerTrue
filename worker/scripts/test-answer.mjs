@@ -17,6 +17,7 @@
  * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/test-answer.mjs`
  */
 import {
+  isSmallTalk,
   cardToText,
   cleanHistory,
   ground,
@@ -90,12 +91,18 @@ const TOPICS = [
   ['ааа', 'unknown'],
   ['how much did I spend this week', 'week'],
   ['hi', 'greeting'],
+  ['Привет, сколько я потратил за неделю?', 'week'],
+  ['спасибо, а что по бюджету?', 'budget'],
+  ['привет, как ты там поживаешь', 'greeting'],
+  ['Сколько пришло за месяц?', 'income'],
 ]
 for (const [q, want] of TOPICS) {
   const got = topicOf(q)
   check(`тема «${q}» → ${want}`, got === want, got)
 }
 
+check('болтовня без модели: «привет»', isSmallTalk('привет') && isSmallTalk('Спасибо большое!'))
+check('болтовня без модели: вопрос с приветствием — к модели', !isSmallTalk('привет, сколько ушло за неделю?'))
 check('язык: кириллица — русский', questionLang('сколько?', 'en') === 'ru')
 check('язык: латинская фраза — английский', questionLang('how much did I spend?', 'ru') === 'en')
 check('язык: одно латинское слово не меняет язык приложения', questionLang('Uber?', 'ru') === 'ru' && questionLang('ok', 'ru') === 'ru')

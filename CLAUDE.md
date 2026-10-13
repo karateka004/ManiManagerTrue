@@ -1,1336 +1,175 @@
 # Кошель — контекст проекта для Claude
 
-Телеграм Mini App для учёта личных финансов. Клиентское приложение (данные в браузере,
-с облачной синхронизацией за TG-аккаунтом) + маленький бэкенд на Cloudflare Worker
-(отзывы, рефералы, лидерборд и облачное хранилище данных пользователя).
+Telegram Mini App для учёта личных финансов: клиент (данные в браузере + облачная копия за
+TG-аккаунтом) и бэкенд на Cloudflare Worker (бот, облако, рейтинг, рефералы, отзывы, админка).
 
-- **Бот:** @TrueManiManager_Bot
-- **Репозиторий/деплой:** GitHub Pages → https://karateka004.github.io/ManiManagerTrue/
-- **Worker:** https://koshel-worker.karateka004.workers.dev
-- **Владелец/получатель отзывов:** chat_id `439944083` (Святослав, @flagman_crypto)
-- **Язык:** UI и комментарии в коде — русские. Отвечай пользователю по-русски.
+- **Бот:** @TrueManiManager_Bot · **Прод:** https://karateka004.github.io/ManiManagerTrue/
+- **Worker:** https://koshel-worker.karateka004.workers.dev · владелец — chat_id `439944083` (Святослав)
+- **Язык:** UI, комментарии и ответы пользователю — по-русски. Обращение в интерфейсе — на «ты».
+- История релизов подробно — в `src/lib/whatsnew.ts` и `git log`; здесь только то, что нужно для работы.
 
-## Стек
-React 18.3 + TypeScript 5.6 + Vite 5.4 + Tailwind 3.4 (`darkMode: 'class'`) +
-Zustand 5 (persist + migrate) + framer-motion 11 (LazyMotion) + dayjs (ru locale).
-Бэкенд: Cloudflare Workers + Wrangler 3.
+## Стек и команды
+React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persist) + framer-motion 11
+(LazyMotion) + dayjs. Бэкенд: Cloudflare Workers + Wrangler 3, KV `REFERRALS`. План Cloudflare — Paid.
 
-## Команды
-Фронтенд (из корня):
-- **Деплой с телефона:** GitHub → Actions → «Деплой приложения» → Run workflow
-  (`.github/workflows/deploy-app.yml`). Секрет не нужен — пуш в ветку `gh-pages`
-  делается встроенным токеном Actions (`permissions: contents: write`). Срабатывает
-  сам на каждый пуш в `main`; с веток разработки НЕ выкатывается (фронтенд видят все
-  пользователи). Прогон зеленеет только когда Pages реально начал отдавать новый
-  бандл, а не когда закончился git push. Кнопка Run workflow появляется после того,
-  как файл воркфлоу попадёт в `main`.
-- `npm run dev` — Vite dev-сервер на :5173
-- `npm run lint` — `tsc --noEmit` (проверка типов, без сборки) + `scripts/check-tw-opacity.mjs`
-  (прозрачности Tailwind только из шкалы, см. «Грабли»)
-- `npm run build` — `tsc -b && vite build` в `dist/`
-- `npm run deploy` — сборка + `gh-pages -d dist` (публикация на GitHub Pages)
+Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs`) ·
+`npm run build` (`dist/`).
+Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 82,
+reply, analytics 62, reminders 57, answer 136) · `npx wrangler dev --local --port 8787` +
+`node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
-Worker (из папки `worker/`):
-- `npx wrangler deploy` — задеплоить воркер
-- **Деплой с телефона:** GitHub → Actions → «Деплой воркера» → Run workflow
-  (`.github/workflows/deploy-worker.yml`). Нужен секрет репозитория `CLOUDFLARE_API_TOKEN`
-  (шаблон токена «Edit Cloudflare Workers»), плюс `CLOUDFLARE_ACCOUNT_ID`, если у токена
-  доступ к нескольким аккаунтам. Кнопка Run workflow появляется только когда файл
-  воркфлоу есть в ветке `main`; до этого деплой запускается пушем в ветку разработки
-  или кнопкой Re-run на прогоне.
-- `npx wrangler tail` — живые логи
-- `npm run lint` — типы + сверки списков с приложением + прогоны разбора и ответов бота
-- `npx wrangler dev --local --port 8787` + `node scripts/test-webhook.mjs` — сквозная
-  проверка приёма сообщений на локальном KV (Telegram для этого не нужен)
-- Секреты: создать `worker/_secrets.json` (`{ "BOT_TOKEN": "…", "TG_WEBHOOK_SECRET": "…",
-  "GEMINI_API_KEY": "…", "ADMIN_KEY": "…" }`), `npx wrangler secret bulk _secrets.json`,
-  **сразу удалить файл**. Через пайп секреты заливать нельзя — см. «Грабли».
-  Для локальной разработки те же значения лежат в `worker/.dev.vars` (в git не попадает).
-- **Регистрация вебхука** (разово и после смены домена воркера): `POST /admin/webhook`
-  с заголовком `X-Admin-Key`. Ответ содержит `getWebhookInfo` — там видно очередь и
-  последнюю ошибку доставки.
+**Деплой:**
+- Фронт — пуш в `main` → Actions «Деплой приложения» (`deploy-app.yml`, gh-pages встроенным токеном).
+  Прогон зеленеет, когда Pages отдаёт новый бандл (имя ищется в `dist/index.html`). С веток разработки
+  фронт НЕ выкатывается.
+- Воркер — Actions «Деплой воркера» (`deploy-worker.yml`) на любой пуш с изменениями `worker/**`
+  (и в ветку разработки тоже!). Секреты репо: `CLOUDFLARE_API_TOKEN` (+`CLOUDFLARE_ACCOUNT_ID`).
+- Секреты воркера: `worker/_secrets.json` → `npx wrangler secret bulk _secrets.json` → **сразу удалить
+  файл**. Через пайп нельзя (PowerShell обрезал токен). Никогда не проси у владельца ключи в чат.
+  Локально — `worker/.dev.vars` (не в git; фиктивный после прогонов удалять).
+- Вебхук бота: `POST /admin/webhook` с `X-Admin-Key` (сбрасывает очередь, ставит кнопку меню).
+- Проверка прода из облачной песочницы: Chromium наружу не ходит (нет CA прокси) — сверять каждый
+  файл `dist/` с `curl` Pages побайтно, браузерные сценарии гонять на `vite preview` той же сборки.
 
-## Рабочее окружение и отладка
-- **Dev-серверы:** конфиги в `.claude/launch.json` (в корне проекта) И в `C:\Users\User\.claude\launch.json`
-  (preview-инструменты читают именно home-уровень, т.к. workspace root = домашняя папка, НЕ подпапка проекта).
-  Два сервиса: `frontend (vite)` (порт 5173) и `worker (wrangler)` (порт 8787). На home-уровне у vite
-  абсолютный `--prefix C:/Users/User/Desktop/FinApp run dev`.
-- **Preview-инструменты** (`mcp__Claude_Preview__*`, грузятся через ToolSearch): `preview_list`
-  (узнать serverId), `preview_eval` (выполнить JS на странице — главный инструмент отладки: читать DOM,
-  стор через `localStorage['finance-mini-app:v1']`, кликать кнопки), `preview_console_logs`, `preview_screenshot`.
-- **ГРАБЛЯ preview:** окно превью фоновое → `requestAnimationFrame` ПРИОСТАНОВЛЕН. Любые framer-анимации
-  (`m.*`) НЕ стартуют и висят на `initial`. Поэтому `preview_screenshot` иногда таймаутит («renderer busy»),
-  а `getComputedStyle(el).opacity` у `m.div initial:{opacity:0}` показывает 0, хотя в реальном Telegram
-  анимация бы отыграла. Не путай этот артефакт с реальным багом. `innerText` отдаёт текст независимо от opacity.
-- **Деплой-флоу (проверено):** `npm run lint && npm run build` → `npx gh-pages -d dist` → дождаться выкатки
-  опросом (фоном, без долгого sleep):
-  `until curl.exe -s https://karateka004.github.io/ManiManagerTrue/ | grep -o "<новый-хэш>"; do sleep 5; done`.
-  Хэш бандла виден в выводе `vite build` (`dist/assets/index-XXXX.js`). PowerShell 5.1 — TLS 1.0, поэтому `curl.exe`, не `Invoke-WebRequest`.
+Локально у владельца (Windows): проект `C:\Users\User\Desktop\FinApp`, конфиги превью в
+`.claude/launch.json` и `C:\Users\User\.claude\launch.json`; PowerShell 5.1 = TLS 1.0 → `curl.exe`.
+В фоновом окне превью rAF стоит — framer-анимации висят на `initial`, это артефакт, не баг.
 
-## Карта файлов
-**Стор (источник правды):** `src/store/transactions.ts` — Zustand persist
-(`name: 'finance-mini-app:v1'`, **`version: 17`**). Поля: `transactions`, `period`, `currency`,
-`chartStyle`, `budgets`, `themeMode`, `customCategories`, `bonusXp`, `coins`, `claimedQuests`,
-`questClaims` (таймстемпы получения наград — для цепочки/ротации квестов), `streak`, `equipped`,
-`owned`, `demoMode`, `lang` ('ru'/'en'), `monthlyBudget` (общий месячный бюджет), `goals`
-(накопительные цели), `homeHeaderMode` ('date'|'goal'), `homeHeaderGoalId`, `events`
-(`Record<string, number>` — счётчики действий-вовлечения для заданий, см. ниже),
-`lastTxCurrency` (валюта последней записанной операции — открывается по умолчанию в форме),
-`coinDay` (день, за который уже начислены `RECORD_COINS` = 2 монеты за первую запись дня).
-`equipped` = `{ accent, title, frame, card, effect }` (card/effect — с 2.1, миграция v17).
-`Transaction` имеет опциональное поле `currency?: Currency` — per-transaction валюта;
-если не задана, используется `s.currency` при отображении (обратная совместимость).
-Действие `track(event)` инкрементит `events[event]`. Селекторы мемоизированы через WeakMap
-(`memo1`/`memo2`). Категории: `src/store/categories.ts`.
-Финансовые селекторы читают данные через `activeTransactions(s)` (демо или реальные);
-профиль/уровень/задания читают `s.transactions` напрямую — демо их НЕ затрагивает.
-**Миграции идут лесенкой `if (version < N)`** — при новом поле бампай `version` и добавляй ветку.
+## Правила работы
+- Коммит и пуш — когда просят (деплой = пуш в `main`). Ветка разработки — из системного промпта.
+- В коммитах/PR не упоминать модель. Банковские/личные данные (CSV и т. п.) не коммитить.
+- В аналитику и рейтинг — только геймификация, никаких денежных сумм.
+- После правок стартового кода сравнивай размер `index-*.js` со сборкой прошлого коммита
+  (`git worktree` в scratchpad, не `git stash` — см. «Грабли»).
+- **При заметном релизе:** `APP_VERSION` + запись в начало `RELEASES` (`src/lib/whatsnew.ts`, ru/en).
 
-**Страницы:** `src/pages/` — Home, Analytics, Charts, **Rewards**, **Profile**, Settings. Роутинг
-табами в `src/App.tsx`. **Нижняя панель плавающая** (`TabBar`): пилюля с 4 вкладками
-(Главная · Аналитика · Прогресс · Профиль, `TabBar.ITEMS`) + отдельная круглая «+» справа. **Настройки убраны из панели** — открываются из шапки Профиля
-(иконка-шестерёнка → `changeTab('settings')`); `SettingsPage` принимает `onBack` (кнопка ←).
-`'settings'` остаётся валидным значением `Tab`, но его нет в `ITEMS`; на «Настройках» в панели
-подсвечивается Профиль. Аватар в шапке Home → `onOpenProfile` → вкладка профиля.
-В `App.tsx` смонтирован `DemoBanner`.
+## Карта кода
+**Стор** `src/store/transactions.ts` — persist `finance-mini-app:v1`, **version 17**, миграции
+лесенкой `if (version < N)` (новое поле → бамп версии + ветка). `sanitizePersisted` в `merge`:
+не теряет данные; незнакомые строки (валюта/язык из будущей версии) НЕ стирает — только значения
+не того типа. Селекторы мемоизированы сравнением с прошлым результатом (`memo1`/`memo2`,
+`sameResult`); селектор, возвращающий новый объект, без мемо — нельзя. Финансовые селекторы читают
+`activeTransactions(s)` (демо или реальные); профиль/задания/подсказки — `s.transactions`.
+Запись операции — `commitTransaction` (одно изменение стора; `{ focus:false }` для слива бота),
+отмена — `undoCommit`, удаление/возврат — тостом. `track(event)` — счётчики заданий в `events`.
+Категории — `src/store/categories.ts` (бот сверяет список `check-categories.mjs`).
 
-**Вкладка «Прогресс» (`src/pages/Rewards.tsx`) — хаб геймификации (с 2.0 — строки, а не плитки):**
-уровень/XP-герой (`.hero-surface`) → группа строк с данными: `StreakRow` (серия за 7 дней полосками +
-«Забрать +N»), Магазин («120 монет» → `ShopScreen`), Таблица лидеров («14-е из 88», место берёт
-`useMyRank` — один запрос `getLeaderboard` на сессию), Титулы уровня («к получению: N» / «2 из 10») →
-группа «Задания» (`QuestRows`) → группа «Пригласить друзей» (`ReferralBlock`: задания за приглашения,
-ссылка, список друзей одной группой; раздела «Спешел» больше нет). **track-события сохранены:**
-`open_achievements` (Магазин), `open_leaderboard`, `open_planning` (Планирование — в Профиле).
+**Навигация** (`src/App.tsx`): вкладки `home · analytics · rewards · profile` (`TabBar` — плавающая
+пилюля + круглая «+»), `settings` открывается из Профиля. Переходы — CSS (`.tab-in-r/-l/-deep/-back`),
+прокрутка запоминается по вкладке. **Свайп влево/вправо** листает вкладки (`src/lib/useSwipeNav.ts`,
+порядок `SWIPE_ORDER`); на Настройках и под-экранах «Прогресса» работает только «назад». Жест не
+перехватывается: в шторках (`aria-modal`), в полях ввода, у края экрана (16 px), на лентах с
+прокруткой вбок (определяется сама) и на элементах с `data-swipe-ignore` (карусель целей,
+голограмма на карте). Новый горизонтальный жест — помечай `data-swipe-ignore`.
+«Назад» Telegram и Escape — одна стопка `useBackButton`/`pushBackHandler`; свои слушатели Escape
+не заводить. Подтверждения — `confirmAction` (не `window.confirm`), копирование — `copyText`.
 
-**Профиль (`src/pages/Profile.tsx`, 2.0):** шапка с шестерёнкой → личность строкой (аватар 56, имя,
-@username · титул) → группа «За всё время» (доходы/расходы/баланс **по каждой валюте отдельно**,
-операции, «Больше всего» в основной валюте, первая запись) → группа: уровень с полосой (→ «Прогресс»),
-Планирование, Обновления (счётчик новых или версия) → отзыв. Геймификации в Профиле нет.
+**Экраны:** `src/pages/` — Home, Analytics (вкладки Расходы/Доходы/Динамика/Календарь), Rewards
+(«Прогресс»: герой уровня, плитки 2×2, задания, рефералы; Магазин/Титулы — под-экраны через
+`lib/rewardsNav`), Profile, Settings, Shop, LevelRewards. Шторки — одна `ui/BottomSheet`
+(слои z: 40 обычные, 50 операция, 60 редактор категорий, 85 быстрый старт), ленивые чанки,
+монтируются при первом открытии и остаются. UI-примитивы: `components/ui/` (`Group`/`Row`,
+`ScreenHeader`, `SegTrack`+`useSegPill`, `Odometer`/`AnimatedMoney`, `Money`, `DeltaChip`,
+`Toaster`, `Reveal`). Онбординг — `QuickStart` (валюта по региону `lib/currencyDetect.ts`),
+«Что нового» — `Intro.tsx`. Планирование (бюджет, лимиты, цели, активы) — `PlanningSheet`.
+Ассистент — `AssistantSheet` (карточки ответа воркера `/ask`).
 
-**Общие UI-примитивы (`src/components/ui/`):** `Group`/`Row` (сгруппированный список 2.0: одна карточка
-`.card.grouped`, строки `.row`/`.row-main` с линией от текста; у `Row` есть `icon`, `lead`, `subtitle`
-(+`wrap`), `value`/`valueSub`, `trailing`, `chevron`, `children`), `ScreenHeader` (шапка вложенного
-экрана: «назад» + надстрочник + заголовок; Настройки, Магазин, Титулы), `BottomSheet`. **Удалены в 2.0:**
-`Tile`, `MenuRow`, `accent.ts`, `rewards/TileScene`, `rewards/StreakTile`, `rewards/QuestCard`, CSS `.tile-art`.
-`LevelBar.tsx` теперь только хук `useLevel`.
+**Валюты (92):** ядро `src/lib/currencies.ts` (символ, локаль, флаг — в стартовом чанке), названия
+и поиск — `currencyInfo.ts`, флаги `public/flags/`. **Новая валюта — добавь и в
+`worker/src/money.ts`** (`check-currencies.mjs`). `setCurrency` закрепляет старые записи за прежней
+валютой; перенос — явно `relabelCurrency`/`RelabelPrompt`.
 
-**Шапка Главной (строгая, без геймификации):** в `Home.tsx` шапка = «Кошель» + настраиваемый
-подзаголовок + аватар. Шкалы уровня (`LevelBar`) на Главной НЕТ — вся гейм-часть в профиле.
-Подзаголовок задаётся стором `homeHeaderMode` ('date' | 'goal') + `homeHeaderGoalId`:
-**Дата** (`DateHeader`, «Среда, 21 мая») или **Прогресс к цели** (`GoalHeader` — иконка+название
-накопительной цели из `goals` + прогресс-бар «накоплено/сумма»). Переключатель — в Settings
-(секция «Шапка Главной»): кнопки Дата/Цель + список целей. Если цель не выбрана — берётся первая;
-если целей нет — показывается дата (фолбэк). При удалении выбранной цели `homeHeaderGoalId` сбрасывается.
+**Геймификация:** уровни `lib/levels.ts` (XP = операции×12 + bonusXp), задания `lib/quests.ts`
+(пул 22, борд 3, перезарядка 8 ч), серия `lib/streak.ts`, косметика `lib/rewards.ts` (цена =
+рарность, обложки `styles/skins.css`, рамки `rewards/FrameRing`). **`QUESTS_TOTAL_XP` продублирован
+в воркере (`XP_ALL_QUESTS`, потолок XP рейтинга)** — меняешь награды, правь обе стороны.
 
-**Аналитика:** `src/pages/Analytics.tsx` + `src/components/AnalyticsTabs.tsx` (3 вкладки:
-Расходы / Доходы / **Календарь**, grid-cols-3). Календарь — `src/components/MonthCalendar.tsx`:
-своя навигация по месяцам, фильтр (Чистый итог / Доходы / Расходы), под числом дня —
-итог (для «Чистый итог» = доход−расход), внизу сумма за месяц. Читает `activeTransactions`.
-Формат суммы в ячейке (`compact()`): до 5 знаков (< 100 000) — число как есть, без «к» и
-без округления (4050 → «4050», НЕ «4,1к» — округление вверх искажало дневной итог); от
-100 000 — «к» (150 000 → «150к»). Итог месяца внизу — полный `formatMoney`.
-Обёртки секций (диаграмма / календарь) в `Analytics.tsx` — обычные `<div className="tab-enter">`,
-НЕ `m.div initial:opacity` (см. «Грабли» про скрытый контент). `MonthCalendar` сам по себе
-без анимаций-обёрток — суммы статичны и видны всегда.
+**i18n:** `src/lib/i18n.ts` (`useT()`, `{var}`), RU/EN; незнакомый язык → ru.
 
-**Демо-режим:** `src/lib/demo.ts` — детерминированный (mulberry32) набор за ~24 мес.,
-ленивый модульный кэш (стабильная ссылка). Включается тумблером в Settings → «Данные»
-или из пустого состояния (`CategoryList`). Не пишет в `transactions` — только флаг `demoMode`.
+**Клиент воркера:** `src/lib/api.ts` (таймауты на каждый запрос), `src/lib/cloud.ts` (синк),
+`src/lib/telegram.ts`.
 
-**Операции задним числом:** `AddTransactionSheet.submit` после `addTransaction` проверяет,
-попадает ли дата в текущий `periodBounds`; если нет — вызывает `focusPeriodOn(iso)`
-(наводит период на дату операции), иначе запись «пропала бы» из видимого периода.
+## Воркер (`worker/src/`)
+- `index.ts` — маршруты: `/data/get|put` (облако), `/inbox`+`/inbox/ack` (записи бота), `/ask`
+  (ассистент), `/profile`, `/leaderboard`, `/referral`, `/stats`, `/feedback`, `/reminders(/get)`,
+  `/check-sub`, `/tg/webhook`, `/admin*`. Каждый запрос приложения — с `initData`, HMAC проверяется
+  ботовым токеном (+ `auth_date < 24ч`). Лимитер — в памяти изолята (`limits.ts`).
+- **Облако:** блоб стора в `data:<id>` + метаданные (карточка для админки). Last-write-wins по
+  `updatedAt`, сервер не затирает свежее старым. Известное ограничение: сбой первого pull + запись +
+  обновление с другого устройства → повтор примет облако.
+- **Бот:** `bot.ts` (маршрут сообщений, кнопки), `tg.ts`, `entry.ts` (разбор правилами),
+  `gemini.ts` (разбор моделью `gemini-3.5-flash-lite`; у Gemini 3 температуру не задаём,
+  размышления — `thinkingLevel`), `answer.ts` + `facts.ts` + `context.ts` (ответы на вопросы).
+  - Записи бота — ОТДЕЛЬНЫЙ ключ `inbox:<id>` (не блоб: last-write-wins затёр бы их), подтверждение
+    по списку id; клиент сливает в `mergeInbox` после pull. Очередь до 200.
+  - Валюта записи — ОСНОВНАЯ (`ctx.currency = main`), не выбранный на Главной счёт.
+  - Ответы: модель `gemini-3.8-flash` (`GEMINI_ANSWER_MODEL`), JSON-карточка; `ground` выкидывает
+    суммы/проценты, которых нет в выжимке или вопросе; нет модели/квоты — `rulesCard`. Приветствие
+    и «спасибо» — всегда правилами (`isSmallTalk`). Квота — 50 вызовов модели на человека в сутки.
+    Память — 3 реплики (`chat:<id>`, история текстом в вопросе, не репликами модели).
+  - Выжимка не сравнивает неполный месяц с полным (`trackedDays`, `prevComparable`).
+  - **Что уходит в Google** — текст, 3 прошлые реплики и выжимка (суммы по дням/неделям/месяцам/
+    категориям, бюджет, лимиты, цели), без списка операций. Это написано в `GuideSheet`,
+    `settings.about_text`, `ai.privacy` и `START_MORE` бота — меняешь объём, правь тексты.
+    Меняется интерфейс — правь `APP_GUIDE` в `answer.ts`.
+  - Кнопки: `u:` отмена, `c:/e:/p:/b:` смена категории (список в KV `pick:`), `q:<i>` продолжения
+    (вопрос = текст кнопки), `r:` напоминания. Кастомные эмодзи — `/icons` (только с Premium
+    владельца; отказ Telegram → иконки выключаются сами).
+- **Напоминания** (`reminders.ts`): `remind:<id>` = `'1'/'0'/'b'` (выкл ботом при 403); крон
+  15–20 МСК, затухание по дням тишины, «Не напоминать» под сообщением, `/reminders`.
+- **Рейтинг:** каждый пишет только `lb:<id>`; общий `leaderboard` пересобирает крон `*/5`. XP режется
+  потолком по облачному блобу; достигнутое не опускается.
+- **Админка:** `admin.ts` (страница), `analytics.ts` (чистые расчёты), маски дней активности в
+  метаданных, метки рекламы `?start=`/`?startapp=`, ночная сводка владельцу (`ADMIN_DIGEST`). Вход —
+  `ADMIN_KEY` или `/admin` в боте. `check-admin-js.mjs` проверяет скрипт внутри `ADMIN_HTML`
+  (tsc его не видит; в шаблоне нельзя `` ` ``, `${`, `\`).
+- Профиль бота (описания, команды) выставляет крон сам (`ensureBotProfile`).
+- Рефералы: `?startapp=ref<id>` доходит, только если у бота включён Main Mini App в BotFather.
 
-**Геймификация — где что:** аватар — `src/components/Avatar.tsx` (рисует надетую рамку; без рамки
-— обводка `shadow-soft`), уровни — `src/lib/levels.ts` + хук `useLevel` (`LevelBar.tsx`), задания —
-`src/lib/quests.ts` + `rewards/QuestRow.tsx`, серия — `rewards/StreakRow.tsx`. Таймер перезарядки
-заданий тикает в `Rewards.tsx` (`useCountdownTick`), только пока есть перезаряжающийся слот.
+## Оформление (2.0+)
+- Данные и есть украшение; одна карточка = группа строк (`Group`/`Row`), карточка в карточке — нельзя.
+- Один акцент `brand-*`: главное действие, активное состояние, «хорошо» — фиксированный зелёный
+  `income`. Переключатели — нейтральные `.seg-*`. Цветной квадрат с иконкой — только у категорий.
+- Иконки — `lucide-react`; эмодзи в интерфейсе нет (в сообщениях бота — можно).
+- Подписи — классы `.kicker/.section-title/.caption`, не капслок. Крупные суммы — `<Money>`.
+- Герой — `.hero-surface`. Шапки шторок — 17 px extrabold + круглая «×».
 
-**i18n:** `src/lib/i18n.ts` — словарь RU/EN + `translate(lang, key, vars)` + хук `useT()`
-(подписан на `s.lang`). Подстановка `{var}`. Дефолт языка — из `tg.user.language_code`.
-Переключатель — Settings → «Язык». Переведены: навигация (TabBar), Settings, Profile,
-LeaderboardSheet, PlanningSheet, квесты. Главная/Аналитика/Графики пока в основном на RU.
+## Производительность
+Стартовый JS: index (Home) + react + vendor ≈ 142 КБ gzip (index ≈ 71). Остальные вкладки, шторки, онбординг — `lazyRetry`
+(повтор + разовая перезагрузка при устаревших чанках). framer — только `m.*` под
+`<LazyMotion strict>` с асинхронным `domMax`; framer НЕ в `manualChunks`. Стартовый чанк не
+импортирует `whatsnew.ts` (ключи — в `lib/introKeys.ts`). Persist пишет с троттлингом 400 мс
+(`flushPersist` при сворачивании и перед чтением блоба). `html.perf-low`/`anim-paused` гасят
+бесконечные анимации.
 
-**Планирование (`src/components/PlanningSheet.tsx`):** открывается строкой «Планирование»
-в Профиле и из блока бюджета на Главной (`BudgetBlock`). Вкладки (нейтральный сегмент, с 2.0 без
-иконок): **Лимиты**, **Бюджет**, **Цели**, **Активы** (`planning/InvestmentsTab.tsx`). Лимиты и цели —
-строки одной группы. **Бюджет** (общий `monthlyBudget` + прогресс по расходу текущего
-календарного месяца через `selectCurrentMonthExpense`), **Лимиты** (per-category `budgets`,
-тот же `setBudget`, что в Settings), **Цели** (`goals`: addGoal/contributeGoal/removeGoal,
-прогресс-бар «накоплено из цели»). Цели — чисто игровой трекер, на финансы не влияют.
-
-**Магазин (`src/pages/Shop.tsx`) и Титулы уровня (`src/pages/LevelRewards.tsx`):** полноэкранные
-под-виды «Прогресса». Строки — `rewards/RewardRow.tsx` внутри `Group`. Косметика — `src/lib/rewards.ts`:
-«Купить» → `buyReward(id)` (покупка сразу надевается), «Надеть» → `equipReward`. Серия дня —
-`src/lib/streak.ts`, «Забрать» → `claimDailyStreak`. Титул уровня открывается за уровень И рекорд серии
-(`unlockDays`) — счётчик «к получению» на хабе учитывает оба условия.
-
-**Иконки:** UI и категории — `lucide-react` (named imports, `size`/`strokeWidth`).
-Категории: `src/components/icons/CategoryIcon.tsx` (REGISTRY ключ→lucide, 4 кастомных
-inline-SVG где lucide не хватает). Чарты (`DonutChart*`) рисуют data-viz SVG — не иконки.
-
-**Бэкенд-клиент:** `src/lib/api.ts` — `WORKER_URL`, `sendFeedback`, `registerReferral`,
-`getReferralStats`, `buildReferralLink`. Telegram-обёртка: `src/lib/telegram.ts`
-(`tg.initData`, `tg.startParam`, хаптика). Валюты (92, с 2.2): ядро `src/lib/currencies.ts`
-(код, символ, локаль, флаг; USD первый = запасная для незнакомого кода), названия и поиск —
-`src/lib/currencyInfo.ts`, определение по региону — `src/lib/currencyDetect.ts` (см. «2.2.0»).
-Формат денег/дат: `src/lib/format.ts`.
-
-**Worker:** `worker/src/index.ts` — роуты `/feedback`, `/referral`, `/stats`, `/profile`,
-`/leaderboard`, `/health`. Конфиг: `worker/wrangler.toml` (vars: ALLOWED_ORIGINS,
-OWNER_CHAT_ID; KV `REFERRALS`).
-
-**Таблица лидеров:** клиент `submitProfile`/`getLeaderboard` (`src/lib/api.ts`), UI —
-`src/components/LeaderboardSheet.tsx` (открывается строкой «Таблица лидеров» на «Прогрессе»).
-Статистика (`xp/level/ops/coins/streakBest`) уходит при запуске и при открытии «Прогресса»;
-клиент не шлёт тот же профиль дважды за день (`koshel:profileSent`). **С 2.0 (под рассылку на
-20 000):** каждый человек пишет ТОЛЬКО свою карточку — ключ `lb:<id>`, карточка в метаданных
-(`writeOwnLeaderEntry`); неизменённую карточку в те же сутки по МСК воркер не перезаписывает.
-Общий ключ `leaderboard` (топ по XP ∪ топ по рефералам, `LB_MAX` каждый, `total` в метаданных)
-пересобирает крон `*/5 * * * *` (`rebuildLeaderboard`), и только если что-то изменилось. Свою карточку
-`/leaderboard` подмешивает сразу — себя видно до пересборки. Раньше каждый `/profile` переписывал весь
-общий ключ: при массовом заходе это и лимит «1 запись в секунду на ключ», и гонки затирания.
-`/leaderboard` отдаёт **две доски**: `{ ok, total, xp:{top,me}, refs:{top,me} }` (топ-50 + позиция).
-**Приватность:** в рейтинг уходит ТОЛЬКО геймификация — суммы доходов/расходов не шлются.
-
-## Архитектура / ключевые факты
-- **Запись сообщением боту (главный сценарий).** Человек пишет в чат «кофе 300» — операция
-  записана. До этого путь был в шесть действий (открыть Telegram → мини-апп → дождаться webview
-  → «+» → сумма → категория → сохранить), и это главная причина, по которой трекеры забрасывают;
-  у всех конкурентов в Telegram запись идёт сообщением. Устройство:
-  - **Вебхук** `POST /tg/webhook` (`worker/src/index.ts` → `worker/src/bot.ts`). Доступ — секрет
-    `TG_WEBHOOK_SECRET` в заголовке `X-Telegram-Bot-Api-Secret-Token`; секрет не задан = вебхук
-    закрыт. Регистрация — owner-ручка `POST /admin/webhook` с `X-Admin-Key` (чтобы с телефона),
-    она же сбрасывает накопившуюся очередь Telegram. Обрабатываются ТОЛЬКО приватные чаты.
-  - **Разбор записи:** `worker/src/gemini.ts` (модель `gemini-3.5-flash-lite`, переменная
-    `GEMINI_MODEL`), с откатом на правила `worker/src/entry.ts`. Модель выбирает намерение:
-    `record` / `answer` / `unclear`. Всё, что становится ЗАПИСЬЮ, проходит `sanitize`: сумма,
-    категория из списка этого человека, валюта из белого списка, дата в окне «год назад … сегодня»
-    (пересобирается из номера суток). Таймаут 7 с, квота 50 вызовов модели на человека в сутки
-    (общая для разбора и ответов, чата и приложения).
-  - **Ответы на вопросы (ИИ 2.0, с 2.3) — `worker/src/answer.ts` + выжимка `worker/src/facts.ts`.**
-    Подробно — в разделе «2.3.0» ниже. Коротко: модель `gemini-3.8-flash` (`GEMINI_ANSWER_MODEL`)
-    заполняет карточку по JSON-схеме, `ground` выкидывает суммы и проценты, которых нет в выжимке
-    или вопросе; без модели отвечают правила (`rulesCard`). Память — 3 реплики.
-  - **Что уходит в Google:** текст сообщения, до трёх прошлых реплик разговора и ВЫЖИМКА: суммы по
-    дням, неделям, месяцам (12 мес.), категориям и дням недели, бюджет, лимиты, цели (с названиями),
-    число операций. Список операций с датами и заметками — не уходит. Это прямо написано
-    пользователю в `GuideSheet`, `settings.about_text`, `ai.privacy` и в боте (`START_MORE`);
-    меняешь объём — правь и там, иначе текст станет враньём.
-  - **Кнопки в чате:** под записью «Отменить» (`u:<batch>`) и «Не та категория» (`c:<batch>`). В
-    пачке из нескольких трат сначала выбор записи (`e:<batch>:<i>`), потом шесть категорий её вида
-    (`p:<batch>:<j>` → `setEntryCategory`), «← Назад» (`b:<batch>`). Список предложенных лежит в KV
-    `pick:<userId>:<batch>` = `{ i, ids }` (TTL 1 ч; до 2.3 — просто массив, его `p:` тоже понимает),
-    потому что в `callback_data` всего 64 байта. Клавиатура меняется `editMessageReplyMarkup` —
-    текст записи с жирным не трогаем. Под ответом — продолжения `q:<i>`: вопрос = текст кнопки из
-    `message.reply_markup`, хранить их не нужно. Вход в приложение слева от поля ввода
-    (`setChatMenuButton`) выставляется вместе с вебхуком в `/admin/webhook`; описания бота и меню
-    команд (с 2.2) — сами, кроном (`ensureBotProfile`).
-  - **Очередь `inbox:<userId>`** (`worker/src/inbox.ts`) — ОТДЕЛЬНЫЙ ключ KV, а не запись в
-    `data:<id>`. Причина: синк — last-write-wins, приложение пушит блоб целиком, и запись бота
-    в блоб затёрлась бы следующим пушем открытого приложения. Молча. С отдельным ключом
-    приложение остаётся единственным, кто пишет свой блоб. Потолок очереди — 200 записей.
-    Подтверждение приёма — по списку id (`/inbox/ack`), а не «очистить ключ»: человек мог написать
-    боту ровно в секунду слива.
-  - **Слив на клиенте:** `mergeInbox` в `src/lib/cloud.ts` — ПОСЛЕ разбора с облаком (rehydrate
-    перечитывает storage целиком и стёр бы добавленное до него) и через `commitTransaction`, а не
-    подменой массива. Повтор при обрыве связи отсекает список `koshel:inboxDone` в localStorage.
-  - **Ответ бота на запись** — не «записано», а то, чего человек не держит в голове: «Кафе · 300 ₴ /
-    осталось 640 из 900» и, если в приложении задан лимит категории, «лимит «Кафе»: 4 200 из 5 000».
-    Остаток считается из блоба плюс ещё не слитых входящих (`worker/src/context.ts`). «Сегодня» у
-    бота — по МСК, как и вся остальная серверная логика. Запись уходит с ЯВНОЙ валютой
-    (`op.currency ?? ctx.currency`). **ctx.currency — ОСНОВНАЯ валюта, не выбранный на Главной
-    «счёт»:** чип счёта — фильтр просмотра, он остаётся тем, что нажали последним, а запись без
-    своей валюты в приложении всегда в основной. Со счётом бот (2.3 до правки) считал гривны
-    долларами и писал траты в доллары.
-  - **Проверки:** `worker/scripts/` — `test-entry.mjs` (82 формулировки: «вчера», несколько трат,
-    перенос строки, разряды, копейки, слова-ключи прототипа), `test-reply.mjs`, `test-reminders.mjs`
-    (57), `test-answer.mjs` (124: вопросы, темы, проверка чисел, карточки, сценарии бота и /ask на
-    поддельных Gemini/Telegram/KV), `check-categories.mjs` / `check-currencies.mjs` (списки бота
-    против приложения). Всё это в `npm run lint` воркера. Сквозной прогон — `test-webhook.mjs` при
-    запущенном `npx wrangler dev --local --port 8787` (Telegram не нужен).
-- **Облачная синхронизация (с 1.13.0):** данные стора привязаны к TG-аккаунту. Источник правды —
-  по-прежнему localStorage; при запуске `initCloudSync` (`src/lib/cloud.ts`) тянет облачную копию,
-  и если она новее локальной (`updatedAt`) — принимает её (`useStore.persist.rehydrate()`), иначе
-  заливает локальные данные. На любое изменение стора — debounced-пуш (1.5 c) + сброс при сворачивании
-  (`visibilitychange`/`pagehide`). Стратегия — **last-write-wins** по времени (без пооперационного мёржа):
-  сценарий «одно устройство за раз» работает идеально, одновременное редактирование с двух устройств —
-  победит последнее изменение. Локальная метка времени — `localStorage 'koshel:cloudMeta'` (вне синкаемого
-  блоба). Вне Telegram синк — no-op. Воркер: `POST /data/get` и `POST /data/put` (только по проверенной
-  подписи initData), хранит сериализованный persist-блоб в KV `REFERRALS` под ключом `data:<userId>`
-  вместе с `updatedAt`; сервер не затирает более свежую версию более старой (защита от гонок). Клиент:
-  `pullCloud`/`pushCloud` в `src/lib/api.ts`. **Приватность изменилась:** транзакции теперь покидают
-  устройство и лежат в KV воркера (данные самого пользователя, привязаны к его TG-id). В лидерборд
-  по-прежнему уходит ТОЛЬКО геймификация — суммы туда не шлются.
-- Воркер также нужен, чтобы (1) отзыв дошёл владельцу в ЛС, (2) посчитать рефералов в KV, (3) лидерборд.
-- **Безопасность Mini App:** каждый запрос к воркеру несёт `initData` — подписанную строку
-  Telegram. Воркер проверяет HMAC ботовым токеном (`secret = HMAC("WebAppData", token)`,
-  `hash = HMAC(secret, data_check_string)`), плюс `auth_date < 24ч`. Подделать нельзя.
-- **Рефералы (важно про BotFather):** ссылка `t.me/<bot>?startapp=ref<id>` доставляет
-  `start_param` ТОЛЬКО если у бота включено **Main Mini App** (BotFather → Bot Settings →
-  Configure Mini App). Бот лишь с кнопкой-меню `start_param` не получает — рефералка
-  молчит. Альтернатива: задать `APP_SHORT_NAME` в `api.ts` → ссылка `t.me/<bot>/<short>?startapp=`.
-- **Рефералы:** deep link `?startapp=ref<id>` → `tg.startParam`. Захват один раз
-  (флаг `localStorage 'koshel:refDone'`). В KV: `claimed:<userId>` (идемпотентность),
-  `count:<refId>` (счётчик), `refs:<refId>` (JSON-список приглашённых: id, name,
-  username, at). `/stats` возвращает `{ referrals, friends[] }`; в профиле список
-  «Кто присоединился» с относительной датой (`dayjs().fromNow()`).
-- **Уровни:** XP = `кол-во операций * 12 + bonusXp`. 10 уровней в `LEVELS` (эмодзи-поле
-  `badge` удалено в 1.48.0). Считается из примитивов (длина массива + bonusXp), чтобы не ловить
-  варнинги мемоизации Zustand. Уровень → только косметика (титул).
-- **Задания (квесты):** `src/lib/quests.ts` — метрики `transactions`/`referrals`/`streak`
-  (стрик = `streak.best`) **и `event`** (прогресс = `events[def.event]` из стора, см. ниже).
-  Кнопка **Claim** → `claimQuest(id, xp, coins)` (идемпотентно, пишет `claimedQuests` + таймстемп
-  в `questClaims`). `allQuestProgress(metrics, claimedQuests, questClaims, now)`, где `metrics`
-  включает `events`. `QuestProgress` несёт `expiresAt`/`hasSuccessor`.
-- **Задания за использование приложения + ротация (1.10.0):** основная цепочка построена на
-  событиях-вовлечениях, а не на числе операций: first_tx → see_analytics → see_charts →
-  try_period → make_category → personalize → open_planning → set_budget → set_goal →
-  see_leaderboard → tx_10 → streak_3. Реферальные invite_3/invite_5 — отдельная ветка.
-  Счётчики `events` инкрементятся через `track(event)`: inline в действиях стора
-  (`setPeriodMode`→`use_period`, `addCategory`→`add_category`, `setBudget`/`setMonthlyBudget`→`set_budget`,
-  `addGoal`→`add_goal`, `setThemeMode`/`equipReward`→`customize`) и из компонентов
-  (`App.tsx`: `changeTab`→`visit_analytics`/`visit_charts`; `Profile.tsx`: открытие шторок →
-  `open_achievements`/`open_leaderboard`/`open_planning`). **Ротация
-  (`UNLOCK_DELAY_MS = HIDE_AFTER_CLAIM_MS = 3 ч`):** забранное задание ещё 3 ч висит с таймером
-  («✓ Получено · новое через …» / «исчезнет через …»), потом ИСЧЕЗАЕТ, и в этот момент
-  открывается его преемник (`unlockAfter`). Нет состояния «locked»: задание либо активно, либо
-  скрыто. `Profile.tsx` тикает `now` раз в минуту, чтобы таймеры двигались; пустое состояние —
-  `quest.empty`.
-- **Монеты (`coins`):** игровая валюта. Источники: ежедневная серия + задания.
-  Сток: магазин наград (`buyReward` списывает монеты). На учёт финансов не влияет.
-- **Экономика наград:** цена = рарность (`RARITY_PRICE` в `rewards.ts`): common 0 /
-  rare 100 / epic 250 / legendary 600. Уровень больше НЕ гейтит награды — гейт = цена.
-  `owned: string[]` — что куплено (дефолт `DEFAULT_OWNED` = бесплатные common, плюс
-  миграция v6 добавляет в owned всё уже надетое). Купленное надевается сразу.
-- **Ежедневная серия (`streak`):** `src/lib/streak.ts` — `{ count, best, lastClaim }`.
-  `claimDailyStreak()` идемпотентен за день: продолжает серию если вчера забирал, иначе
-  стартует с 1; даёт базовую награду (5 монет / 2 XP) + бонусы на рубежах 3/7/14/30.
-  `effectiveStreak` визуально гасит серию если пропущен день.
-- **Награды роудпасса (`equipped`):** `src/lib/rewards.ts` — 3 вида косметики (accent/title/frame)
-  с рарностью (common/rare/epic/legendary) и `unlockLevel` (открытие зависит от уровня).
-  `equipped: { accent, title, frame }`, дефолт `DEFAULT_EQUIPPED`. Надетое применяется:
-  титул — чип в профиле, рамка — ободок аватара, акцент — палитра приложения.
-- **Акцент через CSS-переменные:** `brand-50..900` в `tailwind.config.js` = `rgb(var(--brand-NN))`.
-  Дефолт (мятный) задан в `index.css`. Хук `useAccent()` (`src/lib/useTheme.ts`) при смене
-  `equipped.accent` переопределяет/снимает `--brand-*` на `<html>` из `ACCENT_PALETTES`.
-- **Валюта по умолчанию — USD только в сторе** (миграция v3 переносит старый RUB→USD). С 2.2 новичку
-  быстрый старт сразу подставляет валюту региона (`detectCurrency`), а застрявшим на долларе Главная
-  один раз задаёт вопрос «Твоя валюта — …?». В Настройках — строка основной валюты и шторка поиска.
-- **Vite `base: './'`** (относительные пути) — поэтому работает на GitHub Pages в подкаталоге.
-- **Онбординг + «Что нового»:** `src/components/Intro.tsx` (`IntroOverlay` смонтирован в
-  `App.tsx`) + `src/lib/whatsnew.ts`. Новичку (нет данных стора) → онбординг; существующему
-  при росте версии → changelog. **При каждом заметном релизе:** подними `APP_VERSION`
-  (semver) и добавь запись в начало `RELEASES` в `whatsnew.ts`. Флаги:
-  `localStorage 'koshel:onboarded'`, `'koshel:lastVersion'`.
-
-## Производительность (как устроено ускорение)
-- **Сплит страниц:** в `App.tsx` главная (`HomePage`) грузится сразу, остальные вкладки
-  (Analytics/Charts/Profile/Settings) и `IntroOverlay` — через `React.lazy` + `Suspense`
-  (фолбэк — спиннер `PageFallback`). Каждая вкладка едет отдельным чанком по требованию.
-- **Ленивые шторки:** модалки (`AddTransactionSheet`, `RoadpassSheet`, `LeaderboardSheet`,
-  `PlanningSheet`, `CategoryEditor`) грузятся по первому открытию. Паттерн «смонтировать
-  один раз»: `seenX = useRef(false); if (open) seenX.current = true` и рендер
-  `{seenX.current && <Suspense fallback={null}><Sheet open=.../></Suspense>}` — так шторка
-  остаётся смонтированной после закрытия, чтобы отыграла exit-анимация. `CategoryEditor`
-  лениво импортируется и в Settings, и в AddTransactionSheet → общий чанк (без дублей).
-- **LazyMotion:** все framer-анимации используют `m.*` (не `motion.*`). В `main.tsx` приложение
-  обёрнуто в `<LazyMotion features={loadMotionFeatures} strict>`, где
-  `loadMotionFeatures = () => import('./lib/motionFeatures').then((m) => m.default)` грузит
-  `domMax` отдельным async-чанком ПОСЛЕ первого рендера (`motionFeatures.ts`:
-  `export { domMax as default } from 'framer-motion'`). `domMax` (не `domAnimation`!) обязателен
-  (перетаскивание шторок). `strict` запрещает `motion.*` — иначе рантайм-ошибка.
-  **ВАЖНО (с 1.10.1, расширено в 2.1):** переходы вкладок, появление секций, рост баров, сегменты
-  кольца, плашки сегментов (прежние `layoutId`) — НЕ на framer, а на CSS (`styles/motion.css`).
-  framer `m.*` остался только у шторок (`ui/BottomSheet`, онбординг `QuickStart`): они появляются
-  по действию человека, rAF в этот момент жив. Не оборачивай контент с данными в
-  `m.div initial:{opacity:0}` — см. «Грабли».
-- **Vite manualChunks** (`vite.config.ts`): `react` (react+react-dom), `vendor`
-  (dayjs/zustand/clsx/lucide-react). framer-motion НЕ в manualChunks — иначе async-сплит фич
-  сломался бы (чанк подтянулся бы сразу). Стартовый критический JS ≈ 88 kB gzip
-  (react+vendor+index), движок анимаций (~31 kB gzip) и страницы — после первой отрисовки.
-- **Мёртвые зависимости удалены:** `recharts` и `@telegram-apps/sdk-react` (не использовались).
-
-## Грабли (на чём уже обжигались)
-- **framer-motion = только `m.*`** (см. выше про LazyMotion `strict`). `motion.*` упадёт в рантайме.
-- **PowerShell ломает секреты через пайп.** `"token" | wrangler secret put` обрезал токен
-  до 1 символа. ВСЕГДА заливать секреты через `wrangler secret bulk файл.json`.
-- **PowerShell 5.1 = TLS 1.0** → `Invoke-WebRequest` к воркеру падает по SSL. Использовать `curl.exe`.
-- **Zustand-селекторы, возвращающие новый массив/объект**, должны быть мемоизированы
-  (см. `memo1`/`memo2`), иначе ререндер-варнинг. Либо селектить примитивы.
-- **Не коммитить без явной просьбы.** Пользователь это уже один раз отклонял.
-- **Никогда не прячь контент за entrance-анимацией framer (`initial:{opacity:0}`).**
-  framer-motion крутит анимации через `requestAnimationFrame`. Если rAF приостановлен
-  (свёрнутый/неактивный Telegram-webview, бэкграунд-вкладка, медленное устройство) —
-  анимация не стартует, и `m.*` зависает на `initial` = контент НЕВИДИМ (opacity:0).
-  Так словили баг «в Аналитике/Календаре не видно сумм» (1.10.1): вся вкладка сидела на
-  `initial:opacity 0`. Хуже того, `AnimatePresence mode="wait"` монтировал новую вкладку
-  только ПОСЛЕ завершения exit-анимации старой — при зависшем rAF новая вкладка вообще не
-  появлялась (стор-переключение вкладки добавило лишний ре-рендер в `changeTab` через
-  `track()`, что добивало tracking exit). **Правило:** для появления вкладок/секций
-  используем CSS-класс `.tab-enter` (`index.css`) — базовая непрозрачность 1, анимация
-  только украшает; если не отыграет — контент всё равно виден. С 2.1 и рост баров, и сегменты
-  кольца — тоже CSS: framer с `initial height 0` при остановленном rAF оставлял график плоским.
-- **CSS-анимации появления с задержкой (каскад) — можно, framer — нельзя.** CSS идёт по времени
-  документа, а не по кадрам rAF: свёрнутый webview не оставит элемент «на первом кадре» навсегда.
-  Поэтому `.stagger`/`.rise-in-d`/`.grow-*-d` с `animation-fill-mode: backwards` допустимы — на время
-  задержки (≤0,15 с) элемент прозрачен. Но ДАННЫЕ (числа, полосы, столбики) всегда стоят в DOM в
-  конечном виде: ширина/высота — в `style`, рост — `transform: scale` из нуля; цифры — `Odometer`
-  (лента ставится transform'ом сразу, transition только прокручивает).
-- **Нажатия — классами `.press` / `.press-soft` / `.press-icon`**, а не `active:scale-95`. Их
-  `transition` (motion.css грузится после Tailwind) перебивает `transition-*`/`duration-*` того же
-  элемента, поэтому в список уже включены цвет, фон, рамка, тень и прозрачность. Нужен переход
-  другого свойства (ширина и т. п.) — оберни элемент, а не вешай утилиту рядом с `.press`.
-- **`formatMoney` печатает модуль числа, если не передан `sign`.** Сумма, которая может уйти в минус
-  (баланс), — с `sign={value < 0}` (у `Money`/`AnimatedMoney` тот же проп), иначе перерасход
-  выглядит плюсом. Так было на карте баланса до 2.1.
-- **Не делай `git stash` вокруг сборки.** `tsconfig.tsbuildinfo` лежит в git и меняется при каждой
-  сборке — `stash pop` падает на нём, и правки остаются в стэше (вернуть: `git checkout --
-  tsconfig.tsbuildinfo && git stash pop`). Сравнить сборки — через `git worktree` в scratchpad.
-- **Tailwind молча не генерирует прозрачность вне шкалы.** `bg-brand-500/16`, `/12`, `/18` —
-  класса просто нет в CSS, ошибки нет. Так в тёмной теме сломались чипы динамики: `dark:`-варианты
-  на `/16` не существовали, и оставалась светлая пастель. Шкала: 0,5,10,15,20,25…100. Нужна
-  нестандартная — пиши `/[.16]`. Сторожит `scripts/check-tw-opacity.mjs` в `npm run lint`.
+## Грабли
+- **Не прятать данные за framer `initial:{opacity:0}`** — при остановленном rAF (свёрнутый webview)
+  контент остаётся невидимым. Появление — CSS (`.tab-enter`, `.stagger`, `.grow-*`), данные стоят в
+  DOM в конечном виде. framer остался у шторок и онбординга.
+- **framer — только `m.*`**, `motion.*` падает в рантайме (`strict`).
+- **Нажатия — `.press/.press-soft/.press-icon`**: их `transition` перебивает утилиты того же элемента;
+  переход другого свойства — на обёртке.
+- **Tailwind молча не генерирует прозрачность вне шкалы** (`/16`, `/12`) — пиши `/[.16]`;
+  сторожит `check-tw-opacity.mjs`.
+- **`formatMoney` печатает модуль** — для сумм, уходящих в минус, `sign={value < 0}`.
+- **Не `git stash` вокруг сборки** (`tsconfig.tsbuildinfo` в git, `stash pop` падает) и не
+  `git checkout -- файл` во время замеров (откатывает правки) — сначала коммит.
+- **Шрифты не встраивать в CSS** (`assetsInlineLimit`): CSP `font-src 'self'` блокирует `data:`.
+  После сборки в `dist/assets/index-*.css` не должно быть `url(data:font`.
+- **`\b` в JS не видит кириллицу** — граница слова `(?![\p{L}\p{N}-])`.
+- **`scrollIntoView` двигает страницу** — ленты прокручивать `scrollTo` самого ряда.
+- **Эффект шторки зависит только от `open`** (`onClose` у вызывающих — новая функция на каждый рендер).
+- **Записи в стор при открытии быстрого старта нельзя** — сохранённый стор = «старый пользователь».
+- **Число операций в замерах — из стора**, не из localStorage (persist пишет с задержкой).
+- **`wrangler dev` ругается на кириллицу в метаданных KV** — локальный артефакт, на проде нет.
+- **График админки:** `viewBox` — по фактической ширине блока; потоки и накопления — на разных осях.
 
 ## Текущее состояние
+**2.4.0** (13.10.2026): свайп между вкладками; бот — выжимка не сравнивает неполный месяц с полным,
+знак баланса и «доходы не записаны», прогноз по дням учёта, приветствие + вопрос → ответ на вопрос,
+болтовня без модели, запас токенов ответа 4096, откат на лёгкую модель при битом ответе; CLAUDE.md
+сжат. Предыдущий прод: 2.3.0 (`main` = `f7e9462`, бандл `index-C5q7cfHB.js`).
 
-**2.3.0 (ИИ 2.0: бот и ассистент, которые считают + исправления по критику 2.2) — фронт + воркер.
-Просьба владельца: «бот отвечает как тупой бот — генерально улучшить, чтобы был полезным»; пример
-оформления — заголовок, разделы жирным, под ними цитата «• Параметр: **значение**», кнопки под
-сообщением. Движок проверял субагент-критик.**
-- **Почему было «тупо»:** модель получала итоги двух месяцев и возвращала строку; на «а в прошлом
-  месяце?» не помнила прошлого вопроса; на прошлую неделю, май, цели — «нет данных»; без модели —
-  «Не нашёл сумму»; `\b` в JS не видит кириллицу, и «сколько я потратил» вопросом не считался.
-- **Выжимка (`facts.ts`, `buildFacts`):** сегодня/вчера/неделя (календарная и 7 дней), месяц с
-  честным сравнением «за те же N дней», средний день, прогноз, пиковый день, категории с долями,
-  источники дохода, сильнейшие изменения, обычный месяц по категориям (до 3 полных), 12 месяцев
-  (первый неполный «учёт с N-го», текущий «неполный»), дни недели (до 8 нед.), бюджет с темпом,
-  лимиты, цели со сроками: «откладывать по X/Y/Z в месяц за 3/6/12 мес.» и «весь средний остаток —
-  примерно N мес.», другие валюты отдельно. Каждое число регистрируется в `numbers`/`percents`.
-  Считается одним проходом по блобу (`context.ts` → `accumulate`/`finalize`).
-- **Ответ (`answer.ts`):** модель `gemini-3.8-flash` (`thinkingLevel: LOW`; Gemini 3 по умолчанию
-  думает high/medium — секунды и деньги), при 4xx/5xx — `gemini-3.5-flash-lite`, при таймауте 12 с —
-  правила. Цена ≈ $0,004 за ответ (вход ~4000 токенов, выход ~400; $0,75/$3,75 за 1M до конца 2026,
-  с 2027 вдвое). Переключение — `GEMINI_ANSWER_MODEL` в `wrangler.toml`. Схема: `title`, `lead`,
-  `sections[{heading, icon, rows[{label, value}]}]`, `tip`, `followups`. `normalizeCard` режет длины,
-  markdown, склеивает пробелы в суммах неразрывными (`glueNumbers`). `ground`: строка с суммой/
-  процентом не из выжимки и не из вопроса (с «3к», «5 тыс») выпадает целиком, в `lead`/`tip` —
-  предложение. Ничего не осталось — отвечают правила. В промпте — раздел «О ПРИЛОЖЕНИИ» (где что
-  лежит): меняется интерфейс — правь `APP_GUIDE`.
-- **Без модели (`rulesCard`, RU/EN):** темы `topicOf` — привет, спасибо, помощь, цели, бюджет,
-  прошлый месяц, вчера, сегодня, неделя, доходы, категории, месяц, «не понял». Сообщение без суммы,
-  которое не вопрос, — тоже карточкой правил, а не «Не нашёл сумму».
-- **Маршрут (`bot.ts handleMessage`):** вопрос без цифр (`looksLikeQuestion`: «?» или вопросительное
-  слово с границей `(?![\p{L}\p{N}-])`) — сразу к ответу, без вызова разбора; с цифрами решает модель
-  разбора («могу ли купить за 3000?» — answer). Модель разбора недоступна, а это вопрос — правила.
-  «Печатает…» держится (`keepTyping`, каждые 4,5 с), перед вызовом модели ответов — черновик
-  `sendMessageDraft` с пустым текстом = нативный пузырь «Думает…» (Bot API 10.0+; ждём его доставки
-  ДО ответа, иначе пузырь повиснет под ответом). Написал боту — снимается наша отписка 'b'.
-- **Оформление (`renderTelegram`):** `<b>Заголовок</b>` / суть / `<b>Раздел</b>` + `<blockquote>•
-  Параметр: <b>значение</b></blockquote>` / `<i>совет</i>`; ответ на кнопку-продолжение начинается с
-  `<i>› вопрос</i>`. Всё от модели экранируется. Продолжения — кнопки по одной в ряд (`q:<i>`).
-- **Иконки как в примере — кастомные эмодзи:** боту доступны ТОЛЬКО если у владельца бота Telegram
-  Premium (или юзернейм с Fragment) — Bot API 10.3. Включает владелец: `/icons` + в том же сообщении
-  до 10 своих эмодзи по порядку (деньги, итоги, календарь, бюджет, категории, цель, доходы,
-  внимание, совет, помощь) → KV `bot:icons`, бот сразу шлёт пример; Telegram не принял — не
-  сохраняем. Ответ с иконками, отвергнутый (400), тут же уходит без них. `/icons off` — выключить.
-  У кнопок есть ещё `style` (primary/success/danger, без условий) — сознательно не используем.
-- **Rich Messages (Bot API 10.1–10.3: настоящие таблицы, заголовки, `sendRichMessageDraft`) — НЕ
-  используем:** старые версии Telegram их не покажут, а пример владельца — классическая разметка.
-- **Память:** чат — KV `chat:<id>` `{ turns }` на час; приложение шлёт `history` (3 реплики) и `lang`
-  в `/ask`. Кнопка под старым ответом: если тот ответ уже не последний в памяти, его текст
-  подкладывается в историю (по заголовку, `titleOfText`).
-- **Приложение (`AssistantSheet`):** карточка (заголовок, суть, разделы с линией слева и значениями
-  вправо, совет с лампочкой; иконки разделов — lucide, линейные), чипы-продолжения только под
-  последним ответом, ответ старого воркера (только `answer`) — текстом. `/ask` возвращает и `card`, и
-  `answer` = `cardToText` (абзацы, раздел одной строкой — так читают приложения 2.2, у которых
-  переносы внутри абзаца схлопываются). «Похоже на запись» — подсказка про «+».
-- **Исправления по критику 2.2 (код e277a79):** слово-ключ прототипа («constructor») давало дату
-  `NaN-NaN-NaN` — `Object.hasOwn` + проверка даты в очереди, в `isUsableEntry` воркера и клиента;
-  «Не та категория» в пачке ставила категорию всем — выбор записи; валюта записи бота — явно;
-  быстрый старт затирал бюджет вернувшегося (облако подтянулось) — бюджет только если его нет, тумблер
-  скрыт; чтение напоминаний — `/reminders/get` (старый воркер понимал «/reminders без enabled» как
-  «выключить»); 'b' не уходит на тумблер приложения (`reminderPreference`); гонка ответа сервера с
-  нажатием тумблера и двойной тап; вопрос о переносе валюты переживает уход с экрана
-  (`lib/relabelPending`, `koshel:relabel`, показывается в Настройках и на Главной), считает цели и
-  активы, сам закрывается при нуле, «kr» → код (`currencyMark`); `setCurrency` сбрасывает счёт
-  прежней основной на «Все»; перенос строки всегда делит траты, «1 200,50», свой день у части,
-  копейки и скидка; «вчера» правилами — моментом; `allSettled` в рассылке; английские слова-коды
-  (try, gel, cop, cad) и общие названия («динар», «дирхам») валютой не считаются; старые имена
-  поясов (Faeroe, Coral_Harbour, Catamarca, Jujuy); `role="switch"` у строк-тумблеров; админка
-  считает «напоминания выключены» с учётом выбора в боте (метаданные `v` у `remind:<id>`).
-- **Проверка 2.3:** `npm run lint` воркера (+`test-answer.mjs`, 124), сквозной `test-webhook.mjs` и
-  свой прогон новых путей на `wrangler dev --local` (фиктивный `.dev.vars` — удалён), Playwright
-  `ai.mjs` (scratchpad): карточка, продолжения с историей, тёмная 320 px, старый воркер, «похоже на
-  запись», перенос валюты Настройки → Главная.
-
-**2.2.0 на проде с 13.10.2026:** `main` = `e277a79`, бандл `index-BHuMseBL.js` (139 из 139 файлов
-совпали побайтно), воркер выкачен тем же пушем.
-
-**2.2.0 (валюты, быстрый старт, бот) — фронт + воркер. Сделано по просьбе владельца: «настройки
-заметнее», «нормальное приветствие в боте и выключение напоминаний», «быстрый старт плохо работает —
-многие остаются на USD; поиск по валютам, топ 50–100 с иконками». Тексты бота выверял критик-агент
-(маркетинг + UX-письмо), код — критик-агент кода.**
-- **92 валюты.** `currencies.ts` — ТОЛЬКО ядро для formatMoney (код, символ, локаль, флаг): лежит в
-  стартовом чанке. Названия RU/EN, слова поиска (страны на двух языках, «бакс», «грн»), частые
-  (`POPULAR_CURRENCIES`) и `searchCurrencies` — в `currencyInfo.ts`, грузится с экранами выбора.
-  Символ: свой знак, если его узнают (₴ ₽ ₸ ₾ ₼ ֏ ₪ ₹ ₩ ₫ ฿); местное сокращение, если им пишут на месте
-  (zł, Kč, Ft, сум, сом, смн, дин., ден, KM, kr); иначе код (у песо «$» и у рупий «Rs» неотличимы).
-  CHF теперь «CHF» (был «₣» — это французский франк). Локаль — страны валюты, у каждой проверены
-  латинские цифры (у арабских и бенгальской свои цифры — там `en-XX` или `-u-nu-latn`).
-  **Добавляешь валюту — добавь её и в `worker/src/money.ts`**, иначе `check-currencies` упадёт.
-- **Флаги** — набор circle-flags (MIT, `public/flags/LICENSE.md`), по файлу на валюту (92 шт., 57 КБ
-  всего): `<img loading="lazy">` грузит только видимые, дальше кэш. У всех 92 флаг = первые две
-  буквы кода, но поле `flag` явное — на будущее (XOF, ANG). `CurrencyFlag` при ошибке загрузки рисует
-  кружок с символом. SVG проверены на скрипты и внешние ссылки до копирования.
-- **Шторка выбора** (`CurrencyPicker`, ленивый чанк): поиск сверху (без автофокуса — клавиатура
-  закрыла бы частые), «Часто выбирают» (выбранная → по региону → популярные), «Все валюты» по алфавиту
-  языка. Ищет на обоих языках сразу, по коду и знаку; Enter — первая найденная. Проп `z`: над шторкой
-  операции — 60, над быстрым стартом — 85.
-- **Определение валюты** (`currencyDetect.ts`, ленивый): часовой пояс → валюта (таблица поясов +
-  префиксы `Australia/`, `America/Argentina/`…), затем регион языка системы (кроме `en-US` — стоит по
-  умолчанию где угодно), затем однозначный язык Telegram (uk, kk, ka…; русский однозначным НЕ
-  считается). Ничего — доллар.
-- **Смена основной валюты (`setCurrency`) больше не «перекрашивает» старое молча:** записи, цели и
-  активы без своей валюты закрепляются за ПРЕЖНЕЙ (раньше сто долларов становились ста евро);
-  `lastTxCurrency` = новая основная (форма открывается в ней); в настроенные быстрые основная встаёт
-  первой. Перенести старое — явно: `relabelCurrency(from, to)` (меняет код, суммы не пересчитывает,
-  вместе с целями и активами) и `undoRelabel(r)` по id. UI — `RelabelPrompt` («12 операций — в $ ·
-  Перенести в ₸ / Оставить в $», тост «Вернуть»). Валюты в тексте — символами: падежей 92 названий
-  («в лари», «в гривнах») мы не держим.
-- **Счета:** `AccountSwitcher` считает основную валюту счётом всегда. Раньше «основная ₸, все записи
-  в $» давало пустую Главную без чипов — переключиться на счёт с записями было нельзя.
-- **Быстрый старт** (`QuickStart`): приветствие → **«Настроим под тебя»** (валюта крупно с флагом и
-  «Подобрали по твоему региону» / «Изменить» → поиск; язык; тумблер напоминаний с пояснением) →
-  доход (валюта у поля — тоже кнопка) → траты → итог + **«Бюджет на месяц — {доход}»** (тумблер,
-  включён): без бюджета Главная и бот не скажут «сколько можно потратить сегодня». Валюта региона
-  подставляется по «Поехали» и при выходе через «×». **НЕ при открытии:** любая запись в стор сохраняет
-  его, а `useIntro` по сохранённому стору считает человека старым — ушедший с первого экрана больше не
-  увидел бы быстрый старт (поймано на своём же коде, сторожит `cur.mjs`). `koshel:curAsked` ставится
-  после шага настроек и при выходе.
-- **Вопрос застрявшим на долларе:** `CurrencyNudgeGate` в `Home.tsx` (стартовый чанк, дёшево:
-  доллар, не демо, `koshel:onboarded`, не спрашивали) → ленивый `home/CurrencyNudge`: «Твоя валюта —
-  казахстанский тенге?» → «Да, переключить» → сразу `RelabelPrompt`; «Оставить $» — больше не
-  спрашиваем. Регион не определился или это доллар — метка ставится сразу, чанк больше не грузится.
-  `onFlow` держит карточку, пока идёт второй вопрос (валюта уже не доллар).
-- **ГРАБЛЯ (поймана замером):** Главная импортировала `ONBOARDED_KEY` из `whatsnew.ts` — и в стартовый
-  чанк уехала вся история обновлений: +57 КБ (+25 КБ gzip). Ключи вынесены в `lib/introKeys.ts`.
-  Правило: стартовый чанк не импортирует `whatsnew.ts`; после правок сравнивай `index-*.js` со сборкой
-  прошлого коммита (`git worktree` в scratchpad). Итог 2.2: +3,2 КБ gzip к стартовому.
-- **Настройки заметнее:** в шапке Профиля — кнопка с подписью «Настройки» (была голая шестерёнка),
-  в меню Профиля — строка «Настройки · Валюта, язык, тема, напоминания».
-- **Напоминания (`worker/src/reminders.ts`, вынесены из index.ts).** Источник правды — `remind:<id>`:
-  `'1'` вкл сам, `'0'` выкл сам, `'b'` — бот заблокирован (403, ставим мы). Нет ключа — включено, если в
-  приложении не выключено (`rm: 0` в карточке блоба — запасной путь). Явный выбор важнее карточки.
-  Кому: пользователи приложения (`data:*`) И пишущие только боту (`inbox:*`, метаданные `l`). Не пишем,
-  если сегодня (МСК) человек синхронизировался или писал боту. Затухание: 1–3-й день тишины — каждый
-  день, потом 5, 7, 10, 14, 21, 30-й, дальше молчим; с 5-го дня — тексты-«возвращалки». Без метки
-  времени (не появлялся с 1.20) — не тревожим. Под каждым напоминанием — «Не напоминать» (`r:0:n`) →
-  сообщение становится «Хорошо, больше не напоминаю…» + «Включить снова» (`r:1:n`) и обратно. Команда
-  `/reminders` — экран с переключателем (`r:<0|1>:c`). `/start` снимает НАШУ отписку (`forgetBlock`:
-  'b', или '0' вместе с `blocked:<id>` — так писала 1.x) и метку `blocked`. Приложение: `/reminders` без
-  `enabled` — читает; тумблер в Настройках сверяется с сервером и откатывается, если сервер не принял.
-- **Приветствие бота (тексты критика):** без эмодзи (как ответы на записи), «Это Кошель — учёт денег без
-  таблиц и форм» → примеры в цитате → что будет в приложении и при бюджете → «Какая была последняя
-  трата? Напиши её сюда». Кнопки одним рядом: «Открыть Кошель» + «Что ещё умею» (там вопросы, валюты
-  «по курсу не пересчитываю», /reminders, /today, раскрытие про Gemini). Выключателя напоминаний на
-  приветствии нет намеренно: новичок их ещё не получал. Без обещаний сверх умений и без рода
-  («Какая была трата», не «что потратил»). Меню: /today, /help, /reminders, /start.
-- **Профиль бота сам:** `BOT_DESCRIPTION` (экран до «Начать», ≤512), `BOT_SHORT_DESCRIPTION` (≤120) и
-  команды выставляет `ensureBotProfile` из крона рейтинга (раз в 5 мин) по отпечатку текстов: ключ
-  `bot:profile`; отказ Telegram — пауза на час (`bot:profile:fail`). Поменял тексты — выкати, крон сам.
-- **Разбор без модели (`parseEntries`):** «вчера/позавчера/сегодня» где угодно в строке → дата по МСК;
-  несколько трат через «и», запятую, «;», перенос строки — только если в КАЖДОЙ части своя сумма
-  («хлеб и молоко 120» — одна покупка; «340,50» — копейки, запятая перед цифрой не делит). Раньше без
-  модели «вчера продукты 1200» писалось сегодняшним, а из «такси 450 и обед 380» — только такси.
-  Валюты словами — для 87 из 92; многозначное («сом» — рыба, «вон», «лей», «крона», «рупия», «песо») и
-  коды-английские слова (all, cup, pen, bob, mad, php) — не берём, их разбирает модель.
-- **Совместимость при выкатке:** старый клиент отбрасывает записи бота с незнакомой валютой
-  (`isUsableEntry`), но НЕ подтверждает их — они ждут в очереди до нового клиента. Блоб с новой
-  валютой на старом устройстве не портится (sanitize не стирает незнакомые строки).
-- **Проверка 2.2:** Playwright `cur.mjs` (61: быстрый старт из Киева, поиск «лари» + Enter, подсказка в
-  Алматы с переносом и «Вернуть», «Оставить $», Нью-Йорк без подсказки, Настройки и быстрые слоты,
-  шторка операции → «Другая валюта» → ฿, EN + тёмная + 320 px), регресс `flows2.mjs` 28/28, прогон 11
-  состояний, `test-webhook.mjs` и живой прогон новых путей на `wrangler dev --local` (с фиктивными
-  `.dev.vars` — после прогона файл удалён).
-- **Идеи на потом (от критика):** картинка-GIF описания бота в BotFather (переписка «кофе 300 → Кафе ·
-  300 · осталось 640 из 900») — сильнее любого текста; окно напоминаний по местному времени (15–20 МСК
-  у релокантов в Азии — это ночь); подарочное сообщение в index.ts ещё с эмодзи.
-
-**2.1.0 (движение, шторки, Магазин 2.0) — фронт, воркер не трогали. На проде с 10.10.2026:
-бандл `index-DLb7x5UZ.js` (`main` = `dcfb793`: плитки «Прогресса» + дебаг-исправления; воркер
-переразвёрнут тем же кодом, что был). Прогон «Деплой приложения» ищет имя бандла в `dist/index.html`: файлов `index-*.js`
-в сборке два (второй — общий чанк framer-motion), и по `ls` он брал не тот — прогон краснел впустую.**
-- **Проверка прода из облачной песочницы:** Chromium здесь не ходит наружу — в его хранилище NSS
-  (`~/.pki/nssdb`) нет CA прокси (ERR_CERT_AUTHORITY_INVALID), а ставить `certutil` запрещено.
-  Поэтому прод сверяется побайтно: каждый файл `dist/` против `curl` с Pages (40 из 40 совпали), а
-  браузерные проверки (CSP, сценарии) гоняются на `vite preview` той же сборки — CSP-мета там есть.
-- **Движение — `src/styles/motion.css`** (обычный CSS, импорт в `main.tsx` после `index.css`; без
-  `@layer`/`@apply`): токены `--ease-out/--ease-spring`, нажатия `.press*`, переходы вкладок
-  `.tab-in-r/-l` (200 мс, 12 px), вглубь `.tab-in-deep` (Настройки, Магазин, Титулы), назад
-  `.tab-in-back`, каскад `.stagger` (шаг 24 мс, ≤6 ступеней), рост `.grow-x/.grow-y(-d)`, раскрытие
-  `.reveal` (grid-rows 0fr→1fr; компонент `ui/Reveal`), `.char-in` (ввод суммы), `.shake`, `.sheen`
-  (3 прохода), `.flash-row`, тосты, частицы, экран уровня. `prefers-reduced-motion` гасит всё.
-- **Примитивы:** `ui/Odometer` (+`AnimatedMoney`: барабаны 450 мс + 25 мс на цифру, деньги с нуля
-  НЕ крутим), `ui/SegTrack` + `useSegPill` (одна плашка ездит под `.seg-on`; меряется в layout-эффекте,
-  после `fonts.ready` и по ResizeObserver; пока не измерена — работает обычный `.seg-on`),
-  `ui/Toaster` + `lib/toast` (один тост, «Отменить/Вернуть»), `lib/fx` (`burst`, `floatText`,
-  `flyCoins` к элементу `[data-coin-target]`, `replay`), `lib/touched` (вспышка строки категории
-  после записи).
-- **Шторки — одна `ui/BottomSheet`** (`layout: scroll|flex`, слой `z`: обычные 40, операция 50,
-  редактор категорий 60). Пружина, свайп вниз за ручку/шапку (`SheetHeader`, `SheetDragZone`,
-  `useSheetDrag`), затемнение следует за пальцем (без backdrop-blur — на Android это рывки).
-  Пока открыта — `lockVerticalSwipes()` (Telegram не сворачивает мини-апп) и системная «Назад».
-  Эффект шторки зависит ТОЛЬКО от `open` (`onClose` у вызывающих — новая функция на каждый рендер).
-  При открытии шторка и экран уровня прячут тост (`hideToast`): тост лежит выше (z-90) ровно над
-  клавиатурой шторки операции, и «Отменить» прошлой записи ловил бы нажатия по клавишам.
-- **«Назад» (Telegram и Escape):** `lib/useBackButton` — стопка обработчиков (`pushBackHandler` в
-  telegram.ts), нажатие закрывает верхний слой. Стопка живёт и без Telegram: один глобальный
-  обработчик Escape зовёт верхний. Своих слушателей Escape в компонентах НЕ заводи — раньше одно
-  нажатие закрывало и редактор категорий, и шторку операции под ним. Шторки и экран уровня
-  регистрируются как `modal` (`useBackButton(open, onClose, true)`) — их Escape закрывает и из поля
-  ввода; на вложенном экране (Настройки) Escape в поле сначала только снимает фокус. Уходящий тост
-  нажатий не ловит (`pointer-events-none` на `.toast-out`). Настройки, Магазин, Титулы, все шторки,
-  экран уровня.
-- **Навигация (`App.tsx`):** направление по `TAB_ORDER`, прокрутка запоминается для каждой вкладки,
-  тап по активной вкладке — плавно наверх. Магазин/Титулы — `view` в `Rewards.tsx`; открытый
-  под-экран и прокрутка хаба живут в `lib/rewardsNav` (вкладка ремонтируется по `key`): ушёл из
-  Магазина и вернулся — снова Магазин, и прокрутку ставит App. Повторный тап по «Прогрессу» из
-  Магазина — назад на хаб (`resetRewardsNav(false)`), строка «Уровень» в Профиле — хаб сверху
-  (`resetRewardsNav(true)`). Свой `scrollTo` у Rewards — только при смене экрана ВНУТРИ вкладки
-  (иначе он, срабатывая раньше App, сбивал восстановление). Модуль отдельный, чтобы App не тянул
-  ленивую страницу в стартовый чанк.
-- **Ряды сегментов с прокруткой вбок** (вкладки Аналитики, виды Магазина) держат выбранный в
-  поле зрения через `useKeepSegVisible` (SegTrack.tsx) — `scrollTo` самого ряда. НЕ `scrollIntoView`:
-  он двигает и страницу.
-- **Шторка операции:** колонкой — сумма сверху и клавиатура с «Записать» снизу закреплены,
-  середина прокручивается; категории в две строки вбок. Кнопка не `disabled`: без суммы трясётся
-  сумма, без категории — подсказка. После записи — тост «Записано · +2 монеты» с «Отменить»
-  (`commitTransaction` возвращает id; отмена — `undoCommit(id, refund)`: монеты за первую запись
-  дня уходят вместе с ней и `coinDay` возвращается прежний); удаление — тост «Вернуть»
-  (`restoreTransaction` — тот же объект).
-- **«Хорошо» — фиксированный зелёный `income`** (+`income.light` для тёмной темы), а не бренд: полосы
-  бюджета, `.delta-good`, чипы «Потока денег». Иначе купленная «Роза» красила «в рамках» как перерасход.
-- **Магазин 2.0 (`pages/Shop.tsx`):** виды `card|accent|frame|title|effect` (`SHOP_KINDS`), строки
-  открывают `rewards/ProductSheet` (примерка `RewardStage`: обложка на настоящем балансе, рамка на
-  своём аватаре 104 px, титул под своим именем, палитра — CSS-переменными только внутри блока,
-  эффект проигрывается), «останется N», покупка → сразу надето + всплеск. Примерка НЕ пишет в стор
-  (надетое синкается и уходит в рейтинг). Витрина дня — снимок на сутки в `localStorage 'koshel:deal'`
-  без купленного, таймер без секунд. Сундука нет — решили, что азарт приложению про экономию не нужен.
-- **Обложки карты — `src/styles/skins.css`:** класс `skin-<id>` на `.hero-surface` (`useHeroSkin`/
-  `heroSkinClass`); фон под текстом не светлее 0,08. Живые (aurora, holo) — один проход при
-  появлении, бесконечно только в примерке (`.skin-live`); голограмма на Главной идёт за пальцем
-  (`--holo-x`). Рамки — `rewards/FrameRing` (одна для аватара, рейтинга, магазина): кольцо —
-  `::before`, особые (`spin`, `pulse`, `week` = 7 делений серии) анимируются только от 56 px.
-- **Экономия:** `lib/perf.ts` ставит `html.perf-low` (UA Telegram-Android `…; LOW)`) и
-  `html.anim-paused` (событие `deactivated`/скрытая вкладка) — бесконечные анимации на паузе,
-  частиц нет. Календарь периода (`RangeCalendar`) и экран уровня (`LevelUpOverlay`) — ленивые
-  чанки, чтобы шторка с движком перетаскивания не попала в стартовый JS (стартовый +0,6 КБ gzip).
-- **Новый уровень (`LevelUp.tsx`):** `localStorage 'koshel:celebratedLevel'`; первый запуск только
-  запоминает уровень; празднуем лишь скачок ровно на +1, через 0,9 с после события — чтобы доиграли
-  монетки и закрылась шторка. Перечитанный стор (облачная копия, откат) — загрузка, а не рост:
-  `useStore.persist.onFinishHydration` поднимает запомненный уровень без праздника (он срабатывает
-  раньше перерисовки). Записи бота, слитые при запуске, празднуются — этот уровень человек заработал.
-- **«Прогресс»:** при ≥2 готовых заданиях — одна брендовая «Забрать всё · N», у строк кнопки тихие.
-  **Плитки 2×2 вернули по просьбе владельца** (строки 2.0 вышли слишком сухими): `ui/Tile` +
-  `rewards/TileScene` (монеты, пьедестал, пламя, корона) + `rewards/StreakTile` (тап = «Забрать» серию,
-  семь дней полосками). Сцены живые — CSS `.ts-*` в motion.css, анимации только на обёртках `<g>`
-  (CSS-transform заменил бы transform-атрибут фигуры). На каждой плитке данные: монеты (бейдж —
-  `data-coin-target`, туда летят монетки), место в рейтинге, серия/счёт до подарка, титулы «2 из 10».
-  Жетон уровня в герое и на экране нового уровня — ЦВЕТНОЙ (стеклянный из первой сборки 2.1 владелец
-  попросил вернуть): при открытии «приземляется», при начислении опыта подпрыгивает и по нему
-  пробегает блик (`RewardBadge shine`, перемонтаж по `key={xp}`).
-  Серия за ≤3 дня до подарка (`STREAK_GIFTS` 7/14/30) подписана «4 из 7 до подарка».
-- **Обращение — на «ты» во всех строках** (в 2.1 добиты 17 строк на «вы» в i18n и экран ошибки
-  загрузки). Старые записи «Что нового» — история, их не переписываем.
-- **Проверка 2.1 — сценарии Playwright** (scratchpad сессии, в репозиторий не клались): запись и
-  отмена с возвратом монет, тост при открытии шторки, Escape по стопке, Магазин после смены вкладки,
-  Аналитика на 320 px, уровень после rehydrate, минус баланса, свайп шторок пальцем (CDP touch).
-
-**Дебаг после 2.1 (10.10.2026; правки проверил агент-критик кода) — прогон 11 состояний данных × все экраны и шторки** (новичок с
-онбордингом, миграции с v11/v16, битый JSON, битые типы, неизвестные id наград, демо, EN+тёмная,
-мультивалюта, 3000 операций, 320 px; Playwright ловит pageerror и console error/warn, в т.ч.
-предупреждения React). Найдено и исправлено:
-- **Язык не из словаря в данных ('de') → пустой интерфейс**, а строки с подстановкой падали
-  (`interpolate(undefined)`). `translate` откатывается на ru. `sanitizePersisted` убирает у
-  строковых перечислений (lang, themeMode, chartStyle, homeHeaderMode, currency, lastTxCurrency,
-  account, quickCurrencies) только значения НЕ ТОГО ТИПА, булевы — то же; дополняет `equipped` всеми
-  пятью видами, нормализует `streak`, выкидывает элементы goals/investments/customCategories без id.
-  **Незнакомые строки НЕ стирать:** это может быть валюта/язык из будущей версии (как PLN), и старое
-  устройство по last-write-wins сбросило бы выбор и на новом. При чтении они подменяются сами
-  (translate → ru, getCurrency → первая валюта, тема → как «авто»).
-- **Новичок, выбравший евро, записывал первую ручную операцию в долларах:** быстрый старт пишет через
-  `addTransaction`, а тот не обновлял `lastTxCurrency` (начальное 'USD'). Теперь обновляет; `setCurrency`
-  без операций двигает и его; sanitize подставляет `currency`, если поля нет.
-- **Онбординг требовал две траты** (и кнопка, и обработчик `goForecast`) — с одной покупкой за день
-  человек застревал. Порог `MIN_EXPENSES = 1`, один на кнопку и обработчик.
-- **`window.confirm` → `confirmAction`** (`lib/telegram`): родное окно `showConfirm` (Bot API ≥ 6.2),
-  иначе confirm. В WebView Telegram confirm есть не везде и может молча вернуть «нет» — из онбординга
-  было бы не выйти. Окно уже открыто (двойной тап) — `false`, второго диалога нет. Новые
-  подтверждения — только через `confirmAction`.
-- **Копирование ссылки** (`lib/clipboard.copyText`): Clipboard API → textarea+execCommand → тост «не
-  получилось», а не тишина.
-- **Запросы к воркеру с таймаутом** (`post` в api.ts: 15 с; /ask 25 с; /data/put 30 с; /data/get и
-  /export 60 с — блоб до 1,5 МБ на медленной сети, а обрыв выгрузки после отправки файла дал бы
-  дубль). Сбой первого `pullCloud` раньше оставлял ВСЮ сессию без синка — теперь повтор по
-  возвращению на экран или через 30 с (таймерных — не больше трёх); подписка, слив бота и слушатели
-  ставятся только после успешного pull, повтор их не дублирует (проверено прогоном с подделкой).
-  **Известное ограничение last-write-wins:** если pull не прошёл, человек что-то записал, а облако
-  тем временем обновили с другого устройства, повтор примет облако и эти записи пропадут (старый код
-  терял их так же, только при следующем запуске). Защита — не принимать облако молча, если стор
-  менялся после старта; пока не сделано.
-- **Слив записей бота не сдвигает период** (`commitTransaction(t, null, { focus: false })`) — иначе
-  приложение открывалось на вчерашнем дне или прошлом месяце.
-- **Меню «⋯» периода** — в стопке «Назад».
-- **Сцены плиток «Прогресса» — конечные петли (~10 с):** бесконечные SVG-анимации держали главный поток
-  на 24% при CPU×6 (трансформации SVG не уходят в композитор), после — 1%.
-- Проверено и НЕ проблема: двойной тап «Записать» (одна запись), утечки слушателей (в компонентах всё
-  снимается), частицы (удаляются по таймеру), запись persist при переполнении (try/catch), новые API
-  (ResizeObserver, startViewTransition, requestIdleCallback — с проверками), воркер (`npm run lint`).
-- **ГРАБЛЯ замеров:** число операций проверяй по стору (`import()` модуля на dev-сервере), а не по
-  localStorage — persist пишет с задержкой до 400 мс, и «добавилось 0» было артефактом.
-
-**Админка 2.0 (воркер; фронт не трогали):**
-- **Код:** `worker/src/analytics.ts` — сбор людей и ВСЕ расчёты дашборда чистыми функциями
-  (`assemble`, `computeDashboard`, `snapshotRow`, `dayReport`, `digestText`); `index.ts` держит только
-  доступ, кэш сбора (20 с в памяти изолята) и маршруты `/admin/stats`, `/admin/person`, `/admin/digest`.
-  `worker/src/days.ts` — сутки МСК и маска дней. `worker/src/sources.ts` — метки рекламных ссылок.
-  Страница — `worker/src/admin.ts` (вкладки Сводка · Удержание · Источники · Люди · Продукт).
-- **Маска дней активности (честное D1…D30).** 64 бита «был/не был» за последние 64 дня: в карточке
-  рейтинга (`lb:<id>` → `vm`/`vd`, день запуска), в метаданных `data:<id>` (`vm`/`vd`, день синхронизации)
-  и `inbox:<id>` (`m`/`d`, день записи боту). Новых записей KV не добавляет — эти ключи и так
-  переписываются. До первого отмеченного дня (`trackFrom`) посуточной правды нет: ячейки «—», а не 0.
-- **Метки рекламы:** `t.me/TrueManiManager_Bot?start=<метка>` → `src:<id>` (метаданные `{s,at,n,u}`,
-  пишется один раз — первое касание); `?startapp=<метка>` → `start_param` в initData → `src` в
-  карточке рейтинга, только при самом первом запуске. `ref<id>` меткой не считается. Генератор ссылок —
-  вкладка «Источники».
-- **Статистика бота — в метаданных `inbox:<id>`** (`n` записей, `f`/`l` первая/последняя, маска).
-  Опустевшая очередь больше НЕ удаляется (иначе стёрлась бы статистика); «Отменить» вычитает из `n`,
-  слив в приложение — нет. Так видны и те, кто пишет боту, ни разу не открыв приложение.
-- **Приватность:** `src`/`vm`/`vd`/`firstSeen`/`fsx` вырезаются из публичного `/leaderboard`
-  (`publicEntry`). Денег в аналитике нет.
-- **Вход:** пароль `ADMIN_KEY` (можно «запомнить на устройстве») ИЛИ без пароля из Telegram: команда
-  `/admin` в боте (только владельцу) и кнопка под сводкой открывают дашборд web_app'ом, initData берётся
-  из `#tgWebAppData` и проверяется как у мини-аппа (`isAdmin`: id == `OWNER_CHAT_ID`).
-- **Сводка владельцу:** ночной крон `0 21 * * *` после снимка шлёт итоги суток без звука (новые, кто
-  записал, вернувшиеся, D1 вчерашних, источники). Рубильник `ADMIN_DIGEST` в `wrangler.toml`. Кнопка
-  «Прислать сводку» в дашборде — итоги текущих суток.
-- **Цвета графиков проверены валидатором dataviz:** ряды — зелёный/синий/розовый (`--s1..3`), ступени
-  воронки — порядковая гамма зелёного, удержание — последовательная шкала (корень от доли). Текст —
-  цветом чернил, не цветом ряда. Изменения «было N» вместо процентов при базе < 10 или скачке > ×4.
-- **Проверки:** `npm run lint` воркера теперь включает `test-analytics.mjs` (62 проверки на поддельном
-  KV) и `check-admin-js.mjs`, который проверяет РЕАЛЬНУЮ строку ADMIN_HTML и запрещает в шаблоне `` ` ``,
-  `${` и обратный слэш (шаблон молча съедает `\n`). Сквозной прогон — `test-analytics-e2e.mjs` при
-  `npx wrangler dev --local`. Предпросмотр без прода: `npm run admin:preview` → localhost:8790/admin
-  (синтетическая база с рекламным всплеском).
-- **Стоимость:** 3000 человек ≈ 13 мс сборки + 9 мс расчёта (замер на прогретом коде). На Paid — ничто;
-  на Free (10 мс CPU) дашборд и ночной крон на тысячах людей не уложились бы.
-- **ГРАБЛЯ:** `wrangler dev` пишет «Invalid header name or value» на метаданные KV с кириллицей
-  (эмулятор гоняет их через HTTP-заголовок). Это локальный артефакт, на проде такого пути нет.
-
-
-**2.0.0 (редизайн + воркер под рассылку на 20 000 человек):**
-
-Принципы оформления — проверяй по ним любую новую вёрстку (исключение с 2.1 — плитки «Прогресса»,
-их владелец попросил вернуть):
-- **Данные и есть украшение.** Никаких картинок без цифр: плитка с нарисованным пламенем заменена
-  строкой «3 дня подряд · рекорд 5» и полосками последних семи дней.
-- **Меньше коробок.** Одна карточка — это группа строк (`Group`/`Row`, `.card.grouped`) с линией
-  `--hairline` от текста, а не карточка на каждую строку. Карточка в карточке — нельзя.
-- **Один акцент.** `brand-*` — только главное действие экрана («Сохранить», «Забрать», «Поделиться»),
-  активное состояние (вкладка панели, сегодняшний день) и «хорошо». Переключатели — нейтральные
-  `.seg-track`/`.seg-item`/`.seg-on` (светлая плашка на сером треке); выбранный чип валюты —
-  `bg-ink text-surface-raised`. Кнопка сохранения операции — всегда бренд (раньше красная для расхода).
-- **Цветной квадрат с иконкой — только у категорий** (цвет = информация, по нему категорию находят на
-  диаграмме). У заданий, меню, наблюдений Аналитики, шапок шторок иконка линейная, `text-ink-subtle`.
-- **Поверхности:** светлый фон нейтральный off-white (`--c-surface 246 246 243`), карточки белые с
-  обводкой 1 px (`shadow-soft` = `0 0 0 1px var(--hairline)`), никаких мягких зелёных теней. Тёмная —
-  `14 15 14` / `27 28 26` / `39 40 38`. Герой (баланс, уровень, прогноз онбординга) — `.hero-surface`:
-  тёмная глубина от `brand-900` к почти чёрному, зерно и пятно акцента в углу.
-- **Радиусы:** группы и герой — `rounded-3xl`/`rounded-4xl`, внутри 12–14 px, кнопки и чипы — `full`.
-- **Шапки шторок:** заголовок 17 px extrabold + круглая серая «×». Вложенные экраны — `ScreenHeader`.
-- **Анимации появления данных — только CSS `.tab-enter`.** Переведены с framer: шаги онбординга,
-  раскрытия в Настройках и Гайде, строки заданий, полосы прогресса (уровень, бюджет, цели — обычный
-  `div` с `transition-[width]`).
-
-Что поменялось по экранам: Главная (`BudgetBlock` вместо `TodayBudget`+`PlanningCard`+`BudgetAlert`,
-категории одной группой, расходы первыми), «Прогресс», Профиль, онбординг (`QuickStart`), Настройки,
-шторка операции, Магазин, Титулы, Планирование, Гайд, Обновления, Рейтинг, Поиск, редактор категорий, наблюдения Аналитики. Ассистент
-перешёл на «ты», как всё приложение.
-
-**Исправленные ошибки 2.0:**
-- Профиль складывал доходы/расходы всех валют в одно число и подписывал валютой по умолчанию.
-- Счётчик «+1» у титулов уровня на хабе смотрел только на уровень, без рекорда серии — новичку
-  обещалась награда, закрытая на экране титулов.
-- Тексты пустой Главной и финала онбординга звали к кнопкам «+ и −», которых нет с 1.28.
-- **ГРАБЛЯ (с 1.48.0, найдена на проде):** Vite встраивал мелкий набор Manrope `cyrillic-ext`
-  (2,5 кБ) в CSS как `data:`, а CSP `font-src 'self'` его блокировал — знак гривны ₴ из этого
-  набора рисовался системным шрифтом. В dev-сервере CSP нет, поэтому видно только на проде.
-  Лечение — `build.assetsInlineLimit` в `vite.config.ts` не встраивает шрифты. Проверка после
-  сборки: в `dist/assets/index-*.css` не должно быть `url(data:font`.
-
-Фронт 2.0.0 на проде: бандл `index-DJKmX0rl.js`. Рейтинг, поиск и редактор категорий тоже переведены на группы и нейтральные сегменты.
-
-**Воркер под нагрузку (задеплоен, версия `9b3d9933`; план Cloudflare — Paid):**
-- **Лимитер в памяти изолята** (`worker/src/limits.ts`): счётчики в `Map`, fail-open, сигнатура прежняя.
-  Раньше каждый запрос делал чтение+запись KV `rl:*` — на рассылке это тысячи записей в минуту и
-  тот же неатомарный обход. Изоляты разные, поэтому лимит «примерный» — для защиты от спама хватает.
-- **Рейтинг — `lb:<id>` + крон `*/5 * * * *`** (подробности в «Таблица лидеров» выше).
-- **Напоминания без `notified:<id>`:** кандидаты берутся одним `list` с метаданными (`updatedAt`, `rm`),
-  отправка порциями по 25 в секунду, 429 — повтор через 1,5 с, 403 — отписка и `blocked:1`. Дедуп
-  больше не нужен: каждый человек попадает ровно в один часовой слот (`slotForId`).
-- **Потолок Gemini** — 50 вызовов на человека в сутки (было 200).
-- Проверка — `worker/scripts/test-load.mjs` (нужен `npx wrangler dev --local --port 8787 --test-scheduled`).
-- **ГРАБЛЯ:** задеплоенный воркер на момент релиза НЕ закоммичен. Пуш в ветку с изменениями
-  `worker/**`, где этих правок нет, через Actions «Деплой воркера» откатит их на проде.
-
-**1.48.0 (освежение интерфейса):**
-- **Шрифт свой, а не с Google Fonts.** `@fontsource-variable/manrope` импортируется в `main.tsx`
-  (семейство `'Manrope Variable'`). Google Fonts грузился после первой отрисовки, и большую часть
-  времени человек видел системный фолбэк. CSP: `font-src 'self'`, Google-домены убраны.
-- **Роли подписей вместо капслока** (`index.css`, `@layer components`): `.kicker` (надзаголовок
-  страницы), `.section-title`, `.caption`, `.caption-sm`. Прописные с разрядкой были на 56 местах —
-  читались как шаблон. Новые подписи — этими классами, а не `uppercase tracking-wider`.
-- **`<Money>`** (`components/ui/Money.tsx`): режет вывод `formatMoney` по последнему NBSP — знак
-  валюты и копейки мельче и тише суммы (`.money-sym`/`.money-frac`, нижняя граница 11px).
-  Только для крупных сумм-героев; в строках списков остаётся `formatMoney`.
-- **`<DeltaChip>`** (`components/ui/DeltaChip.tsx`): один чип динамики «↗/↘ N%» вместо трёх копий
-  (Overview, MonthlyRecap, CategorySheet). `goodWhenUp` — для доходов.
-- **`.hero-surface`**: фактура (SVG-шум), свет и глубина поверх градиента из `--brand-*` — купленные
-  акценты продолжают работать. Карточка баланса, плашка уровня в Профиле, герой «Прогресса»,
-  итог QuickStart. Карточка баланса больше НЕ `m.div initial:opacity 0` (нарушала правило из «Граблей»).
-- **Эмодзи в интерфейсе нет.** Иконки lucide вместо эмодзи (аватар-гость, медали лидерборда,
-  цели — `Target`, сохранённое у цели эмодзи-поле игнорируется при показе). Удалены поля:
-  `LevelDef.badge`, `QuestDef.icon`, `RarityMeta.dot`, `icon` у пунктов `whatsnew`. Сообщения
-  бота в Telegram эмодзи по-прежнему используют — это отдельный стиль, не трогали.
-- Баги: блок «На сегодня» при исчерпанном бюджете месяца писал «Потрачено X из 0 €» — теперь
-  «Бюджет месяца исчерпан · сверх бюджета N» (`DailyAllowance.monthLeft`). Вкладки Аналитики
-  на 320 px уезжали за край — ниже 360 px шрифт и поля ужимаются.
-
-**Аудит после 1.32.1 — найдено и исправлено:**
-- **Потолок XP не учитывал ежедневную серию.** За серию тоже начисляется опыт
-  (`src/lib/streak.ts`: 2 XP в день плюс 20/40/100 на рубежах 7/14/30), а в формуле
-  воркера этого слагаемого не было. У игрока с долгой серией рейтинг однажды
-  замёр бы: `Math.max(capped, previousXp)` не даёт значению упасть, но и расти
-  выше потолка не позволяет. Добавлено слагаемое, которое считается от рекорда
-  серии в облачном блобе (`blobStreakBest`): `best × 2 × 4 + 600`. Множитель 4 —
-  на то, что серию набирают заново много раз, а рекорд не растёт.
-- **Оживлённые селекторы заданий были дорогими.** `selectCategoriesUsed`,
-  `selectLogDayStreak`, `selectGoalsReached`, `selectBudgetMonthKept` лежали
-  мёртвыми с прежней системы, и я вернул их в строй не глядя. Два из них звали
-  `dayjs()` В ЦИКЛЕ по всем операциям (создание объекта-обёртки плюс форматирование
-  строки на каждую запись), и ни у одного не было зависимостей — то есть пересчёт
-  на любое изменение стора, пока открыта вкладка «Прогресс». Переведены на
-  `Date.parse` и снабжены зависимостями. Шаг «на день назад» делается через
-  `Date.setDate`, а не вычитанием 864e5: переход на летнее время сдвигает сутки.
-- Проверено и НЕ является проблемой: перенос длинных сумм. На реалистичных
-  величинах (до 9,5 млн сум, миллионы рублей) переносов нет — ломается только на
-  сотнях миллионов с копейками. Трогать формат не стали.
-- Статический аудит переводов: пропущенных ключей нет, все ключи двуязычные.
-  Неиспользуемых ключей 88 — почти все достались от прежних версий, чистку
-  сознательно не делали.
-
-**1.32.1 (визуальная чистка «Прогресса»):**
-- **Эмодзи заменены иконками.** Эмодзи рисует шрифт системы: оно цветное и
-  растровое, на разных телефонах разное, не подчиняется цвету текста и среди
-  line-art интерфейса выглядит дёшево. Заведены `QuestIcon` (иконка + свой цвет
-  на каждое задание, ключ — id квеста) и `CoinAmount` (иконка `Coins` вместо 🪙 —
-  заменена во всех шести местах). Поле `icon` в `QuestDef` больше не нужно:
-  определение задания осталось про правила и награды, внешний вид живёт в QuestIcon.
-- **Убраны пояснительные подписи под плитками** («Палитры, титулы, рамки»,
-  «Рейтинг по XP среди всех участников», «Уникальный титул за каждый уровень») —
-  подпись под каждым словом читается как объяснение очевидного. Заголовок стал
-  крупнее (16px), плитка ниже (`min-h-[136px]` вместо `aspect-square`), иначе под
-  текстом оставалась дыра. Проп `subtitle` у `Tile` сохранён — он уместен для
-  ДАННЫХ (как у плитки серии), а не для описаний.
-- Убраны эмодзи-бейджи уровня в углах плиток: уровень и так крупно написан выше.
-  Бейдж остался только там, где несёт действие («+N к получению»).
-- В плитке серии убрано слово «Серия» из подписи — оно дублировало заголовок
-  «Серия дня» и заставляло строку переноситься на две.
-
-**1.32.0 (задания-конвейер с перезарядкой):**
-- `src/lib/quests.ts` переписан: вместо фиксированного борда из 6 — **пул из 22**
-  (19 обычных + 3 реферальных) и борд из `BOARD_SIZE = 3`. Забрал награду — задание
-  уходит, слот встаёт на перезарядку `QUEST_COOLDOWN_MS` (8 ч) и показывает серую
-  плашку с таймером, потом на него встаёт следующее из пула.
-- Порядок пула = учебная программа. Задания `use_repeat` и `use_search` стоят ПОСЛЕ
-  `tx_10` намеренно: чипы «Повторить» появляются только при повторяющихся тратах,
-  а искать в пустой истории нечего — раньше времени задание выглядело бы сломанным.
-- **Готовые к получению показываются всегда**, даже если их больше размера борда:
-  терять доступ к заработанной награде нельзя, и перезарядка их не касается — она
-  гасит только появление НОВЫХ заданий.
-- Перезаряжающихся слотов рисуем не больше, чем осталось заданий в запасе: обещать
-  таймером задание, которого нет, нечестно.
-- Новая метрика `event` — счётчик из `s.events` по ключу в поле `event`. Новые
-  задания на существующие счётчики теперь не требуют правок в коде метрик.
-  Добавлены счётчики `use_repeat` (тап по чипу повтора) и `use_search` (запрос
-  длиной от 2 символов, а не просто открытие шторки).
-- Переиспользованы селекторы, оставшиеся от прежней системы цепочек:
-  `selectCategoriesUsed`, `selectLogDayStreak`, `selectGoalsReached`,
-  `selectBudgetMonthKept`.
-- Тексты `quest.*` в словаре тоже остались с прежней системы — переиспользованы.
-  `see_charts` переписан: отдельной вкладки «Графики» давно нет, это сегмент
-  «Динамика» в Аналитике.
-- **ГРАБЛЯ:** суммарный XP пула (`QUESTS_TOTAL_XP` = 1385) продублирован в воркере
-  как `XP_ALL_QUESTS` — он входит в потолок XP рейтинга. Меняешь награды или состав
-  пула — правь обе стороны И ПЕРЕДЕПЛОЙ ВОРКЕР, иначе честные игроки упрутся в потолок.
-
-
-**1.31.0 (поиск по операциям):**
-- `src/components/SearchSheet.tsx` — отдельный ленивый чанк (~4 kB), монтируется в
-  `App` после первого открытия. Вход — кнопка-лупа в шапке Главной (`Header`),
-  проп `onOpenSearch` идёт из `App` через `HomePage`.
-- **Ищет по всей истории, а не по выбранному периоду.** Смысл поиска в том, чтобы
-  найти платёж, который не получается отыскать листанием, — а листание уже
-  ограничено периодом и категорией.
-- Совпадение ищется по одной строке-«стогу» на операцию (заметка + теги + название
-  категории + сумма), поэтому «1250», «кафе» и тег работают одинаково, без отдельных
-  правил на каждый случай. Стог собирается в `useMemo` по `[transactions, categories,
-  lang]` — набор запроса его не пересобирает.
-- Селектор с параметром-запросом СОЗНАТЕЛЬНО не заводился: `memo2` кэширует по
-  значению параметра, и кэш рос бы на каждое нажатие клавиши.
-- Результатов показываем максимум 100 (`MAX_RESULTS`), счётчик найденного — полный.
-
-
-**1.30.0 (повтор частых операций + остаток на сегодня):**
-- `selectFrequent(s, kind)` — пары «категория + сумма», встречавшиеся не менее двух
-  раз за 90 дней, топ-4. Совпадение суммы ТОЧНОЕ (привычные траты круглые, нестрогое
-  сравнение давало бы мусор). Источник — `s.transactions`, а не `activeTransactions`:
-  подсказки должны отражать реальные привычки, а не демо-данные.
-- Чипы «Повторить» в `AddTransactionSheet` (только при создании, не в правке). Тап
-  подставляет сумму, категорию и валюту, но НЕ сохраняет — случайный тап не должен
-  создавать запись.
-- **Подписки закрытой шторки отдают стабильные пустышки** (`NO_TX`, `NO_FREQUENT`):
-  шторка после первого открытия остаётся смонтированной, и без этого закрытая форма
-  пересчитывалась бы на каждую записанную операцию.
-- `selectDailyAllowance(s)` + компонент `TodayBudget` на Главной: дневной лимит из
-  месячного бюджета, пересчитываемый каждый день от ОСТАТКА (перерасход ужимает
-  завтрашний лимит). `null` без заданного бюджета — блок просто не показывается.
-- **Цена по замерам:** серия из 10 сохранений — плюс ~15% суммарной блокировки,
-  длиннейшая задача НЕ выросла (106 мс против 116 у сборки без фич). Основной вклад —
-  честный пересчёт «на сегодня» после каждой записи.
-- **ГРАБЛЯ (обжёгся):** `git checkout -- <файл>` в ходе замеров откатил незакоммиченные
-  правки в двух файлах. Перед бисекцией вариантов сборки — сначала коммит.
-
-
-**1.29.0 (оптимизация + защита рейтинга):**
-
-Диагноз ставился замерами, а не на глаз: стенд на puppeteer с троттлингом CPU 6x и
-базами 200/600/1500 операций меряет блокировку главного потока (long tasks), число
-записей в localStorage и число конструкций Intl. Скрипты — в scratchpad сессии
-(`bench.mjs`, `test_persist.mjs`, `test_regress.mjs`), в репозиторий не клались.
-
-- **Селекторы: сохранение ссылки вместо кэша по объекту состояния.** `memo1`/`memo2`
-  раньше кэшировали в `WeakMap` по ссылке на `State`, а zustand создаёт новый `State`
-  на каждый `set` — кэш промахивался ВСЕГДА, селекторы возвращали новые массивы, и
-  любое изменение (хоть смена темы) будило всех подписчиков. Теперь селектор всегда
-  честно пересчитывается, но результат сравнивается с предыдущим (`sameResult`,
-  два уровня вглубь) и при совпадении отдаётся СТАРАЯ ссылка. Устаревшие данные
-  показать невозможно — это важнее, чем экономия вычислений. Необязательный `deps`
-  добавлен только базовым селекторам (`activeTransactions`, `selectAllCategories`,
-  `selectPeriodTransactions`, `selectAccountTransactions`) как оптимизация поверх.
-- **`commitTransaction(payload, editingId)`** — одно изменение стора вместо трёх
-  (`addTransaction` + `setLastTxCurrency` + `focusPeriodOn`). Сдвиг периода для
-  операции задним числом вынесен в чистую `focusedPeriod`, её же зовёт `focusPeriodOn`.
-- **Отложенная запись persist** (`throttledStorage`, окно 400 мс, троттлинг а НЕ
-  debounce — задержка ограничена сверху). `flushPersist()` экспортируется и
-  вызывается на `visibilitychange`/`pagehide` и из `cloud.ts` перед любым прямым
-  чтением блоба. Записей на одно сохранение: было 2, стало 1.
-- **`cloud.ts`: `schedulePush` больше не парсит блоб.** Он вызывается на КАЖДОЕ
-  изменение стора и делал `JSON.parse` всех сотен килобайт ради одного флага —
-  теперь читает `useStore.getState().transactions.length`. В браузере вне Telegram
-  синк выключен, поэтому в замерах этой стоимости не видно, а у реальных
-  пользователей она была.
-- **`React.memo`:** `HomePage`, `CategoryList`, `CategoryRow`. Все колбэки в `App`
-  обёрнуты в `useCallback` — без этого memo бесполезен. Операции раскрытой строки
-  вынесены в `RowTransactions`: пока строка свёрнута, компонент не смонтирован и
-  селектор по всем операциям для неё не считается.
-- **Прогрев чанка шторки** добавлен в `usePrefetchTabs` — «+» теперь на каждой
-  вкладке, и первое открытие стоило заметную паузу.
-- Кэш `Intl.NumberFormat` в `format.ts`; `Date.parse` вместо `dayjs()` в горячих
-  циклах (`selectPeriodTransactions`, `MonthCalendar`).
-- **Нормализация снимка при загрузке** (`sanitizePersisted` в `merge` персиста).
-  Принцип — не терять данные: числа зажимаются, контейнеры не того типа заменяются
-  пустыми, выбрасываются только операции без id/категории/числовой суммы.
-- **Иконки НЕ выносились в ленивый чанк** (был такой пункт в плане): они уже лежат
-  в `vendor`-чанке, который кешируется между релизами, а замеры показали, что
-  загрузка приложения поток не блокирует. Выигрыш копеечный, риск «пропали иконки» —
-  реальный.
-
-**Клавиатура в шторке операции:** клавиши раньше были голыми глифами на фоне —
-не видно, куда жать, а операторы отличались от цифр только цветом и сливались.
-Теперь у каждой клавиши своя плашка (`bg-surface-sunken`), колонка операторов
-выделена мятным тоном, стирание — иконка `Delete` вместо глифа «⌫». Раскладка
-осталась 4x4, шторка не выросла. Клавиши описаны в `KEYS` на уровне модуля.
-
-**Безопасность (`worker/src/index.ts`):**
-- **Потолок XP.** `/profile` принимал `xp` из тела запроса и резал только `clampInt`
-  (до миллиарда) — одного запроса из консоли хватало, чтобы навсегда занять первое
-  место. Теперь число операций берётся из облачного блоба самого пользователя
-  (`blobTxCount`), рефералы — из счётчика KV, и XP режется потолком
-  `ops×12 + refs×25 + 630 (все задания) + запас`. Уровень считается из XP на сервере.
-  Константы обязаны совпадать с клиентскими — при смене правил начисления править обе.
-- **Потолок никогда не опускает уже достигнутое:** итог = `max(подрезанное, прежний XP)`.
-  Решение Свята — весь накопленный прогресс сохраняется, чистки рейтинга не делаем.
-  Накрутке это не помогает (поднять всё равно можно только до потолка), зато честный
-  игрок не теряет позицию, если облачный блоб отстал или пропал.
-- Чужие записи рейтинга НЕ трогаем: пассивная подрезка была написана и убрана
-  намеренно — это была бы та самая чистка.
-- Сравнение HMAC за постоянное время (`timingSafeEqual`).
-- ~~`isRateLimited` читает-и-пишет KV неатомарно~~ — с 2.0 лимитер в памяти изолята, см. раздел 2.0.
-
-
-**1.28.0 (плавающая нижняя панель):**
-- `TabBar` переписан: вместо полноширинной панели с `border-t` — **плавающая пилюля**
-  (`bg-surface-raised/80` + `backdrop-blur-xl`, `shadow-fab`, `bottom = safe + 10px`, `max-w-md`,
-  боковые поля `px-3`). Обёртка `pointer-events-none`, сама панель и кнопка — `pointer-events-auto`,
-  иначе невидимая полоса по бокам перехватывала бы тапы.
-- Подсветка активной вкладки — **одна капсула, которая ездит** (`absolute w-1/4` +
-  `translateX(index * 100%)`, `transition-transform`), а не 4 независимых фона. Ширина `w-1/4`
-  завязана на 4 равные вкладки — при изменении их числа править и её.
-- **Круглая «+» справа** от пилюли (новый проп `onAdd`, ключ `nav.add`). Компонент `FabButtons`
-  (пилюля «Расход/Доход» на Главной) **удалён**, ключи `fab.*` из `i18n` тоже.
-- `AddTransactionSheet` **поднят из Home в App**: шторка одна на приложение, поэтому «+» работает
-  с любой вкладки. Состояние (`sheet`/`sheetMounted`/`editing`) живёт в `App`; `HomePage` получил
-  проп `onEditTx` и больше не владеет шторкой.
-- В шторке `kind` стал **состоянием, а не пропом**: плашка «Расход/Доход» превратилась в рабочий
-  сегмент. `switchKind` сохраняет сумму/дату/заметку/теги и сбрасывает `categoryId` (списки категорий
-  у расхода и дохода разные). `kind` убран из зависимостей эффекта сброса формы — иначе каждое
-  переключение стирало бы введённую сумму; синхронизация с пропом теперь при открытии шторки.
-- Отступы страниц (`pb-24`/`pb-32`) не менялись — проверено скриншотами: панель занимает 70px снизу,
-  контент заканчивается выше неё на всех вкладках.
-
-**Хэндофф:** проект в чистом состоянии, лежит в `C:\Users\User\Desktop\FinApp`. Фронт — бандл
-`index-CXQV2e9b.js` (`APP_VERSION` = `1.21.0`). Открытых багов нет.
-
-**1.21.0 (переделка заданий — борд из 6 + подписка на канал):**
-- `src/lib/quests.ts` **переписан**: вместо длинной цепочки с 3-ч ротацией — **фиксированный борд из 6**,
-  две группы (`group: 'main' | 'special'`): main = `subscribe_channel` (подписка на @Svyat_research, metric
-  `subscribe`, `actionUrl`), `first_tx`, `tx_10`; special = `invite_1`/`invite_3`/`invite_5`. Цепочка/ротация/
-  `unlockAfter`/`questClaims`-таймеры **убраны**; забранные остаются на борде («✓ Получено»). `allQuestProgress`
-  упрощён до `(metrics, claimedQuests)`. `QuestMetrics` = `{transactions, referrals, subscribed}`.
-- `QuestCard.tsx`: убран таймер; кнопка «Подписаться» (для `actionUrl`, пока не выполнено) → «Забрать» → «Получено».
-- `Rewards.tsx`: две секции — «Задания» (main) и «Спешел» (special); состояние `subscribed` +
-  `checkSubscription()` на маунте и по `visibilitychange`; подписка открывает канал (`openTelegramLink`) и
-  перепроверяет. Убраны неиспользуемые селекторы/`now`-тик.
-- `api.ts`: `checkSubscription()` → POST `/check-sub`. Воркер: эндпоинт **`/check-sub`** (`getChatMember` по
-  `@Svyat_research`, status ∈ creator/administrator/member; мягкий фолбэк `subscribed:false`).
-  **ВЛАДЕЛЬЦУ:** добавить бота `@TrueManiManager_Bot` АДМИНОМ в канал @Svyat_research — иначе проверка всегда false.
-- i18n: `quest.subscribe`, `rewards.special`, `quest.subscribe_channel.*`, `quest.invite_1.*`. Стор/persist —
-  без миграции (используем существующие `claimedQuests`/`claimQuest`; id `first_tx`/`tx_10`/`invite_3`/`invite_5`
-  стабильны — прогресс сохраняется).
-
-**Админ-панель аналитики v2 (воркер, фронт не трогали — НЕ показываем в «что нового»):**
-- Веб-дашборд `GET /admin` (HTML в `worker/src/admin.ts`) + `POST /admin/stats` (JSON). Защита — заголовок
-  `X-Admin-Key` == секрет **`ADMIN_KEY`** + IP-rate-limit. Вход по паролю, хранится в sessionStorage.
-  URL: `https://koshel-worker.karateka004.workers.dev/admin`.
-- **Оформление = оформление приложения:** те же CSS-переменные поверхностей/чернил, что в `src/index.css`,
-  мятный акцент, Manrope, скруглённые карточки, светлая и тёмная темы (тумблер, `localStorage`).
-  CSP страницы расширен под шрифт (`fonts.googleapis.com`/`fonts.gstatic.com`).
-- **Ключевая перестройка сбора (главное):** карточка пользователя `UserCard` считается в
-  `buildUserCard(blob)` в момент записи (`/data/put`) и кладётся в **метаданные** ключа `data:<id>`
-  (`fitMeta` держит их под лимитом KV 1024 Б; события кодируются короткими кодами `EVENT_CODE`).
-  Метаданные приходят вместе со списком ключей, поэтому вся статистика собирается **одним `list`,
-  без чтения блобов**. Раньше «использование разделов» читало и парсило КАЖДЫЙ блоб на каждый запрос
-  дашборда — N обращений к KV и упор в лимит подзапросов Worker на растущей базе.
-- **Единая таблица людей** `collectPeople(env)`: слияние `data:*` (метаданные+карточка), рейтинга
-  (имя/XP/операции/рефералы/`at`/`firstSeen`), `claimed:*` (пришёл по приглашению), `blocked:*`.
-  Все метрики считаются из НЕЁ — раньше «всего» брали из `data:*`, а «с операциями» из рейтинга, и
-  процент одного от другого был бессмыслицей (разные популяции).
-- Метрики (БЕЗ денег — приватность): всего/по приглашению/сами, DAU/WAU/MAU+липкость, **записывают
-  операции за 7/30 дней** (по дате последней операции из карточки — честнее «заходил»), вложенная
-  **воронка активации**, сегменты жизненного цикла, «вернулись хотя бы раз» (вместо шумного D1 по
-  вчерашней когорте), **когорты по неделям** (с нулевыми неделями), **поимённый список людей** с
-  поиском/сортировкой/фильтрами, разделы (охват + активные за 30 дней), распределения валюты/языка/
-  темы/версии стора, гистограмма числа операций, топы, графики Рост/Активность/Приток.
-- `LeaderEntry.firstSeen` (+`fsx` — «дата оценочная»): профиль уходит при каждом запуске, поэтому дата
-  регистрации есть и у тех, кто ни разу не синхронизировался. Оценочные даты помечены «≈» в UI.
-- **Дозаполнение карточек — автоматическое.** `backfillCards(env, BACKFILL_SLICE=12)` +
-  `POST /admin/stats {backfill:true}`; курсор в `admin:backfill-cursor`, порция каждую ночь в
-  `nightlyAnalytics`. Порция маленькая намеренно (потолок подзапросов Worker), поэтому **страница сама
-  крутит порции** (`autoBackfill`, до 40 кругов) сразу после загрузки — кнопок в дашборде нет вообще.
-  Пока идёт сбор, сверху тонкая строка со спиннером, а «записывают операции» показывает прочерк вместо
-  нуля (ноль читался бы как «никто не пишет»).
-- **Дашборд рассчитан на телефон.** Ниже 700 px таблицы (люди, когорты, топы) превращаются в списки
-  строк: таблица из семи колонок в экране 430 px — это полоса шириной 635 px, которую надо возить вбок.
-  Верхние карточки в два столбца, ряды фильтров переносятся (а не прячутся за боковой прокруткой),
-  сортировка людей — родным `<select>`, список людей открывается на 20 записях («Показать ещё»).
-  Длинные пояснения свёрнуты в `expl()` (`<details>`) — раньше это была стена мелкого серого текста
-  на каждом экране. Проверено на 430×932 (iPhone 14 Pro Max): 9 экранов вместо 12,4, горизонтального
-  скролла нет, ничего не вылезает.
-- **ГРАБЛЯ (обжёгся):** `viewBox` графика нельзя держать фиксированным. С `width:100%;height:auto`
-  и `viewBox 880×190` на телефоне высота схлопывалась до 81 px — вместо кривой полоска. Теперь viewBox
-  строится по фактическому `clientWidth` блока, а `resize` перерисовывает страницу целиком (меняется и
-  режим вёрстки, и ширина графика).
-- **ГРАБЛЯ (обжёгся):** `tsc` НЕ видит синтаксис скрипта внутри `ADMIN_HTML` — сломанная скобка проходит
-  проверку типов и выкатывается, а обнаруживается пустой страницей. Поэтому `npm run lint` в воркере
-  теперь `tsc --noEmit && node scripts/check-admin-js.mjs`: скрипт вырезается из HTML и отдаётся парсеру
-  Node, плюс проверяется, что в нём не появились обратные кавычки и `${…}` (они закрыли бы шаблонную строку).
-- История: снимок `recordDailySnapshot` по cron **`0 21 * * *`** (00:00 МСК) пишет `metrics:<YYYY-MM-DD>`
-  (TTL ~65 дней) **и** скользящий массив в одном ключе `metrics-history` (последние 120 дней). Дашборд
-  читает массив + метаданные посуточных ключей (ради истории, накопленной до появления массива).
-- **ГРАБЛЯ:** ряды одного графика обязаны быть сопоставимы по масштабу. Накопительное «всего» (сотни) и
-  суточный приток (единицы) на одной оси = второй ряд лежит на нуле. Поэтому потоки и накопления
-  разведены по вкладкам, а приток нарисован столбиками. Ось строится по круглому ШАГУ (`axisFor`),
-  а не по круглому максимуму, иначе подписи выходят 0·6·13·19·25.
-- `EVENT_LABELS` содержит ТОЛЬКО реально инкрементящиеся события. Прежний список наполовину состоял из
-  id заданий (`first_tx`, `see_analytics`, `try_period`…), которых в `store.events` нет вовсе, а реальные
-  `use_repeat`/`use_search` выводились сырыми ключами.
-- `ADMIN_KEY` сейчас временный. **Владельцу:** задать свой пароль `cd worker && npx wrangler secret put ADMIN_KEY`.
-
-**1.20.0 (ежедневные напоминания от бота):**
-- **Воркер** (`worker/src/index.ts` + `wrangler.toml`): `scheduled`-хендлер + cron **`0 12-17 * * *`**
-  (почасово 15:00–20:00 МСК). `runDailyReminders(env, nowMs)` шлёт тем, кто **в этот день не заходил**
-  (по `updatedAt`), разнося по **часам-слотам**: `slotForId(id, REM_SLOTS=6)` = час окна, в каждый прогон
-  отправляем только «свою» 1/6 базы (слот-чек ДО KV-чтений → дёшево). Текст — **ротация 7 фраз по дню**
-  (`pickReminderText`), кнопка web_app «Открыть Кошель». Дедуп `notified:<id>` (TTL 20ч), авто-отписка при
-  403 (`remind:<id>='0'`). Рубильник `REMINDERS_MODE` (`off`/`owner`/`all`, сейчас **`all`**). Эндпоинт
-  `/reminders` (тумблер из приложения пишет `remind:<id>`). Owner-only тест-триггер `/admin/test`
-  (секрет `ADMIN_KEY` в заголовке `X-Admin-Key`, шлёт только владельцу). В `handleDataPut` добавлены
-  KV-метаданные `{updatedAt}` (чтобы cron-перебор не читал каждое значение).
-- **Клиент:** поле `remindersEnabled` (дефолт вкл) + persist **миграция v12→v13**; `setReminders` в `api.ts`
-  (POST `/reminders`); тумблер «Напоминания записывать траты» в Settings → секция «Уведомления»
-  (`setRemindersEnabled` + `setReminders` при переключении). Едет в облачном блобе.
-- **Деплой:** воркер `wrangler deploy` (cron + секрет `ADMIN_KEY`). NB: смена `REMINDERS_MODE` = правка
-  `wrangler.toml` + повторный `wrangler deploy`.
-- **Бэклог:** админ-панель с аналитикой для владельца (отдельная задача, ещё не начата).
-**1.19.0 (кольцо аналитики с нуля — чистое кольцо + легенда-чипы):**
-- **`DonutChartWithIcons` переписан с нуля.** Корень прошлой проблемы: иконки вокруг кольца НАЛЕЗАЛИ на ободок
-  (ICON_R 122 < внешний край кольца 110 + полразмера иконки) — на 320px впихнуть 11 иконок вокруг без наезда/
-  вылета нельзя в принципе. Решение (выбор пользователя): **«Кольцо + легенда»** — кольцо чистое (track +
-  сегменты `m.circle` + сумма в центре, SIZE 220, как у `DonutChart`), **иконок на ободке НЕТ вообще** →
-  наезжать/вылетать нечему по построению. Категории — легендой-чипами под кольцом (тинт-иконка цвета сегмента +
-  название + сумма + %, `grid grid-cols-2`, все категории).
-- **`Analytics.tsx`:** старый «детальный список» теперь под `{chartStyle === 'compact' && …}` — у стиля `icons`
-  своя легенда (без дубля), у `compact` (простой `DonutChart`) — прежний список. `DonutChart` не трогали.
-- **Бонус-фикс:** `DailyBars` («по дням») распирал страницу на 320px (14 подписей «DD.MM» → scrollW 387).
-  Колонки `min-w-0`, подпись = число дня (`slice(0,2)`) + `truncate`. Теперь страница ровно 320px.
-- Проверено в превью (320px, светлая+тёмная, Расходы+Доходы, оба стиля): 0 иконок на ободке, кольцо в боксе,
-  легенда 11 чипов, 0 горизонтального скролла; compact — детальный список на месте, дублей нет.
-**1.18.1 (чистое кольцо — фикс «паутины»):**
-- **Кольцо** (`DonutChartWithIcons`): УДАЛЕНЫ соединительные линии (leader lines) от иконок к серединам
-  долек — именно они (а не позиции иконок!) собирались «паутиной» в центре. Иконки и так стояли равномерно
-  по кругу (`*360/n`) и не вылезали — диагностика по задеплоенному бандлу это подтвердила; прошлые 4 правки
-  чинили не то (двигали иконки). Связь иконки с долькой теперь по цвету чипа. Заодно убраны осиротевшие
-  `LEADER_END`/`RING_OUTER`/`midAngleRad`/`midAngleDeg` и мёртвый div-ограничитель. Проверено в превью на
-  320/375px, светлая+тёмная: 0 leader-`<path>`, 0 вылетов, 0 наездов (мин. дистанция между центрами 68px).
-**1.18.0 (Аналитика+Графики, фикс кольца, календарь «Оба», период «⋯», плитки Наград):**
-- **Аналитика и Графики объединены** в одну вкладку: сегменты Расходы/Доходы/**Динамика**/Календарь
-  (`AnalyticsTabs` grid-cols-4). Тело графиков → `src/components/analytics/TrendChart.tsx`; `pages/Charts.tsx`
-  удалён; вкладка Charts убрана из TabBar/App. **Нав = 4 вкладки** (Главная·Аналитика·Награды·Профиль).
-  `visit_charts` теперь шлётся при открытии сегмента «Динамика» (квест see_charts сохранён).
-- **Кольцо** (`DonutChartWithIcons`): иконки распределены РАВНОМЕРНО по кругу на фикс-радиусе
-  (`ICON_R = CHART_R + 26`), убрана радиальная «ступенька»/релаксация — на 320px ничего не вылезает/не наезжает.
-- **Календарь** (`MonthCalendar`): 4-й фильтр **«Оба»** — в ячейке `+доход` и `−расход` без вычета; итог месяца — обе суммы.
-- **Период** (`PeriodSwitcher`): **3 чипа** (День/Неделя/Месяц) + **«⋯»**-меню (Год/Всё время/Период). Режим `all`
-  даёт быстрый общий баланс на Главной.
-- **Награды**: плитки **2×2** (Магазин · Лидеры · `StreakTile` Серия · De-Fi «Скоро»-заглушка). Большая
-  оранжевая карта серии убрана; `StreakCard.tsx` удалён. `ui/Tile` украшен (атмосферная подсветка + крупный чип),
-  `ui/accent` получил `ACCENT_GLOW` + акцент `violet`. Стор/persist/воркер — без изменений.
-
-### История (до 1.18.0)
-**1.17.0 (магазин-экран + витрина дня + награда за рефералов):**
-- Магазин кастомизации вынесен из шторки в **полноэкранный** `src/pages/Shop.tsx` (под-вид вкладки
-  «Награды», `shopOpen` в `Rewards.tsx`, кнопка ←). `RoadpassSheet.tsx` **удалён**; `StreakCard` (серия дня)
-  и `RewardRow` вынесены в `src/components/rewards/`; серия дня теперь карта на хабе «Награды».
-- **Витрина дня:** `featuredToday(date)` в `lib/rewards.ts` (сид-PRNG по дате) — 3 предмета −30% ежедневно;
-  `buyReward(id, priceOverride?)` зажимает скидку в `[discountedPrice, full]`.
-- **Реф-награда:** persist **v11→v12**, `rewardedReferrals` + `REF_REWARD = +25 XP/🪙10` +
-  `reconcileReferralRewards(count)` (идемпотентно, едет в облачном блобе), чип на каждом друге в `ReferralBlock`.
-  Реально виден только в Telegram (список друзей с воркера). Квесты invite_3/5 остались сверху.
-
-### История (до 1.17.0)
-**1.16.0 (усиление безопасности):**
-- **Воркер** (`worker/src/index.ts`): rate limiting на KV-счётчиках (`isRateLimited`, ключи `rl:<scope>:<id>`)
-  на `/feedback` (5/час), `/data/put` (20/мин), `/referral`+`/profile` (10/мин) → 429. `/stats` и
-  `/leaderboard` принимают `initData` в **теле POST** (хелпер `readInitData`) — GET с `?initData=` оставлен
-  для обратной совместимости. Глобальный catch → generic `internal_error` (без `String(e)`). CORS не
-  отражает произвольный origin. Cap длины `ref`/поля `user`.
-- **Клиент:** `api.ts` — `getReferralStats`/`getLeaderboard` теперь POST (токен не в URL). `cloud.ts` —
-  `isValidBlob` (размер/JSON/`version`) + откат на локальные данные при сбое применения облака.
-  `parseRefParam` лимит длины. `index.html` — **CSP meta** (script self+telegram.org, connect self+воркер).
-  `.gitignore` — паттерны секретов. **Прод-сборка без inline-скриптов** (CSP `script-src 'self'` не ломает).
-- **Не сделано:** мажор-апгрейд wrangler 3→4 (5 vuln в dev-зависимости `ws`, не прод-рантайм — отдельно).
-  Ручной чек-лист владельцу: 2FA на Cloudflare/Telegram/GitHub + WAF-rate-limit правило на маршрут воркера.
-
-### История (до 1.16.0)
-**1.15.0 (вкладка «Награды» + редизайн Профиля + UI-примитивы):**
-- Геймификация вынесена в новую нижнюю вкладку **«Награды»** (`src/pages/Rewards.tsx`): уровень/XP-герой,
-  бенто-плитки Достижения/Лидеры, список заданий, рефералы. Настройки убраны из панели → шестерёнка в
-  шапке Профиля (`SettingsPage` принимает `onBack`). Профиль очищен до финансов/личного. Новые примитивы
-  `src/components/ui/` (BottomSheet/Tile/MenuRow/accent), `QuestCard`/`ReferralBlock` → `components/rewards/`.
-  Чанк Профиля 21→7.8 kB. Подробности — в разделе «Карта файлов → Страницы». Стор/persist НЕ менялись.
-**1.14.0 (финансовые задания):**
-- Задания за реальное поведение, а не за навигацию. Хвост цепочки после `streak_3`:
-  `diversify_5` (5 категорий) → `log_7` (7 дней учёта подряд) → `goal_reached` (цель достигнута) →
-  `under_budget` (месяц в рамках бюджета). Метрики считаются по РЕАЛЬНЫМ данным (`s.transactions`,
-  не демо): новые селекторы `selectCategoriesUsed` / `selectLogDayStreak` / `selectGoalsReached` /
-  `selectBudgetMonthKept` (`store/transactions.ts`). В `quests.ts` расширены `QuestMetric`/`QuestMetrics`
-  (новые поля опциональны) + 4 `QuestDef`; в `Profile.tsx` метрики прокинуты в `allQuestProgress`;
-  i18n-ключи `quest.<id>.*` добавлены. Persist version НЕ менялся (=11) — всё производно.
-**1.13.0 (облачная синхронизация за TG-аккаунтом + фикс валюты на «Динамике»):**
-- **Облачный синк:** данные стора привязаны к Telegram-аккаунту — с любого устройства видны свои
-  операции и деньги. Реализация: `src/lib/cloud.ts` (`initCloudSync`), `pullCloud`/`pushCloud`
-  в `src/lib/api.ts`, хук `useCloudSync` в `App.tsx`. Воркер: `POST /data/get` / `POST /data/put`
-  (KV `REFERRALS`, ключ `data:<userId>`, по подписи initData; сервер не затирает свежее старым).
-  Last-write-wins по `updatedAt`. Подробности — в разделе «Архитектура → Облачная синхронизация».
-  Persist version НЕ менялся (=11): синкается тот же блоб, что и в localStorage.
-- **Фикс «Динамики»:** `selectTrend` стал account-aware (фильтр по валюте выбранного счёта), на
-  страницу Charts добавлен `<AccountSwitcher />`, суммы форматируются через `selectAnalyticsCurrency`
-  вместо глобальной `s.currency`. Лечит «сменил валюту — поменялся только значок, суммы те же».
-
-### История (до 1.13.0)
-Бандл `index-CyzpROKf.js` — полный перевод на английский + двуязычный changelog (`APP_VERSION` = `1.12.0`).
-Воркер тогда был без изменений с 1.6.0.
-**1.12.0 (полный перевод на английский):**
-- Переведено всё, включая геймификацию: названия уровней (`level.t1..t7`), рарность
-  (`rarity.*`), названия+подсказки наград (`reward.<id>.name/.hint`), заголовки+описания
-  заданий (`quest.<id>.title/.desc`), достижения/роудпасс (`roadpass.*`), онбординг
-  (`intro.*`), шапка Главной (`home.cap_*`), демо-плашка (`demo.banner`), `common.exit`.
-  Все новые ключи добавлены в `DICT` (`src/lib/i18n.ts`).
-- **Паттерн для данных-строк:** дата-файлы (`levels.ts`/`rewards.ts`/`quests.ts`) НЕ импортируют
-  i18n; их RU-строки больше не используются для показа — все места рендера берут ключ из
-  стабильного id: `t('level.t' + lvl.level)`, `t('reward.' + id + '.name')`, `t('quest.' + id + '.desc')`,
-  `t('rarity.' + rarity)`. Затронуты: `LevelBar.tsx`, `Profile.tsx` (титул/уровень/QuestCard),
-  `RoadpassSheet.tsx` (название/подсказка/рарность/секции/стрик), `Intro.tsx`, `Home.tsx`, `Avatar.tsx`.
-- **Двуязычный changelog:** в `whatsnew.ts` `ReleaseNote.title` и `item.text` стали `L10n {ru,en}`;
-  `WhatsNew` (`Intro.tsx`) рендерит `r.title[lang]`/`it.text[lang]` (`lang` из стора). Все 17 записей
-  переведены. `GuideSheet.tsx` уже был двуязычным.
-- Намеренно НЕ переведено: комментарии в коде (правило проекта — RU); `Settings.tsx` 'Русский'
-  (имя языка показывается на самом языке).
-
-### История (до 1.12.0)
-Бандл `index-8eX33pRw.js` (добавлен гайд по приложению; версия НЕ бампалась — осталась 1.11.1).
-`APP_VERSION` тогда был `1.11.1`.
-**Гайд по приложению (`src/components/GuideSheet.tsx`):** ленивая шторка-аккордеон, двуязычная (RU/EN по `s.lang`),
-11 раскрывающихся секций по всем разделам (Главная, добавление операции, категории/счета, аналитика, планирование,
-профиль, задания, лидерборд, рефералы, настройки, приватность). Контент — inline в компоненте (в i18n только лейбл
-кнопки: `settings.guide`/`settings.guide_hint`). Открывается двумя путями: (1) кнопка «Гайд по приложению» вверху
-Settings (`guideOpen`/`seenGuide`); (2) **новым пользователям показывается сразу** — `Intro.tsx` после онбординга
-(`closeOnboarding`→`setMode('guide')`; новый режим `'guide'` в `IntroOverlay` рендерит `GuideSheet`); старым
-авто-показа нет (только Settings). GuideSheet — общий ленивый чанк для Settings и Intro.
-**1.11.1 (валюта целей + точные суммы по категориям):**
-- `CategoryAggregate` получил поле `currency` — валюта категории (единая, если все операции в одной валюте; иначе
-  fallback = валюта аналитики/счёта). `aggregateByCategory(all, txs, kind, fallback)`. Строки категорий
-  (`CategoryList`, детальный список `Analytics`) и подзаголовки секций «Доходы/Расходы» (`SectionHeader` группирует
-  суммы по валютам: «722 ₴ · 80 €») теперь в правильной валюте — лечит «80 ₴ вместо 80 €».
-- `selectTransactionsByCategory` стал account-aware (через `selectAccountTransactions`) — раскрытие строки совпадает с агрегатом.
-- **Валюта цели:** `Goal.currency?: Currency` (опционально; старые цели → глобальная `s.currency`). `addGoal`/`updateGoal`
-  принимают `currency`. В форме создания цели (`PlanningSheet`→Цели) — чипы выбора валюты (по умолчанию = счёт/глобальная,
-  список = основные + валюты из данных). `GoalCard` и шапка Главной (`GoalBody`) показывают сумму в валюте цели.
-  Для синхронизированных целей баланс считается по валюте цели: новый селектор `selectNetBalanceByCurrency`
-  (`Record<currency, net>`), `goalSavedAmount` обновлён. `selectNetBalance` (общая сумма) больше не используется, но оставлен.
-  Миграция НЕ нужна (поле опциональное, persist остаётся **11**).
-- FAB-кнопки (`FabButtons`) подняты: `bottom = safe + 84px` (было 64px) — не цепляются за таб-бар/нижний край.
-
-Предыдущий шаг 1.11.0 (мультивалютность + выбор счёта) — бандл `index-DZsYAsy8.js`.
-**Выбор счёта (Главная + Аналитика):** «счёт» = валюта. Стор: `account: Currency | null` (null = «Все», прежний
-сводный вид) + `setAccount`. Селекторы: `selectAccounts` (валюты в данных), `selectAccountTransactions`
-(транзакции периода по счёту), `selectAnalyticsCurrency` (= account ?? currency), плюс account-варианты
-агрегатов `selectByCategoryAccount` / `selectAccountTotals` / `selectDailyExpenseAccount` (рядом с базовыми,
-через общие хелперы `aggregateByCategory`/`sumIncomeExpense`/`dailyExpense`). `selectBudgetStatuses` тоже
-account-aware (через `selectAccountTransactions`). `AccountSwitcher` (общий компонент
-`src/components/AccountSwitcher.tsx` — чипы «Все» + валюты, прячется при <2 счетах; сброс на null если счёт
-исчез из данных) смонтирован и в `Analytics.tsx`, и в `Home.tsx` (над PeriodSwitcher); состояние `account`
-общее. На Главной по счёту фильтруются: `CategoryList` (категории+секции+бюджеты), `BalanceCard`
-(одновалютный вид по выбранному счёту, иначе разбивка по валютам), `BudgetAlert`. Диаграммы (`DonutChart*`)
-и `MonthCalendar` — по `account` и форматируют в его валюте. `account` не в миграции (view-поле, дефолт null
-приходит из initialState при shallow-merge persist). Базовые `selectByCategory`/`selectTotals`/`selectDailyExpense`
-сохранены (используются только как обёртки над общими хелперами).
-**Коммит делать только по явной просьбе** (см. «Грабли»). `APP_VERSION` в `whatsnew.ts` = `1.11.0`.
-Persist version = **11** (миграция добавляет `lastTxCurrency`).
-
-Релиз **1.10.1** задеплоен (бандл `index-Bz1ks7qq.js`) — **фикс: в Аналитике и Календаре не показывались суммы**:
-- **Причина:** переход вкладок жил на framer `AnimatePresence mode="wait"` + `m.div initial:{opacity:0}`.
-  При зависшем `requestAnimationFrame` (свёрнутый webview и т.п.) entrance-анимация не стартовала и
-  вкладка оставалась невидимой (opacity:0); `mode="wait"` к тому же не монтировал новую вкладку, пока не
-  завершится exit старой. `track()` в `changeTab` (добавлен в 1.10.0) добавлял лишний ре-рендер и добивал
-  отслеживание exit — отсюда регрессия «после последних обновлений».
-- **Фикс:** контейнер активной вкладки в `App.tsx` — обычный `<div key={tab} className="tab-enter">`
-  (без `AnimatePresence`/`m.div`). Внутренние обёртки секций в `Analytics.tsx` (диаграмма + календарь) —
-  тоже `div.tab-enter` вместо `m.div initial:opacity`. CSS-класс `.tab-enter` (`index.css`) даёт fade+slide,
-  но **базовая непрозрачность = 1** (нет `animation-fill-mode`) — контент виден всегда, даже если анимация
-  не отыграет. См. новое правило в «Граблях». framer `m.*` остался только на декоративных эффектах (бары, сегменты).
-
-Ранее релиз **1.10.0** задеплоен (бандл `index-dsc73l0e.js`) — **задания за использование приложения + ротация**:
-- **Метрика `event`:** в `quests.ts` у `QuestMetric` добавлен тип `'event'` + поле `def.event`. Прогресс
-  таких заданий = `events[def.event]` из стора. В стор добавлено поле `events: Record<string, number>`
-  (persist **v10**, миграция инициализирует `{}`) и действие `track(event)`. Счётчики инкрементятся:
-  inline в действиях стора (`setPeriodMode`→`use_period`, `addCategory`→`add_category`,
-  `setBudget`/`setMonthlyBudget`→`set_budget`, `addGoal`→`add_goal`, `setThemeMode`/`equipReward`→`customize`)
-  и через `track()` из компонентов: `App.tsx` (`changeTab`→`visit_analytics`/`visit_charts`), `Profile.tsx`
-  (открытие шторок → `open_achievements`/`open_leaderboard`/`open_planning`).
-- **Ротация заданий (`UNLOCK_DELAY_MS = HIDE_AFTER_CLAIM_MS = 3 ч`):** забранное задание показывается с
-  таймером ещё 3 ч (подпись «✓ Получено · новое через …» или «исчезнет через …»), затем ИСЧЕЗАЕТ; его
-  преемник из цепочки (`unlockAfter`) открывается ровно в этот момент. `allQuestProgress` скрывает забранное
-  по истечении срока и держит преемника скрытым, пока не прошло 3 ч у предка (нет состояния «locked» — задание
-  либо активно, либо скрыто). `QuestProgress` теперь несёт `expiresAt`/`hasSuccessor` вместо `locked`/`unlockAt`.
-- **Цепочка вовлечения (основная):** first_tx → see_analytics → see_charts → try_period → make_category →
-  personalize → open_planning → set_budget → set_goal → see_leaderboard → tx_10 → streak_3. Реферальные
-  invite_3/invite_5 — отдельная ветка. Карточка задания (`Profile.tsx`): иконка ⏳ на забранном, пустое
-  состояние «Все задания выполнены — новые скоро» (`quest.empty`). Тик `now` раз в минуту двигает таймеры.
-
-Ранее релиз **1.9.2** (бандл `index-ZAj0Nf4_.js`) — **диаграмма без наезжающих иконок + полный лидерборд**:
-- **Антиколлизия иконок (`DonutChartWithIcons`):** угловой развод усилен (MIN ≈ 22°, было 16° — на радиусе
-  ICON_R это ≈54px между центрами при кружке 34px; для большого числа категорий MIN ужимается до `340/n`,
-  итераций релаксации 160). Плюс **радиальная ступенька** `iconRadii`: если сосед всё ещё ближе 24°, каждая
-  вторая тесная иконка уходит на `ICON_R + 28` — кружки с процентами гарантированно не пересекаются даже в
-  плотном кластере мелких долей (3%/1% вверху). Leader-линии и позиции иконок используют per-icon `iconRadii[i]`.
-  `marginBottom` контейнера поднят до 34 (вынесенные вниз иконки не налезают на список).
-- **Лидерборд — регистрация при запуске:** в `App.tsx` добавлен хук `useRegisterOnLaunch()` — пушит профиль
-  (`submitProfile`) сразу при открытии в Telegram, а не только при заходе на вкладку «Профиль». Это лечит
-  «в рейтинге всего 4 человека»: теперь попадают все, кто открыл приложение. Считает `xp = computeXp(ops, bonusXp)`,
-  `level = levelFor(xp).level`. Воркер без изменений.
-
-Ранее релиз **1.9.0** (бандл `index-BnQj3u5p.js`) — **цели на связи с балансом + листание целей на Главной**:
-- **Синхронизация цели с балансом:** у `Goal` появилось поле `syncBalance?: boolean`. Если включено,
-  «накоплено» = `selectNetBalance` (доходы−расходы за всё время по `activeTransactions`, не уходит в
-  минус) вместо ручных взносов — добавил расход, в цели убавилось. Тумблер — в форме создания цели
-  (`PlanningSheet` → вкладка «Цели»). У синхронизированной цели в карточке скрыт ручной взнос и стоит
-  бейдж «Синхронизирована с балансом». Хелпер `goalSavedAmount(s, g)` и селектор `selectNetBalance`
-  в сторе. `addGoal`/`updateGoal` принимают `syncBalance`.
-- **Шапка Главной — карусель целей:** если `homeHeaderMode==='goal'` и целей несколько, в шапке
-  работает свайп влево/вправо (`GoalCarousel` в `Home.tsx`, touch-хендлеры + точки-индикатор);
-  выбор сохраняется в `homeHeaderGoalId`. Мелкая подпись теперь «Цель»/«Дата» (а не «Кошель»).
-  `GoalBody` учитывает `syncBalance` при показе «накоплено/цель».
-- **Диаграмма (`DonutChartWithIcons`):** иконки ближе к кольцу (`ICON_R = CHART_R + 44`, было +56),
-  у контейнера `marginBottom: 24` — иконка+процент снизу больше не налезают на список категорий.
-
-Ранее релиз **1.8.2** (бандл `index-iNgWMn6Q.js`) — **надёжная загрузка + подпись баланса по периоду + плавные вкладки**:
-- **Надёжная загрузка чанков (`src/lib/lazyRetry.ts`):** `lazyRetry()` оборачивает все
-  `React.lazy` в `App.tsx`. При падении `import()` (сетевой сбой ИЛИ устаревший
-  закешированный `index.html` со старыми хэшами чанков после деплоя → 404) делает повторную
-  попытку через 400 мс, затем разовый `window.location.reload()` (флаг `koshel:chunkReload`
-  в sessionStorage от зацикливания; снимается в `main.tsx` по событию `load`). Крайний
-  предохранитель — `ChunkErrorBoundary` в `App.tsx` (экран «Не удалось загрузить · Обновить»).
-  Это лечило симптом «сайт не догружается, после ручного refresh всё ок».
-- **Подпись баланса по периоду:** `BalanceCard` теперь зависит от `period.mode` (`BALANCE_LABEL`:
-  «за день/неделю/месяц/год/всё время/период»), а не всегда «Баланс месяца» (значение и раньше
-  считалось по периоду).
-- **Плавные вкладки:** `usePrefetchTabs()` в `App.tsx` — прогрев ленивых чанков вкладок
-  (Analytics/Charts/Profile/Settings) в `requestIdleCallback` после первой отрисовки, чтобы
-  первый переход был без спиннера и «западаний» (префетч fire-and-forget, ошибки глушатся).
-
-Ранее релиз **1.8.1** (бандл `index-pYzSCWSA.js`) — **точные суммы в календаре**:
-`compact()` в `MonthCalendar` больше не округляет суммы < 100 000 (4050 → «4050», не «4,1к»),
-«к» только от 100 000. По отзыву пользователя.
-
-Ранее релиз **1.8.0** (бандл `index-BJME2uU4.js`) — **чистая Главная**:
-убрана шкалой уровня (`LevelBar`) с Главной, шапка настраивается в Settings
-(дата / прогресс к цели) через `homeHeaderMode` + `homeHeaderGoalId`. Persist v9
-(миграция добавляет дефолты шапки). Воркер без изменений.
-
-Ранее релиз **1.7.0** (бандл `index-DasCkBt5.js`) — **оптимизация скорости**:
-сплит страниц/шторок через `React.lazy`, LazyMotion (`m.*` + async `domMax`),
-Vite `manualChunks`, удалены мёртвые зависимости. Стартовый JS ≈ 88 kB gzip
-(было 134.84 kB одним чанком). См. раздел «Производительность» выше.
-
-Ранее релиз **1.6.0** (бандл `index-Bugv-_He.js`, воркер обновлён):
-- **i18n RU/EN** + переключатель языка в Settings (`src/lib/i18n.ts`, `useT()`).
-- **Планирование** в профиле — вкладки Бюджет / Лимиты / Цели (`PlanningSheet.tsx`),
-  стор: `monthlyBudget`, `goals`, селектор `selectCurrentMonthExpense`.
-- **Цепочка квестов** с разблокировкой через 3 ч (`questClaims`, `unlockAfter`).
-- **Лидерборд по рефералам** — вторая доска (`refs`) рядом с XP.
-Persist v8 (миграция добавляет `lang`/`questClaims`/`monthlyBudget`/`goals`).
-Ранее (1.5.0 и до): профиль/уровни/рефералы/отзывы/валюты, демо-режим, календарь,
-XP-лидерборд. Бэкенд оттестирован end-to-end.
+Идеи на потом: GIF-описание бота в BotFather; окно напоминаний по местному времени; защита облака
+от тихого принятия копии, если стор менялся после старта; разбор правилами «на 3 месяца»
+(число перед единицей времени — не сумма).

@@ -144,6 +144,21 @@ export interface UserContext {
   daysLeft: number
   /** Сколько дней месяца уже прошло — без этого «больше, чем в прошлом месяце» врёт. */
   daysPassed: number
+  /**
+   * Сколько дней этого месяца человек ведёт учёт. У начавшего 13-го это 1, а не
+   * 13: среднее в день и прогноз, поделённые на 13, занижались бы в разы.
+   */
+  trackedDays: number
+  /**
+   * Учёт покрывает прошлый месяц с первого числа — только тогда сравнение «за те
+   * же дни прошлого месяца» честное. Начал 10 сентября — октябрь против «первых
+   * 13 дней сентября» давал ложные +225%.
+   */
+  prevComparable: boolean
+  /** С какого числа прошлого месяца идёт учёт, если начал в нём не с первого. */
+  prevFrom: number | null
+  /** Операций во всех валютах, включая не слитые из чата, — «данных нет» только при нуле. */
+  opsAny: number
   /** Операций всего — чтобы отличить «ничего не тратил» от «ничего не записано». */
   ops: number
   /** Доходы минус расходы за всё время: то, что человек называет «сколько у меня». */
@@ -295,6 +310,7 @@ function accumulate(ctx: UserContext, acc: Acc, t: Countable): void {
   if (!Number.isFinite(amount) || amount <= 0) return
   const day = typeof t?.date === 'string' ? mskDayOfIso(t.date) : NaN
   if (!Number.isFinite(day)) return
+  ctx.opsAny++
   const income = t?.type === 'income'
   // У записи без своей валюты подразумевается основная (txCurrency в приложении
   // устроен так же). Основная неизвестна (приложение ни разу не открывали) — в
@@ -400,6 +416,14 @@ function finalize(ctx: UserContext, acc: Acc, state: Record<string, unknown> | n
   ctx.prevFullByCategory = sortedRows(acc.perCategoryPrevFull)
   ctx.incomeByCategory = sortedRows(acc.incomePerCategory)
   ctx.firstDay = acc.firstDay
+  const monthStart = acc.today - (ctx.daysPassed - 1)
+  const prevStart = Math.floor(Date.UTC(acc.prev.y, acc.prev.m, 1) / DAY_MS)
+  ctx.trackedDays = acc.firstDay === null ? ctx.daysPassed : Math.max(1, acc.today - Math.max(acc.firstDay, monthStart) + 1)
+  ctx.prevComparable = acc.firstDay !== null && acc.firstDay <= prevStart
+  ctx.prevFrom =
+    acc.firstDay !== null && acc.firstDay > prevStart && acc.firstDay < monthStart
+      ? new Date(acc.firstDay * DAY_MS).getUTCDate()
+      : null
 
   // Двенадцать месяцев подряд, включая пустые: «в июле ничего» — тоже ответ.
   const months: UserContext['months'] = []
@@ -427,9 +451,10 @@ function finalize(ctx: UserContext, acc: Acc, state: Record<string, unknown> | n
       const total = acc.y * 12 + acc.m - back
       const ym = { y: Math.floor(total / 12), m: total % 12 }
       if (monthsBetween(first, ym) < 0) break
-      // Месяц, в котором человек начал вести учёт, — неполный: в среднее его не берём,
-      // если только других месяцев нет.
-      if (monthsBetween(first, ym) === 0 && avgMonths > 0) break
+      // Месяц, в котором человек начал вести учёт не с первого числа, — неполный:
+      // в «обычный месяц» его не берём никогда. Иначе десять дней сентября
+      // становились «обычным месяцем», и октябрь выглядел «больше обычного».
+      if (monthsBetween(first, ym) === 0 && new Date(acc.firstDay * DAY_MS).getUTCDate() > 1) break
       avgMonths++
       for (const [id, sum] of acc.perCategoryByMonth.get(monthKey(ym.y, ym.m)) ?? []) bump(avg, id, sum)
     }
@@ -504,6 +529,10 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     incomePrevSameDays: 0,
     daysLeft: daysLeftInMonth(today),
     daysPassed: new Date(today * DAY_MS).getUTCDate(),
+    trackedDays: new Date(today * DAY_MS).getUTCDate(),
+    prevComparable: false,
+    prevFrom: null,
+    opsAny: 0,
     ops: 0,
     balance: 0,
     hasIncome: false,

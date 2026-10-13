@@ -4,7 +4,7 @@ import { HomePage } from './pages/Home'
 import { useStore, type Transaction } from './store/transactions'
 import { useTheme, useAccent } from './lib/useTheme'
 import { useFormatLocale, useT } from './lib/i18n'
-import { tg, hapticTap } from './lib/telegram'
+import { tg, hapticSelect, hapticTap } from './lib/telegram'
 import { isBackendConfigured, notifyGift, parseRefParam, registerReferral, submitProfile } from './lib/api'
 import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
@@ -12,6 +12,7 @@ import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 import { useBackButton } from './lib/useBackButton'
 import { resetRewardsNav, rewardsNav } from './lib/rewardsNav'
+import { useSwipeNav } from './lib/useSwipeNav'
 import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
@@ -21,6 +22,8 @@ import type { CategoryKind } from './store/categories'
  * правее приезжает справа, левее — слева. Настройки — «вглубь» Профиля.
  */
 const TAB_ORDER: Record<Tab, number> = { home: 0, analytics: 1, rewards: 2, profile: 3, settings: 4 }
+/** Вкладки панели по порядку — их листает свайп. */
+const SWIPE_ORDER: Tab[] = ['home', 'analytics', 'rewards', 'profile']
 type NavDir = 'init' | 'r' | 'l' | 'deep' | 'back'
 const ENTER_CLASS: Record<NavDir, string> = {
   init: 'tab-enter',
@@ -273,6 +276,29 @@ export default function App() {
   // Настройки — вложенный экран: системная «Назад» Telegram возвращает в Профиль.
   useBackButton(tab === 'settings', openProfile)
 
+  // Свайп вправо-влево — соседняя вкладка в порядке панели. На вложенных
+  // экранах (Настройки, Магазин, Титулы) свайп вправо — «назад», как в iOS.
+  const swipeRef = useRef<HTMLDivElement>(null)
+  const onSwipe = useCallback(
+    (dir: 'next' | 'prev') => {
+      const cur = navRef.current.tab
+      if (cur === 'settings' || (cur === 'rewards' && rewardsNav.screen !== 'hub')) {
+        if (dir !== 'prev') return false
+        hapticSelect()
+        if (cur === 'settings') changeTab('profile')
+        else resetRewardsNav(false)
+        return true
+      }
+      const next = SWIPE_ORDER[SWIPE_ORDER.indexOf(cur) + (dir === 'next' ? 1 : -1)]
+      if (!next) return false
+      hapticSelect()
+      changeTab(next)
+      return true
+    },
+    [changeTab],
+  )
+  useSwipeNav(swipeRef, onSwipe)
+
   return (
     <div className="min-h-screen" style={{ paddingTop: 'var(--safe-top)' }}>
       <DemoBanner />
@@ -288,25 +314,27 @@ export default function App() {
         запуске, дальше — по направлению: `.tab-in-r/-l`, Настройки —
         `.tab-in-deep`). У всех базовая непрозрачность 1: контент виден всегда.
       */}
-      <div key={tab} className={`tab-host ${ENTER_CLASS[nav.dir]}`}>
-        <ChunkErrorBoundary>
-          <Suspense fallback={<PageFallback />}>
-            {tab === 'home' && (
-              <HomePage
-                onOpenProfile={openProfile}
-                onEditTx={openEdit}
-                onOpenSearch={openSearch}
-                onOpenAssistant={openAssistant}
-              />
-            )}
-            {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
-            {tab === 'rewards' && <RewardsPage />}
-            {tab === 'profile' && (
-              <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />
-            )}
-            {tab === 'settings' && <SettingsPage onBack={openProfile} />}
-          </Suspense>
-        </ChunkErrorBoundary>
+      <div ref={swipeRef} style={{ touchAction: 'pan-y pinch-zoom' }}>
+        <div key={tab} className={`tab-host ${ENTER_CLASS[nav.dir]}`}>
+          <ChunkErrorBoundary>
+            <Suspense fallback={<PageFallback />}>
+              {tab === 'home' && (
+                <HomePage
+                  onOpenProfile={openProfile}
+                  onEditTx={openEdit}
+                  onOpenSearch={openSearch}
+                  onOpenAssistant={openAssistant}
+                />
+              )}
+              {tab === 'analytics' && <AnalyticsPage onEditTx={openEdit} />}
+              {tab === 'rewards' && <RewardsPage />}
+              {tab === 'profile' && (
+                <ProfilePage onOpenSettings={openSettings} onOpenRewards={openRewards} />
+              )}
+              {tab === 'settings' && <SettingsPage onBack={openProfile} />}
+            </Suspense>
+          </ChunkErrorBoundary>
+        </div>
       </div>
 
       {/* На «Настройках» подсвечиваем Профиль (у настроек нет своей вкладки). */}

@@ -23,6 +23,7 @@ import {
   cardToText,
   ICONS,
   langOfTelegram,
+  isSmallTalk,
   looksLikeQuestion,
   questionLang,
   readChat,
@@ -800,7 +801,13 @@ async function sendCard(
   const r = await sendMessage(env, chatId, renderTelegram(card, { echo: opts.echo, icons }), keyboard)
   if (!r.ok && r.status === 400 && icons && Object.keys(icons).length) {
     console.error('[bot] карточка с иконками не принята — шлю без них')
-    await sendMessage(env, chatId, renderTelegram(card, { echo: opts.echo }), keyboard)
+    const plain = await sendMessage(env, chatId, renderTelegram(card, { echo: opts.echo }), keyboard)
+    // Без иконок прошло — значит, дело в них (у владельца кончился Premium):
+    // выключаем, иначе каждый ответ уходил бы дважды. Включить снова — /icons.
+    if (plain.ok) {
+      iconsCache = { at: Date.now(), value: undefined }
+      await env.REFERRALS.delete(ICONS_KEY).catch(() => {})
+    }
   }
 }
 
@@ -819,7 +826,8 @@ async function replyWithAnswer(
   now: number,
   opts: { echo?: string; noModel?: boolean; history?: Turn[]; tgLang?: string },
 ): Promise<void> {
-  const allowModel = !opts.noModel && !(await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400))
+  const allowModel =
+    !opts.noModel && !isSmallTalk(question) && !(await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400))
   const draft = allowModel && env.GEMINI_API_KEY ? sendMessageDraft(env, userId, 1 + Math.floor(Math.random() * 2_000_000_000)) : null
   const history = opts.history ?? (await readChat(env, userId))
   const lang = questionLang(question, ctx.lang ?? langOfTelegram(opts.tgLang))

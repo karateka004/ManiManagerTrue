@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.3.0'
+export const APP_VERSION = '2.4.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,31 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.4.0',
+    date: '2026-10-13',
+    title: { ru: 'Листай экраны свайпом', en: 'Swipe between screens' },
+    items: [
+      {
+        text: {
+          ru: 'Между Главной, Аналитикой, Прогрессом и Профилем теперь можно листать пальцем — влево и вправо, без нижней панели. Из Настроек свайп вправо возвращает в Профиль',
+          en: 'Swipe left and right to move between Home, Analytics, Progress and Profile — no need to reach for the bottom bar. In Settings, swipe right to go back to Profile',
+        },
+      },
+      {
+        text: {
+          ru: 'Бот точнее отвечает в начале месяца и для тех, кто только начал учёт: не сравнивает неполный месяц с полным и честно пишет, если доходы ещё не записаны',
+          en: 'The bot is more accurate early in the month and for new users: it no longer compares a partial month with a full one and says so when no income is recorded yet',
+        },
+      },
+      {
+        text: {
+          ru: '«Привет, сколько ушло за неделю?» — теперь ответ про неделю, а не просто приветствие',
+          en: '“Hi, how much did I spend this week?” now gets an answer about the week, not just a greeting',
+        },
+      },
+    ],
+  },
   {
     version: '2.3.0',
     date: '2026-10-13',
