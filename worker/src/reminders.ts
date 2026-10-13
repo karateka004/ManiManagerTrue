@@ -122,13 +122,36 @@ export async function readReminderChoice(env: Env, id: string | number): Promise
 export async function remindersEnabled(env: Env, id: string | number): Promise<boolean> {
   const choice = await readReminderChoice(env, id)
   if (choice !== null) return choice
+  return cardAllowsReminders(env, id)
+}
+
+/** Тумблер в карточке блоба (`rm: 0` — выключен в приложении); карточки нет — включено. */
+async function cardAllowsReminders(env: Env, id: string | number): Promise<boolean> {
   const page = await env.REFERRALS.list<DataMeta>({ prefix: `${DATA_PREFIX}${id}`, limit: 1 })
   const own = page.keys[0]
   return !(own && own.name === `${DATA_PREFIX}${id}` && own.metadata?.c?.rm === 0)
 }
 
+/**
+ * Что показать на тумблере в приложении — выбор САМОГО человека.
+ *
+ * Отличается от remindersEnabled одним: 'b' (Telegram сказал, что бот
+ * заблокирован) — не выбор человека, а наше техническое состояние. Раньше
+ * приложение получало на нём «выключено», записывало это в свой стор, и после
+ * разблокировки напоминания уже не оживали: в карточке блоба оставался `rm: 0`.
+ */
+export async function reminderPreference(env: Env, id: string | number): Promise<boolean> {
+  const v = await env.REFERRALS.get(remindKey(id))
+  if (v === '1') return true
+  if (v === '0') return false
+  return cardAllowsReminders(env, id)
+}
+
 export async function setReminderChoice(env: Env, id: string | number, on: boolean): Promise<void> {
-  await env.REFERRALS.put(remindKey(id), on ? '1' : '0')
+  const v = on ? '1' : '0'
+  // Метаданные дублируют значение: аналитика собирает выбор одним `list`, а
+  // список значений ключей не отдаёт.
+  await env.REFERRALS.put(remindKey(id), v, { metadata: { v } })
 }
 
 /**
@@ -272,7 +295,10 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
   // Порциями: Telegram пускает около 30 сообщений в секунду на бота, дальше 429.
   for (let i = 0; i < candidates.length; i += REM_SEND_PER_SEC) {
     const started = Date.now()
-    await Promise.all(candidates.slice(i, i + REM_SEND_PER_SEC).map((c) => remindOne(env, c, nowMs)))
+    // allSettled, а не all: один сбой чтения KV не должен обрывать рассылку
+    // всему оставшемуся слоту.
+    const results = await Promise.allSettled(candidates.slice(i, i + REM_SEND_PER_SEC).map((c) => remindOne(env, c, nowMs)))
+    for (const r of results) if (r.status === 'rejected') console.error('[reminders] не отправлено', r.reason)
     const spent = Date.now() - started
     if (spent < 1000 && i + REM_SEND_PER_SEC < candidates.length) await sleep(1000 - spent)
   }
@@ -304,7 +330,7 @@ async function remindOne(env: Env, c: Candidate, nowMs: number): Promise<void> {
   if (r.status === 403) {
     // Бот заблокирован или аккаунт удалён — больше не беспокоим и метим для
     // аналитики. 'b', а не '0': вернётся — напоминания оживут (forgetBlock).
-    await env.REFERRALS.put(remindKey(c.id), 'b')
+    await env.REFERRALS.put(remindKey(c.id), 'b', { metadata: { v: 'b' } })
     await env.REFERRALS.put(`blocked:${c.id}`, '1')
   }
 }

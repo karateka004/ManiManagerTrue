@@ -247,6 +247,12 @@ export interface Person {
   streakBest: number
   fromRef: boolean
   blocked: boolean
+  /**
+   * Выбор про напоминания на сервере (`remind:<id>`): '1' — включил, '0' —
+   * выключил (в приложении или кнопкой в боте), 'b' — бот заблокирован.
+   * Нет — не выбирал, действует тумблер из карточки блоба.
+   */
+  remind?: '1' | '0' | 'b'
   /** Открывал мини-апп: есть облачный ключ или карточка рейтинга. */
   inApp: boolean
   card?: UserCard
@@ -386,12 +392,16 @@ export async function collectPeople(
 ): Promise<Collected> {
   // Рейтинг читается своим кодом (index.ts) — принимаем и готовый, и обещанный,
   // чтобы его перечисление шло параллельно с остальными.
-  const [dataKeys, inboxKeys, srcKeys, claimedKeys, blockedKeys, lb] = await Promise.all([
+  const [dataKeys, inboxKeys, srcKeys, claimedKeys, blockedKeys, remindKeys, lb] = await Promise.all([
     listAll<DataMeta>(env, DATA_PREFIX),
     listAll<InboxMeta>(env, INBOX_PREFIX),
     listAll<SourceMeta>(env, SRC_PREFIX),
     listAll<unknown>(env, 'claimed:'),
     listAll<unknown>(env, 'blocked:'),
+    // Выбор лежит значением ключа, а список значений не отдаёт — поэтому с 2.3
+    // он продублирован в метаданные (`v`). У ключей, записанных раньше, их нет:
+    // такой выбор неизвестен, и действует тумблер из карточки.
+    listAll<{ v?: unknown }>(env, 'remind:'),
     Promise.resolve(lbSource),
   ])
   return assemble(
@@ -401,6 +411,7 @@ export async function collectPeople(
     srcKeys.map((k) => [k.name.slice(SRC_PREFIX.length), k.metadata ?? null] as [string, SourceMeta | null]),
     claimedKeys.map((k) => k.name.slice('claimed:'.length)),
     blockedKeys.map((k) => k.name.slice('blocked:'.length)),
+    remindKeys.map((k) => [k.name.slice('remind:'.length), k.metadata?.v] as [string, unknown]),
   )
 }
 
@@ -412,8 +423,11 @@ export function assemble(
   srcs: [string, SourceMeta | null][],
   claimed: string[],
   blocked: string[],
+  remind: [string, unknown][] = [],
 ): Collected {
   const meta = new Map(data)
+  const choices = new Map<string, '1' | '0' | 'b'>()
+  for (const [id, v] of remind) if (v === '1' || v === '0' || v === 'b') choices.set(id, v)
   const bots = new Map<string, InboxMeta>()
   for (const [id, x] of inbox) {
     const b = botMeta(x)
@@ -436,6 +450,8 @@ export function assemble(
     if (m?.c) withCard++
     const p = mergePerson(id, m, lb[id], bots.get(id), sources.get(id), referred.has(id), blockedSet.has(id))
     if (!p) continue
+    const choice = choices.get(id)
+    if (choice) p.remind = choice
     if (p.days.length && (trackFrom === null || p.days[0] < trackFrom)) trackFrom = p.days[0]
     people.push(p)
   }
@@ -457,6 +473,13 @@ export function assemble(
 /* ------------------------------------------------------------------ */
 /* Правила                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Напоминания выключены самим человеком: явный выбор на сервере важнее
+ * тумблера в карточке ('1' перебивает `rm: 0`), а «Не напоминать» в боте —
+ * тоже выключение. Блокировку бота ('b') считаем отдельно, как blocked.
+ */
+export const remindersOffFor = (p: Person): boolean => p.remind === '0' || (p.remind === undefined && p.card?.rm === 0)
 
 /** Записал хоть одну операцию — в приложении или боту. */
 export const activated = (p: Person): boolean => p.ops > 0 || p.botOps > 0
@@ -799,7 +822,7 @@ export function computeDashboard(
     else if (p.fromRef) fromRef++
     else organic++
     if (p.blocked) blocked++
-    if (p.card?.rm === 0) remindersOff++
+    if (remindersOffFor(p)) remindersOff++
     if (p.inApp) inApp++
     if (p.botOps > 0) {
       botUsers++

@@ -29,6 +29,12 @@ export interface Env {
   GEMINI_API_KEY?: string
   /** Модель Gemini. Пусто — DEFAULT_MODEL из src/gemini.ts. */
   GEMINI_MODEL?: string
+  /**
+   * Модель для ответов на вопросы. Пусто — DEFAULT_ANSWER_MODEL из src/answer.ts.
+   * Отдельно от разбора: разбор — короткая и частая задача, ответ — длинная и
+   * редкая, и сильной модели он стоит, а разбор нет.
+   */
+  GEMINI_ANSWER_MODEL?: string
   /** Утренняя сводка владельцу (ночной крон): 'off' — не слать. По умолчанию шлём. */
   ADMIN_DIGEST?: string
 }

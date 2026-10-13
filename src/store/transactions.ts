@@ -773,6 +773,9 @@ export const useStore = create<State & Actions>()(
           if (s.quickCurrencies.length > 0 && !s.quickCurrencies.includes(c)) {
             patch.quickCurrencies = [c, ...s.quickCurrencies].slice(0, 3)
           }
+          // Был выбран счёт прежней основной — показываем все счета: иначе
+          // Главная после смены валюты так и показывала бы прежнюю.
+          if (s.account === old) patch.account = null
           return patch
         }),
       relabelCurrency: (from, to) => {

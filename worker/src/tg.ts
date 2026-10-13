@@ -35,6 +35,13 @@ export interface TgMessage {
   chat: TgChat
   from?: TgFrom
   text?: string
+  /** Разметка текста — нужна только ради кастомных эмодзи в команде /icons. */
+  entities?: { type: string; offset: number; length: number; custom_emoji_id?: string }[]
+  /**
+   * Клавиатура под сообщением бота — приходит вместе с нажатием кнопки. Из неё
+   * берём текст кнопки-продолжения: хранить вопросы у себя не нужно.
+   */
+  reply_markup?: { inline_keyboard?: { text?: string; callback_data?: string }[][] }
   /** Непустое поле = сообщение не текстовое (голос, фото, документ и т.п.). */
   voice?: unknown
   audio?: unknown
@@ -125,6 +132,21 @@ export async function editMessageText(
 }
 
 /**
+ * Сменить только клавиатуру под сообщением. Выбор категории раньше шёл через
+ * editMessageText с простым текстом сообщения — и жирный заголовок записи на
+ * это время пропадал.
+ */
+export async function editMessageReplyMarkup(
+  env: Env,
+  chatId: string | number,
+  messageId: number,
+  replyMarkup: unknown,
+): Promise<boolean> {
+  const r = await call(env, 'editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: replyMarkup })
+  return r.ok
+}
+
+/**
  * Ответ на нажатие inline-кнопки. Обязателен: пока он не пришёл, Telegram
  * крутит часики на кнопке до таймаута. `alert` — показать текст всплывашкой,
  * а не строкой вверху экрана.
@@ -145,6 +167,26 @@ export async function answerCallback(env: Env, id: string, text?: string, alert 
  */
 export function sendTyping(env: Env, chatId: string | number): Promise<unknown> {
   return call(env, 'sendChatAction', { chat_id: chatId, action: 'typing' })
+}
+
+/**
+ * Черновик ответа: с пустым текстом Telegram показывает в чате пузырь «Думает…»
+ * (Bot API 10.0+). Живёт до 30 секунд или до нашего следующего сообщения.
+ * Старые версии Telegram его просто не покажут — поэтому рядом всё равно
+ * ставится «печатает…».
+ */
+export function sendMessageDraft(env: Env, chatId: number, draftId: number, text = ''): Promise<unknown> {
+  return call(env, 'sendMessageDraft', { chat_id: chatId, draft_id: draftId, text })
+}
+
+/**
+ * «Печатает…» на всё время ожидания. Статус держится пять секунд, а ответ на
+ * вопрос может идти дольше — продлеваем каждые 4,5 с, пока не позовут stop().
+ */
+export function keepTyping(env: Env, chatId: number): () => void {
+  void sendTyping(env, chatId)
+  const timer = setInterval(() => void sendTyping(env, chatId), 4500)
+  return () => clearInterval(timer)
 }
 
 /** Зарегистрировать вебхук. `secret` придёт назад в заголовке каждого обновления. */

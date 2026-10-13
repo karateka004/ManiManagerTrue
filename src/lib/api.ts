@@ -226,9 +226,57 @@ export async function pushCloud(
 /** Почему ответа нет. Каждой причине в интерфейсе соответствует свой текст. */
 export type AskError = 'quota' | 'unavailable' | 'unclear' | 'looks_like_record'
 
-export type AskResult = { ok: true; answer: string } | { ok: false; error: AskError }
+/** Иконка раздела ответа — смысловой ключ, приложение рисует её своей линейной иконкой. */
+export type AskIcon = 'money' | 'chart' | 'calendar' | 'budget' | 'category' | 'goal' | 'income' | 'warning' | 'tip' | 'help'
+
+/**
+ * Ответ карточкой (с 2.3): заголовок, суть, разделы строк «параметр — значение»,
+ * совет и вопросы-продолжения. Числа в ней воркер сверил с выжимкой по деньгам
+ * человека — выдуманная моделью сумма сюда не доходит.
+ */
+export interface AskCard {
+  title: string
+  lead: string
+  sections: { heading: string; icon?: AskIcon; rows: { label: string; value: string }[] }[]
+  tip?: string
+  followups: string[]
+}
+
+/** Реплика разговора для памяти ассистента: «а в прошлом месяце?» продолжает прошлый вопрос. */
+export interface AskTurn {
+  q: string
+  a: string
+}
+
+export type AskResult = { ok: true; answer: string; card?: AskCard } | { ok: false; error: AskError }
 
 const ASK_ERRORS: AskError[] = ['quota', 'unavailable', 'unclear', 'looks_like_record']
+const ASK_ICONS: AskIcon[] = ['money', 'chart', 'calendar', 'budget', 'category', 'goal', 'income', 'warning', 'tip', 'help']
+
+/** Карточка из ответа воркера — проверяем форму: кривое поле не должно ронять экран. */
+function readCard(x: unknown): AskCard | undefined {
+  const c = x as Record<string, unknown> | null
+  if (!c || typeof c !== 'object') return undefined
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const sections = (Array.isArray(c.sections) ? c.sections : [])
+    .map((s) => {
+      const sec = s as Record<string, unknown>
+      const rows = (Array.isArray(sec?.rows) ? sec.rows : [])
+        .map((r) => ({ label: str((r as Record<string, unknown>)?.label), value: str((r as Record<string, unknown>)?.value) }))
+        .filter((r) => r.label && r.value)
+      const icon = ASK_ICONS.includes(sec?.icon as AskIcon) ? (sec.icon as AskIcon) : undefined
+      return { heading: str(sec?.heading), icon, rows }
+    })
+    .filter((s) => s.heading && s.rows.length)
+  const card: AskCard = {
+    title: str(c.title),
+    lead: str(c.lead),
+    sections,
+    tip: str(c.tip) || undefined,
+    followups: (Array.isArray(c.followups) ? c.followups : []).filter((f): f is string => typeof f === 'string' && !!f.trim()).slice(0, 3),
+  }
+  return card.title || card.lead || card.sections.length ? card : undefined
+}
 
 /**
  * Спросить ассистента про свои деньги.
@@ -237,12 +285,12 @@ const ASK_ERRORS: AskError[] = ['quota', 'unavailable', 'unclear', 'looks_like_r
  * показывает приложение. Наружу уходит только текст вопроса и выжимка по
  * суммам; список операций не отправляется.
  */
-export async function askAssistant(text: string): Promise<AskResult> {
+export async function askAssistant(text: string, history: AskTurn[] = [], lang?: 'ru' | 'en'): Promise<AskResult> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false, error: 'unavailable' }
   try {
-    const res = await post('/ask', { initData: tg.initData, text }, 25000)
+    const res = await post('/ask', { initData: tg.initData, text, history: history.slice(-3), lang }, 25000)
     if (res?.ok && typeof res.answer === 'string' && res.answer.trim()) {
-      return { ok: true, answer: res.answer }
+      return { ok: true, answer: res.answer, card: readCard(res.card) }
     }
     const code = typeof res?.error === 'string' ? res.error : ''
     return { ok: false, error: ASK_ERRORS.includes(code as AskError) ? (code as AskError) : 'unavailable' }
@@ -285,7 +333,9 @@ function isUsableEntry(x: unknown): x is InboxEntry {
   if (e.type !== 'income' && e.type !== 'expense') return false
   if (typeof e.amount !== 'number' || !Number.isFinite(e.amount) || e.amount <= 0) return false
   if (typeof e.categoryId !== 'string' || !e.categoryId) return false
-  if (typeof e.date !== 'string' || !e.date) return false
+  // Дата обязана разбираться: запись с «NaN-NaN-NaN» (так было у слова-ключа
+  // «constructor» в разборе 2.2) не попадает ни в один период, но есть в итогах.
+  if (typeof e.date !== 'string' || !e.date || !Number.isFinite(Date.parse(e.date))) return false
   if (e.currency !== undefined && !CURRENCY_CODES.has(e.currency)) return false
   if (e.note !== undefined && typeof e.note !== 'string') return false
   return true
@@ -336,7 +386,11 @@ export async function setReminders(enabled: boolean): Promise<boolean> {
 export async function fetchReminders(): Promise<boolean | null> {
   if (!isBackendConfigured() || !tg.initData) return null
   try {
-    const res = await post('/reminders', { initData: tg.initData })
+    // Чтение — отдельным путём. Воркер до 2.2 понимал «/reminders без enabled»
+    // как «выключить»: при откате воркера каждое открытие Настроек молча
+    // выключало бы напоминания. Старый воркер на этот путь ответит 404 — и
+    // тумблер просто останется как есть.
+    const res = await post('/reminders/get', { initData: tg.initData })
     return res?.ok === true && typeof res.enabled === 'boolean' ? res.enabled : null
   } catch {
     return null

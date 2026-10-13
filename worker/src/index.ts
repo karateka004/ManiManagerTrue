@@ -26,7 +26,8 @@ import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
-import { pickReminderText, reminderKeyboard, remindersEnabled, runDailyReminders, setReminderChoice } from './reminders'
+import { pickReminderText, reminderKeyboard, reminderPreference, runDailyReminders, setReminderChoice } from './reminders'
+import { cleanHistory } from './answer'
 import { isRateLimited } from './limits'
 import {
   BACKFILL_SLICE,
@@ -373,6 +374,9 @@ export default {
       }
       if (url.pathname === '/reminders' && req.method === 'POST') {
         return await handleReminders(req, env, origin)
+      }
+      if (url.pathname === '/reminders/get' && req.method === 'POST') {
+        return await handleReminders(req, env, origin, true)
       }
       if (url.pathname === '/check-sub' && req.method === 'POST') {
         return await handleCheckSub(req, env, origin)
@@ -1017,7 +1021,7 @@ async function handleAdminWebhook(req: Request, env: Env, origin: string | null)
  * поэтому чужие числа сюда попасть не могут.
  */
 async function handleAsk(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string }
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string; history?: unknown; lang?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'ask', user.id, 20, 60)) return tooMany(env, origin)
@@ -1025,7 +1029,9 @@ async function handleAsk(req: Request, env: Env, origin: string | null): Promise
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 500) : ''
   if (!text) return json({ ok: false, error: 'empty' }, { status: 400 }, env, origin)
 
-  const res = await answerQuestion(env, user.id, text)
+  // Память разговора приносит приложение (2.3+): три последних вопроса с ответами.
+  const lang = body.lang === 'en' || body.lang === 'ru' ? body.lang : undefined
+  const res = await answerQuestion(env, user.id, text, cleanHistory(body.history), lang)
   return json(res, { status: 200 }, env, origin)
 }
 
@@ -1127,18 +1133,25 @@ async function handleExport(req: Request, env: Env, origin: string | null): Prom
  * Напоминания: тумблер в приложении. С `enabled` — записать выбор, без него —
  * прочитать, что сейчас: напоминания можно выключить и в боте, и тумблер в
  * Настройках должен показывать правду, а не то, что помнит устройство.
+ *
+ * `/reminders/get` — только чтение (с 2.3). Отдельным путём, а не «запись без
+ * поля enabled»: воркер до 2.2 такой запрос понимал как «выключить» — при
+ * старом воркере и новом приложении каждое открытие Настроек молча выключало
+ * бы напоминания. На старом воркере новый путь даёт 404, и приложение просто
+ * не трогает тумблер. Чтение через `/reminders` без `enabled` оставлено для
+ * приложений 2.2.
  */
-async function handleReminders(req: Request, env: Env, origin: string | null): Promise<Response> {
+async function handleReminders(req: Request, env: Env, origin: string | null, readOnly = false): Promise<Response> {
   const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'rem', user.id, 10, 60)) return tooMany(env, origin)
 
-  if (typeof body.enabled === 'boolean') {
+  if (!readOnly && typeof body.enabled === 'boolean') {
     await setReminderChoice(env, user.id, body.enabled)
     return json({ ok: true, enabled: body.enabled }, { status: 200 }, env, origin)
   }
-  return json({ ok: true, enabled: await remindersEnabled(env, user.id) }, { status: 200 }, env, origin)
+  return json({ ok: true, enabled: await reminderPreference(env, user.id) }, { status: 200 }, env, origin)
 }
 
 /** Канал для задания «подписаться» (публичный username). */
@@ -1394,7 +1407,8 @@ async function handleAdminPerson(req: Request, env: Env, origin: string | null):
       src: p.src,
       fromRef: p.fromRef,
       blocked: p.blocked,
-      remindersOff: remind === '0' || card?.rm === 0,
+      // Явный выбор важнее тумблера в карточке: '1' перебивает rm: 0.
+      remindersOff: remind === '0' || (remind !== '1' && remind !== 'b' && card?.rm === 0),
       inApp: p.inApp,
       ops: p.ops,
       botOps: p.botOps,

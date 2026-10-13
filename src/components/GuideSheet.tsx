@@ -160,7 +160,7 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
         items: [
           'Операции хранятся на устройстве и в облаке за твоим Telegram-аккаунтом — чтобы не пропасть при смене телефона.',
           'В таблицу лидеров уходит только геймификация: XP, уровень, монеты. Сумм там нет.',
-          'Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для этого в Google Gemini уходит текст сообщения и итоги — суммы за день, неделю и месяц, бюджет, расход по категориям. Сам список операций с датами и заметками не уходит.',
+          'Боту и ассистенту можно писать словами: они записывают траты и отвечают на вопросы о деньгах. Для этого в Google Gemini уходят текст сообщения, последние вопросы разговора и итоги — суммы по дням, неделям, месяцам и категориям, бюджет, лимиты и цели. Сам список операций с датами и заметками не уходит.',
         ],
       },
     ],
@@ -290,7 +290,7 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
         items: [
           'Entries live on your device and in the cloud behind your Telegram account, so they survive a change of phone.',
           'Only gamification goes to the leaderboard: XP, level, coins. No amounts.',
-          'You can just write to the bot: it records expenses and answers questions about your money. For that, Google Gemini receives the message text and your totals — daily, weekly and monthly sums, budget, spending per category. The list of individual entries with dates and notes is not sent.',
+          'You can just write to the bot or the assistant: they record expenses and answer questions about your money. For that, Google Gemini receives the message text, your recent questions and your totals — sums by day, week, month and category, budget, limits and goals. The list of individual entries with dates and notes is not sent.',
         ],
       },
     ],

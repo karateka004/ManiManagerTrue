@@ -126,8 +126,8 @@ const DICT: Dict = {
   'settings.notifications': { ru: 'Уведомления', en: 'Notifications' },
   'settings.reminders': { ru: 'Напоминания записывать траты', en: 'Reminders to log expenses' },
   'settings.reminders_hint': {
-    ru: 'Бот напишет вечером, если за день не было ни одной записи. Выключить можно и в чате с ботом — /reminders',
-    en: 'The bot texts you in the evening if you logged nothing that day. You can also turn it off in the bot chat — /reminders',
+    ru: 'Бот напишет вечером, если за день не было ни одной записи. Если не записываешь несколько дней — всё реже, а через месяц перестанет. Выключить можно и в чате с ботом — /reminders',
+    en: 'The bot texts you in the evening if you logged nothing that day. If you skip several days it writes less often and stops after a month. You can also turn it off in the bot chat — /reminders',
   },
   'settings.save_failed': { ru: 'Не получилось сохранить', en: 'Couldn’t save' },
   'settings.save_failed_sub': { ru: 'Проверь связь и попробуй ещё раз', en: 'Check your connection and try again' },
@@ -186,8 +186,8 @@ const DICT: Dict = {
   'ai.title': { ru: 'Ассистент', en: 'Assistant' },
   'ai.open': { ru: 'Открыть ассистента', en: 'Open assistant' },
   'ai.intro': {
-    ru: 'Спроси про свои деньги обычными словами — отвечу по твоим записям.',
-    en: 'Ask about your money in plain words — I answer from your entries.',
+    ru: 'Спроси про свои деньги обычными словами — посчитаю по твоим записям. Можно уточнять: «а в прошлом месяце?»',
+    en: 'Ask about your money in plain words — I count from your entries. Follow-ups work too: “and last month?”',
   },
   'ai.placeholder': { ru: 'Спроси про деньги', en: 'Ask about your money' },
   'ai.send': { ru: 'Спросить', en: 'Ask' },
@@ -195,6 +195,7 @@ const DICT: Dict = {
   'ai.q2': { ru: 'На что уходит больше всего?', en: 'Where does most of it go?' },
   'ai.q3': { ru: 'Сколько осталось на сегодня?', en: 'How much is left for today?' },
   'ai.q4': { ru: 'Почему изменились расходы?', en: 'Why did my spending change?' },
+  'ai.q5': { ru: 'Когда накоплю на цель?', en: 'When will I reach my goal?' },
   'ai.err_quota': {
     ru: 'На сегодня вопросы закончились — отвечу завтра.',
     en: 'No more questions for today — I will answer again tomorrow.',
@@ -213,16 +214,16 @@ const DICT: Dict = {
   },
   // Строка обязана оставаться правдой: меняешь объём отправляемого — правь и здесь.
   'ai.privacy': {
-    ru: 'Отвечает Google Gemini по итогам твоих сумм. Список операций не отправляется.',
-    en: 'Answers come from Google Gemini using your totals. The list of entries is not sent.',
+    ru: 'Отвечает Google Gemini по итогам: суммы по дням, месяцам и категориям, бюджет и цели, плюс твои последние вопросы. Список операций и заметки не отправляются.',
+    en: 'Answers come from Google Gemini using totals: sums by day, month and category, budget and goals, plus your recent questions. The list of entries and notes are not sent.',
   },
   'settings.about': { ru: 'О приложении', en: 'About' },
   // Формулировка про хранение обязана быть точной: облачная копия появилась
   // позже, а текст утверждал, что данные никуда не уходят. Теперь появился ещё
   // и разбор сообщения боту — о нём тоже надо сказать прямо, а не умолчать.
   'settings.about_text': {
-    ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона. Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для этого в Google Gemini уходит текст сообщения и итоги по суммам; список самих операций — нет.',
-    en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone. You can write to the bot in plain words: it records expenses and answers questions about your money. For that, Google Gemini receives the message text and your totals; the list of entries itself is not sent.',
+    ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона. Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для этого в Google Gemini уходят текст сообщения, последние вопросы разговора и итоги — по дням, месяцам и категориям, бюджет, лимиты и цели; список самих операций — нет.',
+    en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone. You can write to the bot in plain words: it records expenses and answers questions about your money. For that, Google Gemini receives the message text, your recent questions and your totals — by day, month and category, budget, limits and goals; the list of entries itself is not sent.',
   },
   'settings.in_telegram': { ru: 'Запущено внутри Telegram:', en: 'Running inside Telegram:' },
   'settings.income_cats': { ru: 'доход', en: 'income' },
@@ -905,6 +906,8 @@ const DICT: Dict = {
   'cur.relabel_do': { ru: 'Перенести в {to}', en: 'Move to {to}' },
   'cur.relabel_keep': { ru: 'Оставить в {from}', en: 'Keep in {from}' },
   'cur.relabel_done': { ru: 'Перенесли в {to}: {n} {ops}', en: 'Moved to {to}: {n} {ops}' },
+  'cur.relabel_title_other': { ru: 'Цели и активы — в {from}', en: 'Goals and assets in {from}' },
+  'cur.relabel_done_other': { ru: 'Перенесли в {to}', en: 'Moved to {to}' },
   'cur.switched': { ru: 'Основная валюта — {name}', en: 'Main currency: {name}' },
   'cur.nudge_title': { ru: 'Твоя валюта — {name}?', en: 'Is your currency the {name}?' },
   'cur.nudge_text': {

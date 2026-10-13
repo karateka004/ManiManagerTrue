@@ -28,7 +28,8 @@ import { formatMoney } from '../lib/format'
 import { getCurrency, type Currency } from '../lib/currencies'
 import { currencyName } from '../lib/currencyInfo'
 import { CurrencyFlag } from '../components/ui/CurrencyFlag'
-import { RelabelPrompt, countInCurrency } from '../components/RelabelPrompt'
+import { RelabelPrompt, countInCurrency, countOthersInCurrency } from '../components/RelabelPrompt'
+import { readPendingRelabel, writePendingRelabel, type PendingRelabel } from '../lib/relabelPending'
 import { useCatName, useT } from '../lib/i18n'
 import type { Lang } from '../lib/i18n'
 
@@ -87,13 +88,22 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const seenPicker = useRef(false)
   if (picker.open) seenPicker.current = true
   // После смены основной валюты — предложить перенести записи из прежней.
-  const [relabelFrom, setRelabelFrom] = useState<Currency | null>(null)
+  // Вопрос переживает уход с экрана (см. relabelPending).
+  const [relabel, setRelabel] = useState<PendingRelabel | null>(readPendingRelabel)
+  const closeRelabel = () => {
+    writePendingRelabel(null)
+    setRelabel(null)
+  }
 
-  // Напоминания можно выключить и в боте — тумблер сверяем с сервером.
+  // Напоминания можно выключить и в боте — тумблер сверяем с сервером. Ответ,
+  // пришедший ПОСЛЕ нажатия на тумблер, уже устарел: иначе на экране «вкл», а
+  // на сервере осталось бы прежнее.
+  const remindersTouched = useRef(false)
   useEffect(() => {
     let alive = true
     fetchReminders().then((on) => {
-      if (alive && on !== null && on !== useStore.getState().remindersEnabled) setRemindersEnabled(on)
+      if (!alive || remindersTouched.current || on === null) return
+      if (on !== useStore.getState().remindersEnabled) setRemindersEnabled(on)
     })
     return () => {
       alive = false
@@ -102,6 +112,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [remindersBusy, setRemindersBusy] = useState(false)
   const toggleReminders = async () => {
     if (remindersBusy) return
+    remindersTouched.current = true
     hapticSelect()
     const next = !remindersEnabled
     setRemindersEnabled(next)
@@ -122,9 +133,12 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       const prev = currency
       // Считаем ДО смены: setCurrency закрепит прежнюю валюту за записями без
       // своей, и счёт после неё был бы тем же — но понятнее считать по факту.
-      const inPrev = countInCurrency(useStore.getState(), prev)
+      const before = useStore.getState()
+      const inPrev = countInCurrency(before, prev) + countOthersInCurrency(before, prev)
       setCurrency(code)
-      setRelabelFrom(inPrev > 0 ? prev : null)
+      const next = inPrev > 0 ? { from: prev, to: code } : null
+      writePendingRelabel(next)
+      setRelabel(next)
     } else {
       setQuickCurrency(picker.target, code)
     }
@@ -187,8 +201,8 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           }}
         />
       </Group>
-      {relabelFrom && relabelFrom !== currency && (
-        <RelabelPrompt className="mx-4 mt-3" from={relabelFrom} to={currency} onDone={() => setRelabelFrom(null)} />
+      {relabel && relabel.to === currency && (
+        <RelabelPrompt className="mx-4 mt-3" from={relabel.from} to={currency} onDone={closeRelabel} />
       )}
 
       {/*
@@ -339,6 +353,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           subtitle={t('settings.demo_hint')}
           wrap
           trailing={<Toggle on={demoMode} />}
+          checked={demoMode}
           onClick={() => { hapticSelect(); setDemoMode(!demoMode) }}
         />
         <ExportRow />
@@ -356,6 +371,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           subtitle={t('settings.reminders_hint')}
           wrap
           trailing={<Toggle on={remindersEnabled} />}
+          checked={remindersEnabled}
           onClick={toggleReminders}
         />
       </Group>

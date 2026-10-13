@@ -141,7 +141,8 @@ function isUsableEntry(x: unknown): x is InboxEntry {
     Number.isFinite(e.amount) &&
     e.amount > 0 &&
     typeof e.categoryId === 'string' &&
-    typeof e.date === 'string'
+    typeof e.date === 'string' &&
+    Number.isFinite(Date.parse(e.date))
   )
 }
 
@@ -210,6 +211,27 @@ export async function setBatchCategory(
   const items = inbox.items.map((e) => (mine(e) ? { ...e, categoryId } : e))
   await writeInbox(env, userId, items, inbox.meta)
   return items.filter(mine)
+}
+
+/**
+ * Переставить категорию у одной записи пачки. Пачка из нескольких трат
+ * («такси 450 и обед 380») раньше получала выбранную категорию целиком — обе
+ * становились «Кафе», а доход рядом с расходом получал расходную категорию.
+ * Возвращает все записи пачки (пусто — запись уже забрало приложение).
+ */
+export async function setEntryCategory(
+  env: Env,
+  userId: string | number,
+  batch: string,
+  index: number,
+  categoryId: string,
+): Promise<InboxEntry[]> {
+  const inbox = await readInbox(env, userId)
+  const id = entryId(batch, index)
+  if (!inbox.items.some((e) => e.id === id)) return []
+  const items = inbox.items.map((e) => (e.id === id ? { ...e, categoryId } : e))
+  await writeInbox(env, userId, items, inbox.meta)
+  return items.filter((e) => e.id.startsWith(`${batch}-`))
 }
 
 /**

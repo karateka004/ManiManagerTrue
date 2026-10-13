@@ -1,6 +1,7 @@
+import { useEffect } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { useStore } from '../store/transactions'
-import { getCurrency, type Currency } from '../lib/currencies'
+import { currencyMark, type Currency } from '../lib/currencies'
 import { opsWord, useT } from '../lib/i18n'
 import { hapticNotify, hapticSelect } from '../lib/telegram'
 import { showToast } from '../lib/toast'
@@ -13,6 +14,17 @@ export function countInCurrency(
 ): number {
   let n = 0
   for (const t of s.transactions) if ((t.currency ?? s.currency) === code) n++
+  return n
+}
+
+/** Цели и активы в этой валюте: переносятся вместе с операциями, даже если операций нет. */
+export function countOthersInCurrency(
+  s: { goals: { currency?: Currency }[]; investments: { currency?: Currency }[]; currency: Currency },
+  code: Currency,
+): number {
+  let n = 0
+  for (const g of s.goals) if ((g.currency ?? s.currency) === code) n++
+  for (const i of s.investments) if ((i.currency ?? s.currency) === code) n++
   return n
 }
 
@@ -46,20 +58,33 @@ export function RelabelPrompt({
   const t = useT()
   const lang = useStore((s) => s.lang)
   const count = useStore((s) => countInCurrency(s, from))
+  const others = useStore((s) => countOthersInCurrency(s, from))
   const relabel = useStore((s) => s.relabelCurrency)
   const undo = useStore((s) => s.undoRelabel)
+  const nothing = (count === 0 && others === 0) || from === to
 
-  if (count === 0 || from === to) return null
+  // Переносить стало нечего (всё перенесли или удалили в другом месте) — вопрос
+  // закрываем сами. Раньше карточка просто исчезала, а ожидание «ответа» у того,
+  // кто её показывал, так и оставалось.
+  useEffect(() => {
+    if (nothing) onDone()
+    // onDone у вызывающих — новая функция на каждый рендер; важен только факт.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nothing])
 
-  const fromSym = getCurrency(from).symbol
-  const toSym = getCurrency(to).symbol
+  if (nothing) return null
+
+  const fromSym = currencyMark(from)
+  const toSym = currencyMark(to)
 
   const move = () => {
     const r = relabel(from, to)
     hapticNotify('success')
     showToast({
       icon: 'check',
-      text: t('cur.relabel_done', { to: toSym, n: r.tx.length, ops: opsWord(lang, r.tx.length) }),
+      text: r.tx.length
+        ? t('cur.relabel_done', { to: toSym, n: r.tx.length, ops: opsWord(lang, r.tx.length) })
+        : t('cur.relabel_done_other', { to: toSym }),
       action: { label: t('toast.restore'), run: () => undo(r) },
       duration: 6000,
     })
@@ -74,7 +99,9 @@ export function RelabelPrompt({
         <CurrencyFlag code={to} size={24} />
       </div>
       <div className="mt-3 text-[16px] font-bold leading-snug text-ink">
-        {t('cur.relabel_title', { n: count, ops: opsWord(lang, count), from: fromSym })}
+        {count > 0
+          ? t('cur.relabel_title', { n: count, ops: opsWord(lang, count), from: fromSym })
+          : t('cur.relabel_title_other', { from: fromSym })}
       </div>
       <p className="mt-1 text-[14px] leading-snug text-ink-muted">{t('cur.relabel_text', { to: toSym })}</p>
       <div className="mt-4 flex gap-2">

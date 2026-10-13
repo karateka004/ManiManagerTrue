@@ -140,6 +140,23 @@ export function getCurrency(code: Currency): CurrencyMeta {
 
 export const currencySymbol = (code: Currency): string => getCurrency(code).symbol
 
+/** Знаки, которые носят несколько валют («kr» — у SEK, NOK, DKK, ISK). */
+const SHARED_SYMBOLS = (() => {
+  const seen = new Map<string, number>()
+  for (const c of CURRENCIES) seen.set(c.symbol, (seen.get(c.symbol) ?? 0) + 1)
+  return new Set([...seen].filter(([, n]) => n > 1).map(([sym]) => sym))
+})()
+
+/**
+ * Знак валюты для текста, где по нему надо понять, о какой валюте речь:
+ * «Перенести в kr / Оставить в kr» не говорит ничего, поэтому у общих знаков —
+ * код («Перенести в NOK»).
+ */
+export function currencyMark(code: Currency): string {
+  const sym = getCurrency(code).symbol
+  return SHARED_SYMBOLS.has(sym) ? code : sym
+}
+
 /**
  * Адрес флага валюты. Флаги лежат файлами в `public/flags` (набор circle-flags,
  * MIT): картинка грузится, только когда её показали, и дальше берётся из кэша.

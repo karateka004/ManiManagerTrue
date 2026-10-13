@@ -36,6 +36,10 @@ const CASES = [
   ['продукты 150 aed', { kind: 'expense', amount: 150, categoryId: 'food', currency: 'AED' }],
   // Многозначное слово валютой не считаем: «сом» — ещё и рыба
   ['сом 500', { kind: 'expense', amount: 500, categoryId: 'other', guessed: true, currency: undefined }],
+  // Английские слова-коды и общие названия («динар» — их восемь) валютой не считаем
+  ['gel 300', { kind: 'expense', amount: 300, currency: undefined }],
+  ['300 динаров', { kind: 'expense', amount: 300, currency: undefined }],
+  ['обед 300 дин', { kind: 'expense', amount: 300, categoryId: 'food', currency: 'RSD' }],
 
   // Категории по синонимам
   ['зп 120000', { kind: 'income', amount: 120000, categoryId: 'salary' }],
@@ -133,6 +137,25 @@ const MULTI = [
   ['хлеб и молоко 120', [{ amount: 120, categoryId: 'food' }]],
   ['аптека 340,50', [{ amount: 340.5, categoryId: 'health' }]],
   ['такси туда и обратно 600', [{ amount: 600, categoryId: 'transport' }]],
+  // Находки критика 2.2
+  // Слово-ключ прототипа — не день: раньше давало дату NaN-NaN-NaN
+  ['кофе 300 constructor', [{ amount: 300, categoryId: 'cafe', daysAgo: undefined }]],
+  ['кофе 300 __proto__', [{ amount: 300, categoryId: 'cafe', daysAgo: undefined }]],
+  ['toString 300', [{ amount: 300, daysAgo: undefined }]],
+  // Перенос строки делит всегда, даже перед цифрой
+  ['300 кофе\n450 такси', [{ amount: 300, categoryId: 'cafe' }, { amount: 450, categoryId: 'transport' }]],
+  ['кофе 300\n500 такси', [{ amount: 300, categoryId: 'cafe' }, { amount: 500, categoryId: 'transport' }]],
+  // Разряды с копейками
+  ['продукты 1 200,50', [{ amount: 1200.5, categoryId: 'food' }]],
+  ['кофе 300; продукты 1 200,50', [{ amount: 300 }, { amount: 1200.5 }]],
+  ['1500 200 такси', [{ amount: 1500 }]],
+  ['1 500 000 ипотека', [{ amount: 1500000, categoryId: 'home' }]],
+  // Свой день у каждой части
+  ['кофе 300 вчера и обед 380 сегодня', [{ amount: 300, daysAgo: 1 }, { amount: 380, daysAgo: undefined }]],
+  ['такси 450 и обед 380 вчера', [{ amount: 450, daysAgo: 1 }, { amount: 380, daysAgo: 1 }]],
+  // Копейки отдельной частью и скидка — одна трата
+  ['кофе 300 и 50 копеек', [{ amount: 300.5, categoryId: 'cafe' }]],
+  ['обед 350, -50 скидка', [{ amount: 350, categoryId: 'food' }]],
 ]
 let multiFailed = 0
 for (const [input, want] of MULTI) {

@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { BottomSheet, useSheetDrag } from './ui/BottomSheet'
-import { ArrowUp, MessageCircle, X } from 'lucide-react'
-import { askAssistant, type AskError } from '../lib/api'
+import {
+  AlertTriangle,
+  ArrowUp,
+  BookOpen,
+  Calendar,
+  Lightbulb,
+  LineChart,
+  MessageCircle,
+  PieChart,
+  PiggyBank,
+  Target,
+  TrendingUp,
+  Wallet,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
+import { askAssistant, type AskCard, type AskError, type AskIcon, type AskTurn } from '../lib/api'
 import { useT, type TFunc } from '../lib/i18n'
 import { hapticSelect, hapticNotify } from '../lib/telegram'
+import { useStore } from '../store/transactions'
 
 interface Props {
   open: boolean
@@ -14,10 +30,39 @@ interface Msg {
   id: number
   from: 'me' | 'ai'
   text: string
+  /** Ответ карточкой (воркер 2.3+); нет — старый воркер, показываем текст. */
+  card?: AskCard
+  /** Ответ, а не ошибка: только такие реплики уходят в память разговора. */
+  answered?: boolean
+}
+
+/** Иконки разделов ответа — линейные, как во всём приложении (цвет — только у категорий). */
+const SECTION_ICON: Record<AskIcon, LucideIcon> = {
+  money: Wallet,
+  chart: LineChart,
+  calendar: Calendar,
+  budget: PiggyBank,
+  category: PieChart,
+  goal: Target,
+  income: TrendingUp,
+  warning: AlertTriangle,
+  tip: Lightbulb,
+  help: BookOpen,
+}
+
+/** Память разговора: три последних вопроса с ответами — «а в прошлом месяце?» понятно. */
+function historyOf(messages: Msg[]): AskTurn[] {
+  const turns: AskTurn[] = []
+  for (let i = 1; i < messages.length; i++) {
+    const q = messages[i - 1]
+    const a = messages[i]
+    if (q.from === 'me' && a.from === 'ai' && a.answered) turns.push({ q: q.text, a: a.text })
+  }
+  return turns.slice(-3)
 }
 
 /** Готовые вопросы на пустом экране: чистое поле ввода отвечать не помогает. */
-const STARTERS = ['ai.q1', 'ai.q2', 'ai.q3', 'ai.q4'] as const
+const STARTERS = ['ai.q1', 'ai.q2', 'ai.q3', 'ai.q4', 'ai.q5'] as const
 
 const ERROR_KEY: Record<AskError, string> = {
   quota: 'ai.err_quota',
@@ -35,10 +80,15 @@ const ERROR_KEY: Record<AskError, string> = {
  *
  * Переписка живёт только пока открыт экран. Хранить её в сторе значило бы
  * тащить чужие формулировки в синкаемый блоб и в облако — ради ленты, к которой
- * никто не возвращается.
+ * никто не возвращается. Пока экран открыт, три последних реплики уходят с
+ * каждым вопросом: так «а в прошлом месяце?» продолжает прошлый.
+ *
+ * Ответ — карточка: заголовок, суть, разделы строк «параметр — значение» и
+ * совет. Числа в ней воркер сверил с итогами человека.
  */
 export function AssistantSheet({ open, onClose }: Props) {
   const t = useT()
+  const lang = useStore((s) => s.lang)
   const [messages, setMessages] = useState<Msg[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -65,16 +115,24 @@ export function AssistantSheet({ open, onClose }: Props) {
     hapticSelect()
     setDraft('')
     setBusy(true)
+    const history = historyOf(messages)
     setMessages((prev) => [...prev, { id: nextId.current++, from: 'me', text }])
 
-    const res = await askAssistant(text)
+    const res = await askAssistant(text, history, lang === 'en' ? 'en' : 'ru')
     setBusy(false)
     if (res.ok) hapticNotify('success')
     setMessages((prev) => [
       ...prev,
-      { id: nextId.current++, from: 'ai', text: res.ok ? res.answer : t(ERROR_KEY[res.error]) },
+      res.ok
+        ? { id: nextId.current++, from: 'ai', text: res.answer, card: res.card, answered: true }
+        : { id: nextId.current++, from: 'ai', text: t(ERROR_KEY[res.error]) },
     ])
   }
+
+  // Продолжения показываем только под последним ответом: под старыми они уже
+  // не к месту, а лента из чипов читалась бы хуже самих ответов.
+  const last = messages[messages.length - 1]
+  const followups = !busy && last?.from === 'ai' ? last.card?.followups ?? [] : []
 
   return (
     <BottomSheet open={open} onClose={onClose} layout="flex" height="92vh" maxHeight="92vh" padBottom={null}>
@@ -86,9 +144,16 @@ export function AssistantSheet({ open, onClose }: Props) {
         ) : (
           <div className="flex flex-col gap-3 py-2">
             {messages.map((msg) =>
-              msg.from === 'me' ? <Mine key={msg.id} text={msg.text} /> : <Theirs key={msg.id} text={msg.text} />,
+              msg.from === 'me' ? (
+                <Mine key={msg.id} text={msg.text} />
+              ) : msg.card ? (
+                <CardBubble key={msg.id} card={msg.card} />
+              ) : (
+                <Theirs key={msg.id} text={msg.text} />
+              ),
             )}
             {busy && <Thinking />}
+            {followups.length > 0 && <Followups items={followups} onPick={ask} />}
           </div>
         )}
       </div>
@@ -139,6 +204,65 @@ function Empty({ t, onPick, busy }: { t: TFunc; onPick: (q: string) => void; bus
   )
 }
 
+/**
+ * Ответ карточкой. Та же структура, что в чате с ботом: заголовок, суть,
+ * разделы со строками «параметр — значение» (значение жирным и выровнено
+ * вправо — суммы читаются столбиком) и совет. Разделы отбиты линией слева, а
+ * не рамками: карточка в карточке — против правил оформления.
+ */
+function CardBubble({ card }: { card: AskCard }) {
+  return (
+    <div className="bubble-in-l flex justify-start">
+      <div className="w-full max-w-[92%] rounded-3xl rounded-bl-lg bg-surface-sunken px-4 py-3 text-ink">
+        {card.title && <div className="text-[16px] font-extrabold leading-snug">{card.title}</div>}
+        {card.lead && <p className="mt-1 text-[15px] leading-relaxed">{card.lead}</p>}
+        {card.sections.map((s, i) => {
+          const Icon = s.icon ? SECTION_ICON[s.icon] : null
+          return (
+            <div key={i} className="mt-3">
+              <div className="flex items-center gap-1.5 text-[13px] font-bold text-ink-muted">
+                {Icon && <Icon size={15} strokeWidth={2.2} className="shrink-0 text-ink-subtle" />}
+                <span className="min-w-0 truncate">{s.heading}</span>
+              </div>
+              <div className="mt-1.5 border-l-2 border-hairline pl-3">
+                {s.rows.map((r, j) => (
+                  <div key={j} className="flex items-baseline justify-between gap-3 py-0.5 text-[14px] leading-snug">
+                    <span className="min-w-0 text-ink-muted">{r.label}</span>
+                    <span className="shrink-0 text-right font-bold tabular-nums">{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        {card.tip && (
+          <div className="mt-3 flex gap-2 text-[14px] leading-snug text-ink-muted">
+            <Lightbulb size={16} strokeWidth={2.2} className="mt-0.5 shrink-0 text-ink-subtle" />
+            <span>{card.tip}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Вопросы-продолжения под последним ответом: нажал — спросил. */
+function Followups({ items, onPick }: { items: string[]; onPick: (q: string) => void }) {
+  return (
+    <div className="stagger flex flex-wrap gap-2 pl-1">
+      {items.map((q) => (
+        <button
+          key={q}
+          onClick={() => onPick(q)}
+          className="press-soft rounded-full bg-surface-raised px-3.5 py-2 text-left text-[14px] font-semibold text-ink shadow-soft"
+        >
+          {q}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function Mine({ text }: { text: string }) {
   return (
     <div className="bubble-in-r flex justify-end">
@@ -150,8 +274,8 @@ function Mine({ text }: { text: string }) {
 }
 
 /**
- * Ответ ассистента. Главное число выделяем сами — тем же правилом, что в чате с
- * ботом: модель присылает обычный текст, разметку ей не доверяем.
+ * Ответ текстом — ошибка или старый воркер без карточек. Главное число
+ * выделяем сами: модель присылает обычный текст, разметку ей не доверяем.
  */
 function Theirs({ text }: { text: string }) {
   return (

@@ -70,10 +70,11 @@ export function findCategory(id: string): CatRule | undefined {
  *
  * Слово нужно там, где валюта записи отличается от основной: основную
  * подставит приложение само. Поэтому многозначные слова сюда не берём — «сом»
- * (рыба), «вон», «лей» и «крона» (чьи?), «рупия», «песо», а из кодов — те, что
- * совпадают с английскими словами (all, cup, pen, bob, mad, php): записать
- * покупку рыбы в киргизских сомах хуже, чем не узнать валюту. Такие случаи
- * разбирает модель — она видит основную валюту человека.
+ * (рыба), «вон», «лей» и «крона» (чьи?), «рупия», «песо», «динар» (их в списке
+ * восемь), «дирхам» (эмиратский и марокканский), а из кодов — те, что совпадают
+ * с английскими словами (all, cup, pen, bob, mad, php, try, gel, cop, cad):
+ * записать покупку рыбы в киргизских сомах хуже, чем не узнать валюту. Такие
+ * случаи разбирает модель — она видит основную валюту человека.
  */
 const CURRENCY_WORDS: [RegExp, string][] = [
   [/^(₴|грн|гривен|гривень|гривны|гривна|гривня|uah)$/, 'UAH'],
@@ -82,7 +83,7 @@ const CURRENCY_WORDS: [RegExp, string][] = [
   [/^(₽|руб|рублей|рубля|rub)$/, 'RUB'],
   [/^(₸|тенге|kzt)$/, 'KZT'],
   [/^(£|фунт|фунтов|gbp)$/, 'GBP'],
-  [/^(₺|лир|лира|try)$/, 'TRY'],
+  [/^(₺|лир|лира)$/, 'TRY'],
   [/^(zł|злотых|злотый|pln)$/, 'PLN'],
   [/^(byn)$/, 'BYN'],
   [/^(сум|сумов|сўм|uzs)$/, 'UZS'],
@@ -91,7 +92,7 @@ const CURRENCY_WORDS: [RegExp, string][] = [
   [/^(tmt)$/, 'TMT'],
   [/^(₼|манат|манатов|маната|azn)$/, 'AZN'],
   [/^(֏|драм|драмов|драма|amd)$/, 'AMD'],
-  [/^(₾|лари|gel)$/, 'GEL'],
+  [/^(₾|лари)$/, 'GEL'],
   [/^(mdl)$/, 'MDL'],
   [/^(kč|czk)$/, 'CZK'],
   [/^(форинт|форинтов|huf)$/, 'HUF'],
@@ -101,11 +102,11 @@ const CURRENCY_WORDS: [RegExp, string][] = [
   [/^(nok)$/, 'NOK'],
   [/^(dkk)$/, 'DKK'],
   [/^(isk)$/, 'ISK'],
-  [/^(динар|динаров|динара|дин|rsd)$/, 'RSD'],
+  [/^(дин|rsd)$/, 'RSD'],
   [/^(mkd)$/, 'MKD'],
   [/^(bam)$/, 'BAM'],
   [/^(₪|шекель|шекелей|шекеля|шек|ils)$/, 'ILS'],
-  [/^(дирхам|дирхамов|дирхама|aed)$/, 'AED'],
+  [/^(aed)$/, 'AED'],
   [/^(sar)$/, 'SAR'],
   [/^(qar)$/, 'QAR'],
   [/^(kwd)$/, 'KWD'],
@@ -142,12 +143,10 @@ const CURRENCY_WORDS: [RegExp, string][] = [
   [/^(mvr)$/, 'MVR'],
   [/^(aud)$/, 'AUD'],
   [/^(nzd)$/, 'NZD'],
-  [/^(cad)$/, 'CAD'],
   [/^(mxn)$/, 'MXN'],
   [/^(brl)$/, 'BRL'],
   [/^(ars)$/, 'ARS'],
   [/^(clp)$/, 'CLP'],
-  [/^(cop)$/, 'COP'],
   [/^(uyu)$/, 'UYU'],
   [/^(₲|pyg)$/, 'PYG'],
   [/^(ves)$/, 'VES'],
@@ -240,6 +239,24 @@ function currencyOf(tok: string): string | null {
 const DAY_WORDS: Record<string, number> = { сегодня: 0, вчера: 1, позавчера: 2 }
 
 /**
+ * День словом в токене. Только собственные ключи: `tok in DAY_WORDS` узнавал и
+ * «constructor» с «__proto__» — «кофе 300 constructor» без модели давал дату
+ * «NaN-NaN-NaN», то есть операцию, которой нет ни в одном периоде.
+ */
+function dayOf(tok: string): number | undefined {
+  return Object.hasOwn(DAY_WORDS, tok) ? DAY_WORDS[tok] : undefined
+}
+
+/** День словом во всей строке (0 — «сегодня»); нет — undefined. */
+export function dayWordIn(raw: string): number | undefined {
+  for (const tok of normalize(raw).split(' ')) {
+    const d = dayOf(tok)
+    if (d !== undefined) return d
+  }
+  return undefined
+}
+
+/**
  * Разобрать сообщение в операцию.
  *
  * `known` — id категорий, которые реально есть у пользователя (встроенные плюс
@@ -260,19 +277,30 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   let daysAgo: number | undefined
   const dayAt = new Set<string>()
   for (const tok of tokens) {
-    if (tok in DAY_WORDS) {
-      daysAgo = DAY_WORDS[tok] || undefined
+    const d = dayOf(tok)
+    if (d !== undefined) {
+      daysAgo = d || undefined
       dayAt.add(tok)
     }
   }
 
   /* ---------- Сумма ---------- */
-  // Сначала склеиваем разряды, записанные через пробел: «1 500» → «1500».
+  // Сначала склеиваем разряды, записанные через пробел: «1 500» → «1500»,
+  // «1 200,50» → «1200,50». Только цепочкой от первой группы в 1–3 цифры:
+  // «1500 200» — это два числа, а не 1 500 200.
   const merged: string[] = []
+  let chain = false
   for (const tok of tokens) {
     const prev = merged[merged.length - 1]
-    if (prev && /^\d+$/.test(prev) && /^\d{3}$/.test(tok)) merged[merged.length - 1] = prev + tok
-    else merged.push(tok)
+    const groupable = prev !== undefined && (chain || /^\d{1,3}$/.test(prev))
+    if (groupable && /^\d{3}(?:[.,]\d{1,2})?$/.test(tok)) {
+      merged[merged.length - 1] = prev + tok
+      // После копеек цепочка кончилась: «1 200,50 300» — уже другое число.
+      chain = !/[.,]/.test(tok)
+    } else {
+      merged.push(tok)
+      chain = false
+    }
   }
 
   let amount: number | null = null
@@ -372,22 +400,49 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
  * «кроссовки 3500 и пиво 180» бот сам показывает в справке.
  *
  * Делим по «и», запятой, точке с запятой и переносу строки, но только если
- * в КАЖДОЙ части есть своя сумма: «хлеб и молоко 120» — одна покупка, а
- * «340,50» — копейки, а не два числа (запятая перед цифрой не делит). День
- * словом («вчера …») относится ко всему сообщению.
+ * в КАЖДОЙ части есть своя сумма: «хлеб и молоко 120» — одна покупка. Запятая
+ * перед цифрой не делит («340,50» — копейки), а перенос строки делит всегда:
+ * «300 кофе⏎450 такси» — это две траты, а не одна с заметкой «кофе 450».
+ *
+ * День словом действует на свою часть и на следующие за ней: «вчера такси 450
+ * и обед 380» — обе вчера, «кофе 300 вчера и обед 380 сегодня» — по-разному.
+ * Части до первого названного дня берут его же: «такси 450 и обед 380 вчера».
  */
 export function parseEntries(raw: string, known?: Set<string>): ParsedEntry[] | ParseResult {
   const parts = raw
-    .split(/\s+и\s+|[,;\n]+(?!\d)/i)
+    .split(/\s+и\s+|,(?!\d)|[;\n]+/i)
     .map((p) => p.trim())
     .filter(Boolean)
-  if (parts.length >= 2 && parts.length <= 10) {
+  // «Обед 350, -50 скидка» — это не две траты, а одна со скидкой. Без модели
+  // честнее записать одну сумму, чем лишний расход в 50.
+  const discount = parts.length >= 2 && parts.some((p, i) => i > 0 && /^[-−]\s*\d/.test(p) && /скидк|discount/i.test(p))
+  if (parts.length >= 2 && parts.length <= 10 && !discount) {
     const each = parts.map((p) => parseEntry(p, known))
     if (each.every((r) => r.ok)) {
-      const entries = each.map((r) => (r as { ok: true; entry: ParsedEntry }).entry)
-      const day = entries.find((e) => e.daysAgo !== undefined)?.daysAgo
-      return day ? entries.map((e) => ({ ...e, daysAgo: day })) : entries
+      const entries: ParsedEntry[] = []
+      const days: (number | undefined)[] = []
+      parts.forEach((part, i) => {
+        const entry = (each[i] as { ok: true; entry: ParsedEntry }).entry
+        // «Кофе 300 и 50 копеек» — это 300,50, а не две траты.
+        const cents = part.match(KOPECKS_RE)
+        const prev = entries[entries.length - 1]
+        if (cents && prev) {
+          prev.amount = Math.round((prev.amount + Number(cents[1]) / 100) * 100) / 100
+          return
+        }
+        entries.push({ ...entry })
+        days.push(dayWordIn(part))
+      })
+      let current = days.find((d) => d !== undefined)
+      return entries.map((e, i) => {
+        if (days[i] !== undefined) current = days[i]
+        const { daysAgo: _drop, ...rest } = e
+        return current ? { ...rest, daysAgo: current } : rest
+      })
     }
   }
   return parseEntry(raw, known)
 }
+
+/** Копейки отдельной частью: «50 копеек», «20 коп», «99 центов». */
+const KOPECKS_RE = /^(\d{1,2})\s*(?:коп(?:еек|ейки|ейка)?|цент(?:ов|а)?|cents?)\.?$/iu

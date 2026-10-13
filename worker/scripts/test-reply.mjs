@@ -48,6 +48,23 @@ function ctx(over = {}) {
     prevByCategory: [],
     daysPassed: 11,
     pending: 0,
+    months: [],
+    prevFullByCategory: [],
+    avgByCategory: [],
+    avgMonths: 0,
+    incomeByCategory: [],
+    spentThisWeek: 0,
+    spentLastWeek: 0,
+    weekdayAvg: [],
+    weekdayWeeks: 0,
+    peakDay: null,
+    activeDays: 0,
+    spentYear: 0,
+    incomeYear: 0,
+    limits: [],
+    goals: [],
+    otherCurrencies: [],
+    firstDay: null,
     ...over,
   }
 }
@@ -255,57 +272,49 @@ for (const c of TODAY_CASES) {
   }
 }
 
-/* ---------- Выделение главного числа в ответе модели ---------- */
+/* ---------- Лимит категории под записью ---------- */
 
-const ANSWER_CASES = [
+const LIMIT_CASES = [
   {
-    name: 'сумма с разрядами и значком',
-    answer: 'Потрачено сегодня 1 240 ₴, это на 340 ₴ больше, чем вчера.',
-    want: 'Потрачено сегодня <b>1 240 ₴</b>, это на 340 ₴ больше, чем вчера.',
+    name: 'лимит задан — сколько из него ушло, вместе с этой тратой',
+    ops: [op({ amount: 300 })],
+    ctx: ctx({ spentToday: 300, byCategory: [{ id: 'cafe', sum: 4200 }], limits: [{ id: 'cafe', limit: 5000, spent: 3900 }] }),
+    want: [
+      '<b>Кафе · 300 ₴</b>',
+      '<blockquote>Сегодня потрачено 300 ₴',
+      'лимит «Кафе»: 4 200 ₴ из 5 000 ₴</blockquote>',
+    ],
   },
   {
-    name: 'сумма без разрядов',
-    answer: 'На кафе ушло 4200 ₴.',
-    want: 'На кафе ушло <b>4200 ₴</b>.',
+    name: 'лимит превышен — так и сказано',
+    ops: [op({ amount: 900 })],
+    ctx: ctx({ spentToday: 900, byCategory: [{ id: 'cafe', sum: 5300 }], limits: [{ id: 'cafe', limit: 5000, spent: 4400 }] }),
+    want: [
+      '<b>Кафе · 900 ₴</b>',
+      '<blockquote>Сегодня потрачено 900 ₴',
+      'лимит «Кафе» превышен на 300 ₴</blockquote>',
+    ],
   },
   {
-    name: 'разряды точкой и копейки запятой (евро)',
-    answer: 'В этом месяце ушло 1.234,56 € на еду.',
-    want: 'В этом месяце ушло <b>1.234,56 €</b> на еду.',
+    name: 'трата в другой валюте лимит в основной не трогает',
+    ops: [op({ amount: 12, currency: 'EUR' })],
+    ctx: ctx({ byCategory: [{ id: 'cafe', sum: 4200 }], limits: [{ id: 'cafe', limit: 5000, spent: 4200 }] }),
+    want: ['<b>Кафе · 12 €</b>', '<blockquote>Сегодня потрачено 0 ₴</blockquote>'],
   },
   {
-    name: 'символ из нескольких знаков не обрезается',
-    answer: 'Осталось 2,500 HK$ до конца недели.',
-    want: 'Осталось <b>2,500 HK$</b> до конца недели.',
-  },
-  {
-    name: 'местное сокращение валюты',
-    answer: 'Сегодня потрачено 150 000 сум.',
-    want: 'Сегодня потрачено <b>150 000 сум</b>.',
-  },
-  {
-    name: 'число без валюты тоже выделяется',
-    answer: 'Всего записано 412 операции.',
-    want: 'Всего записано <b>412</b> операции.',
-  },
-  {
-    name: 'числа нет — текст не трогаем',
-    answer: 'Таких данных у меня нет.',
-    want: 'Таких данных у меня нет.',
-  },
-  {
-    name: 'разметка модели экранируется, а не исполняется',
-    answer: '<b>100 ₴</b> & всё',
-    want: '&lt;b&gt;<b>100 ₴</b>&lt;/b&gt; &amp; всё',
+    name: 'запись в прошлый месяц текущий лимит не трогает',
+    ops: [op({ amount: 300, date: '2026-08-20' })],
+    ctx: ctx({ spentMonth: 1000, byCategory: [{ id: 'cafe', sum: 1000 }], limits: [{ id: 'cafe', limit: 5000, spent: 1000 }] }),
+    want: ['<b>Кафе · 300 ₴</b>', '20 августа', '<blockquote>Расходы за сентябрь — 1 000 ₴</blockquote>'],
   },
 ]
 
-for (const c of ANSWER_CASES) {
-  const got = norm(__test.answerReply(c.answer))
-  const want = norm(c.want)
+for (const c of LIMIT_CASES) {
+  const got = norm(recordReply(c.ops, c.ctx, NOW))
+  const want = norm(c.want.join('\n'))
   if (got !== want) {
     failed++
-    console.error(`✗ ответ модели: ${c.name}\n  ждали:  ${want}\n  получили: ${got}`)
+    console.error(`✗ лимит: ${c.name}\n  ждали:\n${want}\n  получили:\n${got}\n`)
   }
 }
 
@@ -314,5 +323,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `test-reply: ${CASES.length} ответов, ${BAR_CASES.length} полос, ${TODAY_CASES.length} сводок, ${ANSWER_CASES.length} ответов модели — всё как ожидалось`,
+  `test-reply: ${CASES.length} ответов, ${BAR_CASES.length} полос, ${TODAY_CASES.length} сводок, ${LIMIT_CASES.length} строк лимита — всё как ожидалось`,
 )

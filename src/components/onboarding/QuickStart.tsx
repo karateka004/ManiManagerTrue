@@ -137,20 +137,31 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     setStep(2)
   }
 
+  // Пока сервер не ответил, второе нажатие не принимаем: при двойном тапе без
+  // сети откат первого запроса переписал бы второй, и тумблер разошёлся бы с
+  // сервером.
+  const remindersBusy = useRef(false)
   const toggleReminders = () => {
+    if (remindersBusy.current) return
+    remindersBusy.current = true
     hapticSelect()
     const next = !reminders
     setRemindersEnabled(next)
     // Рассылка идёт по серверу. Не дошло — возвращаем тумблер: иначе он
     // показывал бы «выключено», а бот вечером всё равно написал бы.
     setReminders(next).then((ok) => {
+      remindersBusy.current = false
       if (!ok) setRemindersEnabled(!next)
     })
   }
 
+  // Быстрый старт видит и тот, кто вернулся на новое устройство: облако за это
+  // время подтянулось, и его бюджет месяца затирать доходом из быстрого старта
+  // нельзя. Предлагаем бюджет только тем, у кого его нет.
+  const hasBudget = useStore((s) => s.monthlyBudget > 0)
   const finish = () => {
     hapticNotify('success')
-    if (budgetOn && income > 0) setMonthlyBudget(Math.round(income))
+    if (budgetOn && income > 0 && useStore.getState().monthlyBudget === 0) setMonthlyBudget(Math.round(income))
     onDone()
   }
 
@@ -290,6 +301,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
                 projected={forecast.projected}
                 safeDaily={forecast.safeDaily}
                 budgetOn={budgetOn}
+                hasBudget={hasBudget}
                 onBudget={() => { hapticSelect(); setBudgetOn((v) => !v) }}
                 onDone={finish}
               />
@@ -465,11 +477,19 @@ function StepIncome({
   canGo: boolean
   onNext: () => void
 }) {
+  const lang = useStore((s) => s.lang)
   return (
     <div className="pb-2">
       <StepHead title={t('qs.income_title')} sub={t('qs.income_sub')} />
 
-      <AmountField value={amount} onChange={onAmount} currency={currency} onCurrency={onCurrency} autoFocus />
+      <AmountField
+        value={amount}
+        onChange={onAmount}
+        currency={currency}
+        onCurrency={onCurrency}
+        currencyLabel={`${currencyName(currency, lang)} — ${t('cur.change').toLowerCase()}`}
+        autoFocus
+      />
 
       <div className="caption mt-5 text-ink-subtle">{t('qs.income_source')}</div>
       <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
@@ -564,7 +584,7 @@ function StepExpenses({
 /* ---------- Шаг 3: инсайт ---------- */
 
 function StepForecast({
-  t, currency, income, spentToday, projected, safeDaily, budgetOn, onBudget, onDone,
+  t, currency, income, spentToday, projected, safeDaily, budgetOn, hasBudget, onBudget, onDone,
 }: {
   t: TFunc
   currency: Currency
@@ -573,6 +593,8 @@ function StepForecast({
   projected: number
   safeDaily: number
   budgetOn: boolean
+  /** Бюджет уже задан (облако вернувшегося человека) — не предлагаем. */
+  hasBudget: boolean
   onBudget: () => void
   onDone: () => void
 }) {
@@ -612,21 +634,23 @@ function StepForecast({
 
       {/* Доход становится бюджетом месяца: из него Главная и бот считают,
           сколько можно потратить сегодня. Включено — но видно и выключается. */}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={budgetOn}
-        onClick={onBudget}
-        className="mt-4 flex w-full items-center gap-3 border-y border-hairline py-3.5 text-left"
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold text-ink">
-            {t('qs.budget_title', { sum: formatMoney(Math.round(income), currency) })}
+      {!hasBudget && (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={budgetOn}
+          onClick={onBudget}
+          className="mt-4 flex w-full items-center gap-3 border-y border-hairline py-3.5 text-left"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-ink">
+              {t('qs.budget_title', { sum: formatMoney(Math.round(income), currency) })}
+            </span>
+            <span className="caption mt-0.5 block leading-snug text-ink-subtle">{t('qs.budget_hint')}</span>
           </span>
-          <span className="caption mt-0.5 block leading-snug text-ink-subtle">{t('qs.budget_hint')}</span>
-        </span>
-        <Toggle on={budgetOn} />
-      </button>
+          <Toggle on={budgetOn} />
+        </button>
+      )}
 
       <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`}>
         {t('qs.finish')}
@@ -640,12 +664,14 @@ function StepForecast({
 
 /** Крупное поле суммы с символом валюты. */
 function AmountField({
-  value, onChange, currency, onCurrency, autoFocus,
+  value, onChange, currency, onCurrency, currencyLabel, autoFocus,
 }: {
   value: string
   onChange: (v: string) => void
   currency: Currency
   onCurrency?: () => void
+  /** Для экранного диктора: голый «₸» ничего не говорит. */
+  currencyLabel?: string
   autoFocus?: boolean
 }) {
   const symbol = getCurrency(currency).symbol
@@ -665,7 +691,7 @@ function AmountField({
         <button
           type="button"
           onClick={onCurrency}
-          aria-label={symbol}
+          aria-label={currencyLabel ?? symbol}
           className="press flex shrink-0 items-center gap-1.5 rounded-full bg-surface-raised py-1 pl-1 pr-2.5 text-[15px] font-bold text-ink shadow-soft"
         >
           <CurrencyFlag code={currency} size={22} />

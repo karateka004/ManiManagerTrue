@@ -19,6 +19,7 @@ import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect, tg } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
 import { currencyAsked } from '../lib/currencyAsked'
+import { readPendingRelabel } from '../lib/relabelPending'
 import { ONBOARDED_KEY } from '../lib/introKeys'
 
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
@@ -85,12 +86,17 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
  * карточка держится, хотя валюта уже не доллар.
  */
 function CurrencyNudgeGate() {
+  const currency = useStore((s) => s.currency)
   const usd = useStore((s) => s.currency === 'USD' && !s.demoMode)
   const [inFlow, setInFlow] = useState(false)
-  if (!inFlow && (!usd || currencyAsked() || !onboarded())) return null
+  // Вопрос о переносе записей, оставшийся без ответа (здесь или в Настройках),
+  // ждёт на Главной: уйти с экрана — не ответ.
+  const [pending] = useState(readPendingRelabel)
+  const waiting = pending && pending.to === currency ? pending : null
+  if (!inFlow && !waiting && (!usd || currencyAsked() || !onboarded())) return null
   return (
     <Suspense fallback={null}>
-      <CurrencyNudge onFlow={setInFlow} />
+      <CurrencyNudge onFlow={setInFlow} pending={waiting} />
     </Suspense>
   )
 }

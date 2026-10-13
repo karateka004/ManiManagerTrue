@@ -63,7 +63,8 @@ const TZ: Partial<Record<Currency, string[]>> = {
   CHF: ['Europe/Zurich', 'Europe/Vaduz', 'Europe/Busingen'],
   SEK: ['Europe/Stockholm'],
   NOK: ['Europe/Oslo', 'Arctic/Longyearbyen'],
-  DKK: ['Europe/Copenhagen', 'Atlantic/Faroe', 'America/Nuuk', 'America/Godthab'],
+  // Faeroe и Godthab — старые имена: Chrome на части систем отдаёт именно их.
+  DKK: ['Europe/Copenhagen', 'Atlantic/Faroe', 'Atlantic/Faeroe', 'America/Nuuk', 'America/Godthab'],
   ISK: ['Atlantic/Reykjavik', 'Iceland'],
   RSD: ['Europe/Belgrade'],
   MKD: ['Europe/Skopje'],
@@ -119,7 +120,7 @@ const TZ: Partial<Record<Currency, string[]>> = {
     'America/Campo_Grande', 'America/Porto_Velho', 'America/Boa_Vista', 'America/Santarem',
     'America/Eirunepe', 'America/Noronha',
   ],
-  ARS: ['America/Buenos_Aires', 'America/Cordoba', 'America/Mendoza'],
+  ARS: ['America/Buenos_Aires', 'America/Cordoba', 'America/Mendoza', 'America/Catamarca', 'America/Jujuy', 'America/Rosario'],
   CLP: ['America/Santiago', 'America/Punta_Arenas', 'Pacific/Easter'],
   COP: ['America/Bogota'],
   PEN: ['America/Lima'],
@@ -162,7 +163,7 @@ const CANADA = [
   'America/Iqaluit', 'America/Glace_Bay', 'America/Goose_Bay', 'America/Swift_Current', 'America/Dawson',
   'America/Dawson_Creek', 'America/Fort_Nelson', 'America/Creston', 'America/Cambridge_Bay', 'America/Inuvik',
   'America/Rankin_Inlet', 'America/Resolute', 'America/Atikokan', 'America/Blanc-Sablon', 'America/Montreal',
-  'America/Nipigon', 'America/Thunder_Bay', 'America/Rainy_River', 'America/Pangnirtung',
+  'America/Nipigon', 'America/Thunder_Bay', 'America/Rainy_River', 'America/Pangnirtung', 'America/Coral_Harbour',
 ]
 
 let tzIndex: Map<string, Currency> | null = null

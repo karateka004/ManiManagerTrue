@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.2.0'
+export const APP_VERSION = '2.3.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -34,8 +34,51 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.3.0',
+    date: '2026-10-13',
+    title: { ru: 'Ассистент, который считает', en: 'An assistant that does the math' },
+    items: [
+      {
+        text: {
+          ru: 'Бот и ассистент в приложении стали умнее: видят твои итоги за год — месяцы, недели, дни недели, категории, бюджет, лимиты и цели — и сравнивают с тем, как ты тратишь обычно',
+          en: 'The bot and the in-app assistant got smarter: they see your totals for the year — months, weeks, weekdays, categories, budget, limits and goals — and compare them with your usual month',
+        },
+      },
+      {
+        text: {
+          ru: 'Ответы — аккуратными карточками: главное число сразу, разделы по строкам, совет и кнопки-продолжения вроде «А в прошлом месяце?»',
+          en: 'Answers come as neat cards: the key number first, sections line by line, a tip and follow-up buttons like “And last month?”',
+        },
+      },
+      {
+        text: {
+          ru: 'Разговор помнится: можно уточнять, не повторяя вопрос. Спроси «когда накоплю на отпуск?» или «могу ли я купить кроссовки за 3000?»',
+          en: 'The conversation is remembered: ask follow-ups without repeating yourself. Try “when will I reach my vacation goal?” or “can I afford sneakers for 100?”',
+        },
+      },
+      {
+        text: {
+          ru: 'Ни одного выдуманного числа: каждую сумму в ответе Кошель сверяет с твоими записями',
+          en: 'No made-up numbers: Koshel checks every amount in an answer against your records',
+        },
+      },
+      {
+        text: {
+          ru: 'В чате с ботом: после траты видно лимит категории, «Не та категория» в сообщении из нескольких трат правит нужную, а пока готовится ответ — «Думает…»',
+          en: 'In the bot chat: after an expense you see the category limit, “Wrong category” in a multi-expense message fixes the right one, and “Thinking…” shows while an answer is on its way',
+        },
+      },
+      {
+        text: {
+          ru: 'Исправления: вопрос о переносе записей после смены валюты больше не теряется, быстрый старт не трогает уже заданный бюджет, перенос строки в сообщении боту делит траты',
+          en: 'Fixes: the offer to move entries after a currency change no longer gets lost, quick start keeps an existing budget, and a line break in a bot message splits expenses',
+        },
+      },
+    ],
+  },
+  {
     version: '2.2.0',
-    date: '2026-10-10',
+    date: '2026-10-13',
     title: { ru: 'Твоя валюта с первой минуты', en: 'Your currency from minute one' },
     items: [
       {

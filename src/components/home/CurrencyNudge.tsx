@@ -7,8 +7,9 @@ import { useT } from '../../lib/i18n'
 import { hapticNotify, hapticSelect } from '../../lib/telegram'
 import { showToast } from '../../lib/toast'
 import { CurrencyFlag } from '../ui/CurrencyFlag'
-import { RelabelPrompt, countInCurrency } from '../RelabelPrompt'
+import { RelabelPrompt, countInCurrency, countOthersInCurrency } from '../RelabelPrompt'
 import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
+import { writePendingRelabel, type PendingRelabel } from '../../lib/relabelPending'
 
 /**
  * «Твоя валюта — украинская гривна?» — для тех, кто уже ведёт учёт на долларе
@@ -23,31 +24,40 @@ import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
  * Чанк ленивый: таблица часовых поясов и названия валют нужны только тем, у
  * кого основная — доллар и вопрос ещё не задавали (см. Home → CurrencyNudgeGate).
  */
-export default function CurrencyNudge({ onFlow }: { onFlow: (active: boolean) => void }) {
+export default function CurrencyNudge({
+  onFlow,
+  pending,
+}: {
+  onFlow: (active: boolean) => void
+  /** Вопрос о переносе, оставшийся без ответа, — сразу к нему. */
+  pending: PendingRelabel | null
+}) {
   const t = useT()
   const lang = useStore((s) => s.lang)
   const current = useStore((s) => s.currency)
   const setCurrency = useStore((s) => s.setCurrency)
   const [detected] = useState(() => detectCurrency())
-  const [stage, setStage] = useState<'ask' | 'relabel' | 'done'>('ask')
+  const [stage, setStage] = useState<'ask' | 'relabel' | 'done'>(pending ? 'relabel' : 'ask')
+  const [relabel, setRelabel] = useState<PendingRelabel | null>(pending)
   const target = detected.currency
 
   // Спросить не о чем: регион не определился или это и есть доллар. Помечаем,
   // чтобы чанк не грузился при каждом запуске.
-  const nothingToAsk = detected.source === 'default' || target === 'USD'
+  const nothingToAsk = !pending && (detected.source === 'default' || target === 'USD')
   useEffect(() => {
     if (nothingToAsk) markAsked()
   }, [nothingToAsk])
 
   if (nothingToAsk || stage === 'done') return null
 
-  if (stage === 'relabel') {
+  if (stage === 'relabel' && relabel) {
     return (
       <RelabelPrompt
         className="mx-4 mb-3"
-        from="USD"
-        to={target}
+        from={relabel.from}
+        to={relabel.to}
         onDone={() => {
+          writePendingRelabel(null)
           setStage('done')
           onFlow(false)
         }}
@@ -61,13 +71,19 @@ export default function CurrencyNudge({ onFlow }: { onFlow: (active: boolean) =>
   const yes = () => {
     hapticNotify('success')
     markAsked()
-    const inUsd = countInCurrency(useStore.getState(), 'USD')
+    const before = useStore.getState()
+    const inUsd = countInCurrency(before, 'USD') + countOthersInCurrency(before, 'USD')
     // Держим карточку на экране: после смены валюты условие показа (доллар)
     // перестанет выполняться, а вопрос о переносе ещё впереди.
     onFlow(inUsd > 0)
     setCurrency(target)
-    if (inUsd > 0) setStage('relabel')
-    else {
+    if (inUsd > 0) {
+      const next = { from: 'USD' as const, to: target }
+      // Запоминаем: ушёл с Главной, не ответив, — вопрос дождётся.
+      writePendingRelabel(next)
+      setRelabel(next)
+      setStage('relabel')
+    } else {
       setStage('done')
       showToast({ icon: 'check', text: t('cur.switched', { name: currencyNameInText(target, lang) }) })
     }

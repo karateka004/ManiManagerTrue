@@ -69,6 +69,7 @@ export function Row({
   chevron,
   onClick,
   disabled,
+  checked,
   children,
   className,
 }: {
@@ -90,6 +91,8 @@ export function Row({
   chevron?: boolean
   onClick?: () => void
   disabled?: boolean
+  /** Строка — переключатель: экранный диктор прочтёт «включено/выключено». */
+  checked?: boolean
   /** Содержимое под строкой внутри её колонки — полоса прогресса, точки серии. */
   children?: ReactNode
   className?: string
@@ -121,7 +124,13 @@ export function Row({
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} disabled={disabled} className={clsx('row', className)}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        {...(checked !== undefined ? { role: 'switch', 'aria-checked': checked } : {})}
+        className={clsx('row', className)}
+      >
         {body}
       </button>
     )

@@ -8,7 +8,8 @@
  *
  * Бот не только записывает, но и отвечает: «сколько я потратил на кафе» — такой
  * же законный способ пользоваться Кошелём, как открыть Аналитику. Отвечает
- * модель, но только по итогам, которые посчитали мы (см. gemini.ts → buildFacts).
+ * модель, но только по итогам, которые посчитали мы (facts.ts), и ответ
+ * собирается карточкой, которую оформляем мы сами (answer.ts).
  *
  * Тексты здесь — интерфейс, а не отладочный вывод: их читает человек, который
  * на ходу пишет «кофе 300». Поэтому ответ на запись — не «записано», а то, чего
@@ -17,6 +18,21 @@
 import type { Env } from './env'
 import { parseEntries } from './entry'
 import { askGemini, type ParsedOp } from './gemini'
+import {
+  answerCard,
+  cardToText,
+  ICONS,
+  looksLikeQuestion,
+  questionLang,
+  readChat,
+  renderTelegram,
+  saveChat,
+  titleOfText,
+  type AnswerCard,
+  type IconSet,
+  type Lang,
+  type Turn,
+} from './answer'
 import {
   allowance,
   applyEntries,
@@ -34,13 +50,13 @@ import {
   newBatchId,
   readInbox,
   setBatchCategory,
+  setEntryCategory,
   MAX_INBOX,
   type InboxEntry,
 } from './inbox'
 import { CURRENCY_META, formatMoney } from './money'
 import { isRateLimited } from './limits'
 import { campaignTag, rememberSource } from './sources'
-import { mskDateStr } from './days'
 import {
   BTN_TURN_OFF,
   BTN_TURN_ON,
@@ -56,10 +72,12 @@ import {
 } from './reminders'
 import {
   answerCallback,
+  editMessageReplyMarkup,
   editMessageText,
   escapeHtml,
+  keepTyping,
   sendMessage,
-  sendTyping,
+  sendMessageDraft,
   setMyCommands,
   setMyDescription,
   setMyShortDescription,
@@ -182,14 +200,15 @@ export const START = [
 export const START_MORE = [
   '<b>Спрашивай</b> — отвечу по записям:',
   '<blockquote>на что ушло больше всего?',
-  'трачу больше, чем раньше?</blockquote>',
+  'трачу больше, чем раньше?',
+  'когда накоплю на отпуск?</blockquote>',
   '',
   '<b>Другая валюта</b> — словом или знаком: «обед 12 €», «такси 15 лари». По курсу не пересчитываю.',
   '',
   '<b>В приложении</b> — лимиты по категориям и поиск, а за регулярный учёт — уровни и награды.',
   '',
   'Напоминания — /reminders, траты за сегодня — /today.',
-  '<i>Сообщения разбирает Google Gemini: ему уходят текст и итоги, но не список трат.</i>',
+  '<i>Сообщения разбирает Google Gemini: ему уходят текст и итоги по дням, месяцам и категориям, но не список трат.</i>',
 ].join('\n')
 
 export const BTN_OPEN = 'Открыть Кошель'
@@ -224,14 +243,15 @@ const HELP = [
   'вчера продукты 1200',
   'кроссовки 3500 и пиво 180',
   '',
-  'Можно спрашивать:',
-  'сколько я потратил сегодня',
+  'Можно спрашивать — я помню три последних вопроса:',
+  'сколько я потратил за неделю',
   'на что больше всего ушло в этом месяце',
-  'сколько осталось до конца месяца</blockquote>',
+  'а в прошлом месяце?',
+  'могу ли я купить кроссовки за 3000',
+  'когда накоплю на отпуск</blockquote>',
   'Под записью — «Отменить» и «Не та категория». Сводка дня — /today, напоминания — /reminders.',
 ].join('\n')
 
-const NO_AMOUNT = 'Не нашёл сумму. Напиши, например: кофе 300 — или спроси, сколько потрачено.'
 const TOO_BIG = 'Похоже на опечатку — не записал. Проверь сумму.'
 const NOT_TEXT = 'Пока понимаю только текст. Напиши, например: кофе 300'
 const INBOX_FULL =
@@ -335,6 +355,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
       const screen = remindersScreen(await remindersEnabled(env, userId))
       await sendMessage(env, userId, screen.text, screen.keyboard)
     }
+    else if (cmd === 'icons' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await setupIcons(env, userId, msg)
     else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
       // Только владельцу и только в личке: кнопка web_app открывает дашборд
       // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
@@ -346,28 +367,56 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
   }
 
   const now = Date.now()
-  // «Печатает…» ставим ДО похода в модель и не дожидаемся: дальше секунда-другая
-  // тишины, и без этой пометки человек решит, что бот не получил сообщение.
-  const typing = sendTyping(env, userId)
-  const ctx = await loadContext(env, userId, now)
-  const overQuota = await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400)
-  const outcome = overQuota ? null : await askGemini(text, ctx, env, now)
-  await typing.catch(() => {})
+  // «Печатает…» ставим ДО похода в модель и держим всё ожидание: дальше секунда-
+  // другая тишины (а с ответом на вопрос — и больше), и без этой пометки человек
+  // решит, что бот не получил сообщение.
+  const stopTyping = keepTyping(env, userId)
+  try {
+    const [ctx] = await Promise.all([
+      loadContext(env, userId, now),
+      // Написал — значит, бот не заблокирован. Нашу автоматическую отписку
+      // снимаем здесь, а не только на /start: разблокировавший бота часто сразу
+      // пишет трату, и раньше так и оставался «заблокированным».
+      forgetBlock(env, userId).catch((e) => console.error('[bot] блокировка не снята', e)),
+    ])
+    const question = looksLikeQuestion(text)
 
-  // Человек спросил, а не записал. Текст пишет модель, но строго по итогам,
-  // которые посчитали мы, — выдумывать числа ей нечем.
-  if (outcome?.intent === 'answer' && outcome.answer) {
-    await sendMessage(env, userId, answerReply(outcome.answer))
-    return
+    // Вопрос без чисел — сразу к ответу, разбор записи не нужен: быстрее и на
+    // вызов модели дешевле. С числом решает модель: «кофе 300?» и «могу ли
+    // купить кроссовки за 3000?» — разные вещи.
+    if (question && !/\d/.test(text)) {
+      await replyWithAnswer(env, userId, text, ctx, now, {})
+      return
+    }
+
+    const overQuota = await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400)
+    const outcome = overQuota ? null : await askGemini(text, ctx, env, now)
+
+    // Человек спросил, а не записал. Текст пишет модель, но строго по итогам,
+    // которые посчитали мы, — выдумывать числа ей нечем. Похожее на вопрос
+    // становится записью, только если модель прямо сказала «запись»: иначе из
+    // «сколько я потратил 5 октября?» правила записали бы трату на 5.
+    if (outcome?.intent === 'answer' || (question && outcome?.intent !== 'record')) {
+      // Модель разбора не ответила (квота, сбой) — к модели ответов тоже не
+      // идём: ответят правила.
+      await replyWithAnswer(env, userId, text, ctx, now, { noModel: !outcome })
+      return
+    }
+
+    const { ops, reason } = resolveOps(outcome?.ops ?? [], text, ctx, now)
+    if (ops.length === 0) {
+      if (reason === 'too_big') await sendMessage(env, userId, TOO_BIG)
+      // Суммы нет, и это не вопрос: «привет», «спасибо», «что ты умеешь» или
+      // что-то непонятное. Отвечают правила — коротко и с подсказками, что
+      // спросить, а не «Не нашёл сумму».
+      else await replyWithAnswer(env, userId, text, ctx, now, { noModel: true })
+      return
+    }
+
+    await recordOps(env, userId, ops, ctx, now)
+  } finally {
+    stopTyping()
   }
-
-  const { ops, reason } = resolveOps(outcome?.ops ?? [], text, ctx, now)
-  if (ops.length === 0) {
-    await sendMessage(env, userId, reason === 'too_big' ? TOO_BIG : NO_AMOUNT)
-    return
-  }
-
-  await recordOps(env, userId, ops, ctx, now)
 }
 
 /**
@@ -396,8 +445,10 @@ function resolveOps(
         currency: e.currency,
         categoryId: e.categoryId,
         note: e.note,
-        // «вчера» — день по МСК, как у модели и у всей серверной логики.
-        ...(e.daysAgo ? { date: mskDateStr(now - e.daysAgo * 86_400_000) } : {}),
+        // «вчера» — тот же момент суток назад: приложение разложит его в
+        // настоящий вчерашний день человека, а не во вчера по МСК (у живущих
+        // не в МСК часть суток «вчера» иначе уезжала на день).
+        ...(e.daysAgo ? { date: new Date(now - e.daysAgo * 86_400_000).toISOString() } : {}),
         guessed: e.guessed,
       })),
     }
@@ -417,12 +468,16 @@ async function recordOps(
     id: entryId(batch, i),
     type: op.type,
     amount: op.amount,
-    currency: op.currency,
+    // Валюта — явно. Бот считает и отвечает в выбранном в приложении счёте
+    // (ctx.currency = счёт или основная), а запись без валюты приложение
+    // отнесло бы к основной: бот сказал бы «300 $», а в приложении легло бы
+    // 300 ₴. Основная неизвестна (приложение не открывали) — без валюты.
+    currency: op.currency ?? ctx.currency,
     categoryId: op.categoryId,
     note: op.note,
-    // Дата без времени — только когда человек назвал день. Иначе точный момент:
+    // Дата без времени — когда день назвала модель. Иначе точный момент:
     // приложение разложит его в настоящий локальный день этого человека.
-    date: op.date ?? new Date(now).toISOString(),
+    date: op.date && Number.isFinite(Date.parse(op.date)) ? op.date : new Date(now).toISOString(),
   }))
 
   // Признак первой в жизни записи снимаем ДО того, как учтём новую операцию.
@@ -556,75 +611,236 @@ function recordReply(ops: ParsedOp[], ctx: UserContext, now: number): string {
     const detail = opDetail(op, now)
     if (detail) lines.push(detail)
   }
-  const tail = summaryLine(ops, ctx, now)
-  if (tail) lines.push(`<blockquote>${tail}</blockquote>`)
+  const tail = [summaryLine(ops, ctx, now), ...limitLines(ops, ctx, now)].filter(Boolean)
+  if (tail.length) lines.push(`<blockquote>${tail.join('\n')}</blockquote>`)
   return lines.join('\n')
 }
 
 /**
- * Денежное значение внутри обычного текста: число с разрядами (пробел, точка,
- * запятая или апостроф — как печатает локаль валюты), необязательными копейками
- * и необязательным символом валюты. Символы — из того же списка, что печатает
- * formatMoney; длинные первыми, чтобы «HK$» не обрезался до «$».
+ * Лимит категории, в которую только что записали, — если он задан в
+ * приложении. Это ровно то, чего человек не держит в голове: «Кафе: 4 200 из
+ * 5 000» сразу после кофе полезнее любого «записано». Не больше двух строк.
  */
-const MONEY_SYMBOLS = [...new Set(Object.values(CURRENCY_META).map((m) => m.symbol))]
-  .sort((a, b) => b.length - a.length)
-  .map((sym) => sym.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
-  .join('|')
-const MONEY_IN_TEXT = new RegExp(
-  `\\d+(?:[\\u0020\\u00a0\\u202f.,'\\u2019]\\d{2,3})*(?:[\\u0020\\u00a0\\u202f]?(?:${MONEY_SYMBOLS}))?`,
-  'u',
-)
-
-/**
- * Ответ модели на вопрос.
- *
- * Разметку модели не доверяем — её текст экранируется целиком, — поэтому главное
- * число выделяем сами, по первому денежному значению в уже экранированной
- * строке. В промпте есть правило ставить его первым. Так ответ на вопрос
- * выглядит из того же материала, что и ответ на запись: жирная суть, обычный
- * текст вокруг.
- */
-function answerReply(answer: string): string {
-  const escaped = escapeHtml(answer)
-  const m = escaped.match(MONEY_IN_TEXT)
-  if (!m || m.index === undefined) return escaped
-  return `${escaped.slice(0, m.index)}<b>${m[0]}</b>${escaped.slice(m.index + m[0].length)}`
+function limitLines(ops: ParsedOp[], ctx: UserContext, now: number): string[] {
+  const today = mskDay(now)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const op of ops) {
+    if (op.type !== 'expense' || seen.has(op.categoryId)) continue
+    seen.add(op.categoryId)
+    if ((op.currency ?? ctx.currency) !== ctx.currency) continue
+    // Запись в прошлый месяц текущий лимит не трогает.
+    if (op.date) {
+      const d = new Date(mskDayOfIso(op.date) * 86_400_000)
+      const t = new Date(today * 86_400_000)
+      if (d.getUTCFullYear() !== t.getUTCFullYear() || d.getUTCMonth() !== t.getUTCMonth()) continue
+    }
+    const limit = ctx.limits.find((l) => l.id === op.categoryId)?.limit
+    if (!limit) continue
+    const spent = ctx.byCategory.find((c) => c.id === op.categoryId)?.sum ?? 0
+    const name = escapeHtml(nameOf(ctx, op.categoryId))
+    out.push(
+      spent > limit
+        ? `лимит «${name}» превышен на ${formatMoney(Math.round(spent - limit), ctx.currency)}`
+        : `лимит «${name}»: ${formatMoney(Math.round(spent), ctx.currency)} из ${formatMoney(Math.round(limit), ctx.currency)}`,
+    )
+    if (out.length >= 2) break
+  }
+  return out
 }
 
 /**
  * Ответ ассистента для мини-аппа.
  *
- * Тот же разбор и та же выжимка, что в чате, — второй промпт завёлся бы своей
- * жизнью и однажды начал бы отвечать иначе на тот же вопрос. Отличие одно:
- * записывать отсюда нельзя. В приложении для этого есть форма, а запись,
- * ушедшая в очередь и появившаяся «когда-нибудь потом», сбивала бы с толку
- * именно там, где операции видно сразу.
+ * Та же выжимка, та же модель и та же карточка, что в чате, — второй промпт
+ * завёлся бы своей жизнью и однажды начал бы отвечать иначе на тот же вопрос.
+ * Отличия два. Записывать отсюда нельзя: в приложении для этого есть форма, а
+ * запись, ушедшая в очередь и появившаяся «когда-нибудь потом», сбивала бы с
+ * толку именно там, где операции видно сразу. И память разговора приносит
+ * само приложение — переписка живёт, пока открыт экран.
+ *
+ * `answer` — карточка простым текстом: его показывают приложения до 2.3.
  */
 export async function answerQuestion(
   env: Env,
   userId: number,
   text: string,
-): Promise<{ ok: boolean; answer?: string; error?: string }> {
-  // Квота общая с чатом: платим-то мы за то же самое, и разводить два счётчика
-  // значит разрешить потратить дневной лимит дважды.
-  if (await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400)) {
-    return { ok: false, error: 'quota' }
-  }
+  history: Turn[] = [],
+  appLang?: Lang,
+): Promise<{ ok: boolean; answer?: string; card?: AnswerCard; error?: string }> {
   const now = Date.now()
   const ctx = await loadContext(env, userId, now)
-  const out = await askGemini(text, ctx, env, now)
-  if (!out) return { ok: false, error: 'unavailable' }
-  if (out.intent === 'answer' && out.answer) return { ok: true, answer: out.answer }
-  if (out.intent === 'record' && out.ops.length > 0) return { ok: false, error: 'looks_like_record' }
-  return { ok: false, error: 'unclear' }
+  if (!looksLikeQuestion(text) && /\d/.test(text)) {
+    const known = new Set(ctx.categories.map((c) => c.id))
+    const parsed = parseEntries(text, known)
+    if (Array.isArray(parsed) || parsed.ok) return { ok: false, error: 'looks_like_record' }
+  }
+  // Квота общая с чатом: платим-то мы за то же самое, и разводить два счётчика
+  // значит разрешить потратить дневной лимит дважды. Кончилась — отвечают
+  // правила, а не «лимит исчерпан».
+  const allowModel = !(await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400))
+  const card = await answerCard(env, text, ctx, now, history, questionLang(text, appLang ?? ctx.lang), allowModel)
+  return { ok: true, answer: cardToText(card), card }
 }
+
+/* ------------------------------------------------------------------ */
+/* Иконки разделов (только владелец)                                   */
+/* ------------------------------------------------------------------ */
+
+/** Подписи иконок в том же порядке, что ICONS: владелец присылает эмодзи по этому списку. */
+const ICON_NAMES: Record<(typeof ICONS)[number], string> = {
+  money: 'деньги',
+  chart: 'итоги, график',
+  calendar: 'календарь, сравнение',
+  budget: 'бюджет',
+  category: 'категории',
+  goal: 'цель',
+  income: 'доходы',
+  warning: 'внимание',
+  tip: 'совет',
+  help: 'помощь, как сделать',
+}
+
+/**
+ * /icons — иконки у заголовков разделов ответа, как в примере владельца.
+ *
+ * Это кастомные эмодзи Telegram: боту они доступны, только если у владельца
+ * бота есть Telegram Premium (или юзернейм с Fragment). Поэтому включаются
+ * вручную: владелец присылает «/icons» и следом, в том же сообщении, свои
+ * эмодзи по порядку. Бот сразу показывает пример; Telegram его не принял —
+ * иконки не сохраняются. «/icons off» — выключить.
+ */
+async function setupIcons(env: Env, userId: number, msg: TgMessage): Promise<void> {
+  const text = msg.text ?? ''
+  if (/^\/icons(@\w+)?\s+off\s*$/i.test(text)) {
+    await env.REFERRALS.delete(ICONS_KEY)
+    iconsCache = null
+    await sendMessage(env, userId, 'Иконки выключены: ответы без них.')
+    return
+  }
+  const custom = (msg.entities ?? []).filter((e) => e.type === 'custom_emoji' && /^\d{1,24}$/.test(e.custom_emoji_id ?? ''))
+  if (!custom.length) {
+    await sendMessage(
+      env,
+      userId,
+      [
+        '<b>Иконки у разделов ответа</b>',
+        'Пришли «/icons» и в том же сообщении кастомные эмодзи по порядку:',
+        `<blockquote>${ICONS.map((k, i) => `${i + 1}. ${ICON_NAMES[k]}`).join('\n')}</blockquote>`,
+        'Можно не все — сколько пришлёшь, столько и встанет. Нужен Telegram Premium у владельца бота: без него Telegram показывает обычные эмодзи. «/icons off» — выключить.',
+      ].join('\n'),
+    )
+    return
+  }
+  const set: IconSet = {}
+  custom.slice(0, ICONS.length).forEach((e, i) => {
+    set[ICONS[i]] = { id: e.custom_emoji_id as string, fallback: text.slice(e.offset, e.offset + e.length) || '•' }
+  })
+  const sample: AnswerCard = {
+    title: 'Так будут выглядеть ответы',
+    lead: 'Иконки встают перед заголовками разделов.',
+    sections: Object.keys(set).slice(0, 3).map((k) => ({
+      heading: ICON_NAMES[k as (typeof ICONS)[number]],
+      icon: k as (typeof ICONS)[number],
+      rows: [{ label: 'Пример', value: '1 234 ₴' }],
+    })),
+    followups: [],
+    source: 'rules',
+  }
+  const r = await sendMessage(env, userId, renderTelegram(sample, { icons: set }))
+  if (!r.ok) {
+    await sendMessage(env, userId, 'Telegram не принял эти эмодзи — иконки не сохранил. Похоже, у владельца бота нет Telegram Premium.')
+    return
+  }
+  await env.REFERRALS.put(ICONS_KEY, JSON.stringify(set))
+  iconsCache = null
+  await sendMessage(env, userId, `Сохранил ${Object.keys(set).length} из ${ICONS.length}. Если в примере выше обычные эмодзи вместо своих — Telegram их не пустил, выключи: /icons off`)
+}
+
+/* ------------------------------------------------------------------ */
+/* Ответ на вопрос в чате                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Кнопки-продолжения под ответом: по одной в ряд — это целые вопросы, рядом
+ * они обрезались бы. В callback_data только номер: сам вопрос — текст кнопки,
+ * Telegram пришлёт его вместе с нажатием (message.reply_markup).
+ */
+function followupRows(items: string[]): { text: string; callback_data: string }[][] {
+  return items.slice(0, 3).map((text, i) => [{ text, callback_data: `q:${i}` }])
+}
+
+/** Иконки разделов (команда /icons). Кэш в памяти изолята — чтобы не читать KV на каждый ответ. */
+const ICONS_KEY = 'bot:icons'
+let iconsCache: { at: number; value: IconSet | undefined } | null = null
+
+async function readIcons(env: Env): Promise<IconSet | undefined> {
+  if (iconsCache && Date.now() - iconsCache.at < 60_000) return iconsCache.value
+  let value: IconSet | undefined
+  try {
+    const raw = await env.REFERRALS.get(ICONS_KEY)
+    value = raw ? (JSON.parse(raw) as IconSet) : undefined
+  } catch {
+    value = undefined
+  }
+  iconsCache = { at: Date.now(), value }
+  return value
+}
+
+/** Отправить карточку. Telegram не принял кастомные эмодзи — тут же без них. */
+async function sendCard(
+  env: Env,
+  chatId: number,
+  card: AnswerCard,
+  opts: { echo?: string; extraRows?: unknown[][] } = {},
+): Promise<void> {
+  const rows = [...(opts.extraRows ?? []), ...followupRows(card.followups)]
+  const keyboard = rows.length ? { inline_keyboard: rows } : undefined
+  const icons = await readIcons(env)
+  const r = await sendMessage(env, chatId, renderTelegram(card, { echo: opts.echo, icons }), keyboard)
+  if (!r.ok && r.status === 400 && icons && Object.keys(icons).length) {
+    console.error('[bot] карточка с иконками не принята — шлю без них')
+    await sendMessage(env, chatId, renderTelegram(card, { echo: opts.echo }), keyboard)
+  }
+}
+
+/**
+ * Ответить на вопрос карточкой и запомнить реплику.
+ *
+ * Пока думает модель, в чате висит родной пузырь «Думает…» (черновик с пустым
+ * текстом) — понятнее, чем одно «печатает…» на десять секунд. Ответ правилами
+ * мгновенный, черновик ему не нужен.
+ */
+async function replyWithAnswer(
+  env: Env,
+  userId: number,
+  question: string,
+  ctx: UserContext,
+  now: number,
+  opts: { echo?: string; noModel?: boolean; history?: Turn[] },
+): Promise<void> {
+  const allowModel = !opts.noModel && !(await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400))
+  const draft = allowModel && env.GEMINI_API_KEY ? sendMessageDraft(env, userId, 1 + Math.floor(Math.random() * 2_000_000_000)) : null
+  const history = opts.history ?? (await readChat(env, userId))
+  const card = await answerCard(env, question, ctx, now, history, questionLang(question, ctx.lang), allowModel)
+  // Черновик обязан долететь раньше ответа: иначе «Думает…» повиснет под ним.
+  await draft?.catch(() => {})
+  await sendCard(env, userId, card, { echo: opts.echo })
+  await saveChat(env, userId, [...history, { q: question, a: cardToText(card) }]).catch((e) =>
+    console.error('[bot] реплика не сохранена', e),
+  )
+}
+
+/** Вопросы под сводкой дня: из неё естественно продолжить разговор. */
+const TODAY_FOLLOWUPS = ['А за неделю?', 'На что уходит больше всего?']
 
 /** Сводка дня — командой /today. Считаем сами: список операций наружу не уходит. */
 async function sendToday(env: Env, userId: number): Promise<void> {
   const now = Date.now()
   const ctx = await loadContext(env, userId, now)
-  await sendMessage(env, userId, todayReply(ctx), openKeyboard)
+  await sendMessage(env, userId, todayReply(ctx), {
+    inline_keyboard: [[openButton], ...(ctx.ops > 0 ? followupRows(TODAY_FOLLOWUPS) : [])],
+  })
 }
 
 function todayReply(ctx: UserContext): string {
@@ -701,7 +917,10 @@ async function handleCallback(q: TgCallbackQuery, env: Env): Promise<void> {
 
   if (action === 'u:') return undoBatch(q, env, userId, rest)
   if (action === 'c:') return offerCategories(q, env, userId, rest)
+  if (action === 'e:') return offerEntryCategories(q, env, userId, rest)
   if (action === 'p:') return pickCategory(q, env, userId, rest)
+  if (action === 'b:') return backToRecord(q, env, userId, rest)
+  if (action === 'q:') return askFollowup(q, env, userId, data)
   if (action === 'm:') return showStartBranch(q, env, rest)
   if (action === 'r:') return toggleReminders(q, env, userId, rest)
   await answerCallback(env, q.id)
@@ -775,10 +994,50 @@ async function undoBatch(q: TgCallbackQuery, env: Env, userId: number, batch: st
 }
 
 /**
+ * Кнопка-продолжение под ответом («А в прошлом месяце?»). Вопрос — текст самой
+ * кнопки: Telegram присылает клавиатуру сообщения вместе с нажатием.
+ */
+async function askFollowup(q: TgCallbackQuery, env: Env, userId: number, data: string): Promise<void> {
+  const question = q.message?.reply_markup?.inline_keyboard
+    ?.flat()
+    .find((b) => b.callback_data === data)
+    ?.text?.trim()
+  if (!question) {
+    // Сообщение старше двух суток Telegram присылает без клавиатуры.
+    await answerCallback(env, q.id, 'Спроси это сообщением — кнопка устарела.')
+    return
+  }
+  await answerCallback(env, q.id)
+  const now = Date.now()
+  const stopTyping = keepTyping(env, userId)
+  try {
+    const [ctx, turns] = await Promise.all([loadContext(env, userId, now), readChat(env, userId)])
+    // Продолжение относится к ТОМУ ответу, под которым нажата кнопка. Если он
+    // уже не последний в памяти (человек успел спросить другое), подкладываем
+    // его текст — иначе «а в прошлом месяце?» продолжило бы чужой вопрос.
+    const shown = (q.message?.text ?? '').slice(0, 900)
+    const lastTitle = titleOfText(turns.at(-1)?.a ?? '')
+    const history = shown && !(lastTitle && shown.includes(lastTitle)) ? [...turns, { q: '…', a: shown }].slice(-3) : turns
+    await replyWithAnswer(env, userId, question, ctx, now, { echo: question, history })
+  } finally {
+    stopTyping()
+  }
+}
+
+/** Название и сумма записи для кнопки выбора: «Такси 450 ₴». */
+function entryButtonText(ctx: UserContext, e: InboxEntry): string {
+  return `${nameOf(ctx, e.categoryId)} ${formatMoney(e.amount, e.currency ?? ctx.currency)}`.slice(0, 40)
+}
+
+/**
  * «Не та категория»: показать выбор прямо под записью.
  *
  * Без этой кнопки единственный способ поправить разбор — пойти в приложение, то
  * есть совершить ровно то действие, от которого мы и уводим.
+ *
+ * В пачке из нескольких трат сначала спрашиваем, какую из них править: раньше
+ * выбранная категория ставилась всем — «такси 450 и обед 380» становились
+ * двумя «Кафе», а расход рядом с зарплатой получал доходную категорию.
  */
 async function offerCategories(q: TgCallbackQuery, env: Env, userId: number, batch: string): Promise<void> {
   const inbox = await readInbox(env, userId)
@@ -787,16 +1046,44 @@ async function offerCategories(q: TgCallbackQuery, env: Env, userId: number, bat
     await answerCallback(env, q.id, ALREADY_PULLED, true)
     return
   }
+  if (mine.length === 1) {
+    return showCategoryChoice(q, env, userId, batch, mine[0])
+  }
 
+  await answerCallback(env, q.id)
+  if (!q.message) return
   const ctx = await loadContext(env, userId, Date.now())
-  const kind = mine[0].type
-  const current = new Set(mine.map((e) => e.categoryId))
+  const rows = mine.map((e) => [{ text: entryButtonText(ctx, e), callback_data: `e:${batch}:${e.id.slice(batch.length + 1)}` }])
+  rows.push([{ text: BTN_BACK, callback_data: `b:${batch}` }])
+  await editMessageReplyMarkup(env, q.message.chat.id, q.message.message_id, { inline_keyboard: rows })
+}
 
+/** Выбрана запись пачки — показать категории для неё. `rest` — «<пачка>:<номер>». */
+async function offerEntryCategories(q: TgCallbackQuery, env: Env, userId: number, rest: string): Promise<void> {
+  const sep = rest.lastIndexOf(':')
+  const batch = sep > 0 ? rest.slice(0, sep) : ''
+  const entry = (await readInbox(env, userId)).items.find((e) => e.id === `${batch}-${rest.slice(sep + 1)}`)
+  if (!batch || !entry) {
+    await answerCallback(env, q.id, ALREADY_PULLED, true)
+    return
+  }
+  return showCategoryChoice(q, env, userId, batch, entry)
+}
+
+/** Категории того же вида, что у записи, — по тратам человека за месяц. */
+async function showCategoryChoice(
+  q: TgCallbackQuery,
+  env: Env,
+  userId: number,
+  batch: string,
+  entry: InboxEntry,
+): Promise<void> {
+  const ctx = await loadContext(env, userId, Date.now())
   // Порядок — по тратам этого человека за месяц: та категория, куда он и правда
   // носит деньги, должна стоять первой, а не той, что первая в общем списке.
   const weight = new Map(ctx.byCategory.map((c, i) => [c.id, i]))
   const candidates = ctx.categories
-    .filter((c) => c.kind === kind && !current.has(c.id))
+    .filter((c) => c.kind === entry.type && c.id !== entry.categoryId)
     .sort((a, b) => (weight.get(a.id) ?? 999) - (weight.get(b.id) ?? 999))
     .slice(0, PICK_SIZE)
 
@@ -806,10 +1093,12 @@ async function offerCategories(q: TgCallbackQuery, env: Env, userId: number, bat
   }
 
   // Список кладём в KV и ссылаемся на него номером: в callback_data всего 64
-  // байта, а id своей категории человека — это 'c_' плюс cuid.
+  // байта, а id своей категории человека — это 'c_' плюс cuid. Вместе со
+  // списком — какую запись пачки правим.
+  const index = Number(entry.id.slice(batch.length + 1))
   await env.REFERRALS.put(
     pickKey(userId, batch),
-    JSON.stringify(candidates.map((c) => c.id)),
+    JSON.stringify({ i: index, ids: candidates.map((c) => c.id) }),
     { expirationTtl: PICK_TTL_SEC },
   )
 
@@ -821,11 +1110,17 @@ async function offerCategories(q: TgCallbackQuery, env: Env, userId: number, bat
     if (i % 2 === 0) rows.push([])
     rows[rows.length - 1].push({ text: c.name, callback_data: `p:${batch}:${i}` })
   })
+  rows.push([{ text: BTN_BACK, callback_data: `b:${batch}` }])
   // Текст сообщения не трогаем: запись уже верная по сумме, меняется только
   // клавиатура под ней.
-  await editMessageText(env, q.message.chat.id, q.message.message_id, q.message.text ?? 'Записал', {
-    inline_keyboard: rows,
-  })
+  await editMessageReplyMarkup(env, q.message.chat.id, q.message.message_id, { inline_keyboard: rows })
+}
+
+/** «Назад» из выбора — вернуть обычные кнопки записи. */
+async function backToRecord(q: TgCallbackQuery, env: Env, userId: number, batch: string): Promise<void> {
+  await answerCallback(env, q.id)
+  if (!q.message || !batch) return
+  await editMessageReplyMarkup(env, q.message.chat.id, q.message.message_id, recordKeyboard(batch))
 }
 
 /** Выбор категории из предложенных: переставляем и возвращаем обычный вид записи. */
@@ -839,14 +1134,25 @@ async function pickCategory(q: TgCallbackQuery, env: Env, userId: number, rest: 
   }
 
   const raw = await env.REFERRALS.get(pickKey(userId, batch))
-  const ids = raw ? (JSON.parse(raw) as unknown) : null
+  let pick: unknown = null
+  try {
+    pick = raw ? JSON.parse(raw) : null
+  } catch {
+    pick = null
+  }
+  // До 2.3 в KV лежал просто список id — для всей пачки сразу.
+  const ids = Array.isArray(pick) ? pick : (pick as { ids?: unknown })?.ids
+  const entryIndex = Array.isArray(pick) ? null : Number((pick as { i?: unknown })?.i)
   const categoryId = Array.isArray(ids) && typeof ids[index] === 'string' ? (ids[index] as string) : null
   if (!categoryId) {
     await answerCallback(env, q.id, 'Список устарел — напиши трату заново.', true)
     return
   }
 
-  const updated = await setBatchCategory(env, userId, batch, categoryId)
+  const updated =
+    entryIndex !== null && Number.isInteger(entryIndex)
+      ? await setEntryCategory(env, userId, batch, entryIndex, categoryId)
+      : await setBatchCategory(env, userId, batch, categoryId)
   if (updated.length === 0) {
     await answerCallback(env, q.id, ALREADY_PULLED, true)
     return
@@ -859,13 +1165,15 @@ async function pickCategory(q: TgCallbackQuery, env: Env, userId: number, rest: 
   const ctx = await loadContext(env, userId, now)
   // Категорию выбрал человек, поэтому `guessed` больше не про эту запись: строка
   // «категорию не разобрал» после ручного выбора была бы издевательством.
+  // Дата — любая, какая была: подпись дня (вчера, 9 сентября) считается из неё
+  // же, а сегодняшний момент подписи не получит.
   const ops: ParsedOp[] = updated.map((e) => ({
     type: e.type,
     amount: e.amount,
     currency: e.currency,
     categoryId: e.categoryId,
     note: e.note,
-    date: /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? e.date : undefined,
+    date: e.date,
     guessed: false,
   }))
   await editMessageText(
@@ -878,4 +1186,4 @@ async function pickCategory(q: TgCallbackQuery, env: Env, userId: number, rest: 
 }
 
 /** Экспорт для тестов ответов без сети. */
-export const __test = { recordReply, summaryLine, opTitle, opDetail, todayReply, answerReply, budgetBar, remindersScreen, resolveOps }
+export const __test = { recordReply, summaryLine, limitLines, opTitle, opDetail, todayReply, budgetBar, remindersScreen, resolveOps, followupRows }
