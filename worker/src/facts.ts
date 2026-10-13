@@ -262,7 +262,11 @@ export function buildFacts(ctx: UserContext, nowMs: number, lang: Lang = 'ru'): 
   /* ---------- Цели и баланс ---------- */
   L.push('')
   L.push('ЦЕЛИ И БАЛАНС')
-  L.push(`- доходы минус расходы за всё время: ${m(ctx.balance)}`)
+  // formatMoney печатает модуль числа: минус баланса без явной формулировки
+  // модель увидела бы плюсом и сказала «у тебя 12 800», когда это перерасход.
+  if (ctx.balance >= 0) L.push(`- доходы минус расходы за всё время: ${m(ctx.balance)}`)
+  else L.push(`- за всё время расходы больше доходов на ${m(-ctx.balance)}`)
+  if (!ctx.hasIncome) L.push('- доходы не записаны — это просто сумма трат, а не деньги на руках')
   if (ctx.goals.length) {
     for (const g of ctx.goals) {
       const gm = (n: number) => {

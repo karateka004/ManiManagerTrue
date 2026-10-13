@@ -22,6 +22,7 @@ import {
   answerCard,
   cardToText,
   ICONS,
+  langOfTelegram,
   looksLikeQuestion,
   questionLang,
   readChat,
@@ -208,7 +209,7 @@ export const START_MORE = [
   '<b>В приложении</b> — лимиты по категориям и поиск, а за регулярный учёт — уровни и награды.',
   '',
   'Напоминания — /reminders, траты за сегодня — /today.',
-  '<i>Сообщения разбирает Google Gemini: ему уходят текст и итоги по дням, месяцам и категориям, но не список трат.</i>',
+  '<i>Сообщения разбирает Google Gemini: ему уходят текст, последние вопросы и итоги — по дням, месяцам и категориям, бюджет и цели, но не список трат.</i>',
 ].join('\n')
 
 export const BTN_OPEN = 'Открыть Кошель'
@@ -385,7 +386,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     // вызов модели дешевле. С числом решает модель: «кофе 300?» и «могу ли
     // купить кроссовки за 3000?» — разные вещи.
     if (question && !/\d/.test(text)) {
-      await replyWithAnswer(env, userId, text, ctx, now, {})
+      await replyWithAnswer(env, userId, text, ctx, now, { tgLang: from.language_code })
       return
     }
 
@@ -399,7 +400,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     if (outcome?.intent === 'answer' || (question && outcome?.intent !== 'record')) {
       // Модель разбора не ответила (квота, сбой) — к модели ответов тоже не
       // идём: ответят правила.
-      await replyWithAnswer(env, userId, text, ctx, now, { noModel: !outcome })
+      await replyWithAnswer(env, userId, text, ctx, now, { noModel: !outcome, tgLang: from.language_code })
       return
     }
 
@@ -409,7 +410,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
       // Суммы нет, и это не вопрос: «привет», «спасибо», «что ты умеешь» или
       // что-то непонятное. Отвечают правила — коротко и с подсказками, что
       // спросить, а не «Не нашёл сумму».
-      else await replyWithAnswer(env, userId, text, ctx, now, { noModel: true })
+      else await replyWithAnswer(env, userId, text, ctx, now, { noModel: true, tgLang: from.language_code })
       return
     }
 
@@ -468,10 +469,9 @@ async function recordOps(
     id: entryId(batch, i),
     type: op.type,
     amount: op.amount,
-    // Валюта — явно. Бот считает и отвечает в выбранном в приложении счёте
-    // (ctx.currency = счёт или основная), а запись без валюты приложение
-    // отнесло бы к основной: бот сказал бы «300 $», а в приложении легло бы
-    // 300 ₴. Основная неизвестна (приложение не открывали) — без валюты.
+    // Валюта — явно, основная (ctx.currency). Без поля приложение отнесло бы
+    // запись к той основной, что будет в момент слива, — а её могли сменить.
+    // Основная неизвестна (приложение не открывали) — без валюты.
     currency: op.currency ?? ctx.currency,
     categoryId: op.categoryId,
     note: op.note,
@@ -817,12 +817,13 @@ async function replyWithAnswer(
   question: string,
   ctx: UserContext,
   now: number,
-  opts: { echo?: string; noModel?: boolean; history?: Turn[] },
+  opts: { echo?: string; noModel?: boolean; history?: Turn[]; tgLang?: string },
 ): Promise<void> {
   const allowModel = !opts.noModel && !(await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400))
   const draft = allowModel && env.GEMINI_API_KEY ? sendMessageDraft(env, userId, 1 + Math.floor(Math.random() * 2_000_000_000)) : null
   const history = opts.history ?? (await readChat(env, userId))
-  const card = await answerCard(env, question, ctx, now, history, questionLang(question, ctx.lang), allowModel)
+  const lang = questionLang(question, ctx.lang ?? langOfTelegram(opts.tgLang))
+  const card = await answerCard(env, question, ctx, now, history, lang, allowModel)
   // Черновик обязан долететь раньше ответа: иначе «Думает…» повиснет под ним.
   await draft?.catch(() => {})
   await sendCard(env, userId, card, { echo: opts.echo })
@@ -1018,7 +1019,7 @@ async function askFollowup(q: TgCallbackQuery, env: Env, userId: number, data: s
     const shown = (q.message?.text ?? '').slice(0, 900)
     const lastTitle = titleOfText(turns.at(-1)?.a ?? '')
     const history = shown && !(lastTitle && shown.includes(lastTitle)) ? [...turns, { q: '…', a: shown }].slice(-3) : turns
-    await replyWithAnswer(env, userId, question, ctx, now, { echo: question, history })
+    await replyWithAnswer(env, userId, question, ctx, now, { echo: question, history, tgLang: q.from.language_code })
   } finally {
     stopTyping()
   }

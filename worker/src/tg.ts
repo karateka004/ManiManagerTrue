@@ -28,6 +28,8 @@ export interface TgFrom {
   last_name?: string
   username?: string
   is_bot?: boolean
+  /** Язык Telegram — запасной язык ответа, если приложение ни разу не открывали. */
+  language_code?: string
 }
 
 export interface TgMessage {

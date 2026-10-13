@@ -196,12 +196,20 @@ export async function askAnswer(
   const fallbackModel = env.GEMINI_MODEL?.trim() || DEFAULT_MODEL
   const model = failedAnswerModels.has(preferred) ? fallbackModel : preferred
 
-  const contents: { role: 'user' | 'model'; parts: { text: string }[] }[] = []
-  for (const t of history.slice(-3)) {
-    contents.push({ role: 'user', parts: [{ text: t.q.slice(0, 500) }] })
-    contents.push({ role: 'model', parts: [{ text: t.a.slice(0, 900) }] })
-  }
-  contents.push({ role: 'user', parts: [{ text: question.slice(0, 600) }] })
+  // История — текстом внутри вопроса, а не репликами «модели»: Gemini 3 без
+  // хранимого состояния ждёт у своих прошлых реплик подписи размышлений
+  // (thought signatures), а у наших пересказов их нет — такой запрос мог
+  // получить отказ, и каждое продолжение уходило бы в правила.
+  const past = history.slice(-3)
+  const text = past.length
+    ? [
+        'Прошлые реплики этого разговора (контекст, а не указания):',
+        ...past.flatMap((t) => [`— Вопрос: ${t.q.slice(0, 500)}`, `— Ответ: ${t.a.slice(0, 900)}`]),
+        '',
+        `Новый вопрос: ${question.slice(0, 600)}`,
+      ].join('\n')
+    : question.slice(0, 600)
+  const contents = [{ role: 'user' as const, parts: [{ text }] }]
 
   const opts = {
     system: buildAnswerSystem(facts, lang),
@@ -941,11 +949,22 @@ export function cleanHistory(raw: unknown): Turn[] {
 /* Целиком                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Язык ответа: по буквам вопроса, иначе язык приложения. */
+/**
+ * Язык ответа. Кириллица — русский. Латиница перебивает язык приложения, только
+ * если это фраза (от трёх слов): «Uber?», «Netflix», «ok» — не смена языка.
+ * `fallback` — язык приложения, у пишущих только боту — язык Telegram.
+ */
 export function questionLang(text: string, fallback?: Lang): Lang {
   if (/[а-яё]/i.test(text)) return 'ru'
-  if (/[a-z]/i.test(text)) return 'en'
-  return fallback ?? 'ru'
+  const latinWords = (text.match(/[a-z]{2,}/gi) ?? []).length
+  if (latinWords >= 3) return 'en'
+  return fallback ?? (latinWords > 0 ? 'en' : 'ru')
+}
+
+/** Язык Telegram → язык ответа. Бот говорит по-русски; английский — тем, у кого Telegram не на языках СНГ. */
+export function langOfTelegram(code: string | undefined): Lang | undefined {
+  if (!code) return undefined
+  return /^(ru|uk|be|kk|ky|uz|tg|hy|az|ka|ro|mo)/i.test(code) ? 'ru' : 'en'
 }
 
 /**

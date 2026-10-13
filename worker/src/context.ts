@@ -112,7 +112,12 @@ export interface UserCategory {
 export interface UserContext {
   /** Приложение хоть раз синхронизировалось: иначе валюты и бюджета мы не знаем. */
   hasBlob: boolean
-  /** Валюта, в которой считаем остаток: выбранный «счёт» или основная. */
+  /**
+   * Основная валюта человека. Именно основная, а не выбранный на Главной
+   * «счёт»: тот — фильтр просмотра и остаётся тем, что нажали последним, а
+   * запись без своей валюты в приложении всегда в основной (txCurrency).
+   * Со «счётом» бот считал гривны долларами и писал траты в доллары.
+   */
   currency?: string
   /** Язык приложения ('ru' | 'en'); неизвестен — undefined. Для ответов без модели. */
   lang?: 'ru' | 'en'
@@ -143,6 +148,8 @@ export interface UserContext {
   ops: number
   /** Доходы минус расходы за всё время: то, что человек называет «сколько у меня». */
   balance: number
+  /** Записан ли хоть один доход: без доходов «баланс» — просто сумма трат с минусом. */
+  hasIncome: boolean
   /** Расходы месяца по категориям, от большей к меньшей (id → сумма). */
   byCategory: { id: string; sum: number }[]
   /** То же за сегодня — для сводки дня, которую бот печатает сам, без модели. */
@@ -333,6 +340,7 @@ function accumulate(ctx: UserContext, acc: Acc, t: Countable): void {
 
   if (income) {
     ctx.balance += amount
+    ctx.hasIncome = true
     if (thisMonth) {
       ctx.incomeMonth += amount
       bump(acc.incomePerCategory, typeof t?.categoryId === 'string' ? t.categoryId : 'other_in', amount)
@@ -498,6 +506,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
     daysPassed: new Date(today * DAY_MS).getUTCDate(),
     ops: 0,
     balance: 0,
+    hasIncome: false,
     byCategory: [],
     todayByCategory: [],
     prevByCategory: [],
@@ -533,7 +542,7 @@ export async function loadContext(env: Env, userId: string | number, nowMs: numb
         ctx.hasBlob = true
         const main = typeof state.currency === 'string' ? state.currency : undefined
         const account = typeof state.account === 'string' ? state.account : undefined
-        ctx.currency = account ?? main
+        ctx.currency = main ?? account
         if (state.lang === 'ru' || state.lang === 'en') ctx.lang = state.lang
         ctx.monthlyBudget = Number(state.monthlyBudget) > 0 ? Number(state.monthlyBudget) : 0
         const custom = Array.isArray(state.customCategories) ? state.customCategories : []

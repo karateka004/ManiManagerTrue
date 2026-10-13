@@ -96,8 +96,10 @@ for (const [q, want] of TOPICS) {
   check(`тема «${q}» → ${want}`, got === want, got)
 }
 
-check('язык по буквам: кириллица', questionLang('сколько?', 'en') === 'ru')
-check('язык по буквам: латиница', questionLang('how much?', 'ru') === 'en')
+check('язык: кириллица — русский', questionLang('сколько?', 'en') === 'ru')
+check('язык: латинская фраза — английский', questionLang('how much did I spend?', 'ru') === 'en')
+check('язык: одно латинское слово не меняет язык приложения', questionLang('Uber?', 'ru') === 'ru' && questionLang('ok', 'ru') === 'ru')
+check('язык: без языка приложения латиница — английский', questionLang('what?') === 'en')
 check('язык без букв — язык приложения', questionLang('???', 'en') === 'en')
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +272,14 @@ class FakeKV {
   check('правила: помощь с примерами записи', help.sections[0]?.rows.some((r) => r.value === 'кофе 300'), help)
 }
 {
+  // Только траты: «доходы минус расходы» отрицательные — со знаком и пояснением.
+  const kv = new FakeKV()
+  await kv.put('data:9', blobFor({ currency: 'UAH', transactions: [{ id: 'x', type: 'expense', amount: 12800, categoryId: 'food', date: new Date(NOW).toISOString() }] }))
+  const f = buildFacts(await loadContext({ REFERRALS: kv }, 9, NOW), NOW, 'ru')
+  check('выжимка: минус баланса — словами, а не модулем', /за всё время расходы больше доходов на 12 800 ₴/.test(norm(f.text)) && !/доходы минус расходы за всё время: 12 800/.test(norm(f.text)), f.text.slice(-300))
+  check('выжимка: без доходов — пояснение', /доходы не записаны/.test(f.text))
+}
+{
   const empty = await loadContext({ REFERRALS: new FakeKV() }, 8, NOW)
   check('выжимка без данных — запрет называть числа', /ДАННЫХ НЕТ/.test(buildFacts(empty, NOW).text))
   const c = rulesCard('сколько я потратил?', empty, NOW, 'ru')
@@ -374,10 +384,11 @@ const MODEL_CARD = {
   const sent2 = lastSent()
   check('продолжение: вопрос с кнопки в шапке ответа', sent2?.text.startsWith('<i>› А за неделю?</i>\n<b>Неделя</b>'), sent2?.text)
   const contents = byMethod('gemini:answer')[0]?.body.contents ?? []
+  const asked = contents[0]?.parts[0].text ?? ''
   check(
-    'продолжение: модель видит прошлый вопрос и ответ',
-    contents.length === 3 && contents[0].parts[0].text === 'сколько я потратил сегодня?' && contents[2].parts[0].text === 'А за неделю?',
-    contents.map((c) => c.parts[0].text.slice(0, 40)),
+    'продолжение: прошлый вопрос и ответ — текстом в вопросе, без реплик «модели»',
+    contents.length === 1 && contents[0].role === 'user' && asked.includes('— Вопрос: сколько я потратил сегодня?') && asked.endsWith('Новый вопрос: А за неделю?'),
+    asked.slice(0, 200),
   )
   check('продолжение: память — две реплики', JSON.parse(await kv.get('chat:101')).turns.length === 2)
 
@@ -402,14 +413,16 @@ const MODEL_CARD = {
 // 5. Запись: явная валюта счёта и лимит под записью.
 {
   const kv = new FakeKV()
-  await kv.put('data:103', blobFor({ currency: 'UAH', account: 'USD', transactions: [], budgets: { cafe: 50 } }))
+  // Чип «$» на Главной — фильтр просмотра, а не валюта записей: запись без
+  // своей валюты в приложении всегда в основной.
+  await kv.put('data:103', blobFor({ currency: 'UAH', account: 'USD', transactions: [{ id: 'a', type: 'expense', amount: 1200, categoryId: 'food', date: new Date(NOW).toISOString() }], budgets: { cafe: 500 } }))
   calls = []
-  model.parse = () => ({ intent: 'record', entries: [{ type: 'expense', amount: 3, categoryId: 'cafe' }] })
-  await handleTgUpdate(msg(103, 'кофе 3'), makeEnv(kv))
+  model.parse = () => ({ intent: 'record', entries: [{ type: 'expense', amount: 80, categoryId: 'cafe' }] })
+  await handleTgUpdate(msg(103, 'кофе 80'), makeEnv(kv))
   const inbox = JSON.parse((await kv.get('inbox:103')) ?? '{}')
-  check('запись: валюта — выбранный счёт, явно', inbox.items?.[0]?.currency === 'USD', inbox.items)
-  check('запись: ответ в той же валюте', norm(lastSent()?.text ?? '').includes('Кафе · 3 $'), lastSent()?.text)
-  check('запись: лимит категории в ответе', norm(lastSent()?.text ?? '').includes('лимит «Кафе»: 3 $ из 50 $'), lastSent()?.text)
+  check('запись: валюта — основная, явно (не чип счёта)', inbox.items?.[0]?.currency === 'UAH', inbox.items)
+  check('запись: ответ в основной валюте', norm(lastSent()?.text ?? '').includes('Кафе · 80 ₴'), lastSent()?.text)
+  check('запись: лимит категории в ответе', norm(lastSent()?.text ?? '').includes('лимит «Кафе»: 80 ₴ из 500 ₴'), lastSent()?.text)
 }
 
 // 6. Без ключа: «привет» и непонятное — карточки правил, а не «Не нашёл сумму».
@@ -515,7 +528,7 @@ const MODEL_CARD = {
   const res = await answerQuestion(env, 106, 'сколько я потратил сегодня?', [{ q: 'привет', a: 'Привет.' }], 'ru')
   check('/ask: карточка', res.ok && res.card?.title === 'Сегодня' && res.card.sections[0].rows.length === 1, res)
   check('/ask: текст для старых приложений — абзацами', /^Сегодня\.\nСегодня потрачено 500 ₴\.\n\nПо категориям: Еда — 500 ₴\.$/.test(norm(res.answer ?? '')), res.answer)
-  check('/ask: история из приложения ушла модели', byMethod('gemini:answer')[0]?.body.contents.length === 3)
+  check('/ask: история из приложения ушла модели', byMethod('gemini:answer')[0]?.body.contents[0].parts[0].text.includes('— Вопрос: привет'))
 }
 
 // 10. Написал — значит, не заблокировал: наша автоматическая отписка снимается.
