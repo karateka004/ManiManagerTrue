@@ -195,6 +195,22 @@ export async function setChatMenuButton(env: Env, text: string, url: string): Pr
   return r.ok
 }
 
+/**
+ * Описание бота — текст на пустом экране чата («Что умеет этот бот?»), который
+ * человек видит ДО кнопки «Начать». Для пришедшего по рекламной ссылке это
+ * первое, что он читает о Кошеле. До 512 символов, без разметки.
+ */
+export async function setMyDescription(env: Env, description: string): Promise<boolean> {
+  const r = await call(env, 'setMyDescription', { description })
+  return r.ok
+}
+
+/** Короткое описание — в профиле бота и в превью пересланной ссылки. До 120 символов. */
+export async function setMyShortDescription(env: Env, shortDescription: string): Promise<boolean> {
+  const r = await call(env, 'setMyShortDescription', { short_description: shortDescription })
+  return r.ok
+}
+
 /** Экранирование для parse_mode: 'HTML'. */
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

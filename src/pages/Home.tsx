@@ -18,11 +18,16 @@ import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect, tg } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
+import { currencyAsked } from '../lib/currencyAsked'
+import { ONBOARDED_KEY } from '../lib/introKeys'
 
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
 const PlanningSheet = lazy(() =>
   import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })),
 )
+// «Твоя валюта — …?» для застрявших на долларе: таблица поясов и названия
+// валют нужны лишь им, поэтому отдельным чанком.
+const CurrencyNudge = lazy(() => import('../components/home/CurrencyNudge'))
 
 interface Props {
   onOpenProfile: () => void
@@ -55,6 +60,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
   return (
     <div className="pb-24">
       <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} onOpenAssistant={onOpenAssistant} />
+      <CurrencyNudgeGate />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
@@ -71,6 +77,31 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
     </div>
   )
 })
+
+/**
+ * Показывать ли вопрос про валюту. Дёшево и в стартовом чанке: доллар основной,
+ * не демо, быстрый старт пройден (иначе вопрос задаёт он сам) и ещё не
+ * спрашивали. Пока человек отвечает на второй вопрос — про перенос записей, —
+ * карточка держится, хотя валюта уже не доллар.
+ */
+function CurrencyNudgeGate() {
+  const usd = useStore((s) => s.currency === 'USD' && !s.demoMode)
+  const [inFlow, setInFlow] = useState(false)
+  if (!inFlow && (!usd || currencyAsked() || !onboarded())) return null
+  return (
+    <Suspense fallback={null}>
+      <CurrencyNudge onFlow={setInFlow} />
+    </Suspense>
+  )
+}
+
+function onboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 function Header({
   onOpenProfile,

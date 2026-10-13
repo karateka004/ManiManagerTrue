@@ -65,16 +65,104 @@ export function findCategory(id: string): CatRule | undefined {
 /* Валюты                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Символы и слова → код валюты (коды из src/lib/currencies.ts). */
+/**
+ * Символы и слова → код валюты (коды из src/lib/currencies.ts).
+ *
+ * Слово нужно там, где валюта записи отличается от основной: основную
+ * подставит приложение само. Поэтому многозначные слова сюда не берём — «сом»
+ * (рыба), «вон», «лей» и «крона» (чьи?), «рупия», «песо», а из кодов — те, что
+ * совпадают с английскими словами (all, cup, pen, bob, mad, php): записать
+ * покупку рыбы в киргизских сомах хуже, чем не узнать валюту. Такие случаи
+ * разбирает модель — она видит основную валюту человека.
+ */
 const CURRENCY_WORDS: [RegExp, string][] = [
-  [/^(₴|грн|гривен|гривень|гривны|uah)$/, 'UAH'],
+  [/^(₴|грн|гривен|гривень|гривны|гривна|гривня|uah)$/, 'UAH'],
   [/^(€|евро|eur)$/, 'EUR'],
-  [/^(\$|доллар|долларов|бакс|баксов|usd)$/, 'USD'],
+  [/^(\$|доллар|долларов|доллара|бакс|баксов|бакса|usd)$/, 'USD'],
   [/^(₽|руб|рублей|рубля|rub)$/, 'RUB'],
   [/^(₸|тенге|kzt)$/, 'KZT'],
   [/^(£|фунт|фунтов|gbp)$/, 'GBP'],
   [/^(₺|лир|лира|try)$/, 'TRY'],
-  [/^(zł|злотых|pln)$/, 'PLN'],
+  [/^(zł|злотых|злотый|pln)$/, 'PLN'],
+  [/^(byn)$/, 'BYN'],
+  [/^(сум|сумов|сўм|uzs)$/, 'UZS'],
+  [/^(сомов|kgs)$/, 'KGS'],
+  [/^(сомони|tjs)$/, 'TJS'],
+  [/^(tmt)$/, 'TMT'],
+  [/^(₼|манат|манатов|маната|azn)$/, 'AZN'],
+  [/^(֏|драм|драмов|драма|amd)$/, 'AMD'],
+  [/^(₾|лари|gel)$/, 'GEL'],
+  [/^(mdl)$/, 'MDL'],
+  [/^(kč|czk)$/, 'CZK'],
+  [/^(форинт|форинтов|huf)$/, 'HUF'],
+  [/^(ron)$/, 'RON'],
+  [/^(франк|франков|франка|chf)$/, 'CHF'],
+  [/^(sek)$/, 'SEK'],
+  [/^(nok)$/, 'NOK'],
+  [/^(dkk)$/, 'DKK'],
+  [/^(isk)$/, 'ISK'],
+  [/^(динар|динаров|динара|дин|rsd)$/, 'RSD'],
+  [/^(mkd)$/, 'MKD'],
+  [/^(bam)$/, 'BAM'],
+  [/^(₪|шекель|шекелей|шекеля|шек|ils)$/, 'ILS'],
+  [/^(дирхам|дирхамов|дирхама|aed)$/, 'AED'],
+  [/^(sar)$/, 'SAR'],
+  [/^(qar)$/, 'QAR'],
+  [/^(kwd)$/, 'KWD'],
+  [/^(bhd)$/, 'BHD'],
+  [/^(omr)$/, 'OMR'],
+  [/^(jod)$/, 'JOD'],
+  [/^(egp)$/, 'EGP'],
+  [/^(tnd)$/, 'TND'],
+  [/^(dzd)$/, 'DZD'],
+  [/^(irr)$/, 'IRR'],
+  [/^(iqd)$/, 'IQD'],
+  [/^(lbp)$/, 'LBP'],
+  [/^(юань|юаней|юаня|元|cny|rmb)$/, 'CNY'],
+  [/^(hkd)$/, 'HKD'],
+  [/^(twd)$/, 'TWD'],
+  [/^(иена|иен|иены|йена|йен|йены|jpy)$/, 'JPY'],
+  [/^(₩|krw)$/, 'KRW'],
+  [/^(₮|тугрик|тугриков|mnt)$/, 'MNT'],
+  [/^(₹|inr)$/, 'INR'],
+  [/^(pkr)$/, 'PKR'],
+  [/^(৳|bdt)$/, 'BDT'],
+  [/^(lkr)$/, 'LKR'],
+  [/^(npr)$/, 'NPR'],
+  [/^(฿|бат|батов|бата|thb)$/, 'THB'],
+  [/^(₫|донг|донгов|донга|vnd)$/, 'VND'],
+  [/^(idr)$/, 'IDR'],
+  [/^(ринггит|ринггитов|myr)$/, 'MYR'],
+  [/^(sgd)$/, 'SGD'],
+  [/^(₱)$/, 'PHP'],
+  [/^(៛|khr)$/, 'KHR'],
+  [/^(₭|lak)$/, 'LAK'],
+  [/^(mmk)$/, 'MMK'],
+  [/^(afn)$/, 'AFN'],
+  [/^(mvr)$/, 'MVR'],
+  [/^(aud)$/, 'AUD'],
+  [/^(nzd)$/, 'NZD'],
+  [/^(cad)$/, 'CAD'],
+  [/^(mxn)$/, 'MXN'],
+  [/^(brl)$/, 'BRL'],
+  [/^(ars)$/, 'ARS'],
+  [/^(clp)$/, 'CLP'],
+  [/^(cop)$/, 'COP'],
+  [/^(uyu)$/, 'UYU'],
+  [/^(₲|pyg)$/, 'PYG'],
+  [/^(ves)$/, 'VES'],
+  [/^(₡|crc)$/, 'CRC'],
+  [/^(dop)$/, 'DOP'],
+  [/^(gtq)$/, 'GTQ'],
+  [/^(zar)$/, 'ZAR'],
+  [/^(₦|ngn)$/, 'NGN'],
+  [/^(kes)$/, 'KES'],
+  [/^(₵|ghs)$/, 'GHS'],
+  [/^(etb)$/, 'ETB'],
+  [/^(tzs)$/, 'TZS'],
+  [/^(ugx)$/, 'UGX'],
+  [/^(mur)$/, 'MUR'],
+  [/^(scr)$/, 'SCR'],
 ]
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +178,8 @@ export interface ParsedEntry {
   note?: string
   /** Категорию не узнали — записали в «Прочее». Об этом стоит сказать человеку. */
   guessed: boolean
+  /** «вчера» — 1, «позавчера» — 2. Нет поля — запись сегодняшняя. */
+  daysAgo?: number
 }
 
 export type ParseResult =
@@ -143,6 +233,13 @@ function currencyOf(tok: string): string | null {
 }
 
 /**
+ * День словом. Без модели «вчера продукты 1200» раньше записывалось сегодняшним
+ * днём с заметкой «вчера» — а это пример, который бот сам предлагает повторить
+ * в приветствии и напоминаниях.
+ */
+const DAY_WORDS: Record<string, number> = { сегодня: 0, вчера: 1, позавчера: 2 }
+
+/**
  * Разобрать сообщение в операцию.
  *
  * `known` — id категорий, которые реально есть у пользователя (встроенные плюс
@@ -159,6 +256,15 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   if (signed) forcedKind = signed[2] === '+' ? 'income' : 'expense'
 
   const tokens = text.split(' ')
+  // День словом — где угодно в строке; в сумму, категорию и заметку не идёт.
+  let daysAgo: number | undefined
+  const dayAt = new Set<string>()
+  for (const tok of tokens) {
+    if (tok in DAY_WORDS) {
+      daysAgo = DAY_WORDS[tok] || undefined
+      dayAt.add(tok)
+    }
+  }
 
   /* ---------- Сумма ---------- */
   // Сначала склеиваем разряды, записанные через пробел: «1 500» → «1500».
@@ -204,7 +310,7 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   // Ищем самое длинное совпадение: «спортзал» должен победить «зал».
   let best: { rule: CatRule; at: number; len: number; exact: boolean } | null = null
   for (let i = 0; i < merged.length; i++) {
-    if (i === amountAt || i === currencyAt) continue
+    if (i === amountAt || i === currencyAt || dayAt.has(merged[i])) continue
     const word = merged[i].replace(/[^\p{L}]/gu, '')
     if (!word) continue
     for (const rule of CATEGORY_RULES) {
@@ -239,7 +345,7 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   if (currencyAt >= 0) skip.add(currencyAt)
   if (best && rule) skip.add(best.at)
   const note = merged
-    .filter((_, i) => !skip.has(i))
+    .filter((tok, i) => !skip.has(i) && !dayAt.has(tok))
     .join(' ')
     .replace(/(^|\s)[+-](\s|$)/g, ' ')
     .replace(/\s+/g, ' ')
@@ -248,6 +354,40 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
 
   return {
     ok: true,
-    entry: { kind, amount, currency, categoryId, note: note || undefined, guessed },
+    entry: {
+      kind,
+      amount,
+      currency,
+      categoryId,
+      note: note || undefined,
+      guessed,
+      ...(daysAgo ? { daysAgo } : {}),
+    },
   }
+}
+
+/**
+ * Несколько трат в одном сообщении: «такси 450 и обед 380», «кофе 300, такси
+ * 450». Раньше без модели записывалась только первая — молча, а пример
+ * «кроссовки 3500 и пиво 180» бот сам показывает в справке.
+ *
+ * Делим по «и», запятой, точке с запятой и переносу строки, но только если
+ * в КАЖДОЙ части есть своя сумма: «хлеб и молоко 120» — одна покупка, а
+ * «340,50» — копейки, а не два числа (запятая перед цифрой не делит). День
+ * словом («вчера …») относится ко всему сообщению.
+ */
+export function parseEntries(raw: string, known?: Set<string>): ParsedEntry[] | ParseResult {
+  const parts = raw
+    .split(/\s+и\s+|[,;\n]+(?!\d)/i)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  if (parts.length >= 2 && parts.length <= 10) {
+    const each = parts.map((p) => parseEntry(p, known))
+    if (each.every((r) => r.ok)) {
+      const entries = each.map((r) => (r as { ok: true; entry: ParsedEntry }).entry)
+      const day = entries.find((e) => e.daysAgo !== undefined)?.daysAgo
+      return day ? entries.map((e) => ({ ...e, daysAgo: day })) : entries
+    }
+  }
+  return parseEntry(raw, known)
 }

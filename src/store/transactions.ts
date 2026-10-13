@@ -228,6 +228,15 @@ interface Actions {
    */
   focusPeriodOn: (dateISO: string) => void
   setCurrency: (c: State['currency']) => void
+  /**
+   * Перенести записи из одной валюты в другую — без пересчёта, меняется только
+   * код. Для тех, кто начал вести учёт не в той валюте: кофе за 300 гривен,
+   * записанный как 300 $. Вместе с операциями — цели и активы. Возвращает, что
+   * поменялось, — для «Вернуть».
+   */
+  relabelCurrency: (from: Currency, to: Currency) => RelabelResult
+  /** Отменить перенос: вернуть затронутым записям прежнюю валюту. */
+  undoRelabel: (r: RelabelResult) => void
   setChartStyle: (s: ChartStyle) => void
   setBudget: (categoryId: string, amount: number) => void
   setThemeMode: (m: ThemeMode) => void
@@ -312,6 +321,15 @@ interface Actions {
 }
 
 const cuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+/** Что перенёс relabelCurrency: id затронутых записей — для «Вернуть». */
+export interface RelabelResult {
+  from: Currency
+  to: Currency
+  tx: string[]
+  goals: string[]
+  investments: string[]
+}
 
 /** Запасные валюты, если у человека ещё нет операций в разных валютах. */
 const FALLBACK_QUICK: Currency[] = ['USD', 'EUR', 'UAH']
@@ -728,10 +746,82 @@ export const useStore = create<State & Actions>()(
           return next ? { period: next } : {}
         }),
 
-      // Пока операций нет, «последняя валюта» формы следует за основной:
-      // иначе новичок, сменивший валюту в настройках, записал бы первую
-      // операцию в долларах по умолчанию.
-      setCurrency: (c) => set((s) => (s.transactions.length === 0 ? { currency: c, lastTxCurrency: c } : { currency: c })),
+      // Смена основной валюты.
+      //  - Форма операции дальше открывается в новой валюте: раньше «последняя
+      //    валюта» оставалась прежней, и человек, наконец сменивший доллары на
+      //    гривны, следующую трату снова записывал в долларах.
+      //  - Записи без своей валюты (старые, до 1.11, и записи бота без явной
+      //    валюты) показывались в основной. Закрепляем за ними прежнюю: иначе
+      //    смена основной молча переписала бы их суммы в другую валюту — сто
+      //    долларов стали бы ста евро. Перенести их можно явно (relabelCurrency).
+      //  - Если быстрые валюты человек настраивал сам, новая основная встаёт
+      //    в них первой.
+      setCurrency: (c) =>
+        set((s) => {
+          if (c === s.currency) return {}
+          const old = s.currency
+          const patch: Partial<State> = { currency: c, lastTxCurrency: c }
+          if (s.transactions.some((t) => !t.currency)) {
+            patch.transactions = s.transactions.map((t) => (t.currency ? t : { ...t, currency: old }))
+          }
+          if (s.goals.some((g) => !g.currency)) {
+            patch.goals = s.goals.map((g) => (g.currency ? g : { ...g, currency: old }))
+          }
+          if (s.investments.some((i) => !i.currency)) {
+            patch.investments = s.investments.map((i) => (i.currency ? i : { ...i, currency: old }))
+          }
+          if (s.quickCurrencies.length > 0 && !s.quickCurrencies.includes(c)) {
+            patch.quickCurrencies = [c, ...s.quickCurrencies].slice(0, 3)
+          }
+          return patch
+        }),
+      relabelCurrency: (from, to) => {
+        const result: RelabelResult = { from, to, tx: [], goals: [], investments: [] }
+        if (from === to) return result
+        set((s) => {
+          const of = (c: Currency | undefined) => c ?? s.currency
+          const transactions = s.transactions.map((t) => {
+            if (of(t.currency) !== from) return t
+            result.tx.push(t.id)
+            return { ...t, currency: to }
+          })
+          const goals = s.goals.map((g) => {
+            if (of(g.currency) !== from) return g
+            result.goals.push(g.id)
+            return { ...g, currency: to }
+          })
+          const investments = s.investments.map((i) => {
+            if (of(i.currency) !== from) return i
+            result.investments.push(i.id)
+            return { ...i, currency: to }
+          })
+          if (!result.tx.length && !result.goals.length && !result.investments.length) return {}
+          return {
+            transactions,
+            goals,
+            investments,
+            ...(s.lastTxCurrency === from ? { lastTxCurrency: to } : {}),
+            // Выбранный «счёт» опустел — показываем все, а не пустой экран.
+            ...(s.account === from ? { account: null } : {}),
+          }
+        })
+        return result
+      },
+      undoRelabel: (r) =>
+        set((s) => {
+          const tx = new Set(r.tx)
+          const goals = new Set(r.goals)
+          const inv = new Set(r.investments)
+          // Только то, что всё ещё в новой валюте: запись, которую после
+          // переноса поправили руками, трогать не надо.
+          return {
+            transactions: s.transactions.map((t) => (tx.has(t.id) && t.currency === r.to ? { ...t, currency: r.from } : t)),
+            goals: s.goals.map((g) => (goals.has(g.id) && g.currency === r.to ? { ...g, currency: r.from } : g)),
+            investments: s.investments.map((i) =>
+              inv.has(i.id) && i.currency === r.to ? { ...i, currency: r.from } : i,
+            ),
+          }
+        }),
       setChartStyle: (s) => set({ chartStyle: s }),
       setBudget: (categoryId, amount) =>
         set((s) => {

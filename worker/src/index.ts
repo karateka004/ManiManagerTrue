@@ -24,8 +24,9 @@
 
 import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
-import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, handleTgUpdate } from './bot'
+import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
+import { pickReminderText, reminderKeyboard, remindersEnabled, runDailyReminders, setReminderChoice } from './reminders'
 import { isRateLimited } from './limits'
 import {
   BACKFILL_SLICE,
@@ -429,6 +430,8 @@ export default {
       ctx.waitUntil(nightlyAnalytics(env, event.scheduledTime))
     } else if (event.cron === LB_CRON) {
       ctx.waitUntil(rebuildLeaderboard(env))
+      // Профиль бота (описания, меню) — сам после выката, см. ensureBotProfile.
+      ctx.waitUntil(ensureBotProfile(env).catch((e) => console.error('[cron] профиль бота', e)))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
     }
@@ -1000,9 +1003,10 @@ async function handleAdminWebhook(req: Request, env: Env, origin: string | null)
   // приложение слева от поля ввода. Это настройки бота, а не воркера, — их надо
   // выставить один раз, и логично делать это там же, где регистрируется вебхук.
   const commands = await setMyCommands(env, BOT_COMMANDS)
+  const profile = await ensureBotProfile(env, true)
   const menu = await setChatMenuButton(env, 'Кошель', APP_URL)
   const info = await getWebhookInfo(env)
-  return json({ ok: set.ok, url: target, set: set.body, commands, menu, info }, { status: 200 }, env, origin)
+  return json({ ok: set.ok, url: target, set: set.body, commands, profile, menu, info }, { status: 200 }, env, origin)
 }
 
 /**
@@ -1056,59 +1060,7 @@ async function handleInboxAck(req: Request, env: Env, origin: string | null): Pr
   return json({ ok: true, removed: removed.length, left }, { status: 200 }, env, origin)
 }
 
-/* ------------------------------------------------------------------ */
-/* Ежедневные напоминания (cron)                                       */
-/* ------------------------------------------------------------------ */
-/*
- * Раз в день (cron в wrangler.toml) бот пишет тем, кто СЕГОДНЯ ещё не заходил,
- * мягкое напоминание записать траты. Аудитория = ключи `data:<id>` (все, кто
- * синхронизировался). Активность — по `updatedAt`. По умолчанию ВКЛЮЧЕНО; отписка —
- * `remind:<id> = '0'` (тумблер в приложении или авто-отписка при 403 «бот
- * заблокирован»). Дедуп за сутки — `notified:<id>`. Рубильник выката — REMINDERS_MODE.
- */
-
-/**
- * Набор текстов напоминаний — ротация по дню (см. pickReminderText).
- *
- * Раньше напоминание звало открыть приложение — то есть напоминало пойти и
- * совершить ровно то трудное действие, из-за которого трекеры и забрасывают.
- * Теперь оно зовёт написать в этот же чат: ответить на него стоит одного
- * сообщения, не выходя из переписки.
- *
- * Кнопки у напоминания больше нет намеренно. Нажатием нельзя написать сообщение
- * за человека, а кнопка «Открыть Кошель» под текстом «напиши сюда» тянула бы
- * обратно туда, откуда мы уходим.
- */
-const REMINDER_TEXTS = [
-  'Что сегодня потратил? Напиши сюда одним сообщением — например: кофе 300',
-  'Запиши траты, пока помнишь. Хватит одной строки: такси 450',
-  'Как прошёл день с деньгами? Напиши прямо сюда: продукты 1200',
-  'Не откладывай — потом сложнее вспомнить. Напиши, например: обед 350',
-  'Сколько ушло сегодня? Ответь этим сообщением: кофе 300',
-  'Вечерний чек-ин. Напиши сюда, что потратил: аптека 480',
-  'Деньги любят учёт. Одно сообщение — и записано: бензин 2500',
-]
-/**
- * Окно рассылки: cron бежит почасно в 12–17 UTC = 15:00–20:00 МСК. Каждый
- * пользователь привязан к своему часу-слоту (REM_SLOTS штук) детерминированным
- * хешем id — так база разносится по часам, а не шлётся вся разом.
- */
-const REM_WINDOW_START_UTC = 12
-const REM_SLOTS = 6
-
-/** Текст напоминания на сегодня: ротация по номеру дня МСК (у всех одинаковый, меняется ежедневно). */
-function pickReminderText(nowMs: number): string {
-  const dayNum = Math.floor((nowMs + MSK_OFFSET_MS) / 86_400_000)
-  const n = REMINDER_TEXTS.length
-  return REMINDER_TEXTS[((dayNum % n) + n) % n]
-}
-
-/** Детерминированный час-слот пользователя в окне рассылки (стабильный хеш id). */
-function slotForId(id: string, slots: number): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
-  return h % slots
-}
+/* Ежедневные напоминания (cron, /reminders, кнопки в боте) — в reminders.ts. */
 
 /* ------------------------------------------------------------------ */
 /* Выгрузка операций файлом                                            */
@@ -1171,15 +1123,22 @@ async function handleExport(req: Request, env: Env, origin: string | null): Prom
   }
 }
 
-/** Установить флаг напоминаний для пользователя (тумблер в приложении). */
+/**
+ * Напоминания: тумблер в приложении. С `enabled` — записать выбор, без него —
+ * прочитать, что сейчас: напоминания можно выключить и в боте, и тумблер в
+ * Настройках должен показывать правду, а не то, что помнит устройство.
+ */
 async function handleReminders(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: boolean }
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'rem', user.id, 10, 60)) return tooMany(env, origin)
 
-  await env.REFERRALS.put(`remind:${user.id}`, body.enabled ? '1' : '0')
-  return json({ ok: true }, { status: 200 }, env, origin)
+  if (typeof body.enabled === 'boolean') {
+    await setReminderChoice(env, user.id, body.enabled)
+    return json({ ok: true, enabled: body.enabled }, { status: 200 }, env, origin)
+  }
+  return json({ ok: true, enabled: await remindersEnabled(env, user.id) }, { status: 200 }, env, origin)
 }
 
 /** Канал для задания «подписаться» (публичный username). */
@@ -1270,96 +1229,9 @@ async function handleAdminTest(req: Request, env: Env, origin: string | null): P
   if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) {
     return json({ ok: false, error: 'forbidden' }, { status: 403 }, env, origin)
   }
-  const r = await sendMessage(env, env.OWNER_CHAT_ID, pickReminderText(Date.now()))
+  const r = await sendMessage(env, env.OWNER_CHAT_ID, pickReminderText(Date.now()), reminderKeyboard())
   return json({ ok: r.ok, status: r.status }, { status: 200 }, env, origin)
 }
-
-/**
- * Почасовая рассылка напоминаний по слотам (вызывается из scheduled на каждый час
- * окна 12–17 UTC). `nowMs` — время запуска (event.scheduledTime). В каждый час
- * шлём только тем, чей слот = текущему часу окна, поэтому база разносится во времени.
- */
-async function runDailyReminders(env: Env, nowMs: number): Promise<void> {
-  const mode = (env.REMINDERS_MODE ?? 'off').trim()
-  if (mode === 'off') return
-
-  const text = pickReminderText(nowMs) // один текст на весь день
-  const currentSlot = new Date(nowMs).getUTCHours() - REM_WINDOW_START_UTC
-
-  // Тестовый режим: только владельцу и один раз в день (на первом часу окна).
-  if (mode === 'owner') {
-    if (currentSlot === 0) await sendMessage(env, env.OWNER_CHAT_ID, text)
-    return
-  }
-
-  // Вне окна рассылки (страховка, если cron сработал в неожиданный час) — ничего.
-  if (currentSlot < 0 || currentSlot >= REM_SLOTS) return
-
-  const todayStart = startOfTodayMskMs(nowMs)
-
-  // 1) Кандидаты — только по метаданным списка, без единого чтения значений.
-  //    Раньше на каждого человека шло до трёх чтений и запись `notified:<id>`:
-  //    на платном плане это упиралось в 10 000 подзапросов на вызов уже на
-  //    нескольких тысячах человек в слоте, а на бесплатном — в 50, то есть
-  //    примерно в дюжину человек в час.
-  const candidates: string[] = []
-  let cursor: string | undefined
-  do {
-    const page = await env.REFERRALS.list<DataMeta>({ prefix: DATA_PREFIX, cursor })
-    for (const k of page.keys) {
-      const id = k.name.slice(DATA_PREFIX.length)
-      if (!id || slotForId(id, REM_SLOTS) !== currentSlot) continue
-      const m = k.metadata
-      // Сам выключил напоминания в приложении: тумблер едет в блобе, а оттуда в карточку.
-      if (m?.c?.rm === 0) continue
-      // Заходил сегодня — напоминать не о чем. Ключ без метки времени в метаданных
-      // не обновлялся с тех пор, как метки появились, значит сегодня точно не заходил.
-      if (typeof m?.updatedAt === 'number' && m.updatedAt >= todayStart) continue
-      candidates.push(id)
-    }
-    cursor = page.list_complete ? undefined : page.cursor
-  } while (cursor)
-
-  // 2) Рассылка порциями: Telegram пускает около 30 сообщений в секунду на бота,
-  //    дальше отвечает 429. Последовательная отправка по одному на тысячах
-  //    человек не уложилась бы во время вызова, параллельная без меры — в лимит.
-  for (let i = 0; i < candidates.length; i += REM_SEND_PER_SEC) {
-    const started = Date.now()
-    await Promise.all(candidates.slice(i, i + REM_SEND_PER_SEC).map((id) => remindOne(env, id, text)))
-    const spent = Date.now() - started
-    if (spent < 1000 && i + REM_SEND_PER_SEC < candidates.length) await sleep(1000 - spent)
-  }
-}
-
-/** Сообщений в секунду. С запасом ниже лимита Telegram (~30), чтобы не ловить 429. */
-const REM_SEND_PER_SEC = 25
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
-
-/**
- * Напоминание одному человеку.
- *
- * Метку «уже слали сегодня» больше не пишем: у каждого человека свой час в
- * окне рассылки, и второй раз в тот же день он в крон не попадает по
- * построению. Метка стоила записи KV на каждое напоминание — тысячи записей в
- * сутки после рассылки — и защищала только от повторного запуска крона, а
- * Cloudflare его не повторяет.
- */
-async function remindOne(env: Env, id: string, text: string): Promise<void> {
-  // Отписан: тумблер в приложении или авто-отписка, когда бота заблокировали.
-  if ((await env.REFERRALS.get(`remind:${id}`)) === '0') return
-  let r = await sendMessage(env, id, text)
-  if (r.status === 429) {
-    await sleep(1500)
-    r = await sendMessage(env, id, text)
-  }
-  if (r.status === 403) {
-    // Бот заблокирован / аккаунт удалён — больше не беспокоим + метим для аналитики.
-    await env.REFERRALS.put(`remind:${id}`, '0')
-    await env.REFERRALS.put(`blocked:${id}`, '1')
-  }
-}
-
 
 /* ------------------------------------------------------------------ */
 /* Аналитика владельца: дашборд, карточка человека, сводка              */

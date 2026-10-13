@@ -1,18 +1,36 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { m } from 'framer-motion'
 import { X, ArrowRight, Plus } from 'lucide-react'
 import { useStore, selectCategoriesByKind } from '../../store/transactions'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { getCurrency, type Currency } from '../../lib/currencies'
+import { currencyName } from '../../lib/currencyInfo'
+import { detectCurrency } from '../../lib/currencyDetect'
 import { formatMoney, dayjs } from '../../lib/format'
+import { setReminders } from '../../lib/api'
+import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
 import { Money } from '../ui/Money'
 import { SegTrack } from '../ui/SegTrack'
+import { Toggle } from '../ui/Toggle'
+import { CurrencyFlag } from '../ui/CurrencyFlag'
 import { hapticTap, hapticSelect, hapticNotify, confirmAction } from '../../lib/telegram'
-import { useCatName, useT, type TFunc } from '../../lib/i18n'
+import { useCatName, useT, type Lang, type TFunc } from '../../lib/i18n'
+
+// Выбор валюты с поиском — общий ленивый чанк с Настройками и шторкой операции.
+const CurrencyPicker = lazy(() => import('../CurrencyPicker').then((mod) => ({ default: mod.CurrencyPicker })))
 
 /**
- * Быстрый старт для новичка: три шага до первого полезного вывода.
- *   1) доход → 2) пара расходов → 3) прогноз остатка на конец месяца.
+ * Быстрый старт для новичка: четыре шага до первого полезного вывода.
+ *   1) настройки (валюта, язык, напоминания) → 2) доход → 3) пара расходов →
+ *   4) прогноз на месяц и бюджет.
+ *
+ * 2.2: раньше валюта стояла сегментом USD/EUR/UAH под полем дохода, выбрана была
+ * долларом — и многие так и проходили быстрый старт на долларе, записывая
+ * гривны и рубли как доллары. Теперь валюта определяется по региону, стоит
+ * отдельным шагом крупно, с флагом, а сменить её можно на любую из 92 —
+ * поиском. На последнем шаге доход становится бюджетом месяца (тумблер, можно
+ * выключить): без бюджета Главная и бот не могут сказать «сколько можно
+ * потратить сегодня», а это главное, ради чего записывают траты.
  *
  * Операции пишутся в стор по-настоящему, поэтому после онбординга человек
  * попадает не в пустое приложение, а в уже живое: есть баланс и категории.
@@ -25,8 +43,10 @@ import { useCatName, useT, type TFunc } from '../../lib/i18n'
  * стартовать в свёрнутом webview, нельзя (см. «Грабли» в CLAUDE.md).
  */
 
-/** Основные валюты для быстрого выбора на первом шаге. */
-const QUICK_CURRENCIES: Currency[] = ['USD', 'EUR', 'UAH']
+const LANGS: { id: Lang; label: string }[] = [
+  { id: 'ru', label: 'Русский' },
+  { id: 'en', label: 'English' },
+]
 
 interface Draft {
   amount: number
@@ -51,9 +71,37 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
 
   const currency = useStore((s) => s.currency)
   const setCurrency = useStore((s) => s.setCurrency)
+  const lang = useStore((s) => s.lang)
+  const setLang = useStore((s) => s.setLang)
+  const reminders = useStore((s) => s.remindersEnabled)
+  const setRemindersEnabled = useStore((s) => s.setRemindersEnabled)
+  const setMonthlyBudget = useStore((s) => s.setMonthlyBudget)
   const addTransaction = useStore((s) => s.addTransaction)
   const incomeCats = useStore((s) => selectCategoriesByKind(s, 'income'))
   const expenseCats = useStore((s) => selectCategoriesByKind(s, 'expense'))
+
+  // Валюта по региону. Подставляется по «Поехали» (к шагу настроек) и при
+  // выходе через «×» — так и закрывший быстрый старт сразу получит свою валюту,
+  // а не доллар. НЕ при открытии: любая запись в стор при открытии сохраняет
+  // его, и тот, кто просто ушёл с первого экрана, в следующий запуск считался
+  // бы старым пользователем — быстрый старт ему больше не показался бы
+  // (useIntro смотрит, есть ли сохранённый стор).
+  const [detected] = useState(() => detectCurrency())
+  const [currencyTouched, setCurrencyTouched] = useState(false)
+  const applyDetected = () => {
+    const s = useStore.getState()
+    if (s.transactions.length === 0 && s.currency === 'USD' && detected.currency !== 'USD') {
+      setCurrency(detected.currency)
+    }
+  }
+  const regional = !currencyTouched && detected.source !== 'default' && currency === detected.currency
+
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const seenPicker = useRef(false)
+  if (pickerOpen) seenPicker.current = true
+
+  // Бюджет месяца из дохода — включён по умолчанию, выключается тумблером.
+  const [budgetOn, setBudgetOn] = useState(true)
 
   // Шаг 1 — доход.
   const [incomeAmount, setIncomeAmount] = useState('')
@@ -78,6 +126,31 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     // Защита от случайного выхода: спрашиваем подтверждение.
     if (!(await confirmAction(t('qs.exit_confirm')))) return
     hapticSelect()
+    applyDetected()
+    markCurrencyAsked()
+    onDone()
+  }
+
+  const goSetup = () => {
+    hapticTap()
+    markCurrencyAsked()
+    setStep(2)
+  }
+
+  const toggleReminders = () => {
+    hapticSelect()
+    const next = !reminders
+    setRemindersEnabled(next)
+    // Рассылка идёт по серверу. Не дошло — возвращаем тумблер: иначе он
+    // показывал бы «выключено», а бот вечером всё равно написал бы.
+    setReminders(next).then((ok) => {
+      if (!ok) setRemindersEnabled(!next)
+    })
+  }
+
+  const finish = () => {
+    hapticNotify('success')
+    if (budgetOn && income > 0) setMonthlyBudget(Math.round(income))
     onDone()
   }
 
@@ -92,7 +165,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       note: '',
       currency,
     })
-    setStep(2)
+    setStep(3)
   }
 
   const addExpense = () => {
@@ -116,7 +189,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
         currency,
       })
     }
-    setStep(3)
+    setStep(4)
   }
 
   return (
@@ -138,7 +211,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
         {/* Шапка: прогресс по шагам + закрыть */}
         <div className="flex items-center gap-3 px-5 pb-4 pt-5">
           <div className="flex flex-1 gap-1.5">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
               <span
                 key={i}
                 className={`h-1 flex-1 rounded-full transition-colors duration-500 ${
@@ -159,9 +232,25 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
         <div className="min-h-0 flex-1 overflow-y-auto px-5">
           {/* Шаги идут вперёд — каждый следующий въезжает справа. */}
           <div key={step} className={step === 0 ? 'tab-enter' : 'tab-in-deep'}>
-            {step === 0 && <StepWelcome t={t} onStart={() => { hapticTap(); setStep(1) }} />}
+            {step === 0 && (
+              <StepWelcome t={t} onStart={() => { hapticTap(); applyDetected(); setStep(1) }} />
+            )}
 
             {step === 1 && (
+              <StepSetup
+                t={t}
+                lang={lang}
+                onLang={(l) => { hapticSelect(); setLang(l) }}
+                currency={currency}
+                regional={regional}
+                onChangeCurrency={() => { hapticTap(); setPickerOpen(true) }}
+                reminders={reminders}
+                onReminders={toggleReminders}
+                onNext={goSetup}
+              />
+            )}
+
+            {step === 2 && (
               <StepIncome
                 t={t}
                 amount={incomeAmount}
@@ -170,13 +259,13 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
                 catId={incomeCat}
                 onCat={setIncomeCat}
                 currency={currency}
-                onCurrency={(c) => { setCurrency(c); hapticSelect() }}
+                onCurrency={() => { hapticTap(); setPickerOpen(true) }}
                 canGo={income > 0}
                 onNext={goIncome}
               />
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <StepExpenses
                 t={t}
                 amount={expAmount}
@@ -192,7 +281,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
               />
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <StepForecast
                 t={t}
                 currency={currency}
@@ -200,14 +289,40 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
                 spentToday={spentToday}
                 projected={forecast.projected}
                 safeDaily={forecast.safeDaily}
-                onDone={() => { hapticNotify('success'); onDone() }}
+                budgetOn={budgetOn}
+                onBudget={() => { hapticSelect(); setBudgetOn((v) => !v) }}
+                onDone={finish}
               />
             )}
           </div>
         </div>
       </m.div>
+
+      {/* Выбор валюты — поверх быстрого старта (он на слоях 70/80). */}
+      {seenPicker.current && (
+        <Suspense fallback={null}>
+          <CurrencyPicker
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            value={currency}
+            onPick={(c) => {
+              setCurrencyTouched(true)
+              setCurrency(c)
+            }}
+            z={85}
+          />
+        </Suspense>
+      )}
     </>
   )
+}
+
+function markCurrencyAsked() {
+  try {
+    localStorage.setItem(CURRENCY_ASKED_KEY, '1')
+  } catch {
+    /* приватный режим — подсказка на Главной просто не узнает, что спрашивали */
+  }
 }
 
 /** Заголовок шага: крупно, слева, без значка над ним. */
@@ -246,7 +361,94 @@ function StepWelcome({ t, onStart }: { t: TFunc; onStart: () => void }) {
   )
 }
 
-/* ---------- Шаг 1: доход ---------- */
+/* ---------- Шаг 1: настройки ---------- */
+
+/**
+ * Валюта — крупно, с флагом и словами «подобрали по региону»: её видно, и её
+ * легко поменять. Язык и напоминания — здесь же, потому что это ровно те
+ * настройки, которые иначе человек нашёл бы только через неделю в Настройках
+ * (или не нашёл бы: напоминание, о котором не предупредили, выглядит спамом).
+ */
+function StepSetup({
+  t, lang, onLang, currency, regional, onChangeCurrency, reminders, onReminders, onNext,
+}: {
+  t: TFunc
+  lang: Lang
+  onLang: (l: Lang) => void
+  currency: Currency
+  regional: boolean
+  onChangeCurrency: () => void
+  reminders: boolean
+  onReminders: () => void
+  onNext: () => void
+}) {
+  return (
+    <div className="pb-2">
+      <StepHead title={t('qs.setup_title')} sub={t('qs.setup_sub')} />
+
+      <div className="caption mt-6 text-ink-subtle">{t('qs.setup_currency')}</div>
+      <button
+        type="button"
+        onClick={onChangeCurrency}
+        className="press-soft mt-2 flex w-full items-center gap-3.5 rounded-3xl bg-surface-sunken px-4 py-3.5 text-left"
+      >
+        <CurrencyFlag code={currency} size={40} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[17px] font-bold leading-tight text-ink">
+            {currencyName(currency, lang)}
+          </span>
+          {/* Определили сами — так и говорим; выбрал человек — символ и код. */}
+          <span className="caption mt-1 block truncate text-ink-subtle">
+            {regional ? t('qs.setup_detected') : currencyTag(currency)}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-full bg-surface-raised px-3 py-1.5 text-[13px] font-bold text-ink shadow-soft">
+          {t('cur.change')}
+        </span>
+      </button>
+
+      <div className="caption mt-5 text-ink-subtle">{t('qs.setup_language')}</div>
+      <SegTrack active={lang} className="mt-2">
+        {LANGS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            onClick={() => onLang(l.id)}
+            className={`seg-item py-1.5 text-[13px] ${lang === l.id ? 'seg-on' : ''}`}
+          >
+            {l.label}
+          </button>
+        ))}
+      </SegTrack>
+
+      <button
+        type="button"
+        role="switch"
+        aria-checked={reminders}
+        onClick={onReminders}
+        className="mt-5 flex w-full items-center gap-3 border-y border-hairline py-3.5 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold text-ink">{t('qs.setup_reminders')}</span>
+          <span className="caption mt-0.5 block leading-snug text-ink-subtle">{t('qs.setup_reminders_hint')}</span>
+        </span>
+        <Toggle on={reminders} />
+      </button>
+
+      <button onClick={onNext} className={`${PRIMARY_BTN} mt-6`}>
+        {t('qs.next')} <ArrowRight size={17} strokeWidth={2.6} />
+      </button>
+    </div>
+  )
+}
+
+/** «₴ · UAH», а у валют без своего знака — просто «AED». */
+function currencyTag(code: Currency): string {
+  const symbol = getCurrency(code).symbol
+  return symbol === code ? code : `${symbol} · ${code}`
+}
+
+/* ---------- Шаг 2: доход ---------- */
 
 function StepIncome({
   t, amount, onAmount, cats, catId, onCat, currency, onCurrency, canGo, onNext,
@@ -258,7 +460,8 @@ function StepIncome({
   catId: string
   onCat: (id: string) => void
   currency: Currency
-  onCurrency: (c: Currency) => void
+  /** Тап по валюте у поля — сменить её, не возвращаясь на шаг назад. */
+  onCurrency: () => void
   canGo: boolean
   onNext: () => void
 }) {
@@ -266,21 +469,7 @@ function StepIncome({
     <div className="pb-2">
       <StepHead title={t('qs.income_title')} sub={t('qs.income_sub')} />
 
-      <AmountField value={amount} onChange={onAmount} currency={currency} autoFocus />
-
-      {/* Валюта — один тап, чтобы дальше всё считалось правильно. Сегмент
-          нейтральный: это настройка, а не главное действие экрана. */}
-      <SegTrack active={currency} className="mt-3">
-        {QUICK_CURRENCIES.map((c) => (
-          <button
-            key={c}
-            onClick={() => onCurrency(c)}
-            className={`seg-item py-1.5 text-[13px] ${currency === c ? 'seg-on' : ''}`}
-          >
-            {getCurrency(c).symbol} {c}
-          </button>
-        ))}
-      </SegTrack>
+      <AmountField value={amount} onChange={onAmount} currency={currency} onCurrency={onCurrency} autoFocus />
 
       <div className="caption mt-5 text-ink-subtle">{t('qs.income_source')}</div>
       <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
@@ -375,7 +564,7 @@ function StepExpenses({
 /* ---------- Шаг 3: инсайт ---------- */
 
 function StepForecast({
-  t, currency, income, spentToday, projected, safeDaily, onDone,
+  t, currency, income, spentToday, projected, safeDaily, budgetOn, onBudget, onDone,
 }: {
   t: TFunc
   currency: Currency
@@ -383,6 +572,8 @@ function StepForecast({
   spentToday: number
   projected: number
   safeDaily: number
+  budgetOn: boolean
+  onBudget: () => void
   onDone: () => void
 }) {
   const positive = projected >= 0
@@ -419,6 +610,24 @@ function StepForecast({
         {t('qs.result_advice', { sum: formatMoney(Math.round(safeDaily), currency) })}
       </p>
 
+      {/* Доход становится бюджетом месяца: из него Главная и бот считают,
+          сколько можно потратить сегодня. Включено — но видно и выключается. */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={budgetOn}
+        onClick={onBudget}
+        className="mt-4 flex w-full items-center gap-3 border-y border-hairline py-3.5 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold text-ink">
+            {t('qs.budget_title', { sum: formatMoney(Math.round(income), currency) })}
+          </span>
+          <span className="caption mt-0.5 block leading-snug text-ink-subtle">{t('qs.budget_hint')}</span>
+        </span>
+        <Toggle on={budgetOn} />
+      </button>
+
       <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`}>
         {t('qs.finish')}
       </button>
@@ -431,13 +640,15 @@ function StepForecast({
 
 /** Крупное поле суммы с символом валюты. */
 function AmountField({
-  value, onChange, currency, autoFocus,
+  value, onChange, currency, onCurrency, autoFocus,
 }: {
   value: string
   onChange: (v: string) => void
   currency: Currency
+  onCurrency?: () => void
   autoFocus?: boolean
 }) {
+  const symbol = getCurrency(currency).symbol
   return (
     <div className="mt-5 flex items-center gap-2 rounded-3xl bg-surface-sunken px-4 py-3.5">
       <input
@@ -450,7 +661,19 @@ function AmountField({
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-transparent text-[28px] font-bold tabular-nums text-ink placeholder:text-ink-subtle focus:outline-none"
       />
-      <span className="shrink-0 text-lg font-semibold text-ink-subtle">{getCurrency(currency).symbol}</span>
+      {onCurrency ? (
+        <button
+          type="button"
+          onClick={onCurrency}
+          aria-label={symbol}
+          className="press flex shrink-0 items-center gap-1.5 rounded-full bg-surface-raised py-1 pl-1 pr-2.5 text-[15px] font-bold text-ink shadow-soft"
+        >
+          <CurrencyFlag code={currency} size={22} />
+          {symbol}
+        </button>
+      ) : (
+        <span className="shrink-0 text-lg font-semibold text-ink-subtle">{symbol}</span>
+      )}
     </div>
   )
 }

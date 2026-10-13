@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, BookOpen, ChevronDown, Check, Target } from 'lucide-react'
 import {
   useStore,
@@ -8,25 +8,29 @@ import {
 } from '../store/transactions'
 import type { Category } from '../store/categories'
 import { hapticTap, hapticNotify, hapticSelect, tg, confirmAction } from '../lib/telegram'
-import { setReminders, exportTransactions } from '../lib/api'
+import { setReminders, fetchReminders, exportTransactions } from '../lib/api'
+import { showToast } from '../lib/toast'
 import { buildCsv } from '../lib/csv'
 import { parseTransactionsCsv, type ParsedRow } from '../lib/csvImport'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import { SegTrack } from '../components/ui/SegTrack'
 import { Group, Row } from '../components/ui/Group'
 import { ScreenHeader } from '../components/ui/ScreenHeader'
+import { Toggle } from '../components/ui/Toggle'
 
 // Редактор категорий — отдельным чанком, грузится по первому открытию.
 const CategoryEditor = lazy(() => import('../components/CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
 // Гайд по приложению — отдельным чанком, грузится по первому открытию.
 const GuideSheet = lazy(() => import('../components/GuideSheet').then((m) => ({ default: m.GuideSheet })))
+// Выбор валюты с поиском — тоже чанком: 92 валюты с названиями и словами поиска.
+const CurrencyPicker = lazy(() => import('../components/CurrencyPicker').then((m) => ({ default: m.CurrencyPicker })))
 import { formatMoney } from '../lib/format'
-import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
+import { getCurrency, type Currency } from '../lib/currencies'
+import { currencyName } from '../lib/currencyInfo'
+import { CurrencyFlag } from '../components/ui/CurrencyFlag'
+import { RelabelPrompt, countInCurrency } from '../components/RelabelPrompt'
 import { useCatName, useT } from '../lib/i18n'
 import type { Lang } from '../lib/i18n'
-
-/** Валюты, которые всегда на виду. Остальные — под кнопкой «Ещё». */
-const MAIN_CURRENCY_CODES: Currency[] = ['USD', 'EUR', 'UAH']
 
 /**
  * Настройки.
@@ -78,12 +82,53 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   if (guideOpen) seenGuide.current = true
   const budgetsCount = Object.values(budgets).filter((v) => v > 0).length
 
-  const mainCurrencies = CURRENCIES.filter((c) => MAIN_CURRENCY_CODES.includes(c.code))
-  const moreCurrencies = CURRENCIES.filter((c) => !MAIN_CURRENCY_CODES.includes(c.code))
-  const activeIsMain = MAIN_CURRENCY_CODES.includes(currency)
-  const [moreOpen, setMoreOpen] = useState(!activeIsMain)
-  // Какой слот быстрых валют сейчас меняем (null — список выбора скрыт).
-  const [quickSlot, setQuickSlot] = useState<number | null>(null)
+  // Выбор валюты: для основной ('main') или для слота быстрых валют (0..2).
+  const [picker, setPicker] = useState<{ open: boolean; target: 'main' | number }>({ open: false, target: 'main' })
+  const seenPicker = useRef(false)
+  if (picker.open) seenPicker.current = true
+  // После смены основной валюты — предложить перенести записи из прежней.
+  const [relabelFrom, setRelabelFrom] = useState<Currency | null>(null)
+
+  // Напоминания можно выключить и в боте — тумблер сверяем с сервером.
+  useEffect(() => {
+    let alive = true
+    fetchReminders().then((on) => {
+      if (alive && on !== null && on !== useStore.getState().remindersEnabled) setRemindersEnabled(on)
+    })
+    return () => {
+      alive = false
+    }
+  }, [setRemindersEnabled])
+  const [remindersBusy, setRemindersBusy] = useState(false)
+  const toggleReminders = async () => {
+    if (remindersBusy) return
+    hapticSelect()
+    const next = !remindersEnabled
+    setRemindersEnabled(next)
+    setRemindersBusy(true)
+    const ok = await setReminders(next)
+    setRemindersBusy(false)
+    if (!ok) {
+      // Сервер не узнал — рассылка шла бы по-старому. Возвращаем тумблер.
+      setRemindersEnabled(!next)
+      hapticNotify('error')
+      showToast({ text: t('settings.save_failed'), sub: t('settings.save_failed_sub') })
+    }
+  }
+
+  const pickCurrency = (code: Currency) => {
+    if (picker.target === 'main') {
+      if (code === currency) return
+      const prev = currency
+      // Считаем ДО смены: setCurrency закрепит прежнюю валюту за записями без
+      // своей, и счёт после неё был бы тем же — но понятнее считать по факту.
+      const inPrev = countInCurrency(useStore.getState(), prev)
+      setCurrency(code)
+      setRelabelFrom(inPrev > 0 ? prev : null)
+    } else {
+      setQuickCurrency(picker.target, code)
+    }
+  }
 
   const handleClear = async () => {
     if (!(await confirmAction(t('settings.clear_confirm')))) return
@@ -127,102 +172,48 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
         onChange={(id) => { hapticSelect(); setThemeMode(id) }}
       />
 
-      {/* Валюта */}
-      <section className="mx-4 mt-6">
-        <SectionHead title={t('settings.currency')} action={getCurrency(currency).name} />
-        <div className="rounded-3xl bg-surface-sunken p-1">
-          <div className="grid grid-cols-3 gap-1">
-            {mainCurrencies.map((c) => (
-              <CurrencyTile
-                key={c.code}
-                code={c.code}
-                symbol={c.symbol}
-                active={currency === c.code}
-                name={c.name}
-                onClick={() => { hapticSelect(); setCurrency(c.code) }}
-              />
-            ))}
-          </div>
-          {moreOpen && (
-            <div className="tab-enter mt-1 grid grid-cols-3 gap-1 sm:grid-cols-4">
-              {moreCurrencies.map((c) => (
-                <CurrencyTile
-                  key={c.code}
-                  code={c.code}
-                  symbol={c.symbol}
-                  active={currency === c.code}
-                  name={c.name}
-                  onClick={() => { hapticSelect(); setCurrency(c.code) }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => { hapticSelect(); setMoreOpen((v) => !v) }}
-          className="caption mx-auto mt-2 flex items-center gap-1 px-3 py-1.5 font-semibold text-ink-muted"
-        >
-          {moreOpen ? t('settings.hide') : t('settings.more_currencies')}
-          <ChevronDown size={14} strokeWidth={2.4} className={`transition-transform ${moreOpen ? 'rotate-180' : ''}`} />
-        </button>
-      </section>
+      {/* Валюта: основная — строкой с флагом, выбор — шторкой с поиском по 92
+          валютам. Раньше тут были плитки USD/EUR/UAH и «Ещё валюты» на десяток,
+          и половина людей так и оставалась на долларе по умолчанию. */}
+      <Group className="mx-4 mt-6" title={t('settings.currency')} footer={t('cur.main_hint')}>
+        <Row
+          lead={<CurrencyFlag code={currency} size={30} className="mr-3" />}
+          title={currencyName(currency, lang)}
+          value={<span className="text-[13px] font-semibold text-ink-subtle">{currencyTag(currency)}</span>}
+          chevron
+          onClick={() => {
+            hapticTap()
+            setPicker({ open: true, target: 'main' })
+          }}
+        />
+      </Group>
+      {relabelFrom && relabelFrom !== currency && (
+        <RelabelPrompt className="mx-4 mt-3" from={relabelFrom} to={currency} onDone={() => setRelabelFrom(null)} />
+      )}
 
       {/*
         Быстрый выбор валют в форме операции. Раньше там были зашиты USD/EUR/UAH,
         и человеку с рублём приходилось каждый раз лезть в «Ещё».
       */}
-      <section className="mx-4 mt-4">
-        <SectionHead
-          title={t('settings.quick_cur')}
-          action={
-            quickSlot !== null ? (
-              <span className="text-brand-600 dark:text-brand-300">{t('settings.quick_cur_pick')}</span>
-            ) : undefined
-          }
-        />
+      <section className="mx-4 mt-6">
+        <SectionHead title={t('settings.quick_cur')} />
         <div className="rounded-3xl bg-surface-sunken p-1">
           <div className="grid grid-cols-3 gap-1">
-            {quickCurrencies.map((code, i) => {
-              const meta = getCurrency(code)
-              const editing = quickSlot === i
-              return (
-                <button
-                  key={i}
-                  onClick={() => { hapticSelect(); setQuickSlot(editing ? null : i) }}
-                  className={`flex flex-col items-center gap-0.5 rounded-[20px] py-2.5 text-ink transition ${
-                    editing ? 'seg-on ring-2 ring-inset ring-brand-500' : 'seg-on'
-                  }`}
-                >
-                  <span className="text-lg font-bold leading-none">{meta.symbol}</span>
-                  <span className="text-[11px] text-ink-subtle">{code}</span>
-                </button>
-              )
-            })}
+            {quickCurrencies.map((code, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  hapticSelect()
+                  setPicker({ open: true, target: i })
+                }}
+                aria-label={`${currencyName(code, lang)} (${code})`}
+                className="press-soft seg-on flex flex-col items-center gap-1 rounded-[20px] py-2.5 text-ink"
+              >
+                <CurrencyFlag code={code} size={22} />
+                <span className="text-[12px] font-semibold leading-none text-ink-subtle">{currencyTag(code)}</span>
+              </button>
+            ))}
           </div>
-
-          {quickSlot !== null && (
-            <div className="tab-enter mt-1 grid grid-cols-4 gap-1">
-              {CURRENCIES.map((c) => {
-                const current = quickCurrencies[quickSlot] === c.code
-                return (
-                  <button
-                    key={c.code}
-                    onClick={() => {
-                      hapticSelect()
-                      setQuickCurrency(quickSlot, c.code)
-                      setQuickSlot(null)
-                    }}
-                    className={`flex flex-col items-center gap-0.5 rounded-2xl py-2 transition ${
-                      current ? 'seg-on' : 'text-ink-muted active:bg-surface-raised'
-                    }`}
-                  >
-                    <span className="text-sm font-bold leading-none">{c.symbol}</span>
-                    <span className="text-[10px] text-ink-subtle">{c.code}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
         </div>
         <p className="caption mt-2 px-1 leading-snug text-ink-subtle">{t('settings.quick_cur_hint')}</p>
       </section>
@@ -365,12 +356,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           subtitle={t('settings.reminders_hint')}
           wrap
           trailing={<Toggle on={remindersEnabled} />}
-          onClick={() => {
-            hapticSelect()
-            const next = !remindersEnabled
-            setRemindersEnabled(next)
-            setReminders(next) // сообщаем серверу — чтобы cron сразу учёл
-          }}
+          onClick={toggleReminders}
         />
       </Group>
 
@@ -402,6 +388,18 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       {seenGuide.current && (
         <Suspense fallback={null}>
           <GuideSheet open={guideOpen} onClose={() => setGuideOpen(false)} />
+        </Suspense>
+      )}
+
+      {seenPicker.current && (
+        <Suspense fallback={null}>
+          <CurrencyPicker
+            open={picker.open}
+            onClose={() => setPicker((p) => ({ ...p, open: false }))}
+            value={picker.target === 'main' ? currency : quickCurrencies[picker.target] ?? null}
+            onPick={pickCurrency}
+            title={picker.target === 'main' ? t('cur.title_main') : t('cur.title_quick')}
+          />
         </Suspense>
       )}
     </div>
@@ -453,32 +451,10 @@ function Segment<T extends string>({
   )
 }
 
-function CurrencyTile({
-  code,
-  symbol,
-  name,
-  active,
-  onClick,
-}: {
-  code: Currency
-  symbol: string
-  name: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label={`${name} (${code})`}
-      aria-pressed={active}
-      className={`flex flex-col items-center justify-center gap-0.5 rounded-[20px] py-2.5 transition-colors ${
-        active ? 'seg-on' : 'text-ink-muted'
-      }`}
-    >
-      <span className={`text-lg font-bold leading-none ${active ? 'text-ink' : ''}`}>{symbol}</span>
-      <span className="text-[11px] font-semibold text-ink-subtle">{code}</span>
-    </button>
-  )
+/** «₴ · UAH», а у валют без своего знака — просто «AED». */
+function currencyTag(code: Currency): string {
+  const symbol = getCurrency(code).symbol
+  return symbol === code ? code : `${symbol} · ${code}`
 }
 
 /** Значок категории — цвет здесь информация: по нему категорию узнают везде. */
@@ -490,22 +466,6 @@ function CatBadge({ icon, color }: { icon: string; color: string }) {
       aria-hidden
     >
       <CategoryIcon id={icon} size={18} />
-    </span>
-  )
-}
-
-/** Тумблер. Сам по себе не кнопка — нажимается вся строка. */
-function Toggle({ on }: { on: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={`relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors ${on ? 'bg-brand-500' : 'bg-surface-sunken'}`}
-    >
-      <span
-        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.2)] transition-all ${
-          on ? 'left-[21px]' : 'left-[3px]'
-        }`}
-      />
     </span>
   )
 }

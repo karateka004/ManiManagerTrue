@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Target, Plus, Trash2, Link2, Wand2 } from 'lucide-react'
-import { InvestmentsTab } from './planning/InvestmentsTab'
+import { InvestmentsTab, useCurrencyOptions } from './planning/InvestmentsTab'
+import { CurrencyFlag } from './ui/CurrencyFlag'
 import { BottomSheet, SheetHeader } from './ui/BottomSheet'
 import { SegTrack } from './ui/SegTrack'
 import {
@@ -11,7 +12,6 @@ import {
   selectAvgMonthlyExpenseByCategory,
   selectNetBalanceByCurrency,
   selectAnalyticsCurrency,
-  selectAccounts,
   type Goal,
 } from '../store/transactions'
 import { getCurrency, type Currency } from '../lib/currencies'
@@ -502,15 +502,14 @@ function GoalsTab({ t }: { t: TFunc }) {
   const goals = useStore((s) => s.goals)
   const addGoal = useStore((s) => s.addGoal)
   const defaultCur = useStore(selectAnalyticsCurrency)
-  const accounts = useStore(selectAccounts)
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [target, setTarget] = useState('')
   const [sync, setSync] = useState(false)
   const [cur, setCur] = useState<Currency>(defaultCur)
 
-  // Валюты для выбора: текущая по умолчанию + основные + уже встречающиеся в данных.
-  const curOptions = [...new Set<Currency>([defaultCur, 'USD', 'EUR', 'UAH', ...accounts])]
+  // Валюты для выбора: текущая по умолчанию + быстрые + уже встречающиеся в данных.
+  const curOptions = useCurrencyOptions(defaultCur)
 
   const startAdding = () => { setCur(defaultCur); setAdding(true); hapticTap() }
 
@@ -567,11 +566,12 @@ function GoalsTab({ t }: { t: TFunc }) {
               <button
                 key={code}
                 onClick={() => { setCur(code); hapticSelect() }}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition-colors ${
                   cur === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                 }`}
               >
-                {getCurrency(code).symbol} {code}
+                <CurrencyFlag code={code} size={18} />
+                {getCurrency(code).symbol === code ? code : `${getCurrency(code).symbol} ${code}`}
               </button>
             ))}
           </div>

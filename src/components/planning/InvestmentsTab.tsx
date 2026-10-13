@@ -4,10 +4,12 @@ import {
   useStore,
   selectAccounts,
   selectAnalyticsCurrency,
+  selectQuickCurrencies,
   type Investment,
   type InvestmentKind,
 } from '../../store/transactions'
 import { getCurrency, type Currency } from '../../lib/currencies'
+import { CurrencyFlag } from '../ui/CurrencyFlag'
 import { formatMoney } from '../../lib/format'
 import { hapticSelect, hapticTap, hapticNotify, confirmAction } from '../../lib/telegram'
 import { type TFunc } from '../../lib/i18n'
@@ -24,13 +26,15 @@ const KIND_META: Record<InvestmentKind, { icon: typeof Landmark; color: string }
 const KINDS: InvestmentKind[] = ['deposit', 'stocks', 'crypto', 'cash', 'other']
 
 /**
- * Валюты на выбор: текущая по умолчанию + основные + те, что уже встречаются
- * в операциях. Тот же набор, что в форме цели, — чтобы не заводить два разных
- * списка валют в одном разделе.
+ * Валюты на выбор: текущая по умолчанию + быстрые (как в форме операции) + те,
+ * что уже встречаются в операциях. Тот же набор, что в форме цели, — чтобы не
+ * заводить два разных списка валют в одном разделе. Раньше вместо быстрых были
+ * зашиты USD/EUR/UAH — человеку с лари их нечего было выбирать.
  */
-function useCurrencyOptions(defaultCur: Currency): Currency[] {
+export function useCurrencyOptions(defaultCur: Currency): Currency[] {
   const accounts = useStore(selectAccounts)
-  return [...new Set<Currency>([defaultCur, 'USD', 'EUR', 'UAH', ...accounts])]
+  const quick = useStore(selectQuickCurrencies)
+  return [...new Set<Currency>([defaultCur, ...quick, ...accounts])]
 }
 
 /** Ряд чипов выбора валюты. */
@@ -49,11 +53,12 @@ function CurrencyChips({
         <button
           key={code}
           onClick={() => { onChange(code); hapticSelect() }}
-          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+          className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition-colors ${
             value === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
           }`}
         >
-          {getCurrency(code).symbol} {code}
+          <CurrencyFlag code={code} size={18} />
+          {getCurrency(code).symbol === code ? code : `${getCurrency(code).symbol} ${code}`}
         </button>
       ))}
     </div>

@@ -313,16 +313,33 @@ export async function ackInbox(ids: string[]): Promise<boolean> {
 /* ---------- Напоминания (ежедневный пуш от бота) ---------- */
 
 /**
- * Включить/выключить ежедневные напоминания для текущего пользователя на сервере.
- * Best-effort: вне Telegram — no-op, сетевые ошибки глушим (тумблер всё равно
- * сохранится локально и доедет облачным синком). Дефолт на сервере — включено.
+ * Включить/выключить вечерние напоминания на сервере — рассылка идёт по нему.
+ * false — сервер выбор не принял (нет сети): тумблер надо вернуть, иначе он
+ * показывал бы «выключено», а бот продолжал бы писать.
  */
-export async function setReminders(enabled: boolean): Promise<void> {
-  if (!isBackendConfigured() || !tg.initData) return
+export async function setReminders(enabled: boolean): Promise<boolean> {
+  // Вне Telegram сохранять негде — выбор живёт только на устройстве, и это не ошибка.
+  if (!isBackendConfigured() || !tg.initData) return true
   try {
-    await post('/reminders', { initData: tg.initData, enabled })
+    const res = await post('/reminders', { initData: tg.initData, enabled })
+    return res?.ok === true
   } catch {
-    /* молча: повторим при следующем переключении */
+    return false
+  }
+}
+
+/**
+ * Включены ли напоминания на сервере. Их можно выключить и в боте (/reminders,
+ * кнопка под напоминанием), поэтому тумблер в Настройках сверяется с сервером, а
+ * не верит устройству. null — узнать не получилось (вне Telegram, нет сети).
+ */
+export async function fetchReminders(): Promise<boolean | null> {
+  if (!isBackendConfigured() || !tg.initData) return null
+  try {
+    const res = await post('/reminders', { initData: tg.initData })
+    return res?.ok === true && typeof res.enabled === 'boolean' ? res.enabled : null
+  } catch {
+    return null
   }
 }
 

@@ -8,7 +8,7 @@
  * Ожидание пишем только для того, что важно: вид операции, сумма, категория,
  * валюта. Заметку проверяем там, где она и есть смысл примера.
  */
-import { parseEntry } from '../src/entry.ts'
+import { parseEntry, parseEntries } from '../src/entry.ts'
 
 /** [строка, ожидание] — ожидание null означает «разобрать не должен». */
 const CASES = [
@@ -27,6 +27,15 @@ const CASES = [
   ['такси 450 грн', { kind: 'expense', amount: 450, categoryId: 'transport', currency: 'UAH' }],
   ['кафе 300₴', { kind: 'expense', amount: 300, categoryId: 'cafe', currency: 'UAH' }],
   ['бензин 2500 руб', { kind: 'expense', amount: 2500, categoryId: 'car', currency: 'RUB' }],
+  ['обед 50000 сум', { kind: 'expense', amount: 50000, categoryId: 'food', currency: 'UZS' }],
+  ['такси 15 лари', { kind: 'expense', amount: 15, categoryId: 'transport', currency: 'GEL' }],
+  ['кофе 1500 драм', { kind: 'expense', amount: 1500, categoryId: 'cafe', currency: 'AMD' }],
+  ['ужин 200 шекелей', { kind: 'expense', amount: 200, categoryId: 'food', currency: 'ILS' }],
+  ['такси 300 бат', { kind: 'expense', amount: 300, categoryId: 'transport', currency: 'THB' }],
+  ['кафе 12₾', { kind: 'expense', amount: 12, categoryId: 'cafe', currency: 'GEL' }],
+  ['продукты 150 aed', { kind: 'expense', amount: 150, categoryId: 'food', currency: 'AED' }],
+  // Многозначное слово валютой не считаем: «сом» — ещё и рыба
+  ['сом 500', { kind: 'expense', amount: 500, categoryId: 'other', guessed: true, currency: undefined }],
 
   // Категории по синонимам
   ['зп 120000', { kind: 'income', amount: 120000, categoryId: 'salary' }],
@@ -107,8 +116,46 @@ if (tooBig.ok || tooBig.reason !== 'too_big') {
   console.error(`✗ «дом 2000000000» — ждали отказ too_big, получили ${JSON.stringify(tooBig)}`)
 }
 
+/* ---------- День словом и несколько трат в одном сообщении ---------- */
+// Это примеры из приветствия, справки и напоминаний: без модели они обязаны
+// разбираться так же, как с ней.
+const MULTI = [
+  ['вчера продукты 1200', [{ amount: 1200, categoryId: 'food', daysAgo: 1, note: undefined }]],
+  ['позавчера кино 600', [{ amount: 600, categoryId: 'fun', daysAgo: 2 }]],
+  ['сегодня кофе 300', [{ amount: 300, categoryId: 'cafe', daysAgo: undefined, note: undefined }]],
+  ['такси 450 и обед 380', [{ amount: 450, categoryId: 'transport' }, { amount: 380, categoryId: 'food' }]],
+  ['кроссовки 3500 и пиво 180', [{ amount: 3500, categoryId: 'clothes' }, { amount: 180, categoryId: 'cafe' }]],
+  ['кофе 300, такси 450', [{ amount: 300, categoryId: 'cafe' }, { amount: 450, categoryId: 'transport' }]],
+  ['обед 12 €, такси 15 лари', [{ amount: 12, currency: 'EUR' }, { amount: 15, currency: 'GEL' }]],
+  ['вчера такси 300 и обед 500', [{ amount: 300, daysAgo: 1 }, { amount: 500, daysAgo: 1 }]],
+  ['+50000 зарплата и -300 кофе', [{ kind: 'income', amount: 50000 }, { kind: 'expense', amount: 300 }]],
+  // Не делится: у одной из частей нет своей суммы, запятая перед цифрой — копейки
+  ['хлеб и молоко 120', [{ amount: 120, categoryId: 'food' }]],
+  ['аптека 340,50', [{ amount: 340.5, categoryId: 'health' }]],
+  ['такси туда и обратно 600', [{ amount: 600, categoryId: 'transport' }]],
+]
+let multiFailed = 0
+for (const [input, want] of MULTI) {
+  const r = parseEntries(input)
+  const got = Array.isArray(r) ? r : r.ok ? [r.entry] : []
+  const diff = []
+  if (got.length !== want.length) diff.push(`операций ${got.length}, ждали ${want.length}`)
+  else {
+    want.forEach((w, i) => {
+      for (const [key, expected] of Object.entries(w)) {
+        if (got[i][key] !== expected) diff.push(`#${i + 1} ${key}: ждали ${expected}, получили ${got[i][key]}`)
+      }
+    })
+  }
+  if (diff.length) {
+    multiFailed++
+    console.error(`✗ «${input}» — ${diff.join('; ')}`)
+  }
+}
+failed += multiFailed
+
 if (failed) {
-  console.error(`\ntest-entry: ${failed} из ${CASES.length + 1} примеров разобраны не так`)
+  console.error(`\ntest-entry: ${failed} из ${CASES.length + 1 + MULTI.length} примеров разобраны не так`)
   process.exit(1)
 }
-console.log(`test-entry: ${CASES.length + 1} примеров разобраны как ожидалось`)
+console.log(`test-entry: ${CASES.length + 1 + MULTI.length} примеров разобраны как ожидалось (из них ${MULTI.length} — день словом и несколько трат)`)

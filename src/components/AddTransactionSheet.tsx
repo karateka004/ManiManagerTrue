@@ -13,7 +13,8 @@ import { formatMoney, dayjs } from '../lib/format'
 import { coinsWord, useCatName, useT } from '../lib/i18n'
 import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
-import { CURRENCIES, getCurrency, type Currency } from '../lib/currencies'
+import { getCurrency, type Currency } from '../lib/currencies'
+import { CurrencyFlag } from './ui/CurrencyFlag'
 import { BottomSheet, SheetDragZone } from './ui/BottomSheet'
 import { SegTrack } from './ui/SegTrack'
 import { replay } from '../lib/fx'
@@ -24,6 +25,8 @@ import { playSaveEffect } from '../lib/saveEffect'
 
 // Редактор категорий — общий ленивый чанк (тот же, что в Settings).
 const CategoryEditor = lazy(() => import('./CategoryEditor').then((m) => ({ default: m.CategoryEditor })))
+// Выбор валюты с поиском — общий чанк с Настройками и быстрым стартом.
+const CurrencyPicker = lazy(() => import('./CurrencyPicker').then((m) => ({ default: m.CurrencyPicker })))
 
 interface Props {
   open: boolean
@@ -140,9 +143,11 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   const [editorOpen, setEditorOpen] = useState(false)
   const [txCurrency, setTxCurrency] = useState<Currency>(lastTxCurrency)
   const [currencyOpen, setCurrencyOpen] = useState(false)
-  const [showMoreCurrencies, setShowMoreCurrencies] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const seenEditor = useRef(false)
   if (editorOpen) seenEditor.current = true
+  const seenPicker = useRef(false)
+  if (pickerOpen) seenPicker.current = true
   // Попытка сохранить без категории — подсказка над сеткой, пока не выберут.
   const [needCategory, setNeedCategory] = useState(false)
   const amountRef = useRef<HTMLDivElement>(null)
@@ -170,7 +175,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
     setKind(editing ? editing.type : kindProp)
     setNeedCategory(false)
     setCurrencyOpen(false)
-    setShowMoreCurrencies(false)
+    setPickerOpen(false)
     setTagDraft('')
     if (editing) {
       // Режим правки — заполняем форму из операции.
@@ -385,49 +390,39 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
           {hasOps && (
             <div className="mt-1 text-sm font-medium tabular text-ink-subtle">{expr} =</div>
           )}
-          {/* Чип выбора валюты */}
+          {/* Чип выбора валюты: под ним — быстрые валюты и «Другая» с поиском
+              по всем. Раньше «Ещё» вываливал все валюты чипами — при 92
+              валютах это стена, в которой ничего не найти. */}
           <div className="mt-2 flex flex-col items-center gap-2">
             <button
               onClick={() => { hapticSelect(); setCurrencyOpen((v) => !v) }}
               aria-expanded={currencyOpen}
-              className="press flex items-center gap-1.5 rounded-full bg-surface-sunken px-3 py-1 text-[13px] font-semibold text-ink-muted"
+              className="press flex items-center gap-1.5 rounded-full bg-surface-sunken py-1 pl-1.5 pr-3 text-[13px] font-semibold text-ink-muted"
             >
-              <span>{getCurrency(txCurrency).symbol}</span>
-              <span>{txCurrency}</span>
+              <CurrencyFlag code={txCurrency} size={18} />
+              <span>{currencyChip(txCurrency)}</span>
               <ChevronDown size={11} strokeWidth={2.5} className={`transition-transform duration-300 ${currencyOpen ? 'rotate-180' : ''}`} />
             </button>
             {currencyOpen && (
               <div className="menu-in flex flex-wrap justify-center gap-1.5" style={{ transformOrigin: 'top center' }}>
-                {quickCurrencies.map((code) => (
+                {(quickCurrencies.includes(txCurrency) ? quickCurrencies : [txCurrency, ...quickCurrencies]).map((code) => (
                   <button
                     key={code}
-                    onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
-                    className={`press rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false) }}
+                    className={`press flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition-colors ${
                       txCurrency === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                     }`}
                   >
-                    {getCurrency(code).symbol} {code}
+                    <CurrencyFlag code={code} size={18} />
+                    {currencyChip(code)}
                   </button>
                 ))}
-                {!showMoreCurrencies && (
-                  <button
-                    onClick={() => { hapticSelect(); setShowMoreCurrencies(true) }}
-                    className="press rounded-full bg-surface-sunken px-3 py-1 text-xs font-semibold text-ink-subtle"
-                  >
-                    {tr('add.more')}
-                  </button>
-                )}
-                {showMoreCurrencies && CURRENCIES.filter((c) => !quickCurrencies.includes(c.code)).map((c) => (
-                  <button
-                    key={c.code}
-                    onClick={() => { hapticSelect(); setTxCurrency(c.code); setCurrencyOpen(false); setShowMoreCurrencies(false) }}
-                    className={`press rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                      txCurrency === c.code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
-                    }`}
-                  >
-                    {c.symbol} {c.code}
-                  </button>
-                ))}
+                <button
+                  onClick={() => { hapticSelect(); setPickerOpen(true) }}
+                  className="press rounded-full bg-surface-sunken px-3 py-1 text-xs font-semibold text-ink-subtle"
+                >
+                  {tr('cur.other')}
+                </button>
               </div>
             )}
           </div>
@@ -682,6 +677,20 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
           />
         </Suspense>
       )}
+
+      {/* Выбор валюты с поиском — тоже своя шторка поверх этой (слой 60). */}
+      {seenPicker.current && (
+        <Suspense fallback={null}>
+          <CurrencyPicker
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            value={txCurrency}
+            onPick={(code) => { setTxCurrency(code); setCurrencyOpen(false) }}
+            title={tr('cur.title_tx')}
+            z={60}
+          />
+        </Suspense>
+      )}
     </>
   )
 }
@@ -713,4 +722,10 @@ function AmountChars({ value, currency, sign }: { value: number; currency: Curre
       {symbol && <span className="money-sym">{symbol}</span>}
     </span>
   )
+}
+
+/** «₴ UAH» в чипе; у валют без своего знака — просто «AED». */
+function currencyChip(code: Currency): string {
+  const symbol = getCurrency(code).symbol
+  return symbol === code ? code : `${symbol} ${code}`
 }

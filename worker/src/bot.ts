@@ -15,7 +15,7 @@
  * он не держит в голове: сколько осталось на сегодня.
  */
 import type { Env } from './env'
-import { parseEntry } from './entry'
+import { parseEntries } from './entry'
 import { askGemini, type ParsedOp } from './gemini'
 import {
   allowance,
@@ -37,15 +37,32 @@ import {
   MAX_INBOX,
   type InboxEntry,
 } from './inbox'
-import { formatMoney } from './money'
+import { CURRENCY_META, formatMoney } from './money'
 import { isRateLimited } from './limits'
 import { campaignTag, rememberSource } from './sources'
+import { mskDateStr } from './days'
+import {
+  BTN_TURN_OFF,
+  BTN_TURN_ON,
+  BTN_TURN_ON_AGAIN,
+  forgetBlock,
+  REMINDER_OFF_DONE,
+  REMINDER_ON_DONE,
+  REMINDERS_OFF,
+  REMINDERS_ON,
+  reminderKeyboard,
+  remindersEnabled,
+  setReminderChoice,
+} from './reminders'
 import {
   answerCallback,
   editMessageText,
   escapeHtml,
   sendMessage,
   sendTyping,
+  setMyCommands,
+  setMyDescription,
+  setMyShortDescription,
   type TgCallbackQuery,
   type TgMessage,
   type TgUpdate,
@@ -62,53 +79,122 @@ export const ADMIN_URL = 'https://koshel-worker.karateka004.workers.dev/admin'
 
 /** Команды для синей кнопки «Меню». Их мало намеренно: с ботом говорят словами. */
 export const BOT_COMMANDS = [
-  { command: 'today', description: 'Сводка дня' },
-  { command: 'start', description: 'Как записывать траты' },
-  { command: 'help', description: 'Примеры и что я понимаю' },
+  { command: 'today', description: 'Траты за сегодня' },
+  { command: 'help', description: 'Как записывать и спрашивать' },
+  { command: 'reminders', description: 'Настроить напоминания' },
+  { command: 'start', description: 'Что умеет Кошель' },
 ]
+
+/**
+ * Описание бота на пустом экране чата — до кнопки «Начать». Для пришедшего по
+ * рекламе это первое, что он читает о Кошеле: что это и почему стоит нажать.
+ * До 512 символов, без разметки.
+ */
+export const BOT_DESCRIPTION = [
+  'Учёт денег без таблиц и форм — просто пиши траты в чат.',
+  '',
+  'Как в заметках: «кофе 300», «вчера такси 450», «обед 12 €». Кошель сам разложит их по категориям, а с бюджетом на месяц ещё и подскажет, сколько можно потратить сегодня.',
+  '',
+  'Можно и спросить: «на что больше всего ушло в этом месяце?»',
+  '',
+  'Графики, цели и вся история — в приложении внутри Telegram. Бесплатно, регистрация не нужна.',
+].join('\n')
+
+/** Короткое описание: профиль бота и превью пересланной ссылки. До 120 символов. */
+export const BOT_SHORT_DESCRIPTION =
+  'Учёт денег без таблиц и форм: пиши «кофе 300» — Кошель запишет трату и сам определит категорию. Бесплатно.'
+
+/**
+ * Профиль бота (описания и меню команд) выставляется сам после выката: крон
+ * рейтинга раз в пять минут сверяет отпечаток текстов с тем, что уже выставлено.
+ * Раньше профиль обновлялся только вместе с регистрацией вебхука, и новые тексты
+ * ждали, пока владелец вспомнит дёрнуть /admin/webhook. Отпечаток считается из
+ * самих текстов — версию руками поднимать не нужно.
+ */
+const PROFILE_KEY = 'bot:profile'
+const PROFILE_FAIL_KEY = 'bot:profile:fail'
+
+export function botProfileFingerprint(): string {
+  const src = JSON.stringify([BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION, BOT_COMMANDS])
+  let h = 2166136261
+  for (let i = 0; i < src.length; i++) h = Math.imul(h ^ src.charCodeAt(i), 16777619) >>> 0
+  return h.toString(36)
+}
+
+export async function ensureBotProfile(env: Env, force = false): Promise<boolean> {
+  const fp = botProfileFingerprint()
+  if (!force) {
+    const [have, failed] = await Promise.all([env.REFERRALS.get(PROFILE_KEY), env.REFERRALS.get(PROFILE_FAIL_KEY)])
+    // После неудачи — пауза на час: Telegram не принял тексты, и стучаться к
+    // нему каждые пять минут с тем же отказом незачем.
+    if (have === fp || failed === fp) return have === fp
+  }
+  const [d, sd, c] = await Promise.all([
+    setMyDescription(env, BOT_DESCRIPTION),
+    setMyShortDescription(env, BOT_SHORT_DESCRIPTION),
+    setMyCommands(env, BOT_COMMANDS),
+  ])
+  if (d && sd && c) {
+    await env.REFERRALS.put(PROFILE_KEY, fp)
+    return true
+  }
+  console.error('[bot] профиль не выставлен', { description: d, short: sd, commands: c })
+  await env.REFERRALS.put(PROFILE_FAIL_KEY, fp, { expirationTtl: 3600 })
+  return false
+}
 
 /* ------------------------------------------------------------------ */
 /* Тексты                                                              */
 /* ------------------------------------------------------------------ */
 
 /*
- * Знакомство сделано одним сообщением, которое перерисовывается кнопками, а не
- * тремя подряд. Человек, впервые открывший бота, должен увидеть не меню
- * возможностей, а одну строку, которую можно повторить прямо сейчас: весь смысл
- * продукта в том, что записать трату — это написать «кофе 300».
+ * Знакомство — одно сообщение, которое перерисовывается кнопками, а не три
+ * подряд. Главное действие — написать первую трату прямо сейчас, поэтому
+ * сразу под примерами — вопрос «Какая была последняя трата?», а кнопки
+ * второстепенны и стоят одним рядом: приложение и «Что ещё умею».
+ *
+ * Тексты выверены с критиком (2.2):
+ *   - без эмодзи — как и ответы на записи: приветствие должно выглядеть тем же
+ *     продуктом, что и всё остальное, а маркеры-эмодзи в Telegram выдают бота из
+ *     конструктора;
+ *   - никаких обещаний сверх умений: «сколько осталось на сегодня» — только с
+ *     бюджетом месяца (и сказано, что он задаётся в приложении), про валюты —
+ *     «по курсу не пересчитываю», вопросы — только те, что закрывает выжимка;
+ *   - выключатель напоминаний не на приветствии (новичок их ещё не получал, и
+ *     кнопка звала бы выключить), а там, где он нужен: под самим напоминанием,
+ *     в меню (/reminders), в «Что ещё умею» и в Настройках приложения;
+ *   - глаголы о человеке — без рода: «Какая была трата», а не «что потратил».
+ *
+ * Примеры — в цитате: так они читаются как образец, который можно повторить.
  */
-/*
- * Примеры везде вынесены в цитату. Так они читаются как образец, который можно
- * повторить, а не как продолжение объяснения, — и заодно это единственный
- * способ дать сообщению структуру, не скатываясь в эмодзи и рамки из дефисов.
- */
-const START = [
-  '<b>Кошель</b> — учёт денег прямо в переписке.',
+export const START = [
+  'Это <b>Кошель</b> — учёт денег без таблиц и форм.',
   '',
-  'Напиши, что потратил, обычными словами:',
+  'Пиши траты как в заметках — я запишу и сам разложу по категориям:',
   '<blockquote>кофе 300',
-  'вчера продукты 1200',
-  'кроссовки 3500 и пиво 180</blockquote>',
-  'Запишу, определю категорию и скажу, сколько осталось на сегодня.',
+  'такси 450 и обед 380',
+  'вчера продукты 1200</blockquote>',
+  'Записи появятся и в приложении — там графики, календарь трат и цели. А если задашь в нём бюджет на месяц, после каждой траты покажу, сколько осталось на сегодня.',
+  '',
+  'Какая была последняя трата? Напиши её сюда.',
 ].join('\n')
 
-const START_ASK = [
-  '<b>Что можно спросить</b>',
+export const START_MORE = [
+  '<b>Спрашивай</b> — отвечу по записям:',
+  '<blockquote>на что ушло больше всего?',
+  'трачу больше, чем раньше?</blockquote>',
   '',
-  '<blockquote>сколько я потратил сегодня',
-  'на что больше всего ушло в этом месяце',
-  'сколько осталось до конца месяца</blockquote>',
-  'Отвечаю по твоим записям — ничего не придумываю и советов не даю.',
+  '<b>Другая валюта</b> — словом или знаком: «обед 12 €», «такси 15 лари». По курсу не пересчитываю.',
+  '',
+  '<b>В приложении</b> — лимиты по категориям и поиск, а за регулярный учёт — уровни и награды.',
+  '',
+  'Напоминания — /reminders, траты за сегодня — /today.',
+  '<i>Сообщения разбирает Google Gemini: ему уходят текст и итоги, но не список трат.</i>',
 ].join('\n')
 
-const START_HOW = [
-  '<b>Как это устроено</b>',
-  '',
-  'Записи копятся здесь и переносятся в приложение, когда ты его открываешь.',
-  'Под каждой записью — «Отменить» и «Не та категория».',
-  '',
-  'Чтобы вместо «потрачено» я говорил, сколько осталось, задай месячный бюджет в приложении.',
-].join('\n')
+export const BTN_OPEN = 'Открыть Кошель'
+export const BTN_MORE = 'Что ещё умею'
+export const BTN_BACK = '← Назад'
 
 /** Приписка к самой первой записи: один раз, и только если бюджета ещё нет. */
 const FIRST_RECORD_HINT =
@@ -142,7 +228,7 @@ const HELP = [
   'сколько я потратил сегодня',
   'на что больше всего ушло в этом месяце',
   'сколько осталось до конца месяца</blockquote>',
-  'Под записью — «Отменить» и «Не та категория». Сводка дня — /today.',
+  'Под записью — «Отменить» и «Не та категория». Сводка дня — /today, напоминания — /reminders.',
 ].join('\n')
 
 const NO_AMOUNT = 'Не нашёл сумму. Напиши, например: кофе 300 — или спроси, сколько потрачено.'
@@ -153,23 +239,23 @@ const INBOX_FULL =
   'Открой Кошель — он их заберёт, и я снова смогу записывать.'
 const ALREADY_PULLED = 'Запись уже в приложении — поправить её можно там.'
 
-const openButton = { text: 'Открыть Кошель', web_app: { url: APP_URL } }
+const openButton = { text: BTN_OPEN, web_app: { url: APP_URL } }
 const openKeyboard = { inline_keyboard: [[openButton]] }
 
-/** Первый экран знакомства: две ветки и вход в приложение. */
+/** Первый экран знакомства: приложение и «Что ещё умею» — одним рядом. */
 const startKeyboard = {
-  inline_keyboard: [
-    [
-      { text: 'Что можно спросить', callback_data: 'm:q' },
-      { text: 'Как это устроено', callback_data: 'm:h' },
-    ],
-    [openButton],
-  ],
+  inline_keyboard: [[openButton, { text: BTN_MORE, callback_data: 'm:more' }]],
 }
 
-/** Ветка знакомства: возврат к первому экрану и вход в приложение. */
+/** Ветка «Что ещё умею»: «Назад» на месте «Что ещё умею» — палец не двигается. */
 const branchKeyboard = {
-  inline_keyboard: [[{ text: '← Назад', callback_data: 'm:0' }], [openButton]],
+  inline_keyboard: [[openButton, { text: BTN_BACK, callback_data: 'm:0' }]],
+}
+
+/** Экран напоминаний (команда /reminders): что сейчас и переключатель. */
+export function remindersScreen(on: boolean): { text: string; keyboard: unknown } {
+  const toggle = on ? { text: BTN_TURN_OFF, callback_data: 'r:0:c' } : { text: BTN_TURN_ON, callback_data: 'r:1:c' }
+  return { text: on ? REMINDERS_ON : REMINDERS_OFF, keyboard: { inline_keyboard: [[toggle]] } }
 }
 
 /**
@@ -241,8 +327,14 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
       // запоминаем до ответа, но её сбой не должен стоить человеку приветствия.
       const tag = campaignTag(text.split(/\s+/)[1])
       if (tag) await rememberSource(env, from, tag, Date.now()).catch((e) => console.error('[start] метка не записана', e))
+      // Вернулся после блокировки — снимаем нашу автоматическую отписку.
+      await forgetBlock(env, userId).catch((e) => console.error('[start] блокировка не снята', e))
       await sendMessage(env, userId, START, startKeyboard)
     } else if (cmd === 'today') await sendToday(env, userId)
+    else if (cmd === 'reminders' || cmd === 'notifications') {
+      const screen = remindersScreen(await remindersEnabled(env, userId))
+      await sendMessage(env, userId, screen.text, screen.keyboard)
+    }
     else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
       // Только владельцу и только в личке: кнопка web_app открывает дашборд
       // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
@@ -269,7 +361,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     return
   }
 
-  const { ops, reason } = resolveOps(outcome?.ops ?? [], text, ctx)
+  const { ops, reason } = resolveOps(outcome?.ops ?? [], text, ctx, now)
   if (ops.length === 0) {
     await sendMessage(env, userId, reason === 'too_big' ? TOO_BIG : NO_AMOUNT)
     return
@@ -289,24 +381,25 @@ function resolveOps(
   fromModel: ParsedOp[],
   text: string,
   ctx: UserContext,
+  now: number,
 ): { ops: ParsedOp[]; reason?: 'no_amount' | 'too_big' } {
   if (fromModel.length > 0) return { ops: fromModel }
 
   const known = new Set(ctx.categories.map((c) => c.id))
-  const byRules = parseEntry(text, known)
-  if (byRules.ok) {
-    const e = byRules.entry
+  const byRules = parseEntries(text, known)
+  if (Array.isArray(byRules) || byRules.ok) {
+    const entries = Array.isArray(byRules) ? byRules : [byRules.entry]
     return {
-      ops: [
-        {
-          type: e.kind,
-          amount: e.amount,
-          currency: e.currency,
-          categoryId: e.categoryId,
-          note: e.note,
-          guessed: e.guessed,
-        },
-      ],
+      ops: entries.map((e) => ({
+        type: e.kind,
+        amount: e.amount,
+        currency: e.currency,
+        categoryId: e.categoryId,
+        note: e.note,
+        // «вчера» — день по МСК, как у модели и у всей серверной логики.
+        ...(e.daysAgo ? { date: mskDateStr(now - e.daysAgo * 86_400_000) } : {}),
+        guessed: e.guessed,
+      })),
     }
   }
   return { ops: [], reason: byRules.reason === 'too_big' ? 'too_big' : 'no_amount' }
@@ -469,11 +562,19 @@ function recordReply(ops: ParsedOp[], ctx: UserContext, now: number): string {
 }
 
 /**
- * Денежное значение внутри обычного текста: число с разрядами через пробел,
- * необязательными копейками и необязательным значком валюты.
+ * Денежное значение внутри обычного текста: число с разрядами (пробел, точка,
+ * запятая или апостроф — как печатает локаль валюты), необязательными копейками
+ * и необязательным символом валюты. Символы — из того же списка, что печатает
+ * formatMoney; длинные первыми, чтобы «HK$» не обрезался до «$».
  */
-const MONEY_IN_TEXT =
-  /\d+(?:[\u0020\u00a0\u202f]\d{3})*(?:[.,]\d{1,2})?(?:[\u0020\u00a0\u202f]?(?:[₴$€£¥₸₺₽₹]|zł|Br))?/u
+const MONEY_SYMBOLS = [...new Set(Object.values(CURRENCY_META).map((m) => m.symbol))]
+  .sort((a, b) => b.length - a.length)
+  .map((sym) => sym.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
+  .join('|')
+const MONEY_IN_TEXT = new RegExp(
+  `\\d+(?:[\\u0020\\u00a0\\u202f.,'\\u2019]\\d{2,3})*(?:[\\u0020\\u00a0\\u202f]?(?:${MONEY_SYMBOLS}))?`,
+  'u',
+)
 
 /**
  * Ответ модели на вопрос.
@@ -602,6 +703,7 @@ async function handleCallback(q: TgCallbackQuery, env: Env): Promise<void> {
   if (action === 'c:') return offerCategories(q, env, userId, rest)
   if (action === 'p:') return pickCategory(q, env, userId, rest)
   if (action === 'm:') return showStartBranch(q, env, rest)
+  if (action === 'r:') return toggleReminders(q, env, userId, rest)
   await answerCallback(env, q.id)
 }
 
@@ -613,13 +715,41 @@ async function handleCallback(q: TgCallbackQuery, env: Env): Promise<void> {
 async function showStartBranch(q: TgCallbackQuery, env: Env, branch: string): Promise<void> {
   await answerCallback(env, q.id)
   if (!q.message) return
+  // 'q' и 'h' — ветки прежнего знакомства: кнопки под старыми сообщениями в
+  // чатах людей ведут сюда же.
   const screen =
-    branch === 'q'
-      ? { text: START_ASK, keyboard: branchKeyboard }
-      : branch === 'h'
-        ? { text: START_HOW, keyboard: branchKeyboard }
-        : { text: START, keyboard: startKeyboard }
+    branch === 'more' || branch === 'q' || branch === 'h'
+      ? { text: START_MORE, keyboard: branchKeyboard }
+      : { text: START, keyboard: startKeyboard }
   await editMessageText(env, q.message.chat.id, q.message.message_id, screen.text, screen.keyboard)
+}
+
+/**
+ * Включить или выключить напоминания кнопкой. `rest` — «<0|1>:<откуда>»:
+ *   n — кнопка под самим напоминанием: сообщение становится подтверждением,
+ *       и переключатель работает на месте («Включить снова» ↔ «Не напоминать»);
+ *   c — экран команды /reminders: экран перерисовывается.
+ */
+async function toggleReminders(q: TgCallbackQuery, env: Env, userId: number, rest: string): Promise<void> {
+  const [flag, ctx] = rest.split(':')
+  const on = flag === '1'
+  await setReminderChoice(env, userId, on)
+  await answerCallback(env, q.id)
+  if (!q.message) return
+  const { chat, message_id } = q.message
+  if (ctx === 'n') {
+    // Под напоминанием: «Не напоминать» превращает его в подтверждение с
+    // кнопкой вернуть, «Включить снова» — в короткое «готово».
+    if (on) await editMessageText(env, chat.id, message_id, REMINDER_ON_DONE, reminderKeyboard())
+    else {
+      await editMessageText(env, chat.id, message_id, REMINDER_OFF_DONE, {
+        inline_keyboard: [[{ text: BTN_TURN_ON_AGAIN, callback_data: 'r:1:n' }]],
+      })
+    }
+    return
+  }
+  const screen = remindersScreen(on)
+  await editMessageText(env, chat.id, message_id, screen.text, screen.keyboard)
 }
 
 /** «Отменить»: убрать пачку из очереди и переписать сообщение. */
@@ -748,4 +878,4 @@ async function pickCategory(q: TgCallbackQuery, env: Env, userId: number, rest: 
 }
 
 /** Экспорт для тестов ответов без сети. */
-export const __test = { recordReply, summaryLine, opTitle, opDetail, todayReply, answerReply, budgetBar }
+export const __test = { recordReply, summaryLine, opTitle, opDetail, todayReply, answerReply, budgetBar, remindersScreen, resolveOps }

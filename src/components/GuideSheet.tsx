@@ -141,7 +141,9 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
         icon: <SettingsIcon size={18} strokeWidth={2.2} />,
         title: 'Настройки',
         items: [
-          'Язык (русский / английский) и валюта по умолчанию.',
+          'Язык (русский / английский) и основная валюта — любая из 92, с поиском по стране, названию или коду.',
+          'Сменил основную валюту — Кошель предложит перенести старые записи (суммы не пересчитываются, меняется только валюта).',
+          'Вечерние напоминания записать траты — включаются и выключаются здесь или в боте командой /reminders.',
           'Тема: авто, светлая или тёмная.',
           'Стиль диаграммы, шапка Главной (дата / цель), лимиты по категориям, свои категории.',
           'Демо-режим: пример данных за 2 года — твои реальные операции при этом не меняются.',
@@ -272,7 +274,9 @@ const GUIDE: Record<Lang, { title: string; subtitle: string; sections: GuideSect
         icon: <SettingsIcon size={18} strokeWidth={2.2} />,
         title: 'Settings',
         items: [
-          'Language (Russian / English) and the default currency.',
+          'Language (Russian / English) and the main currency — any of 92, searchable by country, name or code.',
+          'Changed the main currency? Koshel offers to move your old entries (amounts aren’t converted, only the currency changes).',
+          'Evening reminders to log expenses — turn them on or off here or in the bot with /reminders.',
           'Theme: auto, light or dark.',
           'Chart style, Home header (date / goal), per-category limits, custom categories.',
           'Demo mode: sample data for 2 years — your real operations are not affected.',

@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { useStore, selectAccounts } from '../store/transactions'
 import { getCurrency, type Currency } from '../lib/currencies'
 import { hapticSelect } from '../lib/telegram'
+import { CurrencyFlag } from './ui/CurrencyFlag'
 
 /**
  * Переключатель «счёта» = валюты. Каждая валюта в данных — отдельный счёт.
@@ -15,10 +16,15 @@ import { hapticSelect } from '../lib/telegram'
  * смотрит «один счёт» во всём приложении. Прячется, если валюта одна.
  */
 export function AccountSwitcher() {
-  const accounts = useStore(selectAccounts)
+  const inData = useStore(selectAccounts)
   const account = useStore((s) => s.account)
   const currency = useStore((s) => s.currency)
   const setAccount = useStore((s) => s.setAccount)
+  // Основная валюта — всегда счёт, даже без записей. Иначе тот, кто сменил
+  // основную валюту, а записи оставил в прежней, видел пустую Главную (она
+  // считается в основной) и не мог переключиться на счёт, где лежат записи:
+  // чипов не было — валюта в данных одна.
+  const accounts = inData.includes(currency) ? inData : [currency, ...inData]
 
   useEffect(() => {
     // Выбранный счёт исчез из данных (удалили операции) — возвращаемся к основной валюте.
@@ -31,7 +37,7 @@ export function AccountSwitcher() {
     if (!account && accounts.length > 1) {
       setAccount(accounts.includes(currency) ? currency : accounts[0])
     }
-  }, [account, accounts, currency, setAccount])
+  }, [account, accounts.join(), currency, setAccount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (accounts.length < 2) return null
 
@@ -42,7 +48,8 @@ export function AccountSwitcher() {
     <div className="mx-4 mb-1 mt-1 flex flex-wrap gap-1.5">
       {accounts.map((c) => (
         <Chip key={c} active={shown === c} onClick={() => { hapticSelect(); setAccount(c) }}>
-          {getCurrency(c).symbol} {c}
+          <CurrencyFlag code={c} size={16} />
+          {getCurrency(c).symbol === c ? c : `${getCurrency(c).symbol} ${c}`}
         </Chip>
       ))}
     </div>
@@ -53,7 +60,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button
       onClick={onClick}
-      className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+      className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition-colors ${
         active ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
       }`}
     >

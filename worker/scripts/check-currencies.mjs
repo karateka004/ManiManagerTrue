@@ -6,23 +6,26 @@
  * получает валюту-призрак: в подсчётах она не совпадает ни с чем (селекторы
  * фильтруют по коду), то есть операция есть, а в суммах её нет.
  *
- * Проверяем три вещи:
+ * Проверяем четыре вещи:
  *   1) код, который бот умеет распознать, известен и приложению;
  *   2) у бота есть символ и локаль на КАЖДУЮ валюту приложения — иначе сумма в
  *      ответе напечатается без символа;
  *   3) символ и локаль совпадают — «300 ₴» в чате и на Главной должны выглядеть
- *      одинаково, иначе это читается как две разные записи.
+ *      одинаково, иначе это читается как две разные записи;
+ *   4) у каждой валюты есть файл флага, а локаль печатает латинские цифры:
+ *      у арабских и бенгальской локалей цифры по умолчанию свои, и «١٬٢٣٤»
+ *      в сумме выглядело бы поломкой.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const app = readFileSync(new URL('../../src/lib/currencies.ts', import.meta.url), 'utf8')
 const money = readFileSync(new URL('../src/money.ts', import.meta.url), 'utf8')
 const entry = readFileSync(new URL('../src/entry.ts', import.meta.url), 'utf8')
 
-// Приложение: `{ code: 'USD', symbol: '$',  name: 'Доллар', locale: 'en-US' },`
+// Приложение: `{ code: 'USD', symbol: '$', locale: 'en-US', flag: 'us' },`
 const appCur = new Map()
-for (const m of app.matchAll(/\{\s*code:\s*'([A-Z]{3})',\s*symbol:\s*'([^']+)',\s*name:\s*'[^']*',\s*locale:\s*'([^']+)'/g)) {
-  appCur.set(m[1], { symbol: m[2], locale: m[3] })
+for (const m of app.matchAll(/\{\s*code:\s*'([A-Z]{3})',\s*symbol:\s*'([^']+)',\s*locale:\s*'([^']+)',\s*flag:\s*'([a-z]+)'/g)) {
+  appCur.set(m[1], { symbol: m[2], locale: m[3], flag: m[4] })
 }
 
 // Воркер: `USD: { symbol: '$', locale: 'en-US' },`
@@ -56,6 +59,14 @@ for (const [code, a] of appCur) {
 }
 for (const code of botCur.keys()) {
   if (!appCur.has(code)) problems.push(`у бота есть «${code}», а в приложении такой валюты нет`)
+}
+for (const [code, a] of appCur) {
+  const flag = new URL(`../../public/flags/${a.flag}.svg`, import.meta.url)
+  if (!existsSync(flag)) problems.push(`«${code}»: нет файла флага public/flags/${a.flag}.svg`)
+  const sample = new Intl.NumberFormat(a.locale, { minimumFractionDigits: 2 }).format(1234567.89)
+  if (!/^[0-9.,'\u00a0\u202f\u2019 ]+$/.test(sample)) {
+    problems.push(`«${code}»: локаль ${a.locale} печатает «${sample}» — нужны латинские цифры`)
+  }
 }
 
 if (problems.length) {

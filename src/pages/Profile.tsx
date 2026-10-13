@@ -138,18 +138,19 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
 
   return (
     <div className="pb-28">
-      {/* Шапка с шестерёнкой настроек */}
+      {/* Шапка: настройки — кнопкой с подписью. Голую шестерёнку в углу
+          находили не все: «где поменять валюту?» спрашивали чаще всего. */}
       <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-6">
-        <div>
+        <div className="min-w-0">
           <div className="kicker">{t('profile.kicker')}</div>
           <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('profile.title')}</div>
         </div>
         <button
           onClick={() => { hapticTap(); onOpenSettings() }}
-          aria-label={t('nav.settings')}
-          className="press-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft"
+          className="press flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-surface-raised pl-3 pr-3.5 text-[14px] font-semibold text-ink shadow-soft"
         >
-          <Settings size={18} strokeWidth={2.2} />
+          <Settings size={17} strokeWidth={2.2} className="text-ink-muted" />
+          {t('nav.settings')}
         </button>
       </div>
 
@@ -220,6 +221,15 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
           title={t('profile.planning')}
           chevron
           onClick={openPlanning}
+        />
+        {/* Настройки — и строкой меню: тут их ищут глазами, и подпись сразу
+            говорит, что внутри. */}
+        <Row
+          icon={<Settings size={18} strokeWidth={2} />}
+          title={t('nav.settings')}
+          subtitle={t('profile.settings_sub')}
+          chevron
+          onClick={() => { hapticTap(); onOpenSettings() }}
         />
         {/* История обновлений — вместо всплывающей шторки при запуске */}
         <Row

@@ -13,11 +13,10 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.1.0'
+export const APP_VERSION = '2.2.0'
 
-/** Ключи localStorage. */
-export const ONBOARDED_KEY = 'koshel:onboarded'
-export const VERSION_KEY = 'koshel:lastVersion'
+/** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
+export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
 
 /** Локализованная строка. */
 export interface L10n {
@@ -34,6 +33,43 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.2.0',
+    date: '2026-10-10',
+    title: { ru: 'Твоя валюта с первой минуты', en: 'Your currency from minute one' },
+    items: [
+      {
+        text: {
+          ru: '92 валюты с флагами и поиском — по стране, названию, коду или знаку: «грузия», «лари», GEL и ₾ найдут одно и то же',
+          en: '92 currencies with flags and search — by country, name, code or sign: “georgia”, “lari”, GEL and ₾ all find the same one',
+        },
+      },
+      {
+        text: {
+          ru: 'Быстрый старт сам подбирает валюту по региону и сразу настраивает язык и напоминания, а доход становится бюджетом месяца — видно, сколько можно тратить в день',
+          en: 'Quick start picks your currency by region and sets up language and reminders, and your income becomes the monthly budget — so you see how much you can spend a day',
+        },
+      },
+      {
+        text: {
+          ru: 'Вёл учёт не в той валюте? Кошель предложит переключиться и перенести старые записи одной кнопкой — суммы не пересчитываются, а передумать можно кнопкой «Вернуть»',
+          en: 'Logging in the wrong currency? Koshel offers to switch and move your old entries in one tap — amounts aren’t converted, and Restore undoes it',
+        },
+      },
+      {
+        text: {
+          ru: 'Настройки на виду: кнопка с подписью в шапке Профиля и строка в меню',
+          en: 'Settings are easy to find: a labelled button in the Profile header and a row in the menu',
+        },
+      },
+      {
+        text: {
+          ru: 'Бот рассказывает о себе по-новому, а напоминания выключаются прямо в чате — командой /reminders или кнопкой под напоминанием. Если сегодня уже писал боту, напоминания не будет, а после долгой паузы бот пишет всё реже',
+          en: 'The bot introduces itself anew, and reminders can be turned off right in the chat — with /reminders or the button under a reminder. If you already wrote to the bot today, there’s no reminder, and after a long break it writes less and less',
+        },
+      },
+    ],
+  },
   {
     version: '2.1.0',
     date: '2026-10-10',
