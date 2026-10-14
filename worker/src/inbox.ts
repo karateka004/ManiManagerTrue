@@ -34,6 +34,11 @@ export interface InboxEntry {
   note?: string
   /** ISO-момент (или 'ГГГГ-ММ-ДД' для записи задним числом). */
   date: string
+  /**
+   * Пришла из CSV-файла. Приложение кладёт такие записи импортом — с отсевом
+   * уже записанных, — а не по одной: выписку присылают повторно и внахлёст.
+   */
+  imp?: 1
 }
 
 export interface Inbox {
@@ -72,6 +77,8 @@ const PREFIX = INBOX_PREFIX
  * что записи ждут. Тихая потеря траты хуже отказа записать.
  */
 export const MAX_INBOX = 200
+/** Потолок очереди для файла: выписка за пару месяцев — это сотни строк. */
+export const MAX_INBOX_IMPORT = 1500
 
 export const inboxKey = (userId: string | number): string => `${PREFIX}${userId}`
 
@@ -159,13 +166,15 @@ export async function appendInbox(
   env: Env,
   userId: string | number,
   entries: InboxEntry[],
+  /** Импорт файлом: свой потолок и в счётчик записей через бота не идёт. */
+  opts: { import?: boolean } = {},
 ): Promise<{ ok: boolean; full: boolean; items: InboxEntry[] }> {
   const inbox = await readInbox(env, userId)
-  if (inbox.items.length + entries.length > MAX_INBOX) {
+  if (inbox.items.length + entries.length > (opts.import ? MAX_INBOX_IMPORT : MAX_INBOX)) {
     return { ok: false, full: true, items: inbox.items }
   }
   const items = [...inbox.items, ...entries]
-  await writeInbox(env, userId, items, countRecords(inbox.meta, entries.length, Date.now()))
+  await writeInbox(env, userId, items, opts.import ? inbox.meta : countRecords(inbox.meta, entries.length, Date.now()))
   return { ok: true, full: false, items }
 }
 

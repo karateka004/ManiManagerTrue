@@ -318,6 +318,8 @@ export interface InboxEntry {
   categoryId: string
   note?: string
   date: string
+  /** Из CSV, присланного боту файлом: кладётся импортом, с отсевом записанного. */
+  imp?: 1
 }
 
 const CURRENCY_CODES = new Set<string>(CURRENCIES.map((c) => c.code))

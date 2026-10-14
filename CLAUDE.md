@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 82,
-reply, analytics 62, reminders 57, answer 136) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 57, answer 136, csv 12) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -110,6 +110,11 @@ reply, analytics 62, reminders 57, answer 136) · `npx wrangler dev --local --po
   размышления — `thinkingLevel`), `answer.ts` + `facts.ts` + `context.ts` (ответы на вопросы).
   - Записи бота — ОТДЕЛЬНЫЙ ключ `inbox:<id>` (не блоб: last-write-wins затёр бы их), подтверждение
     по списку id; клиент сливает в `mergeInbox` после pull. Очередь до 200.
+  - **CSV файлом в чат** (`csv.ts` — копия разбора `src/lib/csvImport.ts`, держи их одинаковыми):
+    до 1 МБ / 1000 строк → записи в `inbox` с `imp: 1` (потолок очереди для файлов 1500);
+    клиент кладёт их `importTransactions` — повтор отсекается против уже записанного с учётом
+    количества (две одинаковые траты за день в файле — две). «Отменить» снимает весь файл.
+    В Настройках — строка «Отправить файл боту». Тест — `test-csv.mjs`.
   - Валюта записи — ОСНОВНАЯ (`ctx.currency = main`), не выбранный на Главной счёт.
   - Ответы: модель `gemini-3.8-flash` (`GEMINI_ANSWER_MODEL`), JSON-карточка; `ground` выкидывает
     суммы/проценты, которых нет в выжимке или вопросе; нет модели/квоты — `rulesCard`. Приветствие
@@ -176,6 +181,7 @@ reply, analytics 62, reminders 57, answer 136) · `npx wrangler dev --local --po
 - **График админки:** `viewBox` — по фактической ширине блока; потоки и накопления — на разных осях.
 
 ## Текущее состояние
+**2.5.0** (14.10.2026): CSV-выписка файлом в чат бота, импорт не теряет одинаковые траты за день.
 **2.4.1** (14.10.2026): свайп переделан в карусель (соседний экран за пальцем, капсула панели за
 пальцем, без залипшего сдвига на iPhone), вертикальные свайпы Telegram выключены. Стартовый чанк
 +0,2 КБ gzip к 2.4 (движок жеста — отдельный чанк 2,3 КБ). Под CPU ×4 кадр во время жеста ≤ 33 мс.

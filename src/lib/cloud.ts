@@ -35,7 +35,7 @@ const PUSH_DEBOUNCE = 1500
  */
 const INBOX_DONE_KEY = 'koshel:inboxDone'
 /** Дальше помнить незачем: неподтверждённых записей столько не накапливается. */
-const INBOX_DONE_MAX = 100
+const INBOX_DONE_MAX = 2000
 /** Как часто перепроверять входящие при возврате в приложение. */
 const INBOX_RECHECK_MS = 30_000
 
@@ -201,8 +201,24 @@ async function mergeInbox(): Promise<void> {
 
   const done = readDone()
   const fresh = items.filter((e) => !done.has(e.id))
+  // Файл — одним импортом: он отсеет уже записанное (выписку присылают
+  // повторно и внахлёст) и не дёргает стор сотни раз подряд.
+  const imported = fresh.filter((e) => e.imp)
+  if (imported.length) {
+    const main = useStore.getState().currency
+    useStore.getState().importTransactions(
+      imported.map((e) => ({
+        type: e.type,
+        amount: e.amount,
+        currency: e.currency ?? main,
+        categoryId: e.categoryId,
+        note: e.note,
+        date: e.date,
+      })),
+    )
+  }
   const commit = useStore.getState().commitTransaction
-  for (const e of fresh) {
+  for (const e of fresh.filter((x) => !x.imp)) {
     commit(
       {
         type: e.type,

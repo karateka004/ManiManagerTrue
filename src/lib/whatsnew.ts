@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.4.1'
+export const APP_VERSION = '2.5.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,25 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.5.0',
+    date: '2026-10-14',
+    title: { ru: 'Выписка файлом в чат', en: 'Send a statement to the chat' },
+    items: [
+      {
+        text: {
+          ru: 'Пришли боту .csv — выписку банка или выгрузку Кошеля — и операции сами появятся в приложении. Что уже записано, второй раз не добавится',
+          en: 'Send a .csv to the bot — a bank statement or a Koshel export — and the entries appear in the app. What is already recorded won’t be added twice',
+        },
+      },
+      {
+        text: {
+          ru: 'Импорт больше не теряет одинаковые траты в один день — например, две поездки по одной цене',
+          en: 'Import no longer drops identical expenses on the same day — like two rides at the same price',
+        },
+      },
+    ],
+  },
   {
     version: '2.4.1',
     date: '2026-10-14',

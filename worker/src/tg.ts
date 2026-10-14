@@ -48,7 +48,7 @@ export interface TgMessage {
   voice?: unknown
   audio?: unknown
   photo?: unknown[]
-  document?: unknown
+  document?: { file_id?: string; file_name?: string; mime_type?: string; file_size?: number }
   video_note?: unknown
 }
 
@@ -81,6 +81,21 @@ async function call(env: Env, method: string, payload: unknown): Promise<{ ok: b
     return { ok: res.ok, status: res.status, body }
   } catch {
     return { ok: false, status: 0, body: null }
+  }
+}
+
+/** Скачать присланный файл (до `maxBytes`). `null` — не вышло или файл больше. */
+export async function downloadFile(env: Env, fileId: string, maxBytes: number): Promise<ArrayBuffer | null> {
+  const r = await call(env, 'getFile', { file_id: fileId })
+  const path = (r.body as { result?: { file_path?: string; file_size?: number } } | null)?.result
+  if (!r.ok || !path?.file_path || (path.file_size ?? 0) > maxBytes) return null
+  try {
+    const res = await fetch(`https://api.telegram.org/file/bot${env.BOT_TOKEN.trim()}/${path.file_path}`)
+    if (!res.ok) return null
+    const buf = await res.arrayBuffer()
+    return buf.byteLength > maxBytes ? null : buf
+  } catch {
+    return null
   }
 }
 

@@ -164,6 +164,8 @@ const DICT: Dict = {
   'settings.import_confirm': { ru: 'Добавить операции', en: 'Add the entries' },
   'settings.import_added': { ru: 'добавлено {n}', en: '{n} added' },
   'settings.import_none': { ru: 'ничего не нашлось', en: 'nothing found' },
+  'settings.import_chat': { ru: 'Отправить файл боту', en: 'Send the file to the bot' },
+  'settings.import_chat_hint': { ru: '.csv в чат', en: '.csv to the chat' },
   'settings.export_caption': { ru: 'Твои операции — {n} шт.', en: 'Your transactions — {n} in total' },
   'settings.export_blocked': { ru: 'открой бота', en: 'open the bot' },
   'settings.export_failed': { ru: 'не вышло', en: 'failed' },

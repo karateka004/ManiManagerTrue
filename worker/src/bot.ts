@@ -54,9 +54,12 @@ import {
   setBatchCategory,
   setEntryCategory,
   MAX_INBOX,
+  MAX_INBOX_IMPORT,
   type InboxEntry,
 } from './inbox'
 import { CURRENCY_META, formatMoney } from './money'
+import { MAX_IMPORT_ROWS, parseCsvRows } from './csv'
+import { plural } from './facts'
 import { isRateLimited } from './limits'
 import { campaignTag, rememberSource } from './sources'
 import {
@@ -74,6 +77,7 @@ import {
 } from './reminders'
 import {
   answerCallback,
+  downloadFile,
   editMessageReplyMarkup,
   editMessageText,
   escapeHtml,
@@ -255,7 +259,10 @@ const HELP = [
 ].join('\n')
 
 const TOO_BIG = 'Похоже на опечатку — не записал. Проверь сумму.'
-const NOT_TEXT = 'Пока понимаю только текст. Напиши, например: кофе 300'
+const NOT_TEXT = 'Пока понимаю текст и файлы .csv. Напиши, например: кофе 300'
+const CSV_MAX_BYTES = 1_000_000
+const CSV_BAD =
+  'Не смог прочитать файл. Нужен .csv до 1 МБ с колонками «Дата», «Сумма» (и по желанию «Тип», «Категория», «Валюта», «Заметка») — как выгрузка из Кошеля.'
 const INBOX_FULL =
   `Накопилось ${MAX_INBOX} записей, и в приложение они ещё не перенеслись. ` +
   'Открой Кошель — он их заберёт, и я снова смогу записывать.'
@@ -335,6 +342,10 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
   if (await isRateLimited(env, 'tgmsg', userId, MSG_PER_MIN, 60)) return
 
   const text = (msg.text ?? '').trim()
+  if (!text && msg.document && isCsvDocument(msg.document)) {
+    await importCsv(env, userId, msg.document)
+    return
+  }
   if (!text) {
     // Голосовые и фото чеков — следующий шаг: модель умеет и то и другое, но
     // сначала должен заработать текстовый путь.
@@ -416,6 +427,81 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     }
 
     await recordOps(env, userId, ops, ctx, now)
+  } finally {
+    stopTyping()
+  }
+}
+
+function isCsvDocument(d: NonNullable<TgMessage['document']>): boolean {
+  return /\.csv$/i.test(d.file_name ?? '') || /csv/i.test(d.mime_type ?? '')
+}
+
+/**
+ * CSV файлом в чат — выписка банка или выгрузка Кошеля. Выбор файла в окне
+ * мини-аппа на телефоне работает через раз (особенно на iOS), а «Поделиться →
+ * Telegram» из почты или «Файлов» есть всегда.
+ *
+ * Записи идут в ту же очередь, что и сообщения боту, с пометкой `imp`:
+ * приложение заберёт их при открытии и отсеет то, что уже записано, — выписку
+ * присылают повторно и внахлёст.
+ */
+async function importCsv(env: Env, userId: number, doc: NonNullable<TgMessage['document']>): Promise<void> {
+  if (!doc.file_id || (doc.file_size ?? 0) > CSV_MAX_BYTES) {
+    await sendMessage(env, userId, CSV_BAD, openKeyboard)
+    return
+  }
+  const stopTyping = keepTyping(env, userId)
+  try {
+    const now = Date.now()
+    const [buf, ctx] = await Promise.all([downloadFile(env, doc.file_id, CSV_MAX_BYTES), loadContext(env, userId, now)])
+    const text = buf ? new TextDecoder('utf-8').decode(buf) : ''
+    const { rows, skipped, truncated } = parseCsvRows(text, ctx.categories, ctx.currency)
+    if (rows.length === 0) {
+      await sendMessage(env, userId, CSV_BAD, openKeyboard)
+      return
+    }
+    const batch = newBatchId()
+    const entries: InboxEntry[] = rows.map((r, i) => ({ id: entryId(batch, i), ...r, imp: 1 }))
+    const saved = await appendInbox(env, userId, entries, { import: true })
+    if (!saved.ok) {
+      await sendMessage(
+        env,
+        userId,
+        `В очереди уже много записей — вместе с файлом было бы больше ${MAX_INBOX_IMPORT}. Открой Кошель, он их заберёт, и пришли файл ещё раз.`,
+        openKeyboard,
+      )
+      return
+    }
+
+    // Итоги по валютам: по ним видно, что файл прочитан правильно (знак, копейки).
+    const sums = new Map<string, { out: number; in: number }>()
+    for (const r of rows) {
+      const k = r.currency ?? ''
+      const v = sums.get(k) ?? { out: 0, in: 0 }
+      if (r.type === 'expense') v.out += r.amount
+      else v.in += r.amount
+      sums.set(k, v)
+    }
+    const money = (n: number, cur: string) => formatMoney(Math.round(n * 100) / 100, cur || undefined)
+    const lines = [...sums].map(([cur, v]) =>
+      [v.out ? `расходы <b>${money(v.out, cur)}</b>` : '', v.in ? `доходы <b>${money(v.in, cur)}</b>` : ''].filter(Boolean).join(' · '),
+    )
+    const dates = rows.map((r) => r.date).sort()
+    const day = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`
+    const expenses = rows.filter((r) => r.type === 'expense').length
+    const reply = [
+      `<b>Файл принят: ${plural(rows.length, ['операция', 'операции', 'операций'])}</b>`,
+      `${day(dates[0])} — ${day(dates[dates.length - 1])} · ${plural(expenses, ['расход', 'расхода', 'расходов'])}, ${plural(rows.length - expenses, ['доход', 'дохода', 'доходов'])}`,
+      `<blockquote>${lines.join('\n')}</blockquote>`,
+      skipped ? `Не разобрал строк: ${skipped}.` : '',
+      truncated ? `Взял первые ${MAX_IMPORT_ROWS} строк — остальное пришли отдельным файлом.` : '',
+      'Открой Кошель — операции появятся сами. Что уже записано, второй раз не добавлю.',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    await sendMessage(env, userId, reply, {
+      inline_keyboard: [[openButton], [{ text: 'Отменить', callback_data: `u:${batch}` }]],
+    })
   } finally {
     stopTyping()
   }
@@ -992,6 +1078,10 @@ async function undoBatch(q: TgCallbackQuery, env: Env, userId: number, batch: st
 
   await answerCallback(env, q.id)
   if (!q.message) return
+  if (removed.some((e) => e.imp)) {
+    await editMessageText(env, q.message.chat.id, q.message.message_id, `Отменил загрузку файла: ${plural(removed.length, ['операция', 'операции', 'операций'])}.`)
+    return
+  }
 
   const ctx = await loadContext(env, userId, Date.now())
   const what = removed

@@ -7,8 +7,8 @@ import {
   selectQuickCurrencies,
 } from '../store/transactions'
 import type { Category } from '../store/categories'
-import { hapticTap, hapticNotify, hapticSelect, tg, confirmAction } from '../lib/telegram'
-import { setReminders, fetchReminders, exportTransactions } from '../lib/api'
+import { hapticTap, hapticNotify, hapticSelect, tg, confirmAction, openTelegramLink } from '../lib/telegram'
+import { setReminders, fetchReminders, exportTransactions, BOT_USERNAME } from '../lib/api'
 import { showToast } from '../lib/toast'
 import { buildCsv } from '../lib/csv'
 import { parseTransactionsCsv, type ParsedRow } from '../lib/csvImport'
@@ -358,6 +358,13 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
         />
         <ExportRow />
         <ImportRow />
+        {/* Выбор файла в окне мини-аппа на телефоне работает через раз, а
+            «Поделиться → Telegram» из почты или «Файлов» есть всегда. */}
+        <ActionRow
+          label={t('settings.import_chat')}
+          result={t('settings.import_chat_hint')}
+          onClick={() => openTelegramLink(`https://t.me/${BOT_USERNAME}`)}
+        />
         <Row
           title={<span className="text-expense-deep dark:text-expense-soft">{t('settings.clear_all')}</span>}
           onClick={handleClear}

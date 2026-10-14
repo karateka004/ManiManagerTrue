@@ -652,16 +652,23 @@ export const useStore = create<State & Actions>()(
           transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         })),
       importTransactions: (rows) => {
-        const existing = new Set(get().transactions.map(dedupeKey))
+        // Повтор — только против уже записанного и с учётом количества: два
+        // проезда по 2,28 в один день в одном файле — две операции, а не дубль.
+        const existing = new Map<string, number>()
+        for (const t of get().transactions) {
+          const k = dedupeKey(t)
+          existing.set(k, (existing.get(k) ?? 0) + 1)
+        }
         const fresh: Transaction[] = []
         let duplicates = 0
         for (const r of rows) {
           const key = dedupeKey(r)
-          if (existing.has(key)) {
+          const left = existing.get(key) ?? 0
+          if (left > 0) {
+            existing.set(key, left - 1)
             duplicates += 1
             continue
           }
-          existing.add(key)
           // Сумму подрезаем здесь же: нормализация при загрузке сработает только
           // в следующий запуск, а мусорное число сломает арифметику сразу.
           fresh.push({ ...r, amount: clampNumber(r.amount, 0, MAX_MONEY, 0), id: cuid() })

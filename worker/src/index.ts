@@ -25,7 +25,7 @@
 import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
-import { dropFromInbox, readInbox, MAX_INBOX } from './inbox'
+import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
 import { pickReminderText, reminderKeyboard, reminderPreference, runDailyReminders, setReminderChoice } from './reminders'
 import { cleanHistory } from './answer'
 import { isRateLimited } from './limits'
@@ -1058,7 +1058,7 @@ async function handleInboxAck(req: Request, env: Env, origin: string | null): Pr
   if (await isRateLimited(env, 'inbox', user.id, 60, 60)) return tooMany(env, origin)
 
   const ids = Array.isArray(body.ids)
-    ? body.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_INBOX)
+    ? body.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_INBOX_IMPORT)
     : []
   if (ids.length === 0) return json({ ok: true, removed: 0 }, { status: 200 }, env, origin)
 
