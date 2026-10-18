@@ -257,6 +257,30 @@ export function dayWordIn(raw: string): number | undefined {
 }
 
 /**
+ * Единица счёта после числа: срок, количество, число месяца. «Абонемент на 3
+ * месяца 2000» — сумма 2000, а не 3; «5 октября кофе 300» — 300.
+ *
+ * Длинные слова — основой («месяц…», «октябр…»), короткие — целиком: «мес» и
+ * «л» узнаём, а «г» и «гр» нет — так пишут и граммы, и гривны.
+ */
+const COUNT_UNIT =
+  /^(?:день|дня|дней|дн|недел\p{L}*|нед|месяц\p{L}*|мес|год|года|годов|лет|раз|раза|час|часа|часов|ч|минут\p{L}*|мин|сутки|суток|шт|штук\p{L}*|кг|килограмм\p{L}*|л|литр\p{L}*|человек\p{L}*|чел|январ\p{L}*|феврал\p{L}*|март\p{L}*|апрел\p{L}*|май|мая|июн\p{L}*|июл\p{L}*|август\p{L}*|сентябр\p{L}*|октябр\p{L}*|ноябр\p{L}*|декабр\p{L}*|days?|weeks?|months?|years?|times|hours?|pcs)$/u
+const YEAR_WORD = /^(?:год|года|году|years?)$/u
+
+/**
+ * Число на месте `i` — счёт, а не сумма: за ним (или слитно с ним) единица
+ * срока или количества. Только небольшие целые: «аренда 30000 месяц» и
+ * «подписка 300 мес» — это деньги в месяц, а «за 2023 год» — год.
+ */
+function isCount(tokens: string[], i: number, n: number): boolean {
+  if (!Number.isInteger(n)) return false
+  const glued = tokens[i].match(/^\d+(\p{L}+)$/u)?.[1]
+  const unit = glued ?? tokens[i + 1]
+  if (unit === undefined || !COUNT_UNIT.test(unit)) return false
+  return n <= 100 || (YEAR_WORD.test(unit) && n >= 1900 && n <= 2100)
+}
+
+/**
  * Разобрать сообщение в операцию.
  *
  * `known` — id категорий, которые реально есть у пользователя (встроенные плюс
@@ -308,6 +332,7 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   for (let i = 0; i < merged.length; i++) {
     const n = parseAmountToken(merged[i])
     if (n !== null && n > 0) {
+      if (isCount(merged, i, n)) continue
       amount = n
       amountAt = i
       break

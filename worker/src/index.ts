@@ -26,7 +26,15 @@ import { ADMIN_HTML } from './admin'
 import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
-import { pickReminderText, reminderKeyboard, reminderPreference, runDailyReminders, setReminderChoice } from './reminders'
+import {
+  cleanTz,
+  pickReminderText,
+  readReminderStats,
+  reminderKeyboard,
+  reminderPreference,
+  runDailyReminders,
+  setReminderChoice,
+} from './reminders'
 import { cleanHistory } from './answer'
 import { isRateLimited } from './limits'
 import {
@@ -50,7 +58,7 @@ import {
   type DataMeta,
   type WebhookHealth,
 } from './analytics'
-import { MSK_OFFSET_MS, markDay, mskDay, mskDayStart, startOfTodayMskMs } from './days'
+import { MSK_OFFSET_MS, markDay, mskDateStr, mskDay, mskDayStart, startOfTodayMskMs } from './days'
 import { SRC_PREFIX, campaignTag, startParamOf, type SourceMeta } from './sources'
 import type { InboxMeta } from './inbox'
 import {
@@ -884,6 +892,10 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     blob?: string
     updatedAt?: number
     allowEmpty?: boolean
+    /** Часовой пояс устройства, минуты от UTC — для напоминаний по местному времени. */
+    tz?: unknown
+    /** От какой версии облака ведёт устройство (приложение 2.6+). */
+    base?: unknown
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -919,6 +931,14 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   if (existing.value) {
     try {
       const prev = JSON.parse(existing.value) as { updatedAt?: number; blob?: string }
+      // Устройство ведёт от версии `base`, а облако с тех пор изменил кто-то
+      // другой: не затираем его — отдаём текущее, приложение сольёт свои новые
+      // записи с ним и пришлёт снова. Повтор той же отправки (та же метка) —
+      // не конфликт. Без `base` (приложение до 2.6) — как раньше.
+      const base = typeof body.base === 'number' && Number.isFinite(body.base) ? body.base : null
+      if (base !== null && typeof prev.updatedAt === 'number' && prev.updatedAt > base && prev.updatedAt !== updatedAt) {
+        return json({ ok: true, conflict: true, data: prev }, { status: 200 }, env, origin)
+      }
       if (typeof prev.updatedAt === 'number' && prev.updatedAt > updatedAt) {
         return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
       }
@@ -945,7 +965,16 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     existing.metadata?.vm !== undefined ? { m: existing.metadata.vm, d: existing.metadata.vd } : undefined,
     mskDay(Date.now()),
   )
-  const meta = fitMeta({ updatedAt, firstSeen, c: buildUserCard(blob) ?? undefined, vm: visits.m, vd: visits.d })
+  // Пояс: от приложения 2.6+; старое приложение его не шлёт — оставляем прежний.
+  const tz = cleanTz(body.tz) ?? cleanTz(existing.metadata?.tz)
+  const meta = fitMeta({
+    updatedAt,
+    firstSeen,
+    c: buildUserCard(blob) ?? undefined,
+    vm: visits.m,
+    vd: visits.d,
+    ...(tz !== undefined ? { tz } : {}),
+  })
   await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: meta })
   return json({ ok: true, updatedAt }, { status: 200 }, env, origin)
 }
@@ -1149,6 +1178,10 @@ async function handleReminders(req: Request, env: Env, origin: string | null, re
 
   if (!readOnly && typeof body.enabled === 'boolean') {
     await setReminderChoice(env, user.id, body.enabled)
+    // Включил в приложении — например, только что разрешил боту писать. Метка
+    // «заблокировал» от прошлого отказа Telegram (403) больше не правда; если
+    // бот всё ещё закрыт, следующее напоминание поставит её заново.
+    if (body.enabled) await env.REFERRALS.delete(`blocked:${user.id}`)
     return json({ ok: true, enabled: body.enabled }, { status: 200 }, env, origin)
   }
   return json({ ok: true, enabled: await reminderPreference(env, user.id) }, { status: 200 }, env, origin)
@@ -1509,7 +1542,8 @@ async function nightlyAnalytics(env: Env, nowMs: number): Promise<void> {
   }
   if ((env.ADMIN_DIGEST ?? 'on').trim() !== 'off') {
     try {
-      await sendDigest(env, digestText(dayReport(c, ended, nowMs)), true)
+      const reminders = await readReminderStats(env, mskDateStr(mskDayStart(ended)))
+      await sendDigest(env, digestText(dayReport(c, ended, nowMs), { reminders }), true)
     } catch (e) {
       console.error('[worker] digest failed', e)
     }

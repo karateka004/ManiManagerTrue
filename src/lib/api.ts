@@ -215,10 +215,17 @@ export async function pushCloud(
    * иначе сервер отклонит пустой снимок как защиту от потери данных.
    */
   allowEmpty = false,
-): Promise<{ ok: boolean; skipped?: boolean }> {
+  /**
+   * От какой версии облака ведёт это устройство. Облако с тех пор изменил кто-то
+   * другой — сервер не перезапишет его, а вернёт текущее (`conflict` + `data`).
+   */
+  base?: number,
+): Promise<{ ok: boolean; skipped?: boolean; conflict?: boolean; data?: CloudSnapshot }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   // Блоб бывает в сотни килобайт — на медленной сети отправке нужно время.
-  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty }, 30000)
+  // Пояс устройства (минуты от UTC): бот напоминает по местному вечеру, а не по МСК.
+  const tz = -new Date().getTimezoneOffset()
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty, tz, base }, 30000)
 }
 
 /* ---------- Ассистент: вопросы про свои деньги ---------- */

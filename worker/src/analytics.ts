@@ -98,6 +98,8 @@ export interface DataMeta {
   /** Дни синхронизаций (см. days.ts): ещё один след активности, той же записью. */
   vm?: string
   vd?: number
+  /** Часовой пояс приложения, минуты от UTC: напоминания приходят по местному времени. */
+  tz?: number
 }
 
 /** Потолок метаданных KV — 1024 байта. Держимся ниже с запасом. */
@@ -183,6 +185,7 @@ export function fitMeta(meta: DataMeta): DataMeta {
     if (JSON.stringify(trimmed).length <= META_BUDGET) return trimmed
   }
   const bare: DataMeta = { updatedAt: meta.updatedAt, firstSeen: meta.firstSeen }
+  if (meta.tz !== undefined) bare.tz = meta.tz
   if (meta.vm !== undefined) {
     bare.vm = meta.vm
     bare.vd = meta.vd
@@ -1409,7 +1412,10 @@ export function dayReport(c: Collected, day: number, now: number) {
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 
 /** Текст сводки (parse_mode: HTML). Без эмодзи — числа говорят сами. */
-export function digestText(r: ReturnType<typeof dayReport>): string {
+export function digestText(
+  r: ReturnType<typeof dayReport>,
+  extra: { reminders?: { sent: number; newbies: number; failed: number } | null } = {},
+): string {
   const [, m, d] = r.date.split('-').map(Number)
   const title = `${d} ${MONTHS[m - 1]}${r.partial ? ', на сейчас' : ''}`
   const lines: string[] = [`<b>Кошель · ${title}</b>`, '']
@@ -1420,6 +1426,12 @@ export function digestText(r: ReturnType<typeof dayReport>): string {
   lines.push(`Заходили: <b>${r.active}</b> · из них вернулись ${r.back}`)
   if (r.d1) lines.push(`Вернулись вчерашние новички: <b>${r.d1.n}</b> из ${r.d1.base} (${Math.round(pct(r.d1.n, r.d1.base))}%)`)
   if (r.botActive) lines.push(`Писали боту: ${r.botActive}`)
+  const rem = extra.reminders
+  if (rem && (rem.sent || rem.failed)) {
+    lines.push(
+      `Напоминания: ${rem.sent}${rem.newbies ? ` · новичкам ${rem.newbies}` : ''}${rem.failed ? ` · не дошли ${rem.failed}` : ''}`,
+    )
+  }
   if (r.sources.length) {
     lines.push('')
     lines.push('Откуда новые: ' + r.sources.map(([k, n]) => `${escape(k)} — ${n}`).join(', '))

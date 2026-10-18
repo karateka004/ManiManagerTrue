@@ -5,21 +5,25 @@
  * его деньги. Весь стор приложения (persist-блоб) привязывается к TG-аккаунту
  * через воркер (KV `data:<userId>`, доступ только по проверенной подписи initData).
  *
- * Стратегия: last-write-wins по метке времени `updatedAt`.
- *  - При запуске тянем облако. Если оно новее локального — принимаем (rehydrate).
- *    Иначе заливаем локальные данные как базу.
- *  - На любое изменение стора — отложенный (debounced) пуш в облако.
+ * Стратегия (с 2.6): снимок целиком, но без молчаливой потери записей.
+ *  - Устройство помнит версию облака, от которой ведёт (`base`). При запуске:
+ *    облако не менялось без нас — отправляем своё; изменилось — принимаем его и
+ *    возвращаем в него свои ещё не отправленные записи (см. syncMerge.ts).
+ *  - На любое изменение стора — отложенный (debounced) пуш с этой версией.
+ *    Облако тем временем изменил другой телефон — сервер не перезаписывает его,
+ *    а возвращает текущее: сливаем так же и отправляем снова.
  *  - При сворачивании/закрытии — досрочный сброс отложенного пуша.
  *
- * Сценарий «одно устройство за раз» (открыл на телефоне → потом на планшете)
- * работает идеально. Одновременное редактирование с двух устройств — редкий
- * случай: победит то, что изменилось последним (данные не мёржатся пооперационно).
+ * Сливаются только новые записи (операции, свои категории, цели, активы). Правка
+ * одной и той же записи на двух устройствах — побеждает облачная версия.
  *
  * Вне Telegram (обычный браузер, превью) синк выключен — приложение работает
  * локально, как раньше.
  */
 import { useStore, flushPersist } from '../store/transactions'
-import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud } from './api'
+import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud, type CloudSnapshot } from './api'
+import { localAdditions, planStartup } from './syncMerge'
+import { dedupeKey } from './csvImport'
 import { tg } from './telegram'
 
 /** Ключ persist-стора (см. `name` в store/transactions.ts). */
@@ -39,18 +43,37 @@ const INBOX_DONE_MAX = 2000
 /** Как часто перепроверять входящие при возврате в приложение. */
 const INBOX_RECHECK_MS = 30_000
 
-function getLocalUpdatedAt(): number {
+/** Что устройство знает о своей синхронизации (вне синкаемого блоба). */
+interface SyncMeta {
+  /** Метка последнего снимка этого устройства: отправленного или принятого. */
+  updatedAt?: number
+  /** Версия облака, от которой ведёт устройство (с 2.6). */
+  base?: number
+  /** Всё, что создано здесь раньше этого момента, облако уже видело. */
+  syncedAt?: number
+  /** Отправки без ответа: если облако окажется одной из них — это наш же снимок. */
+  tried?: number[]
+}
+const TRIED_MAX = 5
+
+function readMeta(): SyncMeta {
   try {
-    const m = JSON.parse(localStorage.getItem(META_KEY) || '{}')
-    return typeof m.updatedAt === 'number' ? m.updatedAt : 0
+    const m = JSON.parse(localStorage.getItem(META_KEY) || '{}') as Record<string, unknown>
+    const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined)
+    return {
+      updatedAt: num(m.updatedAt),
+      base: num(m.base),
+      syncedAt: num(m.syncedAt),
+      tried: Array.isArray(m.tried) ? m.tried.filter((x): x is number => typeof x === 'number') : [],
+    }
   } catch {
-    return 0
+    return { tried: [] }
   }
 }
 
-function setLocalUpdatedAt(t: number): void {
+function writeMeta(patch: SyncMeta): void {
   try {
-    localStorage.setItem(META_KEY, JSON.stringify({ updatedAt: t }))
+    localStorage.setItem(META_KEY, JSON.stringify({ ...readMeta(), ...patch }))
   } catch {
     /* приватный режим / нет места — переживём */
   }
@@ -102,6 +125,19 @@ function txCount(blob: string | null): number {
 let started = false
 /** Пока принимаем облако — не пушим (иначе тут же отправили бы только что скачанное). */
 let adopting = false
+/**
+ * Принятие облака и перенос записей бота — по очереди: перенос, вклинившийся
+ * между снимком своих записей и перечитыванием стора, потерял бы операции, о
+ * приёме которых бот уже знает.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn)
+  queue = run.catch(() => {})
+  return run
+}
+/** Слияний по конфликту за минуту — защита от пинг-понга двух открытых устройств. */
+let conflictTimes: number[] = []
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 /** Сколько операций было в облаке на старте сессии (для защиты от затирания). */
 let cloudTxAtStart = 0
@@ -127,6 +163,15 @@ function schedulePush(): void {
 
 async function flushPush(): Promise<void> {
   pushTimer = null
+  // Облако как раз принимается — отправим после, уже слитое.
+  if (adopting) {
+    pushTimer = setTimeout(flushPush, PUSH_DEBOUNCE)
+    return
+  }
+  const meta = readMeta()
+  // Метка снимка — до чтения: всё, что создано раньше неё, в снимке есть.
+  // Строго растёт: два снимка с одной меткой сервер не различил бы.
+  const updatedAt = Math.max(Date.now(), (meta.updatedAt ?? 0) + 1)
   flushPersist() // на диске должен лежать актуальный снимок, а не отложенный
   const blob = readBlob()
   if (!blob) return
@@ -137,13 +182,102 @@ async function flushPush(): Promise<void> {
   const emptyOverData = local === 0 && cloudTxAtStart > 0 && !hadDataThisSession
   if (emptyOverData) return
 
-  const updatedAt = Date.now()
-  setLocalUpdatedAt(updatedAt)
+  writeMeta({ updatedAt, tried: [...(meta.tried ?? []), updatedAt].slice(-TRIED_MAX) })
+  let res: Awaited<ReturnType<typeof pushCloud>> | null
   try {
-    await pushCloud(blob, updatedAt, local === 0 && hadDataThisSession)
+    res = await pushCloud(blob, updatedAt, local === 0 && hadDataThisSession, meta.base)
   } catch {
-    /* офлайн — отправим при следующем изменении */
+    return // офлайн — отправим при следующем изменении; метка останется в tried
   }
+  if (!res) return
+  // Облако изменил другой телефон (или старый сервер сказал «у меня новее»).
+  if ((res.conflict || res.skipped) && res.data) {
+    await resolveConflict(res.data)
+    return
+  }
+  if (res.ok && !res.skipped) writeMeta({ base: updatedAt, syncedAt: updatedAt, tried: [] })
+}
+
+/**
+ * Сервер не принял снимок: облако изменилось без нас. Если это наш же прошлый
+ * снимок (ответ потерялся по дороге) — просто ведём от него. Иначе принимаем
+ * облако, возвращаем свои несинхронизированные записи и отправляем снова.
+ */
+async function resolveConflict(snap: CloudSnapshot): Promise<void> {
+  const meta = readMeta()
+  if ((meta.tried ?? []).includes(snap.updatedAt)) {
+    writeMeta({ base: snap.updatedAt, syncedAt: Math.max(meta.syncedAt ?? 0, snap.updatedAt), tried: [] })
+    schedulePush()
+    return
+  }
+  if (!isValidBlob(snap.blob)) return
+  const now = Date.now()
+  conflictTimes = conflictTimes.filter((t) => now - t < 60_000)
+  if (conflictTimes.length >= 3) return
+  conflictTimes.push(now)
+  const added = await adoptCloud(snap)
+  if (added > 0) schedulePush()
+}
+
+/**
+ * Принять облачный снимок и вернуть в него то, что сделано здесь после
+ * последней подтверждённой синхронизации и в облако не попало. Возвращает,
+ * сколько записей вернули (больше нуля — облаку их нужно отправить).
+ */
+function adoptCloud(snap: CloudSnapshot): Promise<number> {
+  return exclusive(async () => {
+    const meta = readMeta()
+    // Приложение до 2.6 не помнило syncedAt — берём метку последней отправки.
+    const since = meta.syncedAt ?? meta.updatedAt ?? 0
+    const mine = useStore.getState()
+    const keep = {
+      transactions: mine.transactions,
+      customCategories: mine.customCategories,
+      goals: mine.goals,
+      investments: mine.investments,
+    }
+    adopting = true
+    flushPersist() // отложенная запись не должна «догнать» и затереть облако
+    const prev = readBlob() // снимок локального ДО перезаписи (для отката)
+    try {
+      localStorage.setItem(PERSIST_KEY, snap.blob)
+      // rehydrate перечитает storage, прогонит миграции и обновит стор.
+      await useStore.persist.rehydrate()
+      const cloud = useStore.getState()
+      const extra = {
+        transactions: localAdditions(keep.transactions, cloud.transactions, since, Date.now(), dedupeKey),
+        customCategories: localAdditions(keep.customCategories, cloud.customCategories, since),
+        goals: localAdditions(keep.goals, cloud.goals, since),
+        investments: localAdditions(keep.investments, cloud.investments, since),
+      }
+      const added = extra.transactions.length + extra.customCategories.length + extra.goals.length + extra.investments.length
+      if (added > 0) {
+        useStore.setState((s) => ({
+          transactions: [...extra.transactions, ...s.transactions],
+          customCategories: [...s.customCategories, ...extra.customCategories],
+          goals: [...s.goals, ...extra.goals],
+          investments: [...s.investments, ...extra.investments],
+        }))
+      }
+      // syncedAt не двигаем: возвращённые записи облако ещё не видело — если и
+      // следующая отправка сорвётся, их надо будет вернуть снова.
+      writeMeta({ updatedAt: snap.updatedAt, base: snap.updatedAt, tried: [] })
+      if (txCount(snap.blob) > 0 || keep.transactions.length > 0) hadDataThisSession = true
+      return added
+    } catch {
+      // Применить не удалось — откатываемся на прежние локальные данные, не теряем их.
+      try {
+        if (prev !== null) localStorage.setItem(PERSIST_KEY, prev)
+        else localStorage.removeItem(PERSIST_KEY)
+        await useStore.persist.rehydrate()
+      } catch {
+        /* совсем плохо — оставляем как есть */
+      }
+      return 0
+    } finally {
+      adopting = false
+    }
+  })
 }
 
 function flushNow(): void {
@@ -198,7 +332,17 @@ async function mergeInbox(): Promise<void> {
     return // офлайн — заберём при следующем открытии
   }
   if (items.length === 0) return
+  await exclusive(async () => applyInbox(items))
+  try {
+    // Подтверждаем ВСЕ пришедшие, включая те, что уже применяли раньше: иначе
+    // однажды неподтверждённая запись осталась бы в очереди навсегда.
+    await ackInbox(items.map((e) => e.id))
+  } catch {
+    /* не подтвердилось — подтвердим при следующем сливе, повтор отсечёт done */
+  }
+}
 
+function applyInbox(items: Awaited<ReturnType<typeof pullInbox>>): void {
   const done = readDone()
   const fresh = items.filter((e) => !done.has(e.id))
   // Файл — одним импортом: он отсеет уже записанное (выписку присылают
@@ -236,13 +380,6 @@ async function mergeInbox(): Promise<void> {
   }
 
   writeDone([...done, ...fresh.map((e) => e.id)])
-  try {
-    // Подтверждаем ВСЕ пришедшие, включая те, что уже применяли раньше: иначе
-    // однажды неподтверждённая запись осталась бы в очереди навсегда.
-    await ackInbox(items.map((e) => e.id))
-  } catch {
-    /* не подтвердилось — подтвердим при следующем сливе, повтор отсечёт done */
-  }
 }
 
 let retryArmed = false
@@ -290,51 +427,33 @@ export async function initCloudSync(): Promise<void> {
     return
   }
 
+  let pushAfter = false
   try {
-    const localAt = getLocalUpdatedAt()
+    const meta = readMeta()
     flushPersist() // читаем блоб напрямую — сначала дожидаемся отложенной записи
     const localTx = txCount(readBlob())
-    const cloudTx = cloud && isValidBlob(cloud.blob) ? txCount(cloud.blob) : 0
+    const valid = !!cloud && isValidBlob(cloud.blob)
+    const cloudTx = valid ? txCount(cloud!.blob) : 0
     cloudTxAtStart = Math.max(0, cloudTx)
     hadDataThisSession = localTx > 0
 
-    // Принимаем облако, если оно новее ЛИБО если локально пусто, а в облаке есть
-    // операции (спасает новое устройство с «залипшей» локальной меткой времени).
-    const cloudNewer = !!cloud && cloud.updatedAt > localAt
-    const localEmpty = localTx === 0 && cloudTx > 0
-
-    if (cloud && isValidBlob(cloud.blob) && (cloudNewer || localEmpty)) {
-      // Облако новее и блоб валиден — принимаем его.
-      adopting = true
-      flushPersist() // отложенная запись не должна «догнать» и затереть облако
-      const prev = readBlob() // снимок локального ДО перезаписи (для отката)
-      try {
-        localStorage.setItem(PERSIST_KEY, cloud.blob)
-        // rehydrate перечитает storage, прогонит миграции и обновит стор.
-        await useStore.persist.rehydrate()
-        setLocalUpdatedAt(cloud.updatedAt)
-        if (cloudTx > 0) hadDataThisSession = true
-      } catch {
-        // Применить не удалось — откатываемся на прежние локальные данные, не теряем их.
-        try {
-          if (prev !== null) localStorage.setItem(PERSIST_KEY, prev)
-          else localStorage.removeItem(PERSIST_KEY)
-          await useStore.persist.rehydrate()
-        } catch {
-          /* совсем плохо — оставляем как есть */
-        }
-      } finally {
-        adopting = false
-      }
+    const plan = planStartup({
+      cloudAt: valid ? cloud!.updatedAt : null,
+      cloudTx,
+      localTx,
+      localAt: meta.updatedAt ?? 0,
+      base: meta.base,
+      tried: meta.tried ?? [],
+    })
+    if (plan === 'adopt') {
+      // Облако изменилось без нас: принимаем и возвращаем свои новые записи.
+      if ((await adoptCloud(cloud!)) > 0) pushAfter = true
     } else {
-      // Локальные данные новее (или облака ещё нет) — заливаем их как базу.
-      // Пустым локальным состоянием непустое облако не перезаписываем.
-      const blob = readBlob()
-      if (blob && !(localTx === 0 && cloudTx > 0)) {
-        const updatedAt = localAt || Date.now()
-        setLocalUpdatedAt(updatedAt)
-        pushCloud(blob, updatedAt).catch(() => {})
-      }
+      // Облако не менялось без нас (или в нём наш же снимок) — отправляем своё,
+      // ведя от того, что в облаке лежит. Пустым локальным состоянием непустое
+      // облако не перезаписываем.
+      writeMeta({ base: cloud ? cloud.updatedAt : 0 })
+      if (!(localTx === 0 && cloudTx > 0)) pushAfter = true
     }
   } catch {
     /* офлайн/ошибка сети — работаем локально, синхронизируемся позже */
@@ -342,6 +461,7 @@ export async function initCloudSync(): Promise<void> {
 
   // Любое изменение стора → отложенный пуш.
   useStore.subscribe(() => schedulePush())
+  if (pushAfter) void flushPush()
 
   // Записи из бота забираем ПОСЛЕ того, как разобрались с облаком: принятие
   // облачного снимка перечитывает storage целиком (rehydrate) и стёрло бы всё,

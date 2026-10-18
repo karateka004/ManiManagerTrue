@@ -320,6 +320,9 @@ interface Actions {
   reconcileReferralRewards: (count: number) => void
 }
 
+// Хвост id — момент создания (Date.now() в base36): по нему облачный синк
+// узнаёт записи, сделанные после последней синхронизации (lib/syncMerge.ts).
+// Формат не менять без правки там.
 const cuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
 
 /** Что перенёс relabelCurrency: id затронутых записей — для «Вернуть». */

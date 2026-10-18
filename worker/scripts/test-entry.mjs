@@ -12,6 +12,18 @@ import { parseEntry, parseEntries } from '../src/entry.ts'
 
 /** [строка, ожидание] — ожидание null означает «разобрать не должен». */
 const CASES = [
+  // Число перед единицей срока или количества — не сумма
+  ['абонемент на 3 месяца 2000', { kind: 'expense', amount: 2000 }],
+  ['абонемент 3мес 1500', { kind: 'expense', amount: 1500 }],
+  ['5 октября кофе 300', { kind: 'expense', amount: 300, categoryId: 'cafe' }],
+  ['такси 2 раза по 300', { kind: 'expense', amount: 300, categoryId: 'transport' }],
+  ['бензин 40 л 2500', { kind: 'expense', amount: 2500, categoryId: 'car' }],
+  ['налог за 2023 год 5000', { kind: 'expense', amount: 5000 }],
+  ['ужин на 4 человека 3200', { kind: 'expense', amount: 3200 }],
+  ['аренда 30000 месяц', { kind: 'expense', amount: 30000 }],
+  ['подписка 300 мес', { kind: 'expense', amount: 300 }],
+  ['спортзал 3 месяца', null],
+
   // Основное
   ['кофе 300', { kind: 'expense', amount: 300, categoryId: 'cafe' }],
   ['300 кофе', { kind: 'expense', amount: 300, categoryId: 'cafe' }],

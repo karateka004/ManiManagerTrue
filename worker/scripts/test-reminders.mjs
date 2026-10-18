@@ -5,6 +5,9 @@
  *   - кому напоминаем: был сегодня в приложении или писал боту — нет;
  *     пишет только боту — да; молчит — каждый вечер первые три дня, потом
  *     всё реже, после 30-го дня — тишина; пропавшим — другие тексты;
+ *   - когда: в свой час окна 18–21 по местному времени (пояс из приложения,
+ *     без пояса — МСК), «сегодня» — по местным суткам;
+ *   - новичкам (1–2-й день после первого появления) — свои тексты с числом записей;
  *   - выбор человека: '0' и 'b' — не пишем, '1' важнее тумблера в приложении;
  *   - 403 — автоматическая отписка 'b', а вернулся — она снимается;
  *   - кнопки и команда: «Не напоминать» под напоминанием, /reminders, экран в
@@ -15,9 +18,11 @@
 import {
   COMEBACK_TEXTS,
   REMINDER_TEXTS,
+  REM_LOCAL_START,
   REM_SLOTS,
-  REM_WINDOW_START_UTC,
+  cleanTz,
   dueAfterQuiet,
+  newbieText,
   forgetBlock,
   pickReminderText,
   remindersEnabled,
@@ -106,7 +111,8 @@ function idsForSlot(slot, count, from = 1000) {
 }
 
 const SLOT = 2
-const cronAt = Date.UTC(2026, 9, 7, REM_WINDOW_START_UTC + SLOT, 0, 0)
+// Местный час слота по МСК (UTC+3) → час UTC.
+const cronAt = Date.UTC(2026, 9, 7, REM_LOCAL_START + SLOT - 3, 0, 0)
 const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all', REFERRALS: kv })
 
 /* ---------- Кому напоминаем ---------- */
@@ -165,6 +171,67 @@ const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all'
 
   check('403 — автоматическая отписка «b»', (await kv.get(`remind:${sends403}`)) === 'b')
   check('403 — метка «заблокировал» для аналитики', (await kv.get(`blocked:${sends403}`)) === '1')
+}
+
+/* ---------- Местное время ---------- */
+{
+  const kv = new FakeKV()
+  // Новосибирск (UTC+7): тот же слот, но его 18+SLOT наступает на 4 часа раньше МСК.
+  const [nsk, ny, nyToday] = idsForSlot(SLOT, 3, 5000)
+  const putData = (id, updatedAt, tz) => kv.put(`data:${id}`, '{}', { metadata: { updatedAt, tz } })
+  await putData(nsk, at(1), 420)
+  // Нью-Йорк (UTC−4): вчера по местным суткам — 22:00 МСК позавчера… считаем честно.
+  await putData(ny, Date.UTC(2026, 9, 6, 12), -240)
+  // Был сегодня по своим суткам (7 октября, 09:00 Нью-Йорка), хотя по МСК это тоже 7-е.
+  await putData(nyToday, Date.UTC(2026, 9, 7, 13), -240)
+
+  calls = []
+  blockedIds = new Set()
+  await runDailyReminders(env(kv), cronAt)
+  let to = new Set(sent().map((c) => String(c.body.chat_id)))
+  check('пояс +7: в час МСК-слота не пишем', !to.has(nsk))
+
+  calls = []
+  const nskAt = Date.UTC(2026, 9, 7, REM_LOCAL_START + SLOT - 7, 0, 0)
+  await runDailyReminders(env(kv), nskAt)
+  to = new Set(sent().map((c) => String(c.body.chat_id)))
+  check('пояс +7: пишем в его местные 18+слот', to.has(nsk))
+
+  calls = []
+  const nyAt = Date.UTC(2026, 9, 7, REM_LOCAL_START + SLOT + 4, 0, 0)
+  await runDailyReminders(env(kv), nyAt)
+  to = new Set(sent().map((c) => String(c.body.chat_id)))
+  check('пояс −4: пишем в его местный вечер', to.has(ny))
+  check('пояс −4: был сегодня по своим суткам — не пишем', !to.has(nyToday))
+
+  check('пояс: мусор не принимаем', cleanTz(180) === 180 && cleanTz('180') === undefined && cleanTz(0) === 0 && cleanTz('') === undefined && cleanTz(181) === undefined && cleanTz(900) === undefined && cleanTz(null) === undefined && cleanTz(330) === 330)
+}
+
+/* ---------- Новички ---------- */
+{
+  const kv = new FakeKV()
+  const [fresh0, fresh3, day2, old, botNew] = idsForSlot(SLOT, 5, 7000)
+  const putData = (id, updatedAt, firstSeen, ops) =>
+    kv.put(`data:${id}`, '{}', { metadata: { updatedAt, firstSeen, c: { ops } } })
+  await putData(fresh0, at(1), at(1), 0)
+  await putData(fresh3, at(1), at(1), 3)
+  await putData(day2, at(1), at(2), 5)
+  await putData(old, at(1), at(20), 40)
+  await kv.put(`inbox:${botNew}`, '{"items":[]}', { metadata: { n: 2, f: at(1), l: at(1) } })
+
+  calls = []
+  blockedIds = new Set()
+  await runDailyReminders(env(kv), cronAt)
+  const textOf = (id) => sent().find((c) => String(c.body.chat_id) === id)?.body.text
+  check('новичок без записей — шаг к первой записи', textOf(fresh0) === newbieText(1, 0), textOf(fresh0))
+  check('новичок с записями — его число записей', textOf(fresh3) === newbieText(1, 3) && /3 записи/.test(textOf(fresh3) ?? ''), textOf(fresh3))
+  check('второй день — свой текст', textOf(day2) === newbieText(2, 5), textOf(day2))
+  check('давний — обычная ротация', REMINDER_TEXTS.includes(textOf(old)), textOf(old))
+  check('новичок только в боте — тоже новичок', textOf(botNew) === newbieText(1, 2), textOf(botNew))
+  check('тексты новичкам ≤ 160 символов', [newbieText(1, 0), newbieText(1, 999), newbieText(2, 0), newbieText(2, 5)].every((t) => t.length <= 160))
+
+  const stat = JSON.parse((await kv.get('remstat:2026-10-07')) ?? 'null')
+  check('итоги рассылки для сводки', stat?.sent === 5 && stat?.newbies === 4 && stat?.failed === 0, stat)
 }
 
 /* ---------- Расписание затухания ---------- */

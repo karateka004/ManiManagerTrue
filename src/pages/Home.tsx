@@ -16,9 +16,10 @@ import {
 } from '../store/transactions'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
-import { hapticSelect, tg } from '../lib/telegram'
+import { botCanWrite, hapticSelect, tg } from '../lib/telegram'
 import type { Currency } from '../lib/currencies'
 import { currencyAsked } from '../lib/currencyAsked'
+import { remindAsked } from '../lib/remindAsked'
 import { readPendingRelabel } from '../lib/relabelPending'
 import { ONBOARDED_KEY } from '../lib/introKeys'
 
@@ -29,6 +30,7 @@ const PlanningSheet = lazy(() =>
 // «Твоя валюта — …?» для застрявших на долларе: таблица поясов и названия
 // валют нужны лишь им, поэтому отдельным чанком.
 const CurrencyNudge = lazy(() => import('../components/home/CurrencyNudge'))
+const RemindNudge = lazy(() => import('../components/home/RemindNudge'))
 
 interface Props {
   onOpenProfile: () => void
@@ -62,6 +64,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
     <div className="pb-24">
       <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} onOpenAssistant={onOpenAssistant} />
       <CurrencyNudgeGate />
+      <RemindNudgeGate />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
@@ -97,6 +100,22 @@ function CurrencyNudgeGate() {
   return (
     <Suspense fallback={null}>
       <CurrencyNudge onFlow={setInFlow} pending={waiting} />
+    </Suspense>
+  )
+}
+
+/**
+ * «Напоминать вечером?» — тем, кому бот не может написать (открыли по ссылке,
+ * Start не нажимали), когда записи уже есть. Дёшево и в стартовом чанке; сама
+ * карточка — ленивая. Вопрос о валюте важнее: две карточки сразу — много.
+ */
+function RemindNudgeGate() {
+  const eligible = useStore((s) => s.remindersEnabled && !s.demoMode && s.transactions.length > 0)
+  const currencyFirst = useStore((s) => s.currency === 'USD' && !s.demoMode) && !currencyAsked()
+  if (!eligible || currencyFirst || !tg.isInTelegram || botCanWrite() || remindAsked() || !onboarded()) return null
+  return (
+    <Suspense fallback={null}>
+      <RemindNudge />
     </Suspense>
   )
 }

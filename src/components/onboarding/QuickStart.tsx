@@ -13,7 +13,16 @@ import { Money } from '../ui/Money'
 import { SegTrack } from '../ui/SegTrack'
 import { Toggle } from '../ui/Toggle'
 import { CurrencyFlag } from '../ui/CurrencyFlag'
-import { hapticTap, hapticSelect, hapticNotify, confirmAction } from '../../lib/telegram'
+import {
+  botCanWrite,
+  canRequestBotWrite,
+  confirmAction,
+  hapticNotify,
+  hapticSelect,
+  hapticTap,
+  requestBotWrite,
+  tg,
+} from '../../lib/telegram'
 import { useCatName, useT, type Lang, type TFunc } from '../../lib/i18n'
 
 // Выбор валюты с поиском — общий ленивый чанк с Настройками и шторкой операции.
@@ -135,6 +144,16 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     hapticTap()
     markCurrencyAsked()
     setStep(2)
+    // Напоминания включены, а писать боту нельзя (открыли по ссылке, Start не
+    // нажимали) — Telegram спросит разрешение прямо сейчас, рядом с тумблером,
+    // который это объясняет. Без разрешения бот не напишет ни разу, поэтому
+    // отказ честно выключает тумблер.
+    if (reminders && tg.isInTelegram && !botCanWrite() && canRequestBotWrite()) {
+      void requestBotWrite().then((granted) => {
+        if (granted) void setReminders(true)
+        else setRemindersEnabled(false)
+      })
+    }
   }
 
   // Пока сервер не ответил, второе нажатие не принимаем: при двойном тапе без

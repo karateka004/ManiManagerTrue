@@ -47,6 +47,8 @@ interface TelegramWebApp {
       username?: string
       photo_url?: string
       language_code?: string
+      /** Бот может писать человеку в личку (нажимал Start или разрешил). */
+      allows_write_to_pm?: boolean
     }
     /** Параметр из deep-link (?startapp=… или ?start=…). */
     start_param?: string
@@ -61,6 +63,8 @@ interface TelegramWebApp {
   isVersionAtLeast?: (version: string) => boolean
   /** Bot API 6.2+: родное окно подтверждения клиента. */
   showConfirm?: (message: string, callback?: (ok: boolean) => void) => void
+  /** Bot API 6.9+: родное окно «разрешить боту писать вам». */
+  requestWriteAccess?: (callback?: (granted: boolean) => void) => void
 }
 
 declare global {
@@ -300,3 +304,62 @@ export function syncTelegramChrome(isDark: boolean) {
     /* older clients */
   }
 }
+
+/* ---------- Разрешение боту писать ---------- */
+
+const BOT_WRITE_KEY = 'koshel:botWrite'
+
+/**
+ * Может ли бот написать человеку. Без этого напоминания не доходят: кто открыл
+ * мини-апп по ссылке и ни разу не нажимал Start в чате, получает от Telegram
+ * отказ (403) на первое же сообщение. initData фиксируется при запуске, поэтому
+ * разрешение, выданное в этой сессии, помним сами.
+ */
+export function botCanWrite(): boolean {
+  if (tg.webApp?.initDataUnsafe?.user?.allows_write_to_pm === true) return true
+  try {
+    return localStorage.getItem(BOT_WRITE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Telegram умеет спросить разрешение сам (Bot API 6.9+). */
+export function canRequestBotWrite(): boolean {
+  const wa = tg.webApp
+  return !!wa?.requestWriteAccess && !!wa.isVersionAtLeast?.('6.9')
+}
+
+let writeRequest: Promise<boolean> | null = null
+
+/**
+ * Родное окно Telegram «Разрешить боту писать вам?». true — разрешил (или уже
+ * было). Окно уже открыто (двойной тап) — ждём тот же ответ, второго окна нет:
+ * Telegram на повторный вызов бросает исключение.
+ */
+export function requestBotWrite(): Promise<boolean> {
+  if (botCanWrite()) return Promise.resolve(true)
+  const wa = tg.webApp
+  if (!wa?.requestWriteAccess || !canRequestBotWrite()) return Promise.resolve(false)
+  if (writeRequest) return writeRequest
+  writeRequest = new Promise<boolean>((resolve) => {
+    try {
+      wa.requestWriteAccess!((granted) => {
+        if (granted) {
+          try {
+            localStorage.setItem(BOT_WRITE_KEY, '1')
+          } catch {
+            /* приватный режим — спросим ещё раз в следующий запуск */
+          }
+        }
+        resolve(!!granted)
+      })
+    } catch {
+      resolve(false)
+    }
+  }).finally(() => {
+    writeRequest = null
+  })
+  return writeRequest
+}
+

@@ -7,7 +7,17 @@ import {
   selectQuickCurrencies,
 } from '../store/transactions'
 import type { Category } from '../store/categories'
-import { hapticTap, hapticNotify, hapticSelect, tg, confirmAction, openTelegramLink } from '../lib/telegram'
+import {
+  botCanWrite,
+  canRequestBotWrite,
+  confirmAction,
+  hapticNotify,
+  hapticSelect,
+  hapticTap,
+  openTelegramLink,
+  requestBotWrite,
+  tg,
+} from '../lib/telegram'
 import { setReminders, fetchReminders, exportTransactions, BOT_USERNAME } from '../lib/api'
 import { showToast } from '../lib/toast'
 import { buildCsv } from '../lib/csv'
@@ -117,6 +127,15 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
     const next = !remindersEnabled
     setRemindersEnabled(next)
     setRemindersBusy(true)
+    // Включить мало — бот должен иметь право написать. Кто открыл приложение по
+    // ссылке и не нажимал Start, без этого окна напоминаний не получит никогда.
+    if (next && tg.isInTelegram && !botCanWrite() && canRequestBotWrite() && !(await requestBotWrite())) {
+      setRemindersBusy(false)
+      setRemindersEnabled(false)
+      hapticNotify('error')
+      showToast({ text: t('remind.denied') })
+      return
+    }
     const ok = await setReminders(next)
     setRemindersBusy(false)
     if (!ok) {
