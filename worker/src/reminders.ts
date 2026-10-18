@@ -454,6 +454,7 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
 
   const candidates = await reminderCandidates(env, nowMs)
   if (candidates.length === 0) return
+  const choices = await readChoices(env)
 
   const stats: ReminderStats = { sent: 0, newbies: 0, noAccess: 0, blocked: 0 }
   // Порциями: Telegram пускает около 30 сообщений в секунду на бота, дальше 429.
@@ -462,7 +463,7 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
     const batch = candidates.slice(i, i + REM_SEND_PER_SEC)
     // allSettled, а не all: один сбой чтения KV не должен обрывать рассылку
     // всему оставшемуся часу.
-    const results = await Promise.allSettled(batch.map((c) => remindOne(env, c, nowMs)))
+    const results = await Promise.allSettled(batch.map((c) => remindOne(env, c, nowMs, choices)))
     results.forEach((r, j) => {
       if (r.status === 'rejected') console.error('[reminders] не отправлено', r.reason)
       else if (r.value === 'sent') {
@@ -509,8 +510,30 @@ export function reminderKeyboard(withApp = false) {
  * Метку «уже слали сегодня» не пишем: у каждого свой час в окне, и второй раз
  * в тот же день он в крон не попадает по построению.
  */
-async function remindOne(env: Env, c: Candidate, nowMs: number): Promise<'sent' | 'skipped' | 'failed' | 'no_access' | 'blocked'> {
-  const choice = await env.REFERRALS.get(remindKey(c.id))
+/**
+ * Выборы людей одним списком: значение продублировано в метаданных ключа.
+ * Раньше — чтение KV на каждого адресата, то есть вдвое больше подзапросов
+ * вызова, чем самих сообщений. null — ключ без метаданных (старый), его читаем.
+ */
+async function readChoices(env: Env): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>()
+  let cursor: string | undefined
+  do {
+    const page: KVNamespaceListResult<{ v?: unknown }> = await env.REFERRALS.list<{ v?: unknown }>({ prefix: REMIND_PREFIX, cursor })
+    for (const k of page.keys) out.set(k.name.slice(REMIND_PREFIX.length), typeof k.metadata?.v === 'string' ? k.metadata.v : null)
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  return out
+}
+
+async function remindOne(
+  env: Env,
+  c: Candidate,
+  nowMs: number,
+  choices: Map<string, string | null>,
+): Promise<'sent' | 'skipped' | 'failed' | 'no_access' | 'blocked'> {
+  const listed = choices.get(c.id)
+  const choice = listed === undefined ? null : listed ?? (await env.REFERRALS.get(remindKey(c.id)))
   if (choice === '0' || choice === 'b' || choice === 'n') return 'skipped'
   // Явного выбора на сервере нет, а тумблер в приложении выключен.
   if (choice !== '1' && c.rm === 0) return 'skipped'

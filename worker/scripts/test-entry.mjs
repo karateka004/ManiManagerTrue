@@ -22,7 +22,12 @@ const CASES = [
   ['ужин на 4 человека 3200', { kind: 'expense', amount: 3200 }],
   ['аренда 30000 месяц', { kind: 'expense', amount: 30000 }],
   ['подписка 300 мес', { kind: 'expense', amount: 300 }],
-  ['спортзал 3 месяца', null],
+  ['vpn 50 мес', { kind: 'expense', amount: 50 }],
+  ['netflix 15 month', { kind: 'expense', amount: 15 }],
+  ['мясо 1,5 кг 900', { kind: 'expense', amount: 900 }],
+  ['свадьба 150 человек 300000', { kind: 'expense', amount: 300000 }],
+  ['оплата 15 числа 5000', { kind: 'expense', amount: 5000 }],
+  ['такси 12 км 450', { kind: 'expense', amount: 450, categoryId: 'transport' }],
 
   // Основное
   ['кофе 300', { kind: 'expense', amount: 300, categoryId: 'cafe' }],

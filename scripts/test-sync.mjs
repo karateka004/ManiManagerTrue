@@ -113,6 +113,42 @@ const base = makeBase(B, 1000)
   check('цель, изменённая с обеих сторон, — своя', merged.goals[0].saved === 300)
 }
 
+{
+  // Поля, изменённые с обеих сторон, — по смыслу поля, а не «своё».
+  const B2 = {
+    streak: { count: 3, best: 5, lastClaim: '2026-10-16' },
+    questClaims: { first_tx: 1000 },
+    budgets: { food: 5000, cafe: 2000 },
+    events: { use_search: 2, visit_analytics: 1 },
+    rewardedReferrals: 1,
+    monthlyBudget: 30000,
+  }
+  const base2 = makeBase(B2, 1)
+  const L = {
+    streak: { count: 4, best: 5, lastClaim: '2026-10-17' },
+    questClaims: { first_tx: 1000, tx_10: 5000 },
+    budgets: { food: 6000, cafe: 2000 },
+    events: { use_search: 5, visit_analytics: 1 },
+    rewardedReferrals: 2,
+    monthlyBudget: 35000,
+  }
+  const C = {
+    streak: { count: 4, best: 6, lastClaim: '2026-10-17' },
+    questClaims: { first_tx: 1000, tx_10: 7000 },
+    budgets: { food: 5000, cafe: 3000 },
+    events: { use_search: 3, visit_analytics: 4 },
+    rewardedReferrals: 2,
+    monthlyBudget: 40000,
+  }
+  const m = mergeStates(L, C, base2).merged
+  check('серия дня, забранная в один день на двух телефонах, — не удваивается', m.streak.count === 4 && m.streak.best === 6, m.streak)
+  check('метка получения награды — поздняя, а не сумма', m.questClaims.tx_10 === 7000, m.questClaims)
+  check('лимиты: разные категории с двух устройств — обе правки', m.budgets.food === 6000 && m.budgets.cafe === 3000, m.budgets)
+  check('счётчики событий — приращения по ключам', m.events.use_search === 6 && m.events.visit_analytics === 4, m.events)
+  check('вознаграждённые друзья — догоняются, а не складываются', m.rewardedReferrals === 2, m.rewardedReferrals)
+  check('бюджет месяца, заданный на обоих, — свой', m.monthlyBudget === 35000, m.monthlyBudget)
+}
+
 // Время создания из id — только для первого запуска 2.6 без основы.
 const idAt = (t, salt = 'x7k2q9') => salt + t.toString(36)
 const NOW = Date.UTC(2026, 9, 18, 12)

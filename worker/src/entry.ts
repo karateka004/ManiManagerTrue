@@ -264,20 +264,23 @@ export function dayWordIn(raw: string): number | undefined {
  * «л» узнаём, а «г» и «гр» нет — так пишут и граммы, и гривны.
  */
 const COUNT_UNIT =
-  /^(?:день|дня|дней|дн|недел\p{L}*|нед|месяц\p{L}*|мес|год|года|годов|лет|раз|раза|час|часа|часов|ч|минут\p{L}*|мин|сутки|суток|шт|штук\p{L}*|кг|килограмм\p{L}*|л|литр\p{L}*|человек\p{L}*|чел|январ\p{L}*|феврал\p{L}*|март\p{L}*|апрел\p{L}*|май|мая|июн\p{L}*|июл\p{L}*|август\p{L}*|сентябр\p{L}*|октябр\p{L}*|ноябр\p{L}*|декабр\p{L}*|days?|weeks?|months?|years?|times|hours?|pcs)$/u
+  /^(?:день|дня|дней|дн|недел\p{L}*|нед|месяц\p{L}*|мес|год|года|годов|лет|раз|раза|час|часа|часов|ч|минут\p{L}*|мин|сутки|суток|шт|штук\p{L}*|кг|килограмм\p{L}*|л|литр\p{L}*|человек\p{L}*|чел|км|числа|число|январ\p{L}*|феврал\p{L}*|март\p{L}*|апрел\p{L}*|май|мая|июн\p{L}*|июл\p{L}*|август\p{L}*|сентябр\p{L}*|октябр\p{L}*|ноябр\p{L}*|декабр\p{L}*|days?|weeks?|months?|years?|times|hours?|pcs)$/u
 const YEAR_WORD = /^(?:год|года|году|years?)$/u
+const MEASURE_UNIT = /^(?:кг|килограмм\p{L}*|л|литр\p{L}*|км)$/u
 
 /**
  * Число на месте `i` — счёт, а не сумма: за ним (или слитно с ним) единица
- * срока или количества. Только небольшие целые: «аренда 30000 месяц» и
- * «подписка 300 мес» — это деньги в месяц, а «за 2023 год» — год.
+ * срока или количества. Небольшое («аренда 30000 месяц» — деньги в месяц), год
+ * («за 2023 год»); дробь — только у веса и объёма («мясо 1,5 кг 900»). Решает
+ * вызывающий: счёт пропускается, только если в сообщении есть другое число —
+ * «vpn 50 мес» и «netflix 15 month» остаются суммами.
  */
 function isCount(tokens: string[], i: number, n: number): boolean {
-  if (!Number.isInteger(n)) return false
-  const glued = tokens[i].match(/^\d+(\p{L}+)$/u)?.[1]
+  const glued = tokens[i].match(/^\d+(?:[.,]\d+)?(\p{L}+)$/u)?.[1]
   const unit = glued ?? tokens[i + 1]
   if (unit === undefined || !COUNT_UNIT.test(unit)) return false
-  return n <= 100 || (YEAR_WORD.test(unit) && n >= 1900 && n <= 2100)
+  if (!Number.isInteger(n)) return MEASURE_UNIT.test(unit)
+  return n <= 1000 || (YEAR_WORD.test(unit) && n >= 1900 && n <= 2100)
 }
 
 /**
@@ -327,16 +330,26 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
     }
   }
 
+  // Сумма — первое число, которое не счёт («на 3 месяца», «5 октября»). Если
+  // других чисел нет, счёт всё-таки сумма: «vpn 50 мес».
   let amount: number | null = null
   let amountAt = -1
+  let countAt = -1
   for (let i = 0; i < merged.length; i++) {
     const n = parseAmountToken(merged[i])
     if (n !== null && n > 0) {
-      if (isCount(merged, i, n)) continue
+      if (isCount(merged, i, n)) {
+        if (countAt < 0) countAt = i
+        continue
+      }
       amount = n
       amountAt = i
       break
     }
+  }
+  if (amount === null && countAt >= 0) {
+    amount = parseAmountToken(merged[countAt])
+    amountAt = countAt
   }
   if (amount === null) return { ok: false, reason: 'no_amount' }
   if (amount > MAX_AMOUNT) return { ok: false, reason: 'too_big' }

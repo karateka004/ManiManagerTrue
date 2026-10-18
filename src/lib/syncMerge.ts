@@ -14,9 +14,11 @@
  *   - удалено здесь, а там не трогали — удаляем; удалено там — тоже;
  *   - добавлено с обеих сторон — оставляем всё (запись бота, которую забрали
  *     оба телефона, — один раз: ключ содержимого `sameAs`);
- *   - изменено с обеих сторон: числа-счётчики (монеты) складываются
- *     приращениями, списки строк (купленное) объединяются, в остальном
- *     побеждает это устройство — в нём человек действовал последним.
+ *   - изменено с обеих сторон: счётчики (монеты, опыт, события) складываются
+ *     приращениями, купленное и полученные задания объединяются, у серии дней
+ *     побеждает более поздняя, у меток времени — поздняя; настройки-объекты
+ *     (лимиты) сливаются по ключам; в остальном побеждает это устройство —
+ *     в нём человек действовал последним.
  * Часы устройств сравниваются только в одном месте — у приложения до 2.6, где
  * основы ещё нет (`localAdditions`), и то один раз.
  */
@@ -118,38 +120,72 @@ function isPlainObject(v: unknown): v is Data {
   return !!v && typeof v === 'object' && !Array.isArray(v)
 }
 
-/** Значение, изменённое с обеих сторон. */
-function mergeBoth(local: unknown, cloud: unknown, base: unknown, depth: number): unknown {
-  if (typeof local === 'number' && typeof cloud === 'number' && typeof base === 'number') {
-    // Счётчик: оба устройства прибавляли или тратили — складываем приращения.
-    return base + (local - base) + (cloud - base)
-  }
-  if (
-    Array.isArray(local) &&
-    Array.isArray(cloud) &&
-    local.every((x) => typeof x === 'string') &&
-    cloud.every((x) => typeof x === 'string')
-  ) {
-    const b = Array.isArray(base) ? base.filter((x): x is string => typeof x === 'string') : []
-    return mergeStringArrays(local as string[], cloud as string[], b)
-  }
-  if (depth < 2 && isPlainObject(local) && isPlainObject(cloud)) {
-    const b = isPlainObject(base) ? base : {}
-    const out: Data = {}
-    for (const k of new Set([...Object.keys(cloud), ...Object.keys(local)])) {
-      const v = mergeValue(local[k], cloud[k], b[k], depth + 1)
-      if (v !== undefined) out[k] = v
-    }
-    return out
-  }
-  return local
+const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+
+/** Счётчик: оба устройства прибавляли или тратили — складываем приращения. */
+function counter(l: unknown, c: unknown, b: unknown): unknown {
+  if (!num(l) || !num(c)) return l
+  return num(b) ? Math.max(0, b + (l - b) + (c - b)) : Math.max(l, c)
 }
 
-function mergeValue(local: unknown, cloud: unknown, base: unknown, depth = 0): unknown {
+function perKey(l: unknown, c: unknown, b: unknown, leaf: (l: unknown, c: unknown, b: unknown) => unknown): unknown {
+  if (!isPlainObject(l) || !isPlainObject(c)) return l
+  const base = isPlainObject(b) ? b : {}
+  const out: Data = {}
+  for (const k of new Set([...Object.keys(c), ...Object.keys(l)])) {
+    const lv = l[k]
+    const cv = c[k]
+    const bv = base[k]
+    const v = same(lv, cv) || same(lv, bv) ? cv : same(cv, bv) ? lv : leaf(lv, cv, bv)
+    if (v !== undefined) out[k] = v
+  }
+  return out
+}
+
+const later = (l: unknown, c: unknown) => (num(l) && num(c) ? Math.max(l, c) : l)
+
+/**
+ * Поля, изменённые с обеих сторон, где «побеждает это устройство» было бы
+ * неправдой. Остальное — своё (объекты — по ключам).
+ */
+const BOTH_CHANGED: Record<string, (l: unknown, c: unknown, b: unknown) => unknown> = {
+  coins: counter,
+  bonusXp: counter,
+  events: (l, c, b) => perKey(l, c, b, counter),
+  owned: (l, c, b) => strings(l, c, b),
+  claimedQuests: (l, c, b) => strings(l, c, b),
+  // Сколько друзей уже вознаграждено — не прибавляется, а догоняется.
+  rewardedReferrals: later,
+  // Когда получены награды заданий — по ключам, поздняя метка.
+  questClaims: (l, c, b) => perKey(l, c, b, later),
+  // Серия дня: та, что забрана позже (при равенстве — длиннее); рекорд — больший.
+  streak: (l, c) => {
+    const a = l as { count?: number; best?: number; lastClaim?: string | null }
+    const z = c as { count?: number; best?: number; lastClaim?: string | null }
+    if (!isPlainObject(a) || !isPlainObject(z)) return l
+    const la = a.lastClaim ?? ''
+    const lz = z.lastClaim ?? ''
+    const win = la > lz ? a : lz > la ? z : (a.count ?? 0) >= (z.count ?? 0) ? a : z
+    return { ...win, best: Math.max(a.best ?? 0, z.best ?? 0) }
+  },
+}
+
+function strings(l: unknown, c: unknown, b: unknown): unknown {
+  const isStrings = (x: unknown): x is string[] => Array.isArray(x) && x.every((v) => typeof v === 'string')
+  if (!isStrings(l) || !isStrings(c)) return l
+  return mergeStringArrays(l, c, isStrings(b) ? b : [])
+}
+
+function mergeValue(key: string, local: unknown, cloud: unknown, base: unknown): unknown {
   if (same(local, cloud)) return cloud
   if (same(local, base)) return cloud // менялось только там
   if (same(cloud, base)) return local // менялось только здесь
-  return mergeBoth(local, cloud, base, depth)
+  const special = BOTH_CHANGED[key]
+  if (special) return special(local, cloud, base)
+  // Объект настроек (лимиты по категориям, надетое) — по ключам: правка разных
+  // ключей на двух устройствах сохраняется вся; одного и того же — своя.
+  if (isPlainObject(local) && isPlainObject(cloud)) return perKey(local, cloud, base, (l) => l)
+  return local
 }
 
 /**
@@ -243,7 +279,7 @@ export function mergeStates(
         sameAs: k === 'transactions' ? sameAs : undefined,
       })
     } else {
-      const v = mergeValue(local[k], cloud[k], base.scalars[k])
+      const v = mergeValue(k, local[k], cloud[k], base.scalars[k])
       if (v !== undefined) merged[k] = v
     }
   }
