@@ -100,6 +100,8 @@ export interface DataMeta {
   vd?: number
   /** Часовой пояс приложения, минуты от UTC: напоминания приходят по местному времени. */
   tz?: number
+  /** Последняя синхронизация по часам сервера (2.6+): содержимое могло не меняться. */
+  seen?: number
 }
 
 /** Потолок метаданных KV — 1024 байта. Держимся ниже с запасом. */
@@ -186,6 +188,7 @@ export function fitMeta(meta: DataMeta): DataMeta {
   }
   const bare: DataMeta = { updatedAt: meta.updatedAt, firstSeen: meta.firstSeen }
   if (meta.tz !== undefined) bare.tz = meta.tz
+  if (meta.seen !== undefined) bare.seen = meta.seen
   if (meta.vm !== undefined) {
     bare.vm = meta.vm
     bare.vd = meta.vd
@@ -327,7 +330,7 @@ export function mergePerson(
   const firsts = [m?.firstSeen, e?.firstSeen, b?.f, s?.at].filter(
     (x): x is number => typeof x === 'number' && Number.isFinite(x) && x > 0,
   )
-  const lasts = [m?.updatedAt, e?.at, b?.l, s?.at].filter(
+  const lasts = [m?.updatedAt, m?.seen, e?.at, b?.l, s?.at].filter(
     (x): x is number => typeof x === 'number' && Number.isFinite(x) && x > 0,
   )
   if (!firsts.length && !lasts.length) return null

@@ -372,7 +372,9 @@ export async function reminderCandidates(env: Env, nowMs: number): Promise<Candi
       seen.add(id)
       const m = k.metadata
       const b = bot.get(id)
-      const app = typeof m?.updatedAt === 'number' ? m.updatedAt : 0
+      // Последняя синхронизация: версия облака или (2.6+) отметка сервера —
+      // открыл приложение без правок, версия не сменилась, а был сегодня.
+      const app = Math.max(typeof m?.updatedAt === 'number' ? m.updatedAt : 0, typeof m?.seen === 'number' ? m.seen : 0)
       const first = Math.min(...[m?.firstSeen, b?.f].filter((x): x is number => typeof x === 'number' && x > 0), Infinity)
       consider(
         id,

@@ -72,30 +72,37 @@ const meta = (id) => kv.m.get(`data:${id}`).metadata
 
 {
   const id = nextId++
-  const a = await put(id, { blob: blob(1), updatedAt: 1000, base: 0, tz: 180 })
-  check('первая отправка с основой 0 — принята', a.ok && !a.conflict && stored(id).updatedAt === 1000, a)
-  const b = await put(id, { blob: blob(2), updatedAt: 2000, base: 1000 })
-  check('отправка от текущей версии — принята', b.ok && !b.conflict && stored(id).updatedAt === 2000, b)
-  const c = await put(id, { blob: blob(3), updatedAt: 3000, base: 1000 })
-  check('устаревшая основа — конфликт, облако не тронуто', c.ok && c.conflict === true && stored(id).updatedAt === 2000, c)
-  check('конфликт возвращает текущий снимок', c.data?.updatedAt === 2000 && c.data?.blob === blob(2), c.data)
-  const d = await put(id, { blob: blob(2), updatedAt: 2000, base: 1000 })
-  check('повтор той же отправки — не конфликт', d.ok && !d.conflict, d)
-  const e = await put(id, { blob: blob(4), updatedAt: 4000 })
-  check('приложение до 2.6 (без основы) — как раньше, перезаписывает', e.ok && !e.conflict && stored(id).updatedAt === 4000, e)
-  const f = await put(id, { blob: blob(5), updatedAt: 3500 })
-  check('…и старое правило «у сервера новее» осталось', f.skipped === true && stored(id).updatedAt === 4000, f)
+  const a = await put(id, { blob: blob(1), updatedAt: 1000, base: 0, pid: 'a1', tz: 180 })
+  const v1 = stored(id).updatedAt
+  check('первая отправка с основой 0 — принята, версию выдал сервер', a.ok && !a.conflict && a.updatedAt === v1 && v1 > 1000, a)
+  const b = await put(id, { blob: blob(2), updatedAt: 5, base: v1, pid: 'b1' })
+  const v2 = stored(id).updatedAt
+  check('отправка от текущей версии — принята, версия растёт даже при отстающих часах', b.ok && !b.conflict && v2 > v1 && b.updatedAt === v2, b)
+  const c = await put(id, { blob: blob(3), updatedAt: 9e12, base: v1, pid: 'c1' })
+  check('устаревшая основа — конфликт, облако не тронуто (часы устройства не важны)', c.ok && c.conflict === true && stored(id).updatedAt === v2, c)
+  check('конфликт возвращает текущий снимок с id его отправки', c.data?.updatedAt === v2 && c.data?.blob === blob(2) && c.data?.pid === 'b1', c.data)
+  const d = await put(id, { blob: blob(2), updatedAt: 5, base: v1, pid: 'b1' })
+  check('повтор той же отправки (ответ потерялся) — не конфликт, та же версия', d.ok && !d.conflict && d.updatedAt === v2, d)
+  const e = await put(id, { blob: blob(2), updatedAt: 6, base: v1, pid: 'z9' })
+  check('то же содержимое от другого устройства — новой версии нет', e.ok && !e.conflict && e.updatedAt === v2 && stored(id).updatedAt === v2, e)
+  check('…но день визита отмечен', typeof meta(id).seen === 'number', meta(id))
+  const f = await put(id, { blob: blob(4), updatedAt: 9e12 })
+  check('приложение до 2.6 (без основы) — как раньше, перезаписывает своей меткой', f.ok && !f.conflict && stored(id).updatedAt === 9e12, f)
+  const g = await put(id, { blob: blob(5), updatedAt: 3500 })
+  check('…и старое правило «у сервера новее» осталось', g.skipped === true && stored(id).updatedAt === 9e12, g)
+  const h = await put(id, { blob: blob(0), updatedAt: 1, base: 9e12, pid: 'e1' })
+  check('пустой снимок поверх операций — по-прежнему отклоняется', h.skipped === true && h.reason === 'empty_guard', h)
 }
 
 {
   const id = nextId++
-  await put(id, { blob: blob(1), updatedAt: 1000, base: 0, tz: 420 })
+  await put(id, { blob: blob(1), updatedAt: 1000, base: 0, pid: 'p1', tz: 420 })
   check('пояс — в метаданных', meta(id).tz === 420, meta(id))
-  await put(id, { blob: blob(1), updatedAt: 2000, base: 1000 })
+  await put(id, { blob: blob(2), updatedAt: 2000 })
   check('приложение без пояса — прежний не теряется', meta(id).tz === 420, meta(id))
-  await put(id, { blob: blob(1), updatedAt: 3000, base: 2000, tz: 'мусор' })
+  await put(id, { blob: blob(3), updatedAt: 3000, base: 2000, pid: 'p3', tz: 'мусор' })
   check('мусорный пояс не принимается', meta(id).tz === 420, meta(id))
-  await put(id, { blob: blob(1), updatedAt: 4000, base: 3000, tz: -300 })
+  await put(id, { blob: blob(3), updatedAt: 4000, base: stored(id).updatedAt, pid: 'p4', tz: -300 })
   check('сменил пояс — обновился', meta(id).tz === -300, meta(id))
 }
 

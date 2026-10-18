@@ -896,6 +896,8 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     tz?: unknown
     /** От какой версии облака ведёт устройство (приложение 2.6+). */
     base?: unknown
+    /** Случайный id отправки (2.6+): по нему устройство узнаёт свой снимок. */
+    pid?: unknown
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
@@ -927,35 +929,50 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
     firstSeen = updatedAt
   }
 
-  // Защита от гонок между устройствами: не перезаписываем более новую версию старой.
+  // Приложение 2.6+ присылает версию-основу и id отправки; версию облака тогда
+  // выдаёт сервер (часы устройств не сравниваются). Старое — как раньше.
+  const base = typeof body.base === 'number' && Number.isFinite(body.base) ? body.base : null
+  const pid = typeof body.pid === 'string' && /^[0-9a-z]{1,32}$/.test(body.pid) ? body.pid : undefined
+  let prev: { updatedAt?: number; blob?: string; pid?: string } | null = null
   if (existing.value) {
     try {
-      const prev = JSON.parse(existing.value) as { updatedAt?: number; blob?: string }
-      // Устройство ведёт от версии `base`, а облако с тех пор изменил кто-то
-      // другой: не затираем его — отдаём текущее, приложение сольёт свои новые
-      // записи с ним и пришлёт снова. Повтор той же отправки (та же метка) —
-      // не конфликт. Без `base` (приложение до 2.6) — как раньше.
-      const base = typeof body.base === 'number' && Number.isFinite(body.base) ? body.base : null
-      if (base !== null && typeof prev.updatedAt === 'number' && prev.updatedAt > base && prev.updatedAt !== updatedAt) {
-        return json({ ok: true, conflict: true, data: prev }, { status: 200 }, env, origin)
-      }
-      if (typeof prev.updatedAt === 'number' && prev.updatedAt > updatedAt) {
-        return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
-      }
-      // Последний рубеж против потери данных: снимок БЕЗ операций не затирает
-      // сохранённый С операциями. Клиент присылает allowEmpty только когда
-      // человек сам удалил всё — тогда пустой снимок законен.
-      if (!body.allowEmpty && typeof prev.blob === 'string') {
-        const prevTx = blobTxCount(prev.blob)
-        const nextTx = blobTxCount(blob)
-        if (nextTx === 0 && prevTx > 0) {
-          return json({ ok: true, skipped: true, reason: 'empty_guard' }, { status: 200 }, env, origin)
-        }
-      }
+      prev = JSON.parse(existing.value)
     } catch {
-      /* битое значение — перезапишем */
+      prev = null // битое значение — перезапишем
     }
   }
+  const prevV = typeof prev?.updatedAt === 'number' ? prev.updatedAt : 0
+  let identical = false
+
+  // Защита от гонок между устройствами.
+  if (prev) {
+    if (base !== null) {
+      // Повтор той же отправки (ответ потерялся по дороге) — она уже лежит.
+      if (pid && prev.pid === pid) return json({ ok: true, updatedAt: prevV }, { status: 200 }, env, origin)
+      // То же содержимое — новой версии не выпускаем: иначе каждый запуск
+      // второго устройства «менял» бы облако, и первое сливалось бы на пустом
+      // месте. День визита и пояс в метаданных обновим.
+      if (prev.blob === blob) identical = true
+      // Облако с тех пор изменил кто-то другой: не затираем — отдаём текущее,
+      // приложение сольёт свои изменения с ним и пришлёт итог.
+      else if (prevV > base) return json({ ok: true, conflict: true, data: prev }, { status: 200 }, env, origin)
+    } else if (prevV > updatedAt) {
+      return json({ ok: true, skipped: true, data: prev }, { status: 200 }, env, origin)
+    }
+    // Последний рубеж против потери данных: снимок БЕЗ операций не затирает
+    // сохранённый С операциями. Клиент присылает allowEmpty только когда
+    // человек сам удалил всё — тогда пустой снимок законен.
+    if (!identical && !body.allowEmpty && typeof prev.blob === 'string') {
+      const prevTx = blobTxCount(prev.blob)
+      const nextTx = blobTxCount(blob)
+      if (nextTx === 0 && prevTx > 0) {
+        return json({ ok: true, skipped: true, reason: 'empty_guard' }, { status: 200 }, env, origin)
+      }
+    }
+  }
+  // Версия: у 2.6+ — серверная и строго растёт; у старого приложения — его метка.
+  const version = base === null ? updatedAt : identical ? prevV : Math.max(Date.now(), prevV + 1)
+  const writer = identical ? prev?.pid : pid
 
   // Метаданные несут всё, что нужно аналитике и рассылке: активность, дату
   // первого визита и компактную карточку. Благодаря им дашборд собирает статистику
@@ -968,15 +985,18 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   // Пояс: от приложения 2.6+; старое приложение его не шлёт — оставляем прежний.
   const tz = cleanTz(body.tz) ?? cleanTz(existing.metadata?.tz)
   const meta = fitMeta({
-    updatedAt,
+    updatedAt: version,
     firstSeen,
     c: buildUserCard(blob) ?? undefined,
     vm: visits.m,
     vd: visits.d,
+    // Последняя синхронизация по часам сервера: «был сегодня» для напоминаний,
+    // даже когда содержимое не менялось и версия осталась прежней.
+    seen: Date.now(),
     ...(tz !== undefined ? { tz } : {}),
   })
-  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt }), { metadata: meta })
-  return json({ ok: true, updatedAt }, { status: 200 }, env, origin)
+  await env.REFERRALS.put(key, JSON.stringify({ blob, updatedAt: version, ...(writer ? { pid: writer } : {}) }), { metadata: meta })
+  return json({ ok: true, updatedAt: version }, { status: 200 }, env, origin)
 }
 
 /* ------------------------------------------------------------------ */

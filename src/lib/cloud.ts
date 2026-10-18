@@ -5,24 +5,26 @@
  * его деньги. Весь стор приложения (persist-блоб) привязывается к TG-аккаунту
  * через воркер (KV `data:<userId>`, доступ только по проверенной подписи initData).
  *
- * Стратегия (с 2.6): снимок целиком, но без молчаливой потери записей.
- *  - Устройство помнит версию облака, от которой ведёт (`base`). При запуске:
- *    облако не менялось без нас — отправляем своё; изменилось — принимаем его и
- *    возвращаем в него свои ещё не отправленные записи (см. syncMerge.ts).
- *  - На любое изменение стора — отложенный (debounced) пуш с этой версией.
- *    Облако тем временем изменил другой телефон — сервер не перезаписывает его,
- *    а возвращает текущее: сливаем так же и отправляем снова.
- *  - При сворачивании/закрытии — досрочный сброс отложенного пуша.
+ * Как (с 2.6) — без молчаливой потери записей:
+ *  - Версию облака выдаёт сервер. Устройство хранит ОСНОВУ — каким облако было
+ *    при последней синхронизации (syncMerge.ts) — и отправляет снимок «от этой
+ *    версии». Облако изменил кто-то другой — сервер не затирает его, а отдаёт
+ *    текущее; устройство сливает три версии (своё, облачное, основу) и
+ *    отправляет итог. То же при запуске, если облако изменилось без нас.
+ *  - Отправки идут по одной: вторая, ушедшая, пока первая в пути, конфликтовала
+ *    бы с первой — то есть с самим собой.
+ *  - Своя отправка, ответ на которую потерялся, узнаётся по случайному `pid`.
+ *  - На любое изменение стора — отложенная отправка; при сворачивании — сразу.
  *
- * Сливаются только новые записи (операции, свои категории, цели, активы). Правка
- * одной и той же записи на двух устройствах — побеждает облачная версия.
+ * Чего не обещаем: KV не атомарен, и две отправки с разных концов света в одну
+ * и ту же секунду могут разминуться — победит одна. Это редкость, а не правило.
  *
  * Вне Telegram (обычный браузер, превью) синк выключен — приложение работает
  * локально, как раньше.
  */
 import { useStore, flushPersist } from '../store/transactions'
 import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud, type CloudSnapshot } from './api'
-import { localAdditions, planStartup } from './syncMerge'
+import { dataOf, hashString, localAdditions, makeBase, mergeStates, parseBase, planStartup, type SyncBase } from './syncMerge'
 import { dedupeKey } from './csvImport'
 import { translate } from './i18n'
 import { showToast } from './toast'
@@ -30,8 +32,10 @@ import { tg } from './telegram'
 
 /** Ключ persist-стора (см. `name` в store/transactions.ts). */
 const PERSIST_KEY = 'finance-mini-app:v1'
-/** Локальная метка последней синхронизации (вне синкаемого блоба). */
+/** Метка последней синхронизации у приложения до 2.6 (вне синкаемого блоба). */
 const META_KEY = 'koshel:cloudMeta'
+/** Основа для слияния (с 2.6), см. syncMerge.ts. */
+const BASE_KEY = 'koshel:syncBase'
 /** Пауза перед пушем после последнего изменения. */
 const PUSH_DEBOUNCE = 1500
 /**
@@ -45,39 +49,48 @@ const INBOX_DONE_MAX = 2000
 /** Как часто перепроверять входящие при возврате в приложение. */
 const INBOX_RECHECK_MS = 30_000
 
-/** Что устройство знает о своей синхронизации (вне синкаемого блоба). */
-interface SyncMeta {
-  /** Метка последнего снимка этого устройства: отправленного или принятого. */
-  updatedAt?: number
-  /** Версия облака, от которой ведёт устройство (с 2.6). */
-  base?: number
-  /** Всё, что создано здесь раньше этого момента, облако уже видело. */
-  syncedAt?: number
-  /** Отправки без ответа: если облако окажется одной из них — это наш же снимок. */
-  tried?: number[]
-}
-const TRIED_MAX = 5
-
-function readMeta(): SyncMeta {
+/** Метка последнего снимка у приложения до 2.6 — только для первого запуска 2.6. */
+function legacyLocalAt(): number {
   try {
-    const m = JSON.parse(localStorage.getItem(META_KEY) || '{}') as Record<string, unknown>
-    const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined)
-    return {
-      updatedAt: num(m.updatedAt),
-      base: num(m.base),
-      syncedAt: num(m.syncedAt),
-      tried: Array.isArray(m.tried) ? m.tried.filter((x): x is number => typeof x === 'number') : [],
-    }
+    const m = JSON.parse(localStorage.getItem(META_KEY) || '{}') as { updatedAt?: unknown }
+    return typeof m.updatedAt === 'number' ? m.updatedAt : 0
   } catch {
-    return { tried: [] }
+    return 0
   }
 }
 
-function writeMeta(patch: SyncMeta): void {
+function readBase(): SyncBase | null {
   try {
-    localStorage.setItem(META_KEY, JSON.stringify({ ...readMeta(), ...patch }))
+    return parseBase(localStorage.getItem(BASE_KEY))
   } catch {
-    /* приватный режим / нет места — переживём */
+    return null
+  }
+}
+
+function writeBase(base: SyncBase): void {
+  try {
+    localStorage.setItem(BASE_KEY, JSON.stringify(base))
+    // Метку держим и для старого формата: откатись приложение на 2.5 — оно
+    // сравнит её с облаком как раньше.
+    localStorage.setItem(META_KEY, JSON.stringify({ updatedAt: base.v }))
+  } catch {
+    // Нет места — без основы следующий запуск сольёт грубее (по времени
+    // создания записей), но ничего не затрёт.
+    try {
+      localStorage.removeItem(BASE_KEY)
+    } catch {
+      /* совсем плохо */
+    }
+  }
+}
+
+/** Основа из снимка, который лежит в облаке под версией `v`. */
+function baseFromBlob(blob: string, v: number): SyncBase | null {
+  try {
+    const state = (JSON.parse(blob) as { state?: Record<string, unknown> }).state
+    return state && typeof state === 'object' ? makeBase(state, v) : null
+  } catch {
+    return null
   }
 }
 
@@ -125,22 +138,19 @@ function txCount(blob: string | null): number {
 }
 
 let started = false
-/** Пока принимаем облако — не пушим (иначе тут же отправили бы только что скачанное). */
+/** Пока сливаем с облаком — не пушим (иначе отправили бы полуготовое состояние). */
 let adopting = false
-/**
- * Принятие облака и перенос записей бота — по очереди: перенос, вклинившийся
- * между снимком своих записей и перечитыванием стора, потерял бы операции, о
- * приёме которых бот уже знает.
- */
-let queue: Promise<unknown> = Promise.resolve()
-function exclusive<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.then(fn, fn)
-  queue = run.catch(() => {})
-  return run
-}
-/** Слияний по конфликту за минуту — защита от пинг-понга двух открытых устройств. */
-let conflictTimes: number[] = []
 let pushTimer: ReturnType<typeof setTimeout> | null = null
+/** Отправка в пути: следующая ждёт её (`again`), а не идёт параллельно. */
+let inflight = false
+let again = false
+/** Версия облака для отправки, пока основы нет (приложение до 2.6 или облака не было). */
+let baseHint = 0
+/**
+ * Отправки без ответа (обрыв связи): pid → снимок. Если облако окажется одной
+ * из них — это наш же снимок, а не чужая правка.
+ */
+const unanswered = new Map<string, string>()
 /** Сколько операций было в облаке на старте сессии (для защиты от затирания). */
 let cloudTxAtStart = 0
 /**
@@ -149,6 +159,30 @@ let cloudTxAtStart = 0
  * стартовало пустым при непустом облаке — это сбой загрузки, пуш запрещён.
  */
 let hadDataThisSession = false
+/** Слияний по конфликту за минуту — защита от пинг-понга двух открытых устройств. */
+let conflictTimes: number[] = []
+/**
+ * Слияние с облаком и перенос записей бота — по очереди: перенос, вклинившийся
+ * между снимком своего состояния и перечитыванием стора, потерял бы операции, о
+ * приёме которых бот уже знает.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn)
+  queue = run.catch(() => {})
+  return run
+}
+
+function newPid(): string {
+  const a = new Uint32Array(2)
+  try {
+    crypto.getRandomValues(a)
+  } catch {
+    a[0] = Math.random() * 2 ** 32
+    a[1] = Math.random() * 2 ** 32
+  }
+  return a[0].toString(36) + a[1].toString(36)
+}
 
 function schedulePush(): void {
   if (adopting) return
@@ -165,15 +199,24 @@ function schedulePush(): void {
 
 async function flushPush(): Promise<void> {
   pushTimer = null
-  // Облако как раз принимается — отправим после, уже слитое.
-  if (adopting) {
-    pushTimer = setTimeout(flushPush, PUSH_DEBOUNCE)
+  // Сливаемся с облаком или предыдущая отправка ещё в пути — отправим после.
+  if (adopting || inflight) {
+    again = true
     return
   }
-  const meta = readMeta()
-  // Метка снимка — до чтения: всё, что создано раньше неё, в снимке есть.
-  // Строго растёт: два снимка с одной меткой сервер не различил бы.
-  const updatedAt = Math.max(Date.now(), (meta.updatedAt ?? 0) + 1)
+  inflight = true
+  try {
+    await pushOnce()
+  } finally {
+    inflight = false
+    if (again) {
+      again = false
+      schedulePush()
+    }
+  }
+}
+
+async function pushOnce(): Promise<void> {
   flushPersist() // на диске должен лежать актуальный снимок, а не отложенный
   const blob = readBlob()
   if (!blob) return
@@ -181,35 +224,41 @@ async function flushPush(): Promise<void> {
   // Страховка от потери данных: не отправляем снимок без операций поверх
   // облака, в котором они были, — если только человек сам их не удалил.
   const local = txCount(blob)
-  const emptyOverData = local === 0 && cloudTxAtStart > 0 && !hadDataThisSession
-  if (emptyOverData) return
+  if (local === 0 && cloudTxAtStart > 0 && !hadDataThisSession) return
 
-  writeMeta({ updatedAt, tried: [...(meta.tried ?? []), updatedAt].slice(-TRIED_MAX) })
+  const pid = newPid()
+  unanswered.set(pid, blob)
   let res: Awaited<ReturnType<typeof pushCloud>> | null
   try {
-    res = await pushCloud(blob, updatedAt, local === 0 && hadDataThisSession, meta.base)
+    res = await pushCloud(blob, Date.now(), local === 0 && hadDataThisSession, readBase()?.v ?? baseHint, pid)
   } catch {
-    return // офлайн — отправим при следующем изменении; метка останется в tried
+    return // офлайн — отправим при следующем изменении; снимок помним в unanswered
   }
   if (!res) return
-  // Облако изменил другой телефон (или старый сервер сказал «у меня новее»).
-  if ((res.conflict || res.skipped) && res.data) {
-    await resolveConflict(res.data)
+  if (res.ok && !res.conflict && !res.skipped && typeof res.updatedAt === 'number') {
+    // Принято. Все прежние отправки без ответа облаком не стали: иначе эта
+    // получила бы конфликт.
+    unanswered.clear()
+    const base = baseFromBlob(blob, res.updatedAt)
+    if (base) writeBase(base)
     return
   }
-  if (res.ok && !res.skipped) writeMeta({ base: updatedAt, syncedAt: updatedAt, tried: [] })
+  // Облако изменил другой телефон (или старый сервер сказал «у меня новее»).
+  if ((res.conflict || res.skipped) && res.data) await resolveConflict(res.data)
 }
 
 /**
  * Сервер не принял снимок: облако изменилось без нас. Если это наш же прошлый
- * снимок (ответ потерялся по дороге) — просто ведём от него. Иначе принимаем
- * облако, возвращаем свои несинхронизированные записи и отправляем снова.
+ * снимок (ответ потерялся по дороге) — ведём от него. Иначе сливаем три версии
+ * и отправляем итог.
  */
 async function resolveConflict(snap: CloudSnapshot): Promise<void> {
-  const meta = readMeta()
-  if ((meta.tried ?? []).includes(snap.updatedAt)) {
-    writeMeta({ base: snap.updatedAt, syncedAt: Math.max(meta.syncedAt ?? 0, snap.updatedAt), tried: [] })
-    schedulePush()
+  const mine = snap.pid ? unanswered.get(snap.pid) : undefined
+  if (mine !== undefined) {
+    unanswered.clear()
+    const base = baseFromBlob(mine, snap.updatedAt)
+    if (base) writeBase(base)
+    again = true
     return
   }
   if (!isValidBlob(snap.blob)) return
@@ -217,30 +266,25 @@ async function resolveConflict(snap: CloudSnapshot): Promise<void> {
   conflictTimes = conflictTimes.filter((t) => now - t < 60_000)
   if (conflictTimes.length >= 3) return
   conflictTimes.push(now)
-  const added = await adoptCloud(snap)
-  if (added > 0) schedulePush()
+  const { differs, visible } = await mergeCloud(snap)
+  unanswered.clear()
+  if (differs) again = true
   // Данные на экране поменялись посреди сессии — объясняем, откуда: иначе
-  // чужая запись или откат своей правки выглядели бы как сбой.
-  showToast({ text: translate(useStore.getState().lang, 'sync.merged') })
+  // чужая запись выглядела бы как сбой.
+  if (visible) showToast({ text: translate(useStore.getState().lang, 'sync.merged') })
 }
 
 /**
- * Принять облачный снимок и вернуть в него то, что сделано здесь после
- * последней подтверждённой синхронизации и в облако не попало. Возвращает,
- * сколько записей вернули (больше нуля — облаку их нужно отправить).
+ * Слить облачный снимок со своим состоянием и сделать облачное основой.
+ * `differs` — итог отличается от облачного, его надо отправить; `visible` —
+ * на экране что-то поменялось.
  */
-function adoptCloud(snap: CloudSnapshot): Promise<number> {
+function mergeCloud(snap: CloudSnapshot, mode: 'merge' | 'adopt' = 'merge'): Promise<{ differs: boolean; visible: boolean }> {
   return exclusive(async () => {
-    const meta = readMeta()
-    // Приложение до 2.6 не помнило syncedAt — берём метку последней отправки.
-    const since = meta.syncedAt ?? meta.updatedAt ?? 0
-    const mine = useStore.getState()
-    const keep = {
-      transactions: mine.transactions,
-      customCategories: mine.customCategories,
-      goals: mine.goals,
-      investments: mine.investments,
-    }
+    // 'adopt' — основы нет или здесь пусто: облако плюс свои новые записи по
+    // времени создания, без трёхстороннего слияния.
+    const base = mode === 'merge' ? readBase() : null
+    const local = dataOf(useStore.getState())
     adopting = true
     flushPersist() // отложенная запись не должна «догнать» и затереть облако
     const prev = readBlob() // снимок локального ДО перезаписи (для отката)
@@ -248,27 +292,16 @@ function adoptCloud(snap: CloudSnapshot): Promise<number> {
       localStorage.setItem(PERSIST_KEY, snap.blob)
       // rehydrate перечитает storage, прогонит миграции и обновит стор.
       await useStore.persist.rehydrate()
-      const cloud = useStore.getState()
-      const extra = {
-        transactions: localAdditions(keep.transactions, cloud.transactions, since, Date.now(), dedupeKey),
-        customCategories: localAdditions(keep.customCategories, cloud.customCategories, since),
-        goals: localAdditions(keep.goals, cloud.goals, since),
-        investments: localAdditions(keep.investments, cloud.investments, since),
-      }
-      const added = extra.transactions.length + extra.customCategories.length + extra.goals.length + extra.investments.length
-      if (added > 0) {
-        useStore.setState((s) => ({
-          transactions: [...extra.transactions, ...s.transactions],
-          customCategories: [...s.customCategories, ...extra.customCategories],
-          goals: [...s.goals, ...extra.goals],
-          investments: [...s.investments, ...extra.investments],
-        }))
-      }
-      // syncedAt не двигаем: возвращённые записи облако ещё не видело — если и
-      // следующая отправка сорвётся, их надо будет вернуть снова.
-      writeMeta({ updatedAt: snap.updatedAt, base: snap.updatedAt, tried: [] })
-      if (txCount(snap.blob) > 0 || keep.transactions.length > 0) hadDataThisSession = true
-      return added
+      const cloud = dataOf(useStore.getState())
+      const { merged, differs } = base
+        ? mergeStates(local, cloud, base, (t) => dedupeKey(t as Parameters<typeof dedupeKey>[0]))
+        : legacyMerge(local, cloud, legacyLocalAt())
+      if (differs) useStore.setState(merged)
+      const next = makeBase(cloud, snap.updatedAt)
+      writeBase(next)
+      if (txCount(snap.blob) > 0 || (Array.isArray(local.transactions) && local.transactions.length > 0)) hadDataThisSession = true
+      const visible = hashString(JSON.stringify(local.transactions)) !== hashString(JSON.stringify(useStore.getState().transactions))
+      return { differs, visible }
     } catch {
       // Применить не удалось — откатываемся на прежние локальные данные, не теряем их.
       try {
@@ -278,11 +311,34 @@ function adoptCloud(snap: CloudSnapshot): Promise<number> {
       } catch {
         /* совсем плохо — оставляем как есть */
       }
-      return 0
+      return { differs: false, visible: false }
     } finally {
       adopting = false
     }
   })
+}
+
+/**
+ * Слияние без основы (первый запуск 2.6 на старых данных): облако плюс свои
+ * записи, созданные после последней отправки старого приложения.
+ */
+function legacyMerge(
+  local: Record<string, unknown>,
+  cloud: Record<string, unknown>,
+  since: number,
+): { merged: Record<string, unknown>; differs: boolean } {
+  const merged: Record<string, unknown> = { ...cloud }
+  let differs = false
+  for (const k of ['transactions', 'customCategories', 'goals', 'investments']) {
+    const mine = Array.isArray(local[k]) ? (local[k] as { id: string }[]) : []
+    const theirs = Array.isArray(cloud[k]) ? (cloud[k] as { id: string }[]) : []
+    const add = localAdditions(mine, theirs, since)
+    if (add.length) {
+      differs = true
+      merged[k] = k === 'transactions' ? [...add, ...theirs] : [...theirs, ...add]
+    }
+  }
+  return { merged, differs }
 }
 
 function flushNow(): void {
@@ -408,8 +464,8 @@ function armSyncRetry(): void {
 }
 
 /**
- * Инициализация синка: тянем облако, решаем кто новее, подписываемся на изменения.
- * Идемпотентна (запускается один раз). Безопасна вне Telegram — просто выходит.
+ * Инициализация синка: тянем облако, решаем, что с ним делать, подписываемся на
+ * изменения. Идемпотентна (запускается один раз). Безопасна вне Telegram.
  */
 export async function initCloudSync(): Promise<void> {
   if (started) return
@@ -424,9 +480,8 @@ export async function initCloudSync(): Promise<void> {
   try {
     cloud = await pullCloud()
   } catch {
-    // Сеть подвела. Раньше синк на этом заканчивался до следующего холодного
-    // старта, и правки всей сессии не уходили в облако. Теперь — повтор, когда
-    // приложение снова на экране или через полминуты (не больше трёх раз).
+    // Сеть подвела (или сервер ответил ошибкой — это не «облака нет»). Повтор,
+    // когда приложение снова на экране или через полминуты (не больше трёх раз).
     started = false
     armSyncRetry()
     return
@@ -434,7 +489,7 @@ export async function initCloudSync(): Promise<void> {
 
   let pushAfter = false
   try {
-    const meta = readMeta()
+    const base = readBase()
     flushPersist() // читаем блоб напрямую — сначала дожидаемся отложенной записи
     const localTx = txCount(readBlob())
     const valid = !!cloud && isValidBlob(cloud.blob)
@@ -442,36 +497,32 @@ export async function initCloudSync(): Promise<void> {
     cloudTxAtStart = Math.max(0, cloudTx)
     hadDataThisSession = localTx > 0
 
-    const plan = planStartup({
-      cloudAt: valid ? cloud!.updatedAt : null,
-      cloudTx,
-      localTx,
-      localAt: meta.updatedAt ?? 0,
-      base: meta.base,
-      tried: meta.tried ?? [],
-    })
-    if (plan === 'adopt') {
-      // Облако изменилось без нас: принимаем и возвращаем свои новые записи.
-      if ((await adoptCloud(cloud!)) > 0) pushAfter = true
-    } else {
-      // Облако не менялось без нас (или в нём наш же снимок) — отправляем своё,
-      // ведя от того, что в облаке лежит. Пустым локальным состоянием непустое
-      // облако не перезаписываем.
-      writeMeta({ base: cloud ? cloud.updatedAt : 0 })
+    // Облако битое — перезаписываем его своим, ведя от его версии.
+    const plan = valid
+      ? planStartup({ cloudAt: cloud!.updatedAt, cloudTx, localTx, localAt: legacyLocalAt(), baseV: base?.v })
+      : 'push'
+    if (plan === 'push') {
+      // Облака нет или оно не менялось без нас — отправляем своё. Пустым
+      // локальным состоянием непустое облако не перезаписываем.
+      if (!base) baseHint = cloud ? cloud.updatedAt : 0
       if (!(localTx === 0 && cloudTx > 0)) pushAfter = true
+    } else {
+      // Облако изменилось без нас: сливаем (или, без основы, принимаем и
+      // возвращаем свои новые записи).
+      if ((await mergeCloud(cloud!, plan)).differs) pushAfter = true
     }
   } catch {
-    /* офлайн/ошибка сети — работаем локально, синхронизируемся позже */
+    /* офлайн/ошибка — работаем локально, синхронизируемся позже */
   }
 
   // Любое изменение стора → отложенный пуш.
   useStore.subscribe(() => schedulePush())
   if (pushAfter) void flushPush()
 
-  // Записи из бота забираем ПОСЛЕ того, как разобрались с облаком: принятие
-  // облачного снимка перечитывает storage целиком (rehydrate) и стёрло бы всё,
-  // что мы добавили до него. Подписка на изменения уже стоит, поэтому
-  // перенесённые операции сами уедут в облако ближайшим пушем.
+  // Записи из бота забираем ПОСЛЕ того, как разобрались с облаком: слияние
+  // перечитывает storage целиком (rehydrate) и стёрло бы всё, что мы добавили
+  // до него. Подписка на изменения уже стоит, поэтому перенесённые операции
+  // сами уедут в облако ближайшим пушем.
   await mergeInbox()
 
   // Не теряем последние правки при сворачивании/закрытии мини-аппа.

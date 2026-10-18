@@ -192,8 +192,10 @@ export async function getLeaderboard(): Promise<{
 export interface CloudSnapshot {
   /** Сериализованный persist-блоб приложения (`{state,version}` строкой). */
   blob: string
-  /** epoch ms последнего изменения. */
+  /** Версия облака: с 2.6 её выдаёт сервер (epoch ms, строго растёт). */
   updatedAt: number
+  /** Чья отправка лежит в облаке (с 2.6): своя узнаётся по нему. */
+  pid?: string
 }
 
 /** Забрать данные пользователя из облака (или null, если их там ещё нет). */
@@ -202,7 +204,10 @@ export async function pullCloud(): Promise<CloudSnapshot | null> {
   // Тянет весь блоб (до 1,5 МБ): общего таймаута не хватило бы на медленной
   // сети, и синк у человека с большой историей не включался бы никогда.
   const res = await post('/data/get', { initData: tg.initData }, 60000)
-  return res?.ok && res.data ? (res.data as CloudSnapshot) : null
+  // Ошибка сервера (или протухшая подпись) — это не «облака нет»: принять
+  // пустоту значило бы потом слить своё с несуществующей версией.
+  if (!res?.ok) throw new Error('pull_failed')
+  return res.data ? (res.data as CloudSnapshot) : null
 }
 
 /** Сохранить данные пользователя в облако. */
@@ -220,12 +225,14 @@ export async function pushCloud(
    * другой — сервер не перезапишет его, а вернёт текущее (`conflict` + `data`).
    */
   base?: number,
-): Promise<{ ok: boolean; skipped?: boolean; conflict?: boolean; data?: CloudSnapshot }> {
+  /** Случайный id отправки: потерялся ответ — по нему узнаем свой снимок в облаке. */
+  pid?: string,
+): Promise<{ ok: boolean; updatedAt?: number; skipped?: boolean; conflict?: boolean; data?: CloudSnapshot }> {
   if (!isBackendConfigured() || !tg.initData) return { ok: false }
   // Блоб бывает в сотни килобайт — на медленной сети отправке нужно время.
   // Пояс устройства (минуты от UTC): бот напоминает по местному вечеру, а не по МСК.
   const tz = -new Date().getTimezoneOffset()
-  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty, tz, base }, 30000)
+  return post('/data/put', { initData: tg.initData, blob, updatedAt, allowEmpty, tz, base, pid }, 30000)
 }
 
 /* ---------- Ассистент: вопросы про свои деньги ---------- */
