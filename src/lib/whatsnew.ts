@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.5.0'
+export const APP_VERSION = '2.6.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,37 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.6.0',
+    date: '2026-10-18',
+    title: { ru: 'Напоминания по твоему времени', en: 'Reminders on your time' },
+    items: [
+      {
+        text: {
+          ru: 'Бот напоминает вечером по твоему часовому поясу — с 18 до 22, а не по Москве. В первые дни — с подсказкой, с чего начать',
+          en: 'The bot now reminds you in the evening in your own time zone — between 6 and 10 pm, not Moscow time. In your first days, with a hint on where to start',
+        },
+      },
+      {
+        text: {
+          ru: 'Если бот не может тебе написать, Кошель предложит разрешить это — одной кнопкой',
+          en: 'If the bot can’t message you, Koshel offers to allow it with one tap',
+        },
+      },
+      {
+        text: {
+          ru: 'Записи с двух устройств больше не теряются: Кошель сводит новое с телефона и компьютера, а не берёт одно поверх другого',
+          en: 'Entries from two devices are no longer lost: Koshel merges what’s new from your phone and computer instead of overwriting one with the other',
+        },
+      },
+      {
+        text: {
+          ru: 'Бот понимает «абонемент на 3 месяца 2000»: сумма — 2000, а не 3',
+          en: 'The bot understands “membership for 3 months 2000”: the amount is 2000, not 3',
+        },
+      },
+    ],
+  },
   {
     version: '2.5.0',
     date: '2026-10-14',
