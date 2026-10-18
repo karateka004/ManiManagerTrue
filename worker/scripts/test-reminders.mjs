@@ -18,9 +18,11 @@
 import {
   COMEBACK_TEXTS,
   REMINDER_TEXTS,
+  REM_FALLBACK_START,
   REM_LOCAL_START,
   REM_SLOTS,
   cleanTz,
+  reminderClock,
   dueAfterQuiet,
   newbieText,
   forgetBlock,
@@ -86,12 +88,16 @@ class FakeKV {
 /* ---------- Поддельный Telegram ---------- */
 let calls = []
 let blockedIds = new Set()
+let noAccessIds = new Set()
 globalThis.fetch = async (url, init) => {
   const method = String(url).split('/').pop()
   const body = init?.body ? JSON.parse(init.body) : {}
   calls.push({ method, body })
   if (method === 'sendMessage' && blockedIds.has(String(body.chat_id))) {
     return new Response(JSON.stringify({ ok: false, description: 'Forbidden: bot was blocked by the user' }), { status: 403 })
+  }
+  if (method === 'sendMessage' && noAccessIds.has(String(body.chat_id))) {
+    return new Response(JSON.stringify({ ok: false, description: "Forbidden: bot can't initiate conversation with a user" }), { status: 403 })
   }
   return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 })
 }
@@ -111,8 +117,10 @@ function idsForSlot(slot, count, from = 1000) {
 }
 
 const SLOT = 2
-// Местный час слота по МСК (UTC+3) → час UTC.
-const cronAt = Date.UTC(2026, 9, 7, REM_LOCAL_START + SLOT - 3, 0, 0)
+// Пояс неизвестен — раннее окно по МСК (UTC+3): час слота → час UTC.
+const cronAt = Date.UTC(2026, 9, 7, REM_FALLBACK_START + SLOT - 3, 0, 0)
+// Пояс известен — вечер по местному: для МСК.
+const cronMsk = Date.UTC(2026, 9, 7, REM_LOCAL_START + SLOT - 3, 0, 0)
 const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all', REFERRALS: kv })
 
 /* ---------- Кому напоминаем ---------- */
@@ -187,7 +195,7 @@ const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all'
 
   calls = []
   blockedIds = new Set()
-  await runDailyReminders(env(kv), cronAt)
+  await runDailyReminders(env(kv), cronMsk)
   let to = new Set(sent().map((c) => String(c.body.chat_id)))
   check('пояс +7: в час МСК-слота не пишем', !to.has(nsk))
 
@@ -204,6 +212,9 @@ const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all'
   check('пояс −4: пишем в его местный вечер', to.has(ny))
   check('пояс −4: был сегодня по своим суткам — не пишем', !to.has(nyToday))
 
+  check('пояс по валюте, пока приложение его не прислало: бат — +7, вечер', JSON.stringify(reminderClock(undefined, 'THB')) === JSON.stringify({ tz: 420, start: REM_LOCAL_START }))
+  check('настоящий пояс важнее валюты', reminderClock(-300, 'THB').tz === -300)
+  check('доллар пояса не выдаёт — раннее окно по МСК', JSON.stringify(reminderClock(undefined, 'USD')) === JSON.stringify({ tz: 180, start: REM_FALLBACK_START }))
   check('пояс: мусор не принимаем', cleanTz(180) === 180 && cleanTz('180') === undefined && cleanTz(0) === 0 && cleanTz('') === undefined && cleanTz(181) === undefined && cleanTz(900) === undefined && cleanTz(null) === undefined && cleanTz(330) === 330)
 }
 
@@ -230,8 +241,50 @@ const env = (kv) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REMINDERS_MODE: 'all'
   check('новичок только в боте — тоже новичок', textOf(botNew) === newbieText(1, 2), textOf(botNew))
   check('тексты новичкам ≤ 160 символов', [newbieText(1, 0), newbieText(1, 999), newbieText(2, 0), newbieText(2, 5)].every((t) => t.length <= 160))
 
+  const kbOf = (id) => sent().find((c) => String(c.body.chat_id) === id)?.body.reply_markup?.inline_keyboard
+  check('новичку — кнопка приложения и «Не напоминать»', !!kbOf(fresh0)?.[0]?.[0]?.web_app && kbOf(fresh0)?.[1]?.[0]?.callback_data === 'r:0:n', kbOf(fresh0))
+  check('давнему — только «Не напоминать»', kbOf(old)?.length === 1 && kbOf(old)[0][0].callback_data === 'r:0:n', kbOf(old))
+
   const stat = JSON.parse((await kv.get('remstat:2026-10-07')) ?? 'null')
-  check('итоги рассылки для сводки', stat?.sent === 5 && stat?.newbies === 4 && stat?.failed === 0, stat)
+  check('итоги рассылки для сводки', stat?.sent === 5 && stat?.newbies === 4 && !stat?.noAccess && !stat?.blocked, stat)
+}
+
+/* ---------- Нет доступа, только Start, один день ---------- */
+{
+  const kv = new FakeKV()
+  const [noAcc, blk, startOnly, startOld, oneDay3, oneDay5, regular3] = idsForSlot(SLOT, 7, 9000)
+  const putData = (id, updatedAt, firstSeen) => kv.put(`data:${id}`, '{}', { metadata: { updatedAt, firstSeen, c: { ops: 2 } } })
+  await putData(noAcc, at(3), at(30))
+  await putData(blk, at(3), at(30))
+  await kv.put(`seen:${startOnly}`, '1', { metadata: { at: at(1) } })
+  await kv.put(`seen:${startOld}`, '1', { metadata: { at: at(4) } })
+  // Был один день (первое появление = последняя активность) и молчит.
+  await putData(oneDay3, at(3), at(3))
+  await putData(oneDay5, at(5), at(5))
+  await putData(regular3, at(3), at(20))
+
+  calls = []
+  blockedIds = new Set([blk])
+  noAccessIds = new Set([noAcc])
+  await runDailyReminders(env(kv), cronAt)
+  const to = new Set(sent().map((c) => String(c.body.chat_id)))
+  check('«не нажимал Start» — метка «n», не «заблокировал»', (await kv.get(`remind:${noAcc}`)) === 'n' && (await kv.get(`blocked:${noAcc}`)) === null)
+  check('«заблокировал» — по-прежнему «b» и метка', (await kv.get(`remind:${blk}`)) === 'b' && (await kv.get(`blocked:${blk}`)) === '1')
+  const stat = JSON.parse((await kv.get('remstat:2026-10-07')) ?? 'null')
+  check('сводка различает «нет доступа» и «заблокировали»', stat?.noAccess === 1 && stat?.blocked === 1, stat)
+  const startMsg = sent().find((c) => String(c.body.chat_id) === startOnly)?.body
+  check('нажал только Start вчера — напоминание новичку', startMsg?.text === newbieText(1, 0), startMsg?.text)
+  check('нажал только Start 4 дня назад — тишина', !to.has(startOld))
+  check('был один день, молчит 3-й — пропускаем', !to.has(oneDay3))
+  check('был один день, 5-й — пишем', to.has(oneDay5))
+  check('обычный, 3-й день тишины — пишем', to.has(regular3))
+
+  calls = []
+  noAccessIds = new Set()
+  await runDailyReminders(env(kv), cronAt + DAY)
+  check('с меткой «n» больше не пишем', !sent().some((c) => String(c.body.chat_id) === noAcc))
+  await forgetBlock(env(kv), noAcc)
+  check('написал боту — «n» снимается', (await kv.get(`remind:${noAcc}`)) === null)
 }
 
 /* ---------- Расписание затухания ---------- */

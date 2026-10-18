@@ -64,11 +64,13 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
     <div className="pb-24">
       <Header onOpenProfile={onOpenProfile} onOpenSearch={onOpenSearch} onOpenAssistant={onOpenAssistant} />
       <CurrencyNudgeGate />
-      <RemindNudgeGate />
       <AccountSwitcher />
       <PeriodSwitcher />
       <BalanceCard />
       <BudgetBlock onOpen={openPlanning} />
+      {/* Ниже героя: карточка появляется после первой записи и не должна
+          сдвигать только что обновившийся баланс. */}
+      <RemindNudgeGate />
       <MonthlyRecap />
       <DueRecurring />
       <CategoryList onEditTx={onEditTx} />

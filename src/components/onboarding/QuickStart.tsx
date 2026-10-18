@@ -140,26 +140,34 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     onDone()
   }
 
-  const goSetup = () => {
+  const goSetup = async () => {
     hapticTap()
     markCurrencyAsked()
-    setStep(2)
     // Напоминания включены, а писать боту нельзя (открыли по ссылке, Start не
-    // нажимали) — Telegram спросит разрешение прямо сейчас, рядом с тумблером,
-    // который это объясняет. Без разрешения бот не напишет ни разу, поэтому
-    // отказ честно выключает тумблер.
+    // нажимали) — Telegram спросит разрешение, пока на экране тумблер, который
+    // это объясняет. Шаг меняем ПОСЛЕ ответа: на следующем в фокусе поле дохода,
+    // и клавиатура открылась бы вместе с системным окном. Без разрешения бот не
+    // напишет ни разу, поэтому отказ честно выключает тумблер.
     if (reminders && tg.isInTelegram && !botCanWrite() && canRequestBotWrite()) {
-      void requestBotWrite().then((granted) => {
+      if (asking.current) return
+      asking.current = true
+      const answer = requestBotWrite().then((granted) => {
         if (granted) void setReminders(true)
         else setRemindersEnabled(false)
       })
+      // Ответ Telegram может задержаться (свернули окно) — дальше через 20 с, а
+      // тумблер поправит сам ответ, когда придёт.
+      await Promise.race([answer, new Promise<void>((r) => setTimeout(r, 20_000))])
+      asking.current = false
     }
+    setStep(2)
   }
 
   // Пока сервер не ответил, второе нажатие не принимаем: при двойном тапе без
   // сети откат первого запроса переписал бы второй, и тумблер разошёлся бы с
   // сервером.
   const remindersBusy = useRef(false)
+  const asking = useRef(false)
   const toggleReminders = () => {
     if (remindersBusy.current) return
     remindersBusy.current = true
@@ -461,7 +469,9 @@ function StepSetup({
       >
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-semibold text-ink">{t('qs.setup_reminders')}</span>
-          <span className="caption mt-0.5 block leading-snug text-ink-subtle">{t('qs.setup_reminders_hint')}</span>
+          <span className="caption mt-0.5 block leading-snug text-ink-subtle">
+            {t(reminders && tg.isInTelegram && !botCanWrite() && canRequestBotWrite() ? 'qs.setup_reminders_hint_ask' : 'qs.setup_reminders_hint')}
+          </span>
         </span>
         <Toggle on={reminders} />
       </button>

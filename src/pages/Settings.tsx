@@ -120,24 +120,34 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
     }
   }, [setRemindersEnabled])
   const [remindersBusy, setRemindersBusy] = useState(false)
+  // Может ли бот написать (кто открыл приложение по ссылке и не нажимал Start —
+  // не может). Состоянием: разрешение, выданное здесь, должно сразу убрать подсказку.
+  const [botWrites, setBotWrites] = useState(botCanWrite)
+  const askWrite = tg.isInTelegram && !botWrites && canRequestBotWrite()
   const toggleReminders = async () => {
     if (remindersBusy) return
     remindersTouched.current = true
     hapticSelect()
-    const next = !remindersEnabled
+    // Включены, но бот писать не может — нажатие значит «почини», а не «выключи».
+    const next = remindersEnabled && askWrite ? true : !remindersEnabled
     setRemindersEnabled(next)
     setRemindersBusy(true)
     // Включить мало — бот должен иметь право написать. Кто открыл приложение по
     // ссылке и не нажимал Start, без этого окна напоминаний не получит никогда.
-    if (next && tg.isInTelegram && !botCanWrite() && canRequestBotWrite() && !(await requestBotWrite())) {
-      setRemindersBusy(false)
-      setRemindersEnabled(false)
-      hapticNotify('error')
-      showToast({ text: t('remind.denied') })
-      return
+    if (next && askWrite) {
+      const granted = await requestBotWrite()
+      setBotWrites(granted)
+      if (!granted) {
+        setRemindersBusy(false)
+        setRemindersEnabled(false)
+        hapticNotify('error')
+        showToast({ text: t('remind.denied_settings'), sub: t('remind.denied_settings_sub') })
+        return
+      }
     }
     const ok = await setReminders(next)
     setRemindersBusy(false)
+    if (ok && next && askWrite) showToast({ icon: 'check', text: t('remind.granted'), sub: t('remind.granted_sub') })
     if (!ok) {
       // Сервер не узнал — рассылка шла бы по-старому. Возвращаем тумблер.
       setRemindersEnabled(!next)
@@ -394,7 +404,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Group className="mx-4 mt-6" title={t('settings.notifications')}>
         <Row
           title={t('settings.reminders')}
-          subtitle={t('settings.reminders_hint')}
+          subtitle={remindersEnabled && askWrite ? t('settings.reminders_no_access') : t('settings.reminders_hint')}
           wrap
           trailing={<Toggle on={remindersEnabled} />}
           checked={remindersEnabled}

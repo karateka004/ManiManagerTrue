@@ -1414,7 +1414,7 @@ const MONTHS = ['января', 'февраля', 'марта', 'апреля', 
 /** Текст сводки (parse_mode: HTML). Без эмодзи — числа говорят сами. */
 export function digestText(
   r: ReturnType<typeof dayReport>,
-  extra: { reminders?: { sent: number; newbies: number; failed: number } | null } = {},
+  extra: { reminders?: { sent: number; newbies: number; noAccess: number; blocked: number } | null } = {},
 ): string {
   const [, m, d] = r.date.split('-').map(Number)
   const title = `${d} ${MONTHS[m - 1]}${r.partial ? ', на сейчас' : ''}`
@@ -1427,9 +1427,10 @@ export function digestText(
   if (r.d1) lines.push(`Вернулись вчерашние новички: <b>${r.d1.n}</b> из ${r.d1.base} (${Math.round(pct(r.d1.n, r.d1.base))}%)`)
   if (r.botActive) lines.push(`Писали боту: ${r.botActive}`)
   const rem = extra.reminders
-  if (rem && (rem.sent || rem.failed)) {
+  if (rem && (rem.sent || rem.noAccess || rem.blocked)) {
     lines.push(
-      `Напоминания: ${rem.sent}${rem.newbies ? ` · новичкам ${rem.newbies}` : ''}${rem.failed ? ` · не дошли ${rem.failed}` : ''}`,
+      `Напоминания: ${rem.sent}${rem.newbies ? ` (новичкам ${rem.newbies})` : ''}` +
+        `${rem.noAccess ? ` · нет доступа ${rem.noAccess}` : ''}${rem.blocked ? ` · заблокировали ${rem.blocked}` : ''}`,
     )
   }
   if (r.sources.length) {

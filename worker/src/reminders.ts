@@ -18,20 +18,27 @@
  * сообщениями. Пропавшим (5+ дней) — свои тексты, без упрёка.
  *
  * КОГДА. Вечером по местному времени — 18:00–21:59 (у каждого свой час окна).
- * Пояс присылает приложение при синхронизации (`tz` в метаданных `data:<id>`);
- * у того, кто пишет только боту, пояса нет — для него окно по МСК. Раньше окно
- * было 15–20 МСК для всех, и у релокантов в Азии напоминание приходило ночью.
+ * Пояс присылает приложение 2.6+ при синхронизации (`tz` в метаданных
+ * `data:<id>`). Пока не прислало — пояс по валюте, если она почти однозначно
+ * указывает на него (бат, тенге, лари…), иначе прежнее раннее окно 15–18 МСК:
+ * сдвинуть всех без пояса на 18–21 МСК значило бы будить Бангкок в полночь.
  * «Сегодня» и дни тишины тоже считаются по местным суткам.
  *
  * НОВИЧКАМ (первые два дня после первого появления) — свои тексты: с тем, что
- * уже записано, и с одним следующим шагом. Общая ротация на второй день читалась
- * как рассылка, и из вчерашних новичков не возвращался почти никто.
+ * уже записано, и с одним следующим шагом, и кнопка приложения. Общая ротация
+ * на второй день читалась как рассылка, и из вчерашних новичков не возвращался
+ * почти никто. Сюда же — кто нажал Start в боте и ни разу ничего не записал
+ * (`seen:<id>`): писать им бот может, а других следов они не оставляют.
+ * Кто был один день и не вернулся, получает 1, 2, 5 и 14-й день — не девять
+ * сообщений за месяц человеку, который попробовал однажды.
  *
  * ВЫКЛЮЧИТЬ. В приложении (Настройки → Уведомления) и в боте: /reminders и
  * кнопка «Не напоминать» под самим напоминанием. Источник правды —
  * ключ `remind:<id>`:
  *   '1' — включил сам;  '0' — выключил сам;
- *   'b' — бот заблокирован (Telegram ответил 403), выключили мы.
+ *   'b' — бот заблокирован (Telegram ответил 403), выключили мы;
+ *   'n' — писать нельзя: человек не нажимал Start (403 «can't initiate
+ *         conversation»), тоже мы. Разрешит в приложении или напишет боту — оживёт.
  * Ключа нет — действует умолчание: включено, если человек не выключил тумблер
  * в приложении (`rm: 0` в карточке метаданных блоба — старый путь, когда запрос
  * с тумблера до сервера не дошёл). Явный выбор на сервере важнее карточки:
@@ -40,6 +47,7 @@
 import type { Env } from './env'
 import { DATA_PREFIX, type DataMeta } from './analytics'
 import { INBOX_PREFIX, type InboxMeta } from './inbox'
+import { APP_URL, BTN_OPEN } from './app'
 import { DAY_MS, mskDateStr, mskHour } from './days'
 import { plural } from './facts'
 import { sendMessage } from './tg'
@@ -52,13 +60,13 @@ const remindKey = (id: string | number) => `${REMIND_PREFIX}${id}`
 /* ------------------------------------------------------------------ */
 
 /**
- * Ежедневные — ротация по дню МСК (у всех в один день один текст). Каждый
+ * Ежедневные — ротация по местным суткам человека. Каждый
  * зовёт ответить прямо в чат и даёт пример, который можно повторить: ответ на
  * напоминание стоит одного сообщения. У каждого свой повод — вопрос, память,
  * день без трат, вчерашнее, ответ бота, доходы, итог месяца, — чтобы неделя
- * напоминаний не читалась одной фразой по кругу. Без «вечера» (окно начинается
- * в 15:00 МСК, а у релокантов в Азии это уже ночь), без морали и без рода:
- * «Какие были траты», а не «что потратил».
+ * напоминаний не читалась одной фразой по кругу. Без «вечера» (у кого пояс
+ * неизвестен, окно начинается в 15:00 МСК), без морали и без рода: «Какие были
+ * траты», а не «что потратил».
  */
 export const REMINDER_TEXTS = [
   'Какие сегодня были траты? Напиши сюда одной строкой, например: кофе 300',
@@ -89,12 +97,12 @@ export const COMEBACK_TEXTS = [
 export function newbieText(day: number, ops: number): string {
   if (ops <= 0) {
     return day <= 1
-      ? 'Кошель ждёт первую запись. Напиши сюда трату одной строкой — например: кофе 300 — и я сразу покажу итог дня.'
-      : 'Чтобы увидеть, куда уходят деньги, хватит пары строк в день. Начни с одной: такси 450'
+      ? 'Какая была последняя трата? Напиши её сюда одной строкой: кофе 300 — я запишу и разложу по категориям.'
+      : 'Чтобы увидеть, куда уходят деньги, хватит пары строк в день. Начни с одной — например: такси 450'
   }
   return day <= 1
-    ? `В Кошеле уже ${plural(ops, ['запись', 'записи', 'записей'])}. Продолжим? Сегодняшние траты — одной строкой сюда: обед 350`
-    : 'Ещё пара дней записей — и станет видно, на что уходит больше всего. Какие сегодня траты? Например: продукты 1200'
+    ? `Вчера — ${plural(ops, ['запись', 'записи', 'записей'])} в Кошеле. Продолжим? Какие сегодня были траты? Напиши одной строкой: обед 350`
+    : 'Ещё пара дней записей — и станет видно, на что уходит больше всего. Какие сегодня были траты? Например: продукты 1200'
 }
 
 /** Кнопка под напоминанием: выключить, не уходя из чата. */
@@ -140,7 +148,7 @@ export function pickReminderText(nowMs: number, quietDays = 1, tz = DEFAULT_TZ):
 export async function readReminderChoice(env: Env, id: string | number): Promise<boolean | null> {
   const v = await env.REFERRALS.get(remindKey(id))
   if (v === '1') return true
-  if (v === '0' || v === 'b') return false
+  if (v === '0' || v === 'b' || v === 'n') return false
   return null
 }
 
@@ -195,12 +203,12 @@ export async function forgetBlock(env: Env, id: string | number): Promise<void> 
     env.REFERRALS.get(`blocked:${id}`),
     env.REFERRALS.get(remindKey(id)),
   ])
-  if (!blocked && choice !== 'b') return
+  if (!blocked && choice !== 'b' && choice !== 'n') return
   const jobs: Promise<unknown>[] = []
   if (blocked) jobs.push(env.REFERRALS.delete(`blocked:${id}`))
   // До 2.2 автоматическая отписка писала '0' вместе с меткой блокировки —
-  // такой '0' тоже наш, а не человека.
-  if (choice === 'b' || (blocked && choice === '0')) jobs.push(env.REFERRALS.delete(remindKey(id)))
+  // такой '0' тоже наш, а не человека. 'n' («не нажимал Start») — тоже наш.
+  if (choice === 'b' || choice === 'n' || (blocked && choice === '0')) jobs.push(env.REFERRALS.delete(remindKey(id)))
   await Promise.all(jobs)
 }
 
@@ -218,6 +226,32 @@ export const REM_LOCAL_START = 18
 export const REM_SLOTS = 4
 /** Пояс по умолчанию — МСК: у тех, кто пишет только боту, пояса нет. */
 export const DEFAULT_TZ = 180
+/**
+ * Без пояса — прежнее раннее окно по МСК (15–18): было 15–20, и у живущих
+ * восточнее Москвы оно попадает на вечер, а не на ночь.
+ */
+export const REM_FALLBACK_START = 15
+
+/**
+ * Пояс по основной валюте — пока приложение не прислало настоящий. Только где
+ * валюта почти однозначно указывает на пояс; доллар, евро, фунт — нет.
+ * Индонезия — по Бали (+8): релокантов там больше, чем в Джакарте (+7).
+ */
+const CURRENCY_TZ: Record<string, number> = {
+  RUB: 180, BYN: 180, TRY: 180, UAH: 120, MDL: 120, GEL: 240, AMD: 240, AZN: 240, AED: 240, OMR: 240,
+  KZT: 300, UZS: 300, TJS: 300, PKR: 300, KGS: 360, BDT: 360, INR: 330, LKR: 330, NPR: 345,
+  THB: 420, VND: 420, KHR: 420, LAK: 420, IDR: 480, MYR: 480, SGD: 480, PHP: 480, CNY: 480,
+  HKD: 480, TWD: 480, MNT: 480, KRW: 540, JPY: 540,
+}
+
+/** Пояс человека и час начала его окна: настоящий, по валюте или раннее окно по МСК. */
+export function reminderClock(tz: unknown, currency: unknown): { tz: number; start: number } {
+  const exact = cleanTz(tz)
+  if (exact !== undefined) return { tz: exact, start: REM_LOCAL_START }
+  const guessed = typeof currency === 'string' && Object.hasOwn(CURRENCY_TZ, currency) ? CURRENCY_TZ[currency] : undefined
+  if (guessed !== undefined) return { tz: guessed, start: REM_LOCAL_START }
+  return { tz: DEFAULT_TZ, start: REM_FALLBACK_START }
+}
 /** Сообщений в секунду. С запасом ниже лимита Telegram (~30), чтобы не ловить 429. */
 const REM_SEND_PER_SEC = 25
 /** Дни тишины, в которые напоминаем после первых трёх. Дальше 30-го — молчим. */
@@ -254,6 +288,9 @@ export function dueAfterQuiet(quietDays: number): boolean {
   return quietDays <= 3 || SPARSE_DAYS.has(quietDays)
 }
 
+/** Был один день и не вернулся: 1, 2, 5 и 14-й день — и хватит. */
+const ONE_DAY_SCHEDULE = new Set([1, 2, 5, 14])
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export interface Candidate {
@@ -264,6 +301,20 @@ export interface Candidate {
   tz: number
   /** Новичок: какой по счёту день после первого появления и сколько записей. */
   newbie?: { day: number; ops: number }
+}
+
+/** Нажал Start в боте — метка первого появления (для тех, кто дальше не пошёл). */
+export const SEEN_PREFIX = 'seen:'
+export interface SeenMeta {
+  at?: number
+}
+
+/** Запомнить первое появление в боте. Один раз: дальше метка не меняется. */
+export async function rememberSeen(env: Env, id: string | number, nowMs: number): Promise<void> {
+  const key = `${SEEN_PREFIX}${id}`
+  if ((await env.REFERRALS.get(key)) !== null) return
+  // Метка нужна только первые дни — потом сама исчезает.
+  await env.REFERRALS.put(key, '1', { metadata: { at: nowMs } satisfies SeenMeta, expirationTtl: 7 * 86_400 })
 }
 
 /**
@@ -287,15 +338,24 @@ export async function reminderCandidates(env: Env, nowMs: number): Promise<Candi
 
   const out: Candidate[] = []
   const seen = new Set<string>()
-  const consider = (id: string, lastActive: number, tz: number, firstSeen: number, ops: number, rm?: number) => {
-    if (localHour(nowMs, tz) !== REM_LOCAL_START + slotForId(id, REM_SLOTS)) return
+  const consider = (
+    id: string,
+    lastActive: number,
+    clock: { tz: number; start: number },
+    firstSeen: number,
+    ops: number,
+    rm?: number,
+  ) => {
+    const { tz } = clock
+    if (localHour(nowMs, tz) !== clock.start + slotForId(id, REM_SLOTS)) return
     // Без единой метки времени — человек не появлялся с тех пор, как метки
     // ввели (давно): не тревожим.
     if (!(lastActive > 0)) return
     const today = localDay(nowMs, tz)
     // Сегодня уже был — напоминать не о чем. Дни тишины — по местным суткам.
     const quietDays = today - localDay(lastActive, tz)
-    if (!dueAfterQuiet(quietDays)) return
+    const oneDay = firstSeen > 0 && localDay(firstSeen, tz) === localDay(lastActive, tz)
+    if (oneDay ? !ONE_DAY_SCHEDULE.has(quietDays) : !dueAfterQuiet(quietDays)) return
     const since = firstSeen > 0 ? today - localDay(firstSeen, tz) : Infinity
     out.push({ id, rm, quietDays, tz, ...(since >= 1 && since <= NEWBIE_DAYS ? { newbie: { day: since, ops } } : {}) })
   }
@@ -317,7 +377,7 @@ export async function reminderCandidates(env: Env, nowMs: number): Promise<Candi
       consider(
         id,
         Math.max(app, b?.l ?? 0),
-        cleanTz(m?.tz) ?? DEFAULT_TZ,
+        reminderClock(m?.tz, m?.c?.cur),
         Number.isFinite(first) ? first : 0,
         Math.max(m?.c?.ops ?? 0, b?.n ?? 0),
         m?.c?.rm,
@@ -326,25 +386,51 @@ export async function reminderCandidates(env: Env, nowMs: number): Promise<Candi
     dataCursor = page.list_complete ? undefined : page.cursor
   } while (dataCursor)
 
-  // Пишут только боту, приложение не открывали: пояса нет — МСК.
+  // Пишут только боту, приложение не открывали: пояса нет.
   for (const [id, b] of bot) {
-    if (!seen.has(id) && /^\d+$/.test(id)) consider(id, b.l ?? 0, DEFAULT_TZ, b.f ?? 0, b.n ?? 0)
+    if (seen.has(id) || !/^\d+$/.test(id)) continue
+    seen.add(id)
+    consider(id, b.l ?? 0, reminderClock(undefined, undefined), b.f ?? 0, b.n ?? 0)
   }
+
+  // Нажали Start в боте и дальше не пошли: ни приложения, ни записей. Только
+  // как новичкам — первые два дня, потом метка истекает сама.
+  let seenCursor: string | undefined
+  do {
+    const page: KVNamespaceListResult<SeenMeta> = await env.REFERRALS.list<SeenMeta>({ prefix: SEEN_PREFIX, cursor: seenCursor })
+    for (const k of page.keys) {
+      const id = k.name.slice(SEEN_PREFIX.length)
+      const at = k.metadata?.at
+      if (!id || seen.has(id) || !/^\d+$/.test(id) || typeof at !== 'number') continue
+      const clock = reminderClock(undefined, undefined)
+      const since = localDay(nowMs, clock.tz) - localDay(at, clock.tz)
+      if (since >= 1 && since <= NEWBIE_DAYS) consider(id, at, clock, at, 0)
+    }
+    seenCursor = page.list_complete ? undefined : page.cursor
+  } while (seenCursor)
   return out
 }
 
-/** Итоги рассылки за сутки (по МСК) — для ночной сводки владельцу. */
+/**
+ * Итоги рассылки за сутки (по МСК) — для ночной сводки владельцу. Отказы
+ * Telegram — раздельно: «нет доступа» (человек не нажимал Start и не разрешал
+ * боту писать) и «заблокировали». Иначе не понять, помогло ли разрешение.
+ */
 export interface ReminderStats {
   sent: number
   newbies: number
-  failed: number
+  noAccess: number
+  blocked: number
 }
 const statKey = (dateStr: string) => `remstat:${dateStr}`
 
 export async function readReminderStats(env: Env, dateStr: string): Promise<ReminderStats | null> {
   try {
     const raw = await env.REFERRALS.get(statKey(dateStr))
-    return raw ? (JSON.parse(raw) as ReminderStats) : null
+    if (!raw) return null
+    const s = JSON.parse(raw) as Partial<ReminderStats> & { failed?: number }
+    const n = (x: unknown) => (typeof x === 'number' && x > 0 ? x : 0)
+    return { sent: n(s.sent), newbies: n(s.newbies), noAccess: n(s.noAccess), blocked: n(s.blocked) + n(s.failed) }
   } catch {
     return null
   }
@@ -367,7 +453,7 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
   const candidates = await reminderCandidates(env, nowMs)
   if (candidates.length === 0) return
 
-  const stats: ReminderStats = { sent: 0, newbies: 0, failed: 0 }
+  const stats: ReminderStats = { sent: 0, newbies: 0, noAccess: 0, blocked: 0 }
   // Порциями: Telegram пускает около 30 сообщений в секунду на бота, дальше 429.
   for (let i = 0; i < candidates.length; i += REM_SEND_PER_SEC) {
     const started = Date.now()
@@ -380,7 +466,8 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
       else if (r.value === 'sent') {
         stats.sent++
         if (batch[j].newbie) stats.newbies++
-      } else if (r.value === 'failed') stats.failed++
+      } else if (r.value === 'no_access') stats.noAccess++
+      else if (r.value === 'blocked') stats.blocked++
     })
     const spent = Date.now() - started
     if (spent < 1000 && i + REM_SEND_PER_SEC < candidates.length) await sleep(1000 - spent)
@@ -388,11 +475,16 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
 
   // Одна запись на час рассылки, а не на сообщение: на тысячах людей запись
   // KV на каждое напоминание стоила бы дороже самих напоминаний.
-  if (stats.sent || stats.failed) {
+  if (stats.sent || stats.noAccess || stats.blocked) {
     try {
       const key = statKey(mskDateStr(nowMs))
-      const prev = (await readReminderStats(env, mskDateStr(nowMs))) ?? { sent: 0, newbies: 0, failed: 0 }
-      const next = { sent: prev.sent + stats.sent, newbies: prev.newbies + stats.newbies, failed: prev.failed + stats.failed }
+      const prev = (await readReminderStats(env, mskDateStr(nowMs))) ?? { sent: 0, newbies: 0, noAccess: 0, blocked: 0 }
+      const next: ReminderStats = {
+        sent: prev.sent + stats.sent,
+        newbies: prev.newbies + stats.newbies,
+        noAccess: prev.noAccess + stats.noAccess,
+        blocked: prev.blocked + stats.blocked,
+      }
       await env.REFERRALS.put(key, JSON.stringify(next), { expirationTtl: 4 * 86_400 })
     } catch (e) {
       console.error('[reminders] итоги не записаны', e)
@@ -400,9 +492,13 @@ export async function runDailyReminders(env: Env, nowMs: number): Promise<void> 
   }
 }
 
-/** Кнопка под напоминанием. */
-export function reminderKeyboard() {
-  return { inline_keyboard: [[{ text: REMINDER_BUTTON, callback_data: 'r:0:n' }]] }
+/**
+ * Кнопка под напоминанием. Новичку — ещё и приложение: кто пришёл сразу в него,
+ * записывал там, а не в чате.
+ */
+export function reminderKeyboard(withApp = false) {
+  const off = [{ text: REMINDER_BUTTON, callback_data: 'r:0:n' }]
+  return { inline_keyboard: withApp ? [[{ text: BTN_OPEN, web_app: { url: APP_URL } }], off] : [off] }
 }
 
 /**
@@ -411,23 +507,32 @@ export function reminderKeyboard() {
  * Метку «уже слали сегодня» не пишем: у каждого свой час в окне, и второй раз
  * в тот же день он в крон не попадает по построению.
  */
-async function remindOne(env: Env, c: Candidate, nowMs: number): Promise<'sent' | 'skipped' | 'failed'> {
+async function remindOne(env: Env, c: Candidate, nowMs: number): Promise<'sent' | 'skipped' | 'failed' | 'no_access' | 'blocked'> {
   const choice = await env.REFERRALS.get(remindKey(c.id))
-  if (choice === '0' || choice === 'b') return 'skipped'
+  if (choice === '0' || choice === 'b' || choice === 'n') return 'skipped'
   // Явного выбора на сервере нет, а тумблер в приложении выключен.
   if (choice !== '1' && c.rm === 0) return 'skipped'
 
   const text = c.newbie ? newbieText(c.newbie.day, c.newbie.ops) : pickReminderText(nowMs, c.quietDays, c.tz)
-  let r = await sendMessage(env, c.id, text, reminderKeyboard())
+  const keyboard = reminderKeyboard(!!c.newbie)
+  let r = await sendMessage(env, c.id, text, keyboard)
   if (r.status === 429) {
     await sleep(1500)
-    r = await sendMessage(env, c.id, text, reminderKeyboard())
+    r = await sendMessage(env, c.id, text, keyboard)
   }
   if (r.status === 403) {
+    // «Не нажимал Start» — не блокировка: человек открыл приложение по ссылке.
+    // 'n' — тоже не беспокоим, но в «заблокировали» не считаем; разрешит в
+    // приложении (там это теперь спрашивается) или напишет боту — оживёт.
+    if (/initiate conversation/i.test(r.description ?? '')) {
+      await env.REFERRALS.put(remindKey(c.id), 'n', { metadata: { v: 'n' } })
+      return 'no_access'
+    }
     // Бот заблокирован или аккаунт удалён — больше не беспокоим и метим для
     // аналитики. 'b', а не '0': вернётся — напоминания оживут (forgetBlock).
     await env.REFERRALS.put(remindKey(c.id), 'b', { metadata: { v: 'b' } })
     await env.REFERRALS.put(`blocked:${c.id}`, '1')
+    return 'blocked'
   }
   return r.ok ? 'sent' : 'failed'
 }

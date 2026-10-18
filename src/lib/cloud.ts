@@ -24,6 +24,8 @@ import { useStore, flushPersist } from '../store/transactions'
 import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud, type CloudSnapshot } from './api'
 import { localAdditions, planStartup } from './syncMerge'
 import { dedupeKey } from './csvImport'
+import { translate } from './i18n'
+import { showToast } from './toast'
 import { tg } from './telegram'
 
 /** Ключ persist-стора (см. `name` в store/transactions.ts). */
@@ -217,6 +219,9 @@ async function resolveConflict(snap: CloudSnapshot): Promise<void> {
   conflictTimes.push(now)
   const added = await adoptCloud(snap)
   if (added > 0) schedulePush()
+  // Данные на экране поменялись посреди сессии — объясняем, откуда: иначе
+  // чужая запись или откат своей правки выглядели бы как сбой.
+  showToast({ text: translate(useStore.getState().lang, 'sync.merged') })
 }
 
 /**

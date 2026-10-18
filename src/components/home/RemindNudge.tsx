@@ -29,8 +29,10 @@ export default function RemindNudge() {
   const yes = async () => {
     hapticSelect()
     if (!canRequestBotWrite()) {
+      // Старый Telegram сам спросить не умеет: разрешение даёт Start в чате.
       markRemindAsked()
       setDone(true)
+      showToast({ text: t('remind.open_chat') })
       openTelegramLink(`https://t.me/${BOT_USERNAME}`)
       return
     }
@@ -41,9 +43,12 @@ export default function RemindNudge() {
       hapticNotify('success')
       setRemindersEnabled(true)
       void setReminders(true)
-      showToast({ icon: 'check', text: t('remind.granted') })
+      showToast({ icon: 'check', text: t('remind.granted'), sub: t('remind.granted_sub') })
     } else {
-      showToast({ text: t('remind.denied') })
+      // Без разрешения напоминания не дойдут — тумблер честно выключаем. На
+      // сервер не пишем: нажмёт Start в боте — напоминания оживут сами.
+      setRemindersEnabled(false)
+      showToast({ text: t('remind.denied'), sub: t('remind.denied_sub') })
     }
   }
 
@@ -53,6 +58,8 @@ export default function RemindNudge() {
     setDone(true)
     setRemindersEnabled(false)
     void setReminders(false)
+    // Выключение навсегда — с возможностью передумать сразу.
+    showToast({ text: t('remind.off'), action: { label: t('remind.undo'), run: () => void yes() } })
   }
 
   return (

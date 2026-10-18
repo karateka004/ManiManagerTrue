@@ -52,8 +52,8 @@ export const RELEASES: ReleaseNote[] = [
       },
       {
         text: {
-          ru: 'Записи с двух устройств больше не теряются: Кошель сводит новое с телефона и компьютера, а не берёт одно поверх другого',
-          en: 'Entries from two devices are no longer lost: Koshel merges what’s new from your phone and computer instead of overwriting one with the other',
+          ru: 'Новые записи с двух устройств больше не теряются: Кошель сводит их с телефона и компьютера, а не берёт одно поверх другого',
+          en: 'New entries from two devices are no longer lost: Koshel merges them from your phone and computer instead of overwriting one with the other',
         },
       },
       {

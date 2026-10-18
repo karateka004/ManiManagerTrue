@@ -16,6 +16,7 @@
  * он не держит в голове: сколько осталось на сегодня.
  */
 import type { Env } from './env'
+import { APP_URL, BTN_OPEN } from './app'
 import { parseEntries } from './entry'
 import { askGemini, type ParsedOp } from './gemini'
 import {
@@ -73,6 +74,7 @@ import {
   REMINDERS_ON,
   reminderKeyboard,
   remindersEnabled,
+  rememberSeen,
   setReminderChoice,
 } from './reminders'
 import {
@@ -92,8 +94,7 @@ import {
   type TgUpdate,
 } from './tg'
 
-/** URL мини-аппа для кнопки «Открыть» (публичный, не секрет). */
-export const APP_URL = 'https://karateka004.github.io/ManiManagerTrue/'
+export { APP_URL, BTN_OPEN }
 
 /**
  * Дашборд аналитики. Открывается из бота кнопкой web_app — тогда вход идёт по
@@ -217,7 +218,6 @@ export const START_MORE = [
   '<i>Сообщения разбирает Google Gemini: ему уходят текст, последние вопросы и итоги — по дням, месяцам и категориям, бюджет и цели, но не список трат.</i>',
 ].join('\n')
 
-export const BTN_OPEN = 'Открыть Кошель'
 export const BTN_MORE = 'Что ещё умею'
 export const BTN_BACK = '← Назад'
 
@@ -362,6 +362,9 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
       if (tag) await rememberSource(env, from, tag, Date.now()).catch((e) => console.error('[start] метка не записана', e))
       // Вернулся после блокировки — снимаем нашу автоматическую отписку.
       await forgetBlock(env, userId).catch((e) => console.error('[start] блокировка не снята', e))
+      // Первое появление: нажал Start и дальше не пошёл — завтра напомним как
+      // новичку (других следов такой человек не оставляет).
+      await rememberSeen(env, userId, Date.now()).catch((e) => console.error('[start] метка не записана', e))
       await sendMessage(env, userId, START, startKeyboard)
     } else if (cmd === 'today') await sendToday(env, userId)
     else if (cmd === 'reminders' || cmd === 'notifications') {

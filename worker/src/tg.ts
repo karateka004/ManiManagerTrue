@@ -111,7 +111,7 @@ export async function sendMessage(
   replyMarkup?: unknown,
   /** Без звука: сообщение придёт, но телефон не зазвенит (ночная сводка). */
   silent?: boolean,
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{ ok: boolean; status: number; description?: string }> {
   const r = await call(env, 'sendMessage', {
     chat_id: chatId,
     text,
@@ -120,7 +120,9 @@ export async function sendMessage(
     ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     ...(silent ? { disable_notification: true } : {}),
   })
-  return { ok: r.ok, status: r.status }
+  // Причина отказа: 403 бывает и «заблокировал», и «не нажимал Start».
+  const description = (r.body as { description?: unknown } | null)?.description
+  return { ok: r.ok, status: r.status, ...(typeof description === 'string' ? { description } : {}) }
 }
 
 /**
