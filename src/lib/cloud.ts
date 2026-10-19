@@ -59,17 +59,36 @@ function legacyLocalAt(): number {
   }
 }
 
-function readBase(): SyncBase | null {
+/**
+ * Основа привязана к аккаунту: хранилище мини-аппа на телефоне общее для всех
+ * аккаунтов Telegram, и основа одного человека, принятая за основу другого,
+ * подмешала бы его записи в чужое облако.
+ */
+type OwnedBase = SyncBase & { uid?: number }
+
+function readOwnedBase(): OwnedBase | null {
   try {
-    return parseBase(localStorage.getItem(BASE_KEY))
+    return parseBase(localStorage.getItem(BASE_KEY)) as OwnedBase | null
   } catch {
     return null
   }
 }
 
+/** Основа этого аккаунта; чужая — как «основы нет». */
+function readBase(): SyncBase | null {
+  const b = readOwnedBase()
+  return b && (b.uid === undefined || b.uid === tg.user?.id) ? b : null
+}
+
+/** На устройстве основа другого аккаунта Telegram — значит, и данные в сторе его. */
+function baseOfOtherAccount(): boolean {
+  const b = readOwnedBase()
+  return !!b && b.uid !== undefined && b.uid !== tg.user?.id
+}
+
 function writeBase(base: SyncBase): void {
   try {
-    localStorage.setItem(BASE_KEY, JSON.stringify(base))
+    localStorage.setItem(BASE_KEY, JSON.stringify({ ...base, uid: tg.user?.id }))
     // Метку держим и для старого формата: откатись приложение на 2.5 — оно
     // сравнит её с облаком как раньше.
     localStorage.setItem(META_KEY, JSON.stringify({ updatedAt: base.v }))
@@ -279,10 +298,14 @@ async function resolveConflict(snap: CloudSnapshot): Promise<void> {
  * `differs` — итог отличается от облачного, его надо отправить; `visible` —
  * на экране что-то поменялось.
  */
-function mergeCloud(snap: CloudSnapshot, mode: 'merge' | 'adopt' = 'merge'): Promise<{ differs: boolean; visible: boolean }> {
+function mergeCloud(
+  snap: CloudSnapshot,
+  mode: 'merge' | 'adopt' | 'replace' = 'merge',
+): Promise<{ differs: boolean; visible: boolean }> {
   return exclusive(async () => {
     // 'adopt' — основы нет или здесь пусто: облако плюс свои новые записи по
-    // времени создания, без трёхстороннего слияния.
+    // времени создания, без трёхстороннего слияния. 'replace' — в сторе данные
+    // другого аккаунта: облако как есть, ничего своего не возвращаем.
     const base = mode === 'merge' ? readBase() : null
     const local = dataOf(useStore.getState())
     adopting = true
@@ -295,7 +318,9 @@ function mergeCloud(snap: CloudSnapshot, mode: 'merge' | 'adopt' = 'merge'): Pro
       const cloud = dataOf(useStore.getState())
       const { merged, differs } = base
         ? mergeStates(local, cloud, base, (t) => dedupeKey(t as Parameters<typeof dedupeKey>[0]))
-        : legacyMerge(local, cloud, legacyLocalAt())
+        : mode === 'replace'
+          ? { merged: cloud, differs: false }
+          : legacyMerge(local, cloud, legacyLocalAt())
       if (differs) useStore.setState(merged)
       const next = makeBase(cloud, snap.updatedAt)
       writeBase(next)
@@ -497,10 +522,15 @@ export async function initCloudSync(): Promise<void> {
     cloudTxAtStart = Math.max(0, cloudTx)
     hadDataThisSession = localTx > 0
 
+    // В сторе данные другого аккаунта Telegram (тот же телефон): облако этого
+    // человека — как есть. Облака нет — как и раньше, отправляем то, что есть.
+    const foreign = baseOfOtherAccount()
     // Облако битое — перезаписываем его своим, ведя от его версии.
-    const plan = valid
-      ? planStartup({ cloudAt: cloud!.updatedAt, cloudTx, localTx, localAt: legacyLocalAt(), baseV: base?.v })
-      : 'push'
+    const plan = !valid
+      ? 'push'
+      : foreign
+        ? 'replace'
+        : planStartup({ cloudAt: cloud!.updatedAt, cloudTx, localTx, localAt: legacyLocalAt(), baseV: base?.v })
     if (plan === 'push') {
       // Облака нет или оно не менялось без нас — отправляем своё. Пустым
       // локальным состоянием непустое облако не перезаписываем.
