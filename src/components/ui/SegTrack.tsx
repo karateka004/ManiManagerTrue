@@ -11,42 +11,70 @@ import clsx from 'clsx'
  *
  * `active` — что угодно, по чему видно смену выбора (id вкладки, режим).
  */
+/*
+ * Расстановка плашек — одним проходом в кадре: сначала все замеры, потом все
+ * записи. Замер в момент монтирования (useLayoutEffect) заставлял браузер
+ * раскладывать весь экран посреди отрисовки React, а каждая следующая плашка —
+ * ещё раз (замер после записи соседней). На старте под CPU ×4 это была самая
+ * дорогая функция профиля. Кадр тот же: rAF идёт до отрисовки, и первая
+ * картинка уже с плашкой; до замера сегмент рабочий и с обычной заливкой.
+ */
+type Measure = () => (() => void) | null
+const queue = new Set<Measure>()
+let queued = false
+function schedule(measure: Measure) {
+  queue.add(measure)
+  if (queued) return
+  queued = true
+  requestAnimationFrame(() => {
+    queued = false
+    const jobs = [...queue]
+    queue.clear()
+    const writes = jobs.map((m) => m())
+    for (const w of writes) w?.()
+  })
+}
+
 export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unknown) {
   const trackRef = useRef<T>(null)
   const pillRef = useRef<HTMLSpanElement>(null)
   const placed = useRef(false)
 
-  const place = (animate: boolean) => {
+  /** Замер выбранного пункта → запись плашки (или null, если ставить некуда). */
+  const measure = (animate: boolean): (() => void) | null => {
     const track = trackRef.current
     const pill = pillRef.current
-    if (!track || !pill) return
+    if (!track || !pill) return null
     const on = track.querySelector<HTMLElement>(':scope > .seg-on')
     if (!on || on.offsetWidth === 0) {
-      delete track.dataset.pilled
-      pill.style.opacity = '0'
-      placed.current = false
-      return
+      return () => {
+        delete track.dataset.pilled
+        pill.style.opacity = '0'
+        placed.current = false
+      }
     }
-    const instant = !animate || !placed.current
-    if (instant) pill.style.transition = 'none'
-    pill.style.width = `${on.offsetWidth}px`
-    pill.style.height = `${on.offsetHeight}px`
-    pill.style.transform = `translate3d(${on.offsetLeft}px, ${on.offsetTop}px, 0)`
-    pill.style.opacity = '1'
-    track.dataset.pilled = '1'
-    if (instant) {
-      void pill.offsetWidth // применить положение без перехода
-      pill.style.transition = ''
+    const box = { w: on.offsetWidth, h: on.offsetHeight, x: on.offsetLeft, y: on.offsetTop }
+    return () => {
+      const instant = !animate || !placed.current
+      if (instant) pill.style.transition = 'none'
+      pill.style.width = `${box.w}px`
+      pill.style.height = `${box.h}px`
+      pill.style.transform = `translate3d(${box.x}px, ${box.y}px, 0)`
+      pill.style.opacity = '1'
+      track.dataset.pilled = '1'
+      // Переход возвращаем кадром позже, а не принудительной раскладкой.
+      if (instant) requestAnimationFrame(() => (pill.style.transition = ''))
+      placed.current = true
     }
-    placed.current = true
   }
 
-  // До отрисовки: первый кадр уже с плашкой на месте. Только при смене выбора:
-  // измерение после каждой перерисовки (шторка операции перерисовывается на
-  // каждое нажатие клавиши) заставляло браузер пересчитывать раскладку всего
-  // экрана посреди ввода — +50 мс на слабом телефоне.
+  // Смена выбора (нажатие) — сразу, до отрисовки: плашка едет от старого места.
+  // Первая расстановка — в общем проходе кадра (см. schedule). Измерять после
+  // каждой перерисовки нельзя: шторка операции перерисовывается на каждое
+  // нажатие клавиши, и браузер пересчитывал бы раскладку посреди ввода.
   useLayoutEffect(() => {
-    place(true)
+    if (placed.current) measure(true)?.()
+    else schedule(() => measure(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
@@ -63,7 +91,7 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
         first = false
         return
       }
-      place(false)
+      schedule(() => measure(false))
     })
     ro.observe(track)
     for (const child of Array.from(track.children)) {
@@ -71,7 +99,7 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
     }
     let alive = true
     document.fonts?.ready.then(() => {
-      if (alive) place(false)
+      if (alive) schedule(() => measure(false))
     })
     return () => {
       alive = false
