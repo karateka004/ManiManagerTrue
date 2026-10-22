@@ -10,28 +10,43 @@ import type { Env } from './env'
 import { sendFile } from './tg'
 
 /** Новый ролик — новый id: тогда крон отправит его владельцу ещё раз. */
-export const PROMO_ID = '2.7'
+export const PROMO_ID = '2.7-stories'
 /** Коммит, в котором лежат файлы ролика. */
-const PROMO_COMMIT = '7fe92e46ba2af75cd3a639934b6c2dbb79c0227e'
+const PROMO_COMMIT = '08991a260299067a79947e282d428e1187aa097a'
 const BASE = `https://raw.githubusercontent.com/karateka004/ManiManagerTrue/${PROMO_COMMIT}/promo/media/`
 const SENT_KEY = 'promo:sent'
 
-const FILES: { name: string; kind: 'animation' | 'document'; caption: string }[] = [
+const FILES: { name: string; kind: 'animation' | 'video' | 'document'; caption: string }[] = [
   {
-    name: 'koshel-2.7-1080.mp4',
+    name: 'koshel-2.7-story-sound.mp4',
+    kind: 'video',
+    caption: '<b>Кошель 2.7 — сторис</b>, 1080×1920, со звуками действий.',
+  },
+  {
+    name: 'koshel-2.7-story-music.mp4',
+    kind: 'video',
+    caption: 'Сторис со звуками и лёгким фоном.',
+  },
+  {
+    name: 'koshel-2.7-square-sound.mp4',
+    kind: 'video',
+    caption: 'Квадрат 1080 со звуком — для постов.',
+  },
+  {
+    name: 'koshel-2.7-square.mp4',
     kind: 'animation',
-    caption: '<b>Кошель 2.7</b> — текст, голос и фото чека. Квадрат для постов и пересылки.',
+    caption: 'Квадрат без звука — крутится по кругу, как гифка.',
   },
   {
     name: 'koshel-2.7-start-960x540.mp4',
     kind: 'animation',
     caption:
-      'Для стартового экрана бота: @BotFather → /mybots → Кошель → Edit Bot → Edit Description Picture → перешли туда эту анимацию.',
+      'Без звука, для стартового экрана бота: @BotFather → /mybots → Кошель → Edit Bot → Edit Description Picture → перешли туда эту анимацию.',
   },
   {
     name: 'koshel-2.7-600.gif',
     kind: 'document',
-    caption: 'То же файлом .gif — для мест, где нужен именно гиф.',
+    caption: 'Квадрат файлом .gif — для мест, где нужен именно гиф.',
   },
 ]
 
