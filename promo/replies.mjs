@@ -13,7 +13,7 @@
  */
 import { writeFileSync } from 'node:fs'
 
-// Вечер 22 октября 2026 по Москве: числа в ролике не зависят от дня запуска.
+// Вечер 22 октября 2026: числа в ролике не зависят от дня запуска.
 const NOW = Date.UTC(2026, 9, 22, 15, 45)
 Date.now = () => NOW
 
@@ -28,28 +28,31 @@ class FakeKV {
   async list({ prefix = '' } = {}) { return { keys: [...this.m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true } }
 }
 
-/* Октябрь до вчерашнего дня: зарплата, аренда и обычные траты по категориям. */
+/*
+ * Октябрь до вчерашнего дня: зарплата, аренда и обычные траты по категориям.
+ * В долларах и без примет одной страны — ролик для всех, кто говорит по-русски.
+ */
 const at = (day, hour = 13) => new Date(Date.UTC(2026, 9, day, hour - 3)).toISOString()
 const txs = []
 let n = 0
 const add = (type, categoryId, amount, day, note) => txs.push({ id: `t${n++}`, type, categoryId, amount, date: at(day), ...(note ? { note } : {}) })
-add('income', 'salary', 120000, 1, 'Зарплата')
-add('expense', 'home', 25000, 2, 'Аренда')
-;[1600, 900, 1450, 1100, 2300, 700, 1250, 1500, 850, 1300, 950, 700].forEach((a, i) => add('expense', 'food', a, 1 + i * 2))
-;[350, 900, 420, 1250, 680, 1500, 400, 700].forEach((a, i) => add('expense', 'cafe', a, 2 + i * 2))
-;[450, 300, 520, 380, 410, 600, 290, 450, 500, 400].forEach((a, i) => add('expense', 'transport', a, 1 + i * 2))
-;[1200, 900, 1000].forEach((a, i) => add('expense', 'fun', a, 5 + i * 6))
-add('expense', 'health', 2100, 9, 'Аптека')
-add('expense', 'phone', 650, 12, 'Связь')
+add('income', 'salary', 4200, 1, 'Зарплата')
+add('expense', 'home', 1200, 2, 'Аренда')
+;[46, 28, 39, 31, 64, 22, 35, 41, 26, 37, 29, 22].forEach((a, i) => add('expense', 'food', a, 1 + Math.round((i * 20) / 11)))
+;[14, 32, 18, 27, 21, 34, 9, 15].forEach((a, i) => add('expense', 'cafe', a, 2 + i * 2))
+;[12, 9, 14, 11, 13, 16, 8, 12, 13, 10].forEach((a, i) => add('expense', 'transport', a, 1 + i * 2))
+;[28, 22, 26].forEach((a, i) => add('expense', 'fun', a, 5 + i * 6))
+add('expense', 'health', 58, 9, 'Аптека')
+add('expense', 'phone', 25, 12, 'Связь')
 const spentBefore = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-// Бюджет — чтобы на сегодня было ровно 8 000 ₽: осталось 10 дней, включая сегодня.
-const BUDGET = spentBefore + 8000 * 10
+// Бюджет — чтобы на сегодня было ровно 180 $: осталось 10 дней, включая сегодня.
+const BUDGET = spentBefore + 180 * 10
 
 const kv = new FakeKV()
 await kv.put(
   'data:777',
   JSON.stringify({
-    blob: JSON.stringify({ state: { currency: 'RUB', lang: 'ru', monthlyBudget: BUDGET, transactions: txs }, version: 17 }),
+    blob: JSON.stringify({ state: { currency: 'USD', lang: 'ru', monthlyBudget: BUDGET, transactions: txs }, version: 17 }),
     updatedAt: NOW,
   }),
 )
@@ -77,24 +80,24 @@ const msg = (fields) => ({ message: { message_id: 1, chat: { id: 777, type: 'pri
 const voice = { voice: { file_id: 'v', duration: 4, file_size: 9000, mime_type: 'audio/ogg' } }
 
 // 1. Текстом — три траты одним сообщением.
-const TYPED = 'такси 450, обед 380 и кино 600'
+const TYPED = 'такси 12, обед 15 и кино 9'
 model.push({
   intent: 'record',
   entries: [
-    { type: 'expense', amount: 450, categoryId: 'transport', note: 'такси' },
-    { type: 'expense', amount: 380, categoryId: 'cafe', note: 'обед' },
-    { type: 'expense', amount: 600, categoryId: 'fun', note: 'кино' },
+    { type: 'expense', amount: 12, categoryId: 'transport', note: 'такси' },
+    { type: 'expense', amount: 15, categoryId: 'cafe', note: 'обед' },
+    { type: 'expense', amount: 9, categoryId: 'fun', note: 'кино' },
   ],
 })
 await handleTgUpdate(msg({ text: TYPED }), env)
 
 // 2. Голосом — как говорят, а не как пишут.
-const SAID = 'заправился на две тысячи и взял шаурму за триста пятьдесят'
+const SAID = 'заправился на сорок и взял бургер за восемь'
 model.push({
   intent: 'record',
   entries: [
-    { type: 'expense', amount: 2000, categoryId: 'car', note: 'заправка' },
-    { type: 'expense', amount: 350, categoryId: 'cafe', note: 'шаурма' },
+    { type: 'expense', amount: 40, categoryId: 'car', note: 'заправка' },
+    { type: 'expense', amount: 8, categoryId: 'cafe', note: 'бургер' },
   ],
   heard: SAID,
 })
@@ -103,7 +106,7 @@ await handleTgUpdate(msg(voice), env)
 // 3. Фото чека — итог, магазин и дата с чека.
 model.push({
   intent: 'record',
-  entries: [{ type: 'expense', amount: 1847, categoryId: 'food', note: 'Супермаркет «Лето»', date: '2026-10-22' }],
+  entries: [{ type: 'expense', amount: 36.4, categoryId: 'food', note: 'Green Market', date: '2026-10-22' }],
 })
 await handleTgUpdate(msg({ photo: [{ file_id: 'p', width: 960, height: 1280, file_size: 120000 }] }), env)
 
@@ -112,19 +115,19 @@ const ASKED = 'на что ушло больше всего в этом меся
 model.push({ intent: 'answer', entries: [], heard: ASKED })
 model.push({
   title: 'Октябрь: куда ушли деньги',
-  lead: 'Больше всего — «Жильё»: 25 000 ₽, это 41% расходов.',
+  lead: 'Больше всего — «Жильё»: 1,200 $, это 55% расходов.',
   sections: [
     {
       heading: 'Дальше по тратам',
       icon: 'category',
       rows: [
-        { label: 'Еда', value: '16 447 ₽ (27%)' },
-        { label: 'Кафе', value: '6 930 ₽ (11%)' },
-        { label: 'Транспорт', value: '4 750 ₽ (8%)' },
+        { label: 'Еда', value: '456.40 $ (21%)' },
+        { label: 'Кафе', value: '193 $ (9%)' },
+        { label: 'Транспорт', value: '130 $ (6%)' },
       ],
     },
   ],
-  tip: 'Еда и кафе вместе — больше трети всех трат: лимит на «Кафе» поможет держать темп.',
+  tip: 'Еда и кафе вместе — почти треть трат: лимит на «Кафе» поможет держать темп.',
   followups: ['А в прошлом месяце?', 'Сколько можно тратить в день?'],
 })
 await handleTgUpdate(msg(voice), env)
