@@ -49,7 +49,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
       style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 10px)' }}
     >
       <div className="flex w-full max-w-md items-center gap-2.5">
-        <nav className="pointer-events-auto min-w-0 flex-1 rounded-full border border-black/[0.06] bg-surface-raised/80 p-1.5 shadow-fab backdrop-blur-xl dark:border-white/10 dark:shadow-raised-dark">
+        <nav className="tabbar-glass pointer-events-auto min-w-0 flex-1 rounded-full border border-black/[0.06] bg-surface-raised/80 p-1.5 shadow-fab backdrop-blur-xl dark:border-white/10 dark:shadow-raised-dark">
           <div className="relative flex items-stretch">
             {activeIndex >= 0 && (
               <span

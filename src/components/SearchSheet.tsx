@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { BottomSheet } from './ui/BottomSheet'
 import { CategoryIcon } from './icons/CategoryIcon'
@@ -29,8 +29,22 @@ const MAX_RESULTS = 100
  * категории и сумма. Поэтому «1250», «кафе» и «#отпуск» работают одинаково, без
  * отдельных правил на каждый случай. Стог пересобирается только при изменении
  * операций, категорий или языка — набор запроса его не трогает.
+ *
+ * Запрос и результаты живут во вложенном SearchBody. Шторка перетаскивается
+ * (framer drag), и каждая её перерисовка заставляла framer перемерять всю
+ * страницу — на каждую набранную букву. Теперь буквы перерисовывают только
+ * содержимое, а список обновляется с низким приоритетом (useDeferredValue):
+ * поле ввода отвечает сразу, даже если совпадений сотни.
  */
 export function SearchSheet({ open, onClose, onEditTx }: Props) {
+  return (
+    <BottomSheet open={open} onClose={onClose} className="min-h-[80vh]">
+      <SearchBody open={open} onClose={onClose} onEditTx={onEditTx} />
+    </BottomSheet>
+  )
+}
+
+function SearchBody({ open, onClose, onEditTx }: Props) {
   const transactions = useStore((s) => s.transactions)
   const categories = useStore(selectAllCategories)
   const lang = useStore((s) => s.lang)
@@ -51,17 +65,21 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
 
+  // Сразу от новых к старым: фильтр сохраняет порядок, сортировать на каждую букву не нужно.
   const index = useMemo(() => {
     if (!open) return []
-    return transactions.map((tx) => {
-      const cat = byId.get(tx.categoryId)
-      const name = cat ? categoryName(lang, cat.id, cat.name) : ''
-      const parts = [tx.note ?? '', (tx.tags ?? []).join(' '), name, String(tx.amount)]
-      return { tx, cat, hay: parts.join(' ').toLowerCase() }
-    })
+    return transactions
+      .map((tx) => {
+        const cat = byId.get(tx.categoryId)
+        const name = cat ? categoryName(lang, cat.id, cat.name) : ''
+        const parts = [tx.note ?? '', (tx.tags ?? []).join(' '), name, String(tx.amount)]
+        return { tx, cat, hay: parts.join(' ').toLowerCase() }
+      })
+      .sort((a, b) => (a.tx.date < b.tx.date ? 1 : -1))
   }, [open, transactions, byId, lang])
 
   const q = query.trim().toLowerCase()
+  const deferredQ = useDeferredValue(q)
 
   // Задание «найди операцию» засчитываем за настоящий поиск, а не за открытие
   // шторки: иначе оно выполнялось бы случайным тапом и ничему не учило.
@@ -72,18 +90,14 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
     searched.current = true
     track('use_search')
   }, [open, q, track])
-  const results = useMemo(() => {
-    if (q.length === 0) return []
-    return index
-      .filter((row) => row.hay.includes(q))
-      .sort((a, b) => (a.tx.date < b.tx.date ? 1 : -1))
-      .slice(0, MAX_RESULTS)
-  }, [index, q])
-
-  const total = useMemo(() => (q.length === 0 ? 0 : index.filter((row) => row.hay.includes(q)).length), [index, q])
+  const { results, total } = useMemo(() => {
+    if (deferredQ.length === 0) return { results: [], total: 0 }
+    const found = index.filter((row) => row.hay.includes(deferredQ))
+    return { results: found.slice(0, MAX_RESULTS), total: found.length }
+  }, [index, deferredQ])
 
   return (
-    <BottomSheet open={open} onClose={onClose} className="min-h-[80vh]">
+    <>
       {/* Поле поиска липнет к верху: список длинный, а поле должно оставаться под рукой. */}
       <div className="sticky top-0 z-10 bg-surface-raised px-5 pb-3 pt-1">
         <div className="flex items-center gap-2">
@@ -119,7 +133,7 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
           </button>
         </div>
 
-        {q.length > 0 && (
+        {deferredQ.length > 0 && (
           <div className="mt-2 text-[11px] font-semibold text-ink-subtle">
             {t('search.found', { n: total })}
             {total > MAX_RESULTS ? ` · ${t('search.capped', { n: MAX_RESULTS })}` : ''}
@@ -128,7 +142,7 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
       </div>
 
       <div className="px-5 pb-2">
-        {q.length === 0 ? (
+        {deferredQ.length === 0 ? (
           <div className="px-2 py-10 text-center text-sm text-ink-subtle">{t('search.hint')}</div>
         ) : results.length === 0 ? (
           <div className="px-2 py-10 text-center text-sm text-ink-subtle">{t('search.empty')}</div>
@@ -170,6 +184,6 @@ export function SearchSheet({ open, onClose, onEditTx }: Props) {
           </div>
         )}
       </div>
-    </BottomSheet>
+    </>
   )
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
@@ -549,22 +549,46 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
  *
  * Риск потерять последние правки при закрытии закрыт принудительным сбросом на
  * visibilitychange/pagehide (ниже) и вызовом flushPersist() из облачного синка.
+ *
+ * Сериализуется тоже только при записи. Стандартный createJSONStorage собирал
+ * JSON всего стора на КАЖДОЕ изменение — откладывалась лишь запись на диск. У
+ * активного человека это 2–3 тысячи операций, сотни килобайт строки на каждую
+ * смену периода и каждое нажатие — рывок прямо в момент отклика. Теперь
+ * изменения копят ссылку на снимок (он неизменяемый), а JSON собирается один
+ * раз — в простое, после окна троттлинга, и не позже чем через секунду.
  */
 const PERSIST_DELAY = 400
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
-let persistPending: { name: string; value: string } | null = null
+let persistIdle: number | null = null
+let persistPending: { name: string; value: StorageValue<unknown> } | null = null
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number
+  cancelIdleCallback?: (id: number) => void
+}
 
 function writePersist(): void {
   persistTimer = null
+  persistIdle = null
   const pending = persistPending
   persistPending = null
   if (!pending) return
   try {
-    localStorage.setItem(pending.name, pending.value)
+    localStorage.setItem(pending.name, JSON.stringify(pending.value))
   } catch {
     /* приватный режим или кончилось место — данные остаются в памяти */
   }
+}
+
+function schedulePersist(): void {
+  if (persistTimer || persistIdle !== null) return
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    const w = window as IdleWindow
+    if (w.requestIdleCallback) persistIdle = w.requestIdleCallback(writePersist, { timeout: 1000 })
+    else writePersist()
+  }, PERSIST_DELAY)
 }
 
 /**
@@ -576,22 +600,27 @@ export function flushPersist(): void {
     clearTimeout(persistTimer)
     persistTimer = null
   }
+  if (persistIdle !== null) {
+    ;(window as IdleWindow).cancelIdleCallback?.(persistIdle)
+    persistIdle = null
+  }
   writePersist()
 }
 
-const throttledStorage = {
-  getItem: (name: string): string | null => {
+const throttledStorage: PersistStorage<unknown> = {
+  getItem: (name) => {
     // Ещё не записанное значение свежее того, что лежит на диске.
     if (persistPending && persistPending.name === name) return persistPending.value
     try {
-      return localStorage.getItem(name)
+      const raw = localStorage.getItem(name)
+      return raw ? (JSON.parse(raw) as StorageValue<unknown>) : null
     } catch {
       return null
     }
   },
-  setItem: (name: string, value: string): void => {
+  setItem: (name, value) => {
     persistPending = { name, value }
-    if (!persistTimer) persistTimer = setTimeout(writePersist, PERSIST_DELAY)
+    schedulePersist()
   },
   removeItem: (name: string): void => {
     if (persistPending && persistPending.name === name) persistPending = null
@@ -1046,7 +1075,7 @@ export const useStore = create<State & Actions>()(
     {
       name: 'finance-mini-app:v1',
       version: 17,
-      storage: createJSONStorage(() => throttledStorage),
+      storage: throttledStorage as PersistStorage<State & Actions>,
       // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
       merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
       migrate: (persisted: any, version) => {

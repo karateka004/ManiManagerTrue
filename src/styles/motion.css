@@ -400,6 +400,15 @@ html.anim-paused .ts-ember, html.anim-paused .ts-halo { animation-play-state: pa
 html.perf-low .ts-bob, html.perf-low .ts-twinkle, html.perf-low .ts-flicker,
 html.perf-low .ts-ember, html.perf-low .ts-halo { animation: none; }
 
+/* Размытие под панелью вкладок — самый дорогой эффект на слабом Android: его
+   пересчитывают на каждом кадре прокрутки, свайпа и смены вкладки. Там панель
+   просто почти непрозрачная. */
+html.perf-low .tabbar-glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-color: rgb(var(--c-surface-raised) / 0.97);
+}
+
 /* ---------- Слой эффектов (lib/fx) ---------- */
 .fx-layer {
   position: fixed;
