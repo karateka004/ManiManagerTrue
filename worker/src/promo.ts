@@ -10,9 +10,9 @@ import type { Env } from './env'
 import { sendFile } from './tg'
 
 /** Новый ролик — новый id: тогда крон отправит его владельцу ещё раз. */
-export const PROMO_ID = '2.7-stories'
+export const PROMO_ID = '2.7-final'
 /** Коммит, в котором лежат файлы ролика. */
-const PROMO_COMMIT = '08991a260299067a79947e282d428e1187aa097a'
+const PROMO_COMMIT = 'eecddb7e97125fcdb007dc54eeb07467ed58b262'
 const BASE = `https://raw.githubusercontent.com/karateka004/ManiManagerTrue/${PROMO_COMMIT}/promo/media/`
 const SENT_KEY = 'promo:sent'
 
