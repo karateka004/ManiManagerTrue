@@ -68,6 +68,21 @@ function run(cmd, args, feed) {
 }
 const ffmpeg = (args, feed) => run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], feed)
 
+/** Громкость для соцсетей: −14 LUFS, потолок −1 dBTP — loudnorm в два прохода (замер, потом точная правка). */
+async function loudnorm(src, dst) {
+  const m = await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', ['-hide_banner', '-nostats', '-i', src, '-af', 'loudnorm=I=-14:TP=-1:LRA=11:print_format=json', '-f', 'null', '-'], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let err = ''
+    p.stderr.on('data', (d) => (err += d))
+    p.on('close', (code) => (code === 0 ? resolve(JSON.parse(err.slice(err.lastIndexOf('{'), err.lastIndexOf('}') + 1))) : reject(new Error('loudnorm'))))
+  })
+  await ffmpeg(['-i', src, '-af',
+    `loudnorm=I=-14:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`,
+    '-ar', '48000', dst])
+}
+
 async function openScene() {
   const { chromium } = loadPlaywright()
   const browser = await chromium.launch()
@@ -141,8 +156,11 @@ async function renderFrames(page, from, to, file, label) {
   const { renderWav } = await import('./sound.mjs')
   const wavs = {}
   for (const kind of new Set(TARGETS.map((x) => x[3]).filter(Boolean))) {
+    const raw = path.join(OUT, `${name}-${kind}-raw.wav`)
     wavs[kind] = path.join(OUT, `${name}-${kind}.wav`)
-    fs.writeFileSync(wavs[kind], renderWav(sounds, duration, { music: kind === 'music' }))
+    fs.writeFileSync(raw, renderWav(sounds, duration, { music: kind === 'music' }))
+    await loudnorm(raw, wavs[kind])
+    fs.rmSync(raw)
   }
 
   for (const [file, scale, kind, audio] of TARGETS) {

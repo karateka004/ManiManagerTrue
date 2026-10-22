@@ -56,12 +56,12 @@ export function renderWav(events, duration, { music = false } = {}) {
 
   /* ---------- Звуки действий ---------- */
   const SFX = {
-    // Клавиша: короткий сухой щелчок, чуть разный по высоте и месту.
+    // Клавиша: мягкий короткий щелчок, чуть разный по высоте и месту.
     key(e) {
       const noise = noiseGen(1000 + e.i * 7)
       const f = svf()
-      const pitch = 3200 + rnd() * 1400
-      add(e.t, 0.03, (t) => f(noise(), pitch, 1.2).band * env(t, 0.0008, 0.006), rnd() * 0.5 - 0.25, 0.32 + rnd() * 0.08)
+      const pitch = 1800 + rnd() * 800
+      add(e.t, 0.05, (t) => f(noise(), pitch, 1.2).band * env(t, 0.0008, 0.01), rnd() * 0.5 - 0.25, 0.5 + rnd() * 0.1)
     },
     // Отправка: «фьють» вверх — пузырь улетел.
     send(e) {
@@ -104,12 +104,12 @@ export function renderWav(events, duration, { music = false } = {}) {
     },
     // Затвор: два механических щелчка и глухой удар.
     shutter(e) {
-      for (const [dt, seed, g] of [[0, 5, 0.5], [0.07, 9, 0.38]]) {
+      for (const [dt, seed, g] of [[0, 5, 0.28], [0.07, 9, 0.21]]) {
         const noise = noiseGen(seed)
         const f = svf()
         add(e.t + dt, 0.06, (t) => f(noise(), 2600, 0.8).band * env(t, 0.0005, 0.009), 0, g)
       }
-      add(e.t, 0.08, (t) => Math.sin(TAU * (160 - 600 * t) * t) * env(t, 0.001, 0.02), 0, 0.3)
+      add(e.t, 0.08, (t) => Math.sin(TAU * (160 - 600 * t) * t) * env(t, 0.001, 0.02), 0, 0.17)
     },
     // Скан: тихая восходящая трель, пока луч идёт по чеку.
     scan(e) {
@@ -118,7 +118,7 @@ export function renderWav(events, duration, { music = false } = {}) {
         const k = t / e.dur
         ph += (TAU * (620 + 1300 * k)) / SR
         return Math.sin(ph) * (0.5 + 0.5 * Math.sin(TAU * 16 * t)) * Math.sin(Math.PI * k)
-      }, 0.2, 0.05)
+      }, 0.2, 0.15)
     },
     // Итог найден: светлый «динь».
     found(e) {
@@ -134,9 +134,9 @@ export function renderWav(events, duration, { music = false } = {}) {
       ;[72, 76, 79, 86].forEach((midi, k) => {
         const f0 = note(midi)
         const pan = -0.4 + k * 0.27
-        add(e.t + k * 0.03, 2.2, (t) => {
+        add(e.t + k * 0.03, 3, (t) => {
           const vib = 1 + 0.003 * Math.sin(TAU * 5 * t)
-          return (Math.sin(TAU * f0 * vib * t) + 0.25 * Math.sin(TAU * f0 * 2 * t)) * env(t, 0.05, 0.75)
+          return (Math.sin(TAU * f0 * vib * t) + 0.25 * Math.sin(TAU * f0 * 2 * t)) * env(t, 0.05, 1.2)
         }, pan, 0.09)
       })
     },
@@ -185,13 +185,17 @@ export function renderWav(events, duration, { music = false } = {}) {
         const tb = t0 + beat * BEAT
         // Бочка и бас — на сильные доли.
         if (beat % 2 === 0) {
+          // Бочка со щелчком сверху: на динамике телефона низа нет, щелчок слышно.
           let ph = 0
+          const click = noiseGen(700 + bar * 4 + beat)
+          const cf = svf()
           put(tb, 0.3, (t) => {
             ph += (TAU * (48 + 110 * Math.exp(-t / 0.03))) / SR
-            return Math.sin(ph) * env(t, 0.002, 0.12)
-          }, 0, 0.32)
+            return Math.sin(ph) * env(t, 0.002, 0.12) + cf(click(), 3000, 1).band * env(t, 0.0005, 0.005) * 0.8
+          }, 0, 0.2)
+          // Бас со второй гармоникой — чтобы его было слышно и без сабвуфера.
           const fb = note(chord[0] - 12)
-          put(tb, BEAT * 1.8, (t) => Math.sin(TAU * fb * t) * env(t, 0.01, 0.35), 0, 0.14)
+          put(tb, BEAT * 1.8, (t) => (Math.sin(TAU * fb * t) + 0.5 * Math.sin(TAU * 2 * fb * t)) * env(t, 0.01, 0.35), 0, 0.14)
         }
         // Хлопок — на слабые.
         if (beat % 2 === 1) {
@@ -207,37 +211,32 @@ export function renderWav(events, duration, { music = false } = {}) {
         }
       }
     }
-    // Вход и выход фона плавные; под звуками действий он чуть приседает.
+    // Фон — на 6 дБ тише звуков действий и приседает под каждым (около −8 дБ);
+    // входит сразу — первые секунды сторис самые ценные; уходит плавно.
     const duck = new Float32Array(n)
     for (const e of events) {
-      const s0 = Math.round(e.t * SR)
-      for (let i = 0; i < SR * 0.25; i++) if (s0 + i < n) duck[s0 + i] = Math.max(duck[s0 + i], 1 - i / (SR * 0.25))
+      const s0 = Math.round((e.t - 0.03) * SR)
+      for (let i = 0; i < SR * 0.4; i++) if (s0 + i >= 0 && s0 + i < n) duck[s0 + i] = Math.max(duck[s0 + i], 1 - i / (SR * 0.4))
     }
     for (let j = 0; j < n; j++) {
       const t = j / SR
-      const fade = Math.min(1, t / 0.8) * Math.min(1, Math.max(0, (duration - t) / 1.5))
-      const g = fade * (1 - 0.35 * duck[j])
+      const fade = Math.min(1, t / 0.03) * Math.min(1, Math.max(0, (duration - t) / 1.5))
+      const g = 0.5 * fade * (1 - 0.6 * duck[j])
       L[j] += mL[j] * g
       R[j] += mR[j] * g
     }
   }
 
-  /* ---------- Мастер: громкость и мягкий ограничитель ---------- */
-  // Громкость — по среднему уровню, но так, чтобы пики не упирались в потолок:
-  // звуки действий редкие, и одно среднее раздуло бы их до хрипа.
-  let sum = 0
+  /* ---------- Мастер ---------- */
+  // Здесь — только запас по пику (−6 dBFS); громкость до −14 LUFS доводит
+  // render.cjs (loudnorm в два прохода, потолок −1 dBTP).
   let peak = 0
-  for (let j = 0; j < n; j++) {
-    sum += L[j] * L[j] + R[j] * R[j]
-    peak = Math.max(peak, Math.abs(L[j]), Math.abs(R[j]))
-  }
-  const rms = Math.sqrt(sum / (2 * n)) || 1
-  const gain = Math.min(Math.pow(10, -18 / 20) / rms, 0.8 / (peak || 1))
+  for (let j = 0; j < n; j++) peak = Math.max(peak, Math.abs(L[j]), Math.abs(R[j]))
+  const gain = 0.5 / (peak || 1)
   const pcm = Buffer.alloc(44 + n * 4)
-  const clip = (x) => Math.tanh(x * 1.1) / Math.tanh(1.1)
   for (let j = 0; j < n; j++) {
-    pcm.writeInt16LE(Math.round(Math.max(-1, Math.min(1, clip(L[j] * gain) * 0.9)) * 32767), 44 + j * 4)
-    pcm.writeInt16LE(Math.round(Math.max(-1, Math.min(1, clip(R[j] * gain) * 0.9)) * 32767), 46 + j * 4)
+    pcm.writeInt16LE(Math.round(L[j] * gain * 32767), 44 + j * 4)
+    pcm.writeInt16LE(Math.round(R[j] * gain * 32767), 46 + j * 4)
   }
   // Заголовок WAV.
   pcm.write('RIFF', 0)

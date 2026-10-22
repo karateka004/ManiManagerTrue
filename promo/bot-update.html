@@ -42,10 +42,11 @@
   /* Подсветка фона окрашивается в цвет текущего эпизода (--glow меняет renderAt). */
   .stage, .end {
     --glow: var(--b400);
+    --base: 20 50 42;
     background:
       radial-gradient(70% 90% at 100% 0%, rgb(var(--glow) / var(--glow-a, 0.3)), transparent 62%),
       radial-gradient(60% 70% at 0% 100%, rgb(var(--glow) / 0.14), transparent 70%),
-      linear-gradient(160deg, rgb(20 50 42) 0%, rgb(11 14 12) 78%);
+      linear-gradient(160deg, rgb(var(--base)) 0%, rgb(11 14 12) 78%);
   }
   .stage { position: absolute; inset: 0; overflow: hidden; }
   svg { display: block; }
@@ -70,10 +71,10 @@
     display: inline-block; border-radius: 999px; font-weight: 800;
     background: rgb(var(--acc) / 0.2); color: rgb(var(--acc-l));
   }
-  .h1 { font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; }
-  .h1 em { font-style: normal; color: rgb(var(--acc)); }
+  .h1 { font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; color: rgb(var(--acc)); }
+  .h1 em { font-style: normal; }
   .sub { font-weight: 600; color: var(--muted); line-height: 1.3; }
-  .said { font-weight: 700; color: rgb(var(--acc-l)); line-height: 1.3; }
+  .said { font-weight: 700; color: rgb(var(--acc-l)); line-height: 1.3; text-wrap: balance; }
   .foot { position: absolute; color: var(--muted); font-weight: 600; }
 
   /* ---------- Чат ---------- */
@@ -145,10 +146,12 @@
   .receipt .l { display: flex; justify-content: space-between; gap: 0.6em; white-space: nowrap; }
   .receipt .sep { border-top: 1px dashed rgb(0 0 0 / 0.35); margin: 0.45em 0; }
   .receipt .tot {
-    font-weight: 700; font-size: 1.32em; margin: 0 -0.35em; padding: 0.08em 0.35em; border-radius: 0.3em;
+    font-weight: 700; font-size: 1.5em; margin: 0 -0.35em; padding: 0.08em 0.35em; border-radius: 0.3em;
     box-shadow: 0 0 0 0.14em rgb(217 119 6 / var(--hl, 0));
     background: rgb(251 191 36 / calc(var(--hl, 0) * 0.45));
   }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  .lead-hl { border-radius: 0.25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; background: rgb(56 189 248 / calc(var(--lh, 0) * 0.28)); }
   .scan {
     position: absolute; left: 0; right: 0; height: 3px; opacity: 0;
     background: linear-gradient(90deg, transparent, rgb(253 230 138), transparent);
@@ -194,6 +197,12 @@
   }
   .chips svg { color: rgb(var(--acc)); }
   .cta { font-weight: 800; color: rgb(var(--b200)); }
+  .find { font-weight: 700; color: var(--muted); }
+  .handle {
+    font-weight: 800; color: #fff; border-radius: 999px;
+    background: linear-gradient(135deg, rgb(var(--b400)), rgb(var(--b700)));
+    box-shadow: 0 10px 40px rgb(var(--b400) / 0.35);
+  }
 
   /* ---------- Раскладки ---------- */
   .land { width: 960px; height: 540px; }
@@ -283,13 +292,15 @@
   .square .chips { gap: 14px; margin-top: 40px; max-width: 940px; }
   .square .chips div { gap: 12px; padding: 13px 24px; font-size: 30px; }
   .square .cta { font-size: 34px; margin-top: 40px; }
+  .square .find { font-size: 30px; margin-top: 44px; }
+  .square .handle { font-size: 40px; margin-top: 18px; padding: 18px 40px; }
 
   /*
    * Сторис: верх (~220 px) и низ (~260 px) закрывает интерфейс Telegram и
    * Instagram — главное держим между ними.
    */
   .story { width: 1080px; height: 1920px; }
-  .story .stage, .story .end { --glow-a: 0.42; }
+  .story .stage, .story .end { --glow-a: 0.34; }
   .story .brand { left: 64px; top: 236px; gap: 18px; font-size: 40px; }
   .story .brand .logo { width: 66px; height: 66px; border-radius: 20px; }
   .story .modes { left: 60px; right: 60px; top: 334px; gap: 14px; }
@@ -314,8 +325,8 @@
   .story .wave { gap: 5px; height: 58px; }
   .story .wave i { width: 7px; }
   .story .dur { font-size: 29px; margin-left: 8px; }
-  .story .photo { width: 400px; height: 496px; border-radius: 34px; }
-  .story .receipt { left: 58px; top: 27px; width: 294px; padding: 20px 18px 27px; font-size: 15px; }
+  .story .photo { width: 440px; height: 560px; border-radius: 34px; }
+  .story .receipt { left: 44px; top: 22px; width: 352px; padding: 22px 20px 28px; font-size: 18.5px; }
   .story .input { height: 118px; gap: 20px; padding: 0 24px 0 32px; font-size: 37px; }
   .story .caret { width: 4px; height: 1.05em; margin-left: 2px; }
   .story .send { width: 76px; height: 76px; }
@@ -332,9 +343,8 @@
   .story .end .brand .logo { width: 84px; height: 84px; border-radius: 26px; }
   .story .end .t { font-size: 104px; }
   .story .end .s { font-size: 42px; margin-top: 30px; max-width: 900px; }
-  .story .chips { gap: 18px; margin-top: 60px; max-width: 580px; }
-  .story .chips div { gap: 14px; padding: 18px 30px; font-size: 38px; }
-  .story .cta { font-size: 44px; margin-top: 70px; padding: 22px 40px; border-radius: 999px; background: rgb(var(--b400) / 0.16); border: 2px solid rgb(var(--b400) / 0.5); }
+  .story .find { font-size: 38px; margin-top: 90px; }
+  .story .handle { font-size: 52px; margin-top: 26px; padding: 26px 52px; }
 </style>
 </head>
 <body>
@@ -348,8 +358,8 @@ const CTA = params.get('cta') === 'ad' ? 'ad' : 'start'
 document.body.className = LAYOUT
 /** Размер под раскладку: стартовый экран / квадрат / сторис. */
 const px = (land, square, story = square) => (LAYOUT === 'story' ? story : LAYOUT === 'square' ? square : land)
-// «Новое» новичку на стартовом экране бота ни о чём не говорит — там бейджа нет.
-const BADGE = CTA === 'ad'
+// «Новое» новичку ни о чём не говорит: бейдж только в квадрате для своих (каналы, пересылка).
+const BADGE = CTA === 'ad' && LAYOUT === 'square'
 
 const R = window.REPLIES
 
@@ -382,19 +392,27 @@ const MODES = [
 const rgb = (c) => c.join(' ')
 const accVars = (m) => `--acc:${rgb(m.acc)};--acc-l:${rgb(m.light)}`
 
-/* ---------- Тайминг (секунды) ---------- */
+/*
+ * Тайминг (секунды). Первый ответ — уже на 1,3 с: сторис пролистывают быстро.
+ * Смены эпизодов и финал стоят на долях фона (100 BPM — каждые 0,6 с).
+ * Сторис не крутятся по кругу — финал в них остаётся до конца; гифки и
+ * стартовый экран возвращаются к первому кадру.
+ */
+const LOOP = LAYOUT !== 'story'
 const T = {
-  // 1. Текстом — три траты одним сообщением
-  type: [0.3, 1.55], send1: 1.7, typing1: [1.8, 2.4], reply1: 2.4,
+  // 1. Текстом — три траты одним сообщением; начало фразы уже набрано
+  type: [0, 0.8], send1: 0.85, typing1: [0.9, 1.3], reply1: 1.3,
   // 2. Голосом
-  head2: 4.4, rec2: [4.7, 7.2], send2: 7.3, typing2: [7.4, 8.0], reply2: 8.0,
+  head2: 3.6, rec2: [3.9, 6.4], send2: 6.5, typing2: [6.6, 7.2], reply2: 7.2,
   // 3. Фото чека
-  head3: 10.0, photo: 10.3, scan: [10.65, 11.6], typing3: [11.4, 12.1], reply3: 12.1,
-  // 4. Вопрос голосом — черновик «Думает…», потом карточка
-  head4: 14.1, rec4: [14.4, 16.2], send4: 16.3, think: [16.45, 17.4], reply4: 17.4, read: [18.1, 19.7],
-  // Итог и петля
-  end: 20.6, outro: 23.0, total: 23.6,
+  head3: 9.0, photo: 9.3, scan: [9.65, 10.6], typing3: [10.4, 11.1], reply3: 11.1,
+  // 4. Вопрос голосом — черновик «Думает…», потом карточка: верх держим секунду, потом листаем
+  head4: 13.2, rec4: [13.5, 15.3], send4: 15.4, think: [15.55, 16.5], reply4: 16.5, read: [17.9, 18.6],
+  // Итог (и петля)
+  end: 19.8, outro: LOOP ? 22.2 : 23.0, total: LOOP ? 22.8 : 23.0,
 }
+/** Сколько фразы набрано уже в первом кадре. */
+const PRE = 'такси 12, '.length
 window.DURATION = T.total
 const HEAD_AT = [-1, T.head2, T.head3, T.head4, T.end]
 
@@ -411,17 +429,20 @@ const back = (x) => { const c = 1.4; return x === 0 ? 0 : 1 + (c + 1) * Math.pow
  */
 const SOUNDS = []
 {
-  const [a, b] = T.type
-  for (let i = 0; i < R.typed.length; i++) {
-    if (R.typed[i] !== ' ') SOUNDS.push({ t: a + ((i + 0.5) * (b - a)) / R.typed.length, kind: 'key', i })
-  }
+  // Клавиши — не на каждый символ (это трещотка), а семь неровных щелчков.
+  let at = T.type[0] + 0.03
+  ;[0.11, 0.14, 0.09, 0.13, 0.1, 0.12, 0].forEach((step, i) => {
+    SOUNDS.push({ t: at, kind: 'key', i })
+    at += step
+  })
   SOUNDS.push({ t: T.send1, kind: 'send' }, { t: T.reply1, kind: 'receive' })
-  for (const at of [T.head2, T.head3, T.head4]) SOUNDS.push({ t: at, kind: 'swish' })
+  // «Вжух» смены эпизода — кроме перехода к чеку: там и так затвор и вспышка.
+  for (const at2 of [T.head2, T.head4]) SOUNDS.push({ t: at2, kind: 'swish' })
   SOUNDS.push({ t: T.rec2[0] - 0.12, kind: 'recStart' }, { t: T.rec2[1], kind: 'recStop' }, { t: T.send2, kind: 'send' }, { t: T.reply2, kind: 'receive' })
-  SOUNDS.push({ t: T.photo - 0.32, kind: 'shutter' }, { t: T.photo, kind: 'send' })
+  SOUNDS.push({ t: T.photo - 0.15, kind: 'shutter' })
   SOUNDS.push({ t: T.scan[0], kind: 'scan', dur: T.scan[1] - T.scan[0] }, { t: T.scan[1] - 0.12, kind: 'found' }, { t: T.reply3, kind: 'receive' })
   SOUNDS.push({ t: T.rec4[0] - 0.12, kind: 'recStart' }, { t: T.rec4[1], kind: 'recStop' }, { t: T.send4, kind: 'send' }, { t: T.reply4, kind: 'card' })
-  SOUNDS.push({ t: T.end, kind: 'whoosh' }, { t: T.end + 0.3, kind: 'chord' })
+  SOUNDS.push({ t: T.end, kind: 'whoosh' }, { t: T.end + 0.6, kind: 'chord' })
   SOUNDS.sort((x, y) => x.t - y.t)
 }
 window.SOUNDS = SOUNDS
@@ -433,7 +454,7 @@ const badge = BADGE ? '<div class="badge">Новое</div>' : ''
 const badgeSlot = (show) => (LAYOUT === 'land' ? `<div class="badge" style="${show && BADGE ? '' : 'visibility:hidden'}">Новое</div>` : show ? badge : '')
 const stage = document.getElementById('stage')
 stage.innerHTML = `
-  <div class="brand">${logo(px(22, 30, 34))}<span>Кошель${LAYOUT === 'land' ? '' : ' <small>· бот для учёта денег</small>'}</span></div>
+  <div class="brand">${logo(px(22, 30, 34))}<span>Кошель${LAYOUT === 'land' ? '' : ` <small>· бот для учёта денег${LAYOUT === 'story' ? ' в Telegram' : ''}</small>`}</span></div>
   ${LAYOUT === 'story' ? `<div class="modes">${MODES.map((m) => `<div style="${accVars(m)}">${svg(m.icon, 30)}${m.label}</div>`).join('')}</div>` : ''}
   <div class="heads">
     <div class="head" style="${accVars(MODES[0])}">
@@ -449,7 +470,7 @@ stage.innerHTML = `
     <div class="head" style="${accVars(MODES[2])}">
       ${badgeSlot(true)}
       <div class="h1">Сфоткай чек<em>.</em></div>
-      <div class="sub">запишу итог и магазин</div>
+      <div class="sub">бот запишет итог и магазин</div>
     </div>
     <div class="head" style="${accVars(MODES[3])}">
       ${badgeSlot(true)}
@@ -457,7 +478,7 @@ stage.innerHTML = `
       <div class="said">${words(`«${R.asked}»`)}</div>
     </div>
   </div>
-  <div class="foot">Бот в Telegram · бесплатно</div>
+  ${LAYOUT === 'story' ? '' : '<div class="foot">Бот в Telegram · бесплатно</div>'}
   <div class="chat">
     <div class="chat-head">${logo(px(22, 29, 35))}<div><div class="name">Кошель</div><div class="status" id="status">бот</div></div></div>
     <div class="msgs"><div class="col" id="col"></div></div>
@@ -477,8 +498,10 @@ stage.innerHTML = `
     <div class="brand">${logo(px(28, 40, 46))}<span>Кошель</span></div>
     <div class="t"><em style="color:rgb(${rgb(MODES[0].acc)})">Пиши</em>, <em style="color:rgb(${rgb(MODES[1].acc)})">говори</em><br>или <em style="color:rgb(${rgb(MODES[2].acc)})">сфоткай чек</em></div>
     <div class="s">Кошель запишет траты сам — и ответит, куда ушли деньги</div>
-    <div class="chips">${MODES.map((m) => `<div style="${accVars(m)}">${svg(m.icon, px(21, 30, 38))}${m.key === 'photo' ? 'Фото чека' : m.label}</div>`).join('')}</div>
-    <div class="cta">${CTA === 'ad' ? '@TrueManiManager_Bot · бесплатно' : 'Бесплатно · без регистрации'}</div>
+    ${CTA === 'ad'
+      ? `<div class="find">Найди в Telegram — бесплатно</div><div class="handle">@TrueManiManager_Bot</div>`
+      : `<div class="chips">${MODES.map((m) => `<div style="${accVars(m)}">${svg(m.icon, px(21, 30, 38))}${m.key === 'photo' ? 'Фото чека' : m.label}</div>`).join('')}</div>
+         <div class="cta">Бесплатно · без регистрации</div>`}
   </div>`
 
 /* ---------- Сообщения ---------- */
@@ -524,7 +547,7 @@ const receipt = `<div class="receipt" id="receipt">
   <div class="c">22 Oct 2026  18:42</div>
   <div class="c">Thank you!</div>
 </div>`
-const photoBubble = `<div class="bubble photo" style="padding:0;white-space:normal"><div class="table"></div>${receipt}<div class="scan" id="scan"></div></div>`
+const photoBubble = `<div class="bubble photo" style="padding:0;white-space:normal"><div class="table"></div>${receipt}<div class="scan" id="scan"></div><div class="flash" id="flash"></div></div>`
 
 addRow('out', bubble(R.typed), T.send1)
 const a1 = addRow('in', reply(R.text), T.reply1)
@@ -535,7 +558,9 @@ const a3 = addRow('in', reply(R.photo), T.reply3)
 addRow('out', voiceBubble('0:03'), T.send4)
 // Черновик ответа: пока думает модель, Telegram показывает пузырь «Думает…».
 addRow('in', `<div class="bubble think">Думает<span id="thinkDots"></span></div>`, T.think[0], T.think[1])
-const a4 = addRow('in', reply(R.answer), T.reply4)
+// Пока верх карточки стоит — голубая подложка под главным, как рамка итога у чека.
+const LEAD = R.answer.text.split('\n')[2] ?? ''
+const a4 = addRow('in', reply({ ...R.answer, text: R.answer.text.replace(LEAD, `<span class="lead-hl" id="leadHl">${LEAD}</span>`) }), T.reply4)
 const GAP = px(9, 13, 16)
 
 // Рваный низ у чека.
@@ -556,7 +581,7 @@ live.innerHTML = Array.from({ length: LIVE_BARS }, () => '<i></i>').join('')
 const TAPS = [
   { target: 'sendBtn', at: T.send1 - 0.18 },
   { target: 'sendBtn', at: T.rec2[0] - 0.25, until: T.rec2[1] },
-  { target: 'clipBtn', at: T.photo - 0.62 },
+  { target: 'clipBtn', at: T.photo - 0.3 },
   { target: 'sendBtn', at: T.rec4[0] - 0.25, until: T.rec4[1] },
 ].map((tap) => {
   const el = document.createElement('div')
@@ -616,6 +641,9 @@ window.renderAt = function renderAt(t) {
   const lo = Math.floor(m), k = m - lo
   const glow = mix(MODES[lo].acc, MODES[Math.min(3, lo + 1)].acc, k)
   stage.style.setProperty('--glow', rgb(glow))
+  // Основа фона после первого эпизода — нейтральная: янтарь и фиолет на зелёной
+  // основе дают оливу и сизость.
+  stage.style.setProperty('--base', rgb(mix([20, 50, 42], [22, 24, 28], clamp(m))))
   modeEls.forEach((el, i) => {
     const on = clamp(1 - Math.abs(m - i))
     el.style.background = `rgb(${rgb(MODES[i].acc)} / ${(0.06 + on * 0.9).toFixed(3)})`
@@ -664,10 +692,10 @@ window.renderAt = function renderAt(t) {
   statusEl.textContent = typing ? `печатает${'.'.repeat(1 + (Math.floor(t * 4) % 3))}` : 'бот'
   statusEl.classList.toggle('on', typing)
 
-  /* Поле ввода: набор текста */
+  /* Поле ввода: набор текста (начало фразы уже в поле — и в первом кадре петли) */
   const [ta, tb] = T.type
-  const n = looped || t >= T.send1 ? 0 : Math.round(R.typed.length * prog(t, ta, tb - ta))
-  const focused = !looped && t >= ta - 0.2 && t < T.send1
+  const n = looped ? PRE : t >= T.send1 ? 0 : PRE + Math.round((R.typed.length - PRE) * prog(t, ta, tb - ta))
+  const focused = looped || t < T.send1
   const caret = (on) => `<span class="caret" style="opacity:${on ? 1 : 0}"></span>`
   if (n > 0) {
     field.className = 'field typed'
@@ -681,8 +709,11 @@ window.renderAt = function renderAt(t) {
     ? svg('send', px(21, 29, 36), { color: '#fff', stroke: 2.2 })
     : svg('mic', px(25, 34, 42), { color: 'rgb(243 246 244 / 0.45)' })
 
-  /* Голосовые */
+  /* Голосовые: под полосой записи поле и скрепка гаснут, чтобы не просвечивали */
   if (looped || !(recording(t, T.rec2, 4) || recording(t, T.rec4, 3))) rec.style.opacity = '0'
+  const under = (1 - Number(rec.style.opacity)).toFixed(3)
+  field.style.opacity = under
+  $('clipBtn').style.opacity = under
 
   /* Касания */
   const sr = stage.getBoundingClientRect()
@@ -709,13 +740,17 @@ window.renderAt = function renderAt(t) {
   $('scan').style.top = `${(6 + 86 * inOut(sp)).toFixed(2)}%`
   $('scan').style.opacity = (looped ? 0 : Math.sin(Math.PI * sp)).toFixed(3)
   $('tot').style.setProperty('--hl', (looped ? 0 : out3(prog(t, sb - 0.25, 0.35))).toFixed(3))
+  // Вспышка камеры, когда фото легло в чат.
+  $('flash').style.opacity = (looped ? 0 : 0.5 * Math.sin(Math.PI * prog(t, T.photo, 0.15))).toFixed(3)
+  $('leadHl').style.setProperty('--lh', (looped ? 0 : out3(prog(t, T.reply4 + 0.5, 0.3)) * (1 - prog(t, T.read[0] + 0.2, 0.3))).toFixed(3))
 
   /* Финальная карточка */
   const end = $('end')
   end.style.setProperty('--glow', rgb(MODES[0].acc))
-  end.style.opacity = (out3(prog(t, T.end, 0.45)) * (1 - inOut(prog(t, T.outro, T.total - T.outro)))).toFixed(3)
+  const fadeOut = T.total > T.outro ? inOut(prog(t, T.outro, T.total - T.outro)) : 0
+  end.style.opacity = (out3(prog(t, T.end, 0.45)) * (1 - fadeOut)).toFixed(3)
   ;[...end.children].forEach((el, i) => {
-    const q = out3(prog(t, T.end + 0.12 + i * 0.13, 0.5))
+    const q = out3(prog(t, T.end + 0.12 + i * 0.08, 0.5))
     el.style.opacity = q.toFixed(3)
     el.style.transform = `translateY(${((1 - q) * px(18, 26, 34)).toFixed(2)}px)`
   })
