@@ -1,14 +1,17 @@
 /**
  * Ролик из сцены: Chromium снимает кадр за кадром (window.renderAt(t)), ffmpeg
- * склеивает. Сначала — мастер без потерь, из него — mp4 и gif нужных размеров.
+ * склеивает. Сначала — мастер без потерь (кадры частями в несколько процессов),
+ * из него — mp4 и gif нужных размеров; звук — sound.mjs по window.SOUNDS.
  *
- *   node promo/render.cjs land start       стартовый экран бота: 960×540 и 640×360
- *   node promo/render.cjs square ad        пост: 1080×1080 mp4 и gif 600×600
- *   node promo/render.cjs land start --stills 2.9,8.6   отдельные кадры в png
+ *   node promo/render.cjs land start      стартовый экран бота: 960×540 mp4 и 640×360 gif (без звука)
+ *   node promo/render.cjs square ad       пост: 1080×1080 mp4 со звуком и без, gif 600×600
+ *   node promo/render.cjs story ad        сторис: 1080×1920 mp4 — звуки действий; звуки и фон
+ *   … --jobs 4                            кадры в 4 процесса (по числу ядер)
+ *   … --stills 2.9,8.6                    отдельные кадры в png
  *
  * Нужны playwright (глобально или в проекте) и ffmpeg. Итог — в promo/out/.
  */
-const { spawn, execFileSync } = require('node:child_process')
+const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 
@@ -21,47 +24,80 @@ function loadPlaywright() {
   throw new Error('Нужен playwright: npm i -g playwright')
 }
 
-const [layout = 'land', cta = 'start'] = process.argv.slice(2).filter((a) => !a.startsWith('--') && !/^[\d.,]+$/.test(a))
-const stillsArg = process.argv.indexOf('--stills')
-const stills = stillsArg > 0 ? process.argv[stillsArg + 1].split(',').map(Number) : null
+const argv = process.argv.slice(2)
+const flag = (name) => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+const [layout = 'land', cta = 'start'] = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'))
+const stills = flag('--stills')?.split(',').map(Number)
+const jobs = Number(flag('--jobs') ?? 1)
+const part = flag('--part') !== undefined ? Number(flag('--part')) : null
 const FPS = 30
-const DPR = 2
-const SIZE = layout === 'square' ? { width: 1080, height: 1080 } : { width: 960, height: 540 }
+const SIZE = { land: [960, 540], square: [1080, 1080], story: [1080, 1920] }[layout]
+// Сторис крупная — хватает полуторного запаса для сглаживания.
+const DPR = layout === 'story' ? 1.5 : 2
 const OUT = path.join(__dirname, 'out')
 const name = `koshel-2.7-${layout}-${cta}`
 fs.mkdirSync(OUT, { recursive: true })
 
-/** Что получаем из мастера: [файл, фильтр масштаба, формат]. */
+/** Что получаем из мастера: [файл, масштаб, вид]; звук — 'sfx' или 'music'. */
 const TARGETS = {
   land: [
     [`${name}-960x540.mp4`, 'scale=960:540', 'mp4'],
-    [`${name}-640x360.mp4`, 'scale=640:360:flags=lanczos', 'mp4'],
     [`${name}-640x360.gif`, 'scale=640:360:flags=lanczos', 'gif'],
   ],
   square: [
     [`${name}-1080.mp4`, 'scale=1080:1080', 'mp4'],
+    [`${name}-1080-sound.mp4`, 'scale=1080:1080', 'mp4', 'sfx'],
     [`${name}-600.gif`, 'scale=600:600:flags=lanczos', 'gif'],
   ],
+  story: [
+    [`${name}-sound.mp4`, 'scale=1080:1920', 'mp4', 'sfx'],
+    [`${name}-music.mp4`, 'scale=1080:1920', 'mp4', 'music'],
+  ],
+}[layout]
+
+function run(cmd, args, feed) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { stdio: [feed ? 'pipe' : 'ignore', 'inherit', 'inherit'] })
+    p.on('error', reject)
+    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${code}`))))
+    if (feed) feed(p.stdin)
+  })
+}
+const ffmpeg = (args, feed) => run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], feed)
+
+async function openScene() {
+  const { chromium } = loadPlaywright()
+  const browser = await chromium.launch()
+  const page = await browser.newPage({ viewport: { width: SIZE[0], height: SIZE[1] }, deviceScaleFactor: DPR })
+  page.on('pageerror', (e) => console.error('[сцена]', e.message))
+  await page.goto(`file://${path.join(__dirname, 'bot-update.html')}?layout=${layout}&cta=${cta}`)
+  await page.evaluate(() => window.sceneReady)
+  return { browser, page, duration: await page.evaluate(() => window.DURATION), sounds: await page.evaluate(() => window.SOUNDS) }
 }
 
-function ffmpeg(args, stdin) {
-  return new Promise((resolve, reject) => {
-    const p = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: [stdin ? 'pipe' : 'ignore', 'inherit', 'inherit'] })
-    p.on('error', reject)
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))))
-    if (stdin) stdin(p.stdin)
-  })
+/** Кадры [from, to) в мастер без потерь; кадры в DPR× уменьшаем lanczos — сглаживание как у живого экрана. */
+async function renderFrames(page, from, to, file, label) {
+  await ffmpeg(
+    ['-f', 'image2pipe', '-c:v', 'png', '-framerate', String(FPS), '-i', '-',
+      '-vf', `scale=${SIZE[0]}:${SIZE[1]}:flags=lanczos`, '-c:v', 'ffv1', '-pix_fmt', 'bgr0', file],
+    async (stdin) => {
+      for (let i = from; i < to; i++) {
+        await page.evaluate((t) => window.renderAt(t), i / FPS)
+        const png = await page.screenshot({ type: 'png' })
+        if (!stdin.write(png)) await new Promise((r) => stdin.once('drain', r))
+        if ((i - from) % 90 === 0) console.log(`${label}: кадр ${i - from}/${to - from}`)
+      }
+      stdin.end()
+    },
+  )
 }
 
 ;(async () => {
-  const { chromium } = loadPlaywright()
-  const browser = await chromium.launch()
-  const page = await browser.newPage({ viewport: SIZE, deviceScaleFactor: DPR })
-  page.on('pageerror', (e) => console.error('[сцена]', e.message))
-  const url = `file://${path.join(__dirname, 'bot-update.html')}?layout=${layout}&cta=${cta}`
-  await page.goto(url)
-  await page.evaluate(() => window.sceneReady)
-  const duration = await page.evaluate(() => window.DURATION)
+  const { browser, page, duration, sounds } = await openScene()
+  const frames = Math.round(duration * FPS)
 
   if (stills) {
     for (const t of stills) {
@@ -74,31 +110,48 @@ function ffmpeg(args, stdin) {
     return
   }
 
-  // Мастер без потерь: кадры в 2× уменьшаем lanczos — сглаживание как у живого экрана.
-  const master = path.join(OUT, `${name}-master.mkv`)
-  const frames = Math.round(duration * FPS)
-  const started = Date.now()
-  await ffmpeg(
-    ['-f', 'image2pipe', '-c:v', 'png', '-framerate', String(FPS), '-i', '-',
-      '-vf', `scale=${SIZE.width}:${SIZE.height}:flags=lanczos`, '-c:v', 'ffv1', '-pix_fmt', 'bgr0', master],
-    async (stdin) => {
-      for (let i = 0; i < frames; i++) {
-        await page.evaluate((t) => window.renderAt(t), i / FPS)
-        const png = await page.screenshot({ type: 'png' })
-        if (!stdin.write(png)) await new Promise((r) => stdin.once('drain', r))
-        if (i % 60 === 0) process.stdout.write(`\r${name}: кадр ${i}/${frames}`)
-      }
-      stdin.end()
-    },
-  )
-  await browser.close()
-  console.log(`\r${name}: ${frames} кадров за ${((Date.now() - started) / 1000).toFixed(0)} с`)
+  // Процесс-часть: свой кусок кадров — и всё.
+  if (part !== null) {
+    const from = Math.floor((part * frames) / jobs)
+    const to = Math.floor(((part + 1) * frames) / jobs)
+    await renderFrames(page, from, to, path.join(OUT, `${name}-part${part}.mkv`), `${name} часть ${part + 1}/${jobs}`)
+    await browser.close()
+    return
+  }
 
-  for (const [file, scale, kind] of TARGETS[layout]) {
+  const started = Date.now()
+  const master = path.join(OUT, `${name}-master.mkv`)
+  if (jobs > 1) {
+    await browser.close()
+    await Promise.all(
+      Array.from({ length: jobs }, (_, k) => run(process.execPath, [__filename, layout, cta, '--jobs', String(jobs), '--part', String(k)])),
+    )
+    const list = path.join(OUT, `${name}-parts.txt`)
+    fs.writeFileSync(list, Array.from({ length: jobs }, (_, k) => `file '${path.join(OUT, `${name}-part${k}.mkv`)}'`).join('\n'))
+    await ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', master])
+    for (let k = 0; k < jobs; k++) fs.rmSync(path.join(OUT, `${name}-part${k}.mkv`))
+    fs.rmSync(list)
+  } else {
+    await renderFrames(page, 0, frames, master, name)
+    await browser.close()
+  }
+  console.log(`${name}: ${frames} кадров за ${((Date.now() - started) / 1000).toFixed(0)} с`)
+
+  // Звук — по тем же моментам, что и анимация.
+  const { renderWav } = await import('./sound.mjs')
+  const wavs = {}
+  for (const kind of new Set(TARGETS.map((x) => x[3]).filter(Boolean))) {
+    wavs[kind] = path.join(OUT, `${name}-${kind}.wav`)
+    fs.writeFileSync(wavs[kind], renderWav(sounds, duration, { music: kind === 'music' }))
+  }
+
+  for (const [file, scale, kind, audio] of TARGETS) {
     const out = path.join(OUT, file)
     if (kind === 'mp4') {
-      await ffmpeg(['-i', master, '-vf', scale, '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-tune', 'animation',
-        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', out])
+      const input = audio ? ['-i', master, '-i', wavs[audio]] : ['-i', master]
+      const sound = audio ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest'] : ['-an']
+      await ffmpeg([...input, '-vf', scale, '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-tune', 'animation',
+        '-pix_fmt', 'yuv420p', '-r', String(FPS), '-movflags', '+faststart', ...sound, out])
     } else {
       // Палитра по всему ролику, перерисовка только изменившихся областей — гиф легче вдвое.
       await ffmpeg(['-i', master, '-vf',
@@ -108,9 +161,7 @@ function ffmpeg(args, stdin) {
     console.log(`${file}: ${(fs.statSync(out).size / 1024).toFixed(0)} КБ`)
   }
   fs.rmSync(master)
-  try {
-    execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path.join(OUT, TARGETS[layout][0][0])], { stdio: 'inherit' })
-  } catch {}
+  for (const w of Object.values(wavs)) fs.rmSync(w)
 })().catch((e) => {
   console.error(e)
   process.exit(1)

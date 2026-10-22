@@ -187,14 +187,15 @@ export async function answerCallback(env: Env, id: string, text?: string, alert 
 }
 
 /**
- * Отправить файл байтами (multipart): анимацию или документ. По ссылке Telegram
- * берёт файл не всегда — тип он смотрит по заголовкам чужого хранилища.
+ * Отправить файл байтами (multipart): анимацию (без звука, крутится по кругу),
+ * видео (со звуком) или документ. По ссылке Telegram берёт файл не всегда — тип
+ * он смотрит по заголовкам чужого хранилища.
  * `asIs` — документ остаётся файлом: иначе .gif Telegram сам превратит в анимацию.
  */
 export async function sendFile(
   env: Env,
   chatId: string | number,
-  kind: 'animation' | 'document',
+  kind: 'animation' | 'video' | 'document',
   file: Blob,
   filename: string,
   caption?: string,
@@ -208,8 +209,9 @@ export async function sendFile(
     form.append('parse_mode', 'HTML')
   }
   if (asIs) form.append('disable_content_type_detection', 'true')
+  if (kind === 'video') form.append('supports_streaming', 'true')
   try {
-    const method = kind === 'animation' ? 'sendAnimation' : 'sendDocument'
+    const method = kind === 'animation' ? 'sendAnimation' : kind === 'video' ? 'sendVideo' : 'sendDocument'
     const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/${method}`, { method: 'POST', body: form })
     if (!res.ok) console.error(`[tg] ${method} ${res.status} ${(await res.text()).slice(0, 200)}`)
     return res.ok

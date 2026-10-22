@@ -10,9 +10,11 @@
   Это не запись экрана, а сцена с часами: render.cjs вызывает renderAt(t) на
   каждый кадр и снимает его — анимация ровная при любой скорости машины.
   Ответы бота — настоящие: их печатает код воркера (replies.mjs → replies.js).
+  Звук собирается по window.SOUNDS — те же моменты, что и в анимации (sound.mjs).
 
-  ?layout=land   — 960×540, стартовый экран бота («Что умеет этот бот?»);
-  ?layout=square — 1080×1080, посты и пересылка.
+  ?layout=land   — 960×540, стартовый экран бота («Что умеет этот бот?»), без звука;
+  ?layout=square — 1080×1080, посты и пересылка;
+  ?layout=story  — 1080×1920, сторис.
   ?cta=start|ad  — последняя карточка: для стартового экрана или с адресом бота.
 -->
 <link rel="stylesheet" href="../node_modules/@fontsource-variable/manrope/index.css">
@@ -24,12 +26,11 @@
     --b400: 93 185 150;
     --b500: 60 163 123;
     --b700: 36 110 84;
+    /* Сообщения человека — фиолетовые, как в теме Telegram: рядом с мятным ботом читаются сразу. */
+    --me1: 139 92 246;
+    --me2: 99 102 241;
     --ink: #f3f6f4;
     --muted: rgb(243 246 244 / 0.6);
-    --surface:
-      radial-gradient(70% 90% at 100% 0%, rgb(var(--b400) / 0.30), transparent 62%),
-      radial-gradient(60% 70% at 0% 100%, rgb(var(--b500) / 0.14), transparent 70%),
-      linear-gradient(160deg, rgb(20 63 48) 0%, rgb(11 14 12) 78%);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; overflow: hidden; background: #0b0e0c; }
@@ -38,10 +39,18 @@
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
   }
-  .stage { position: absolute; inset: 0; overflow: hidden; background: var(--surface); }
+  /* Подсветка фона окрашивается в цвет текущего эпизода (--glow меняет renderAt). */
+  .stage, .end {
+    --glow: var(--b400);
+    background:
+      radial-gradient(70% 90% at 100% 0%, rgb(var(--glow) / var(--glow-a, 0.3)), transparent 62%),
+      radial-gradient(60% 70% at 0% 100%, rgb(var(--glow) / 0.14), transparent 70%),
+      linear-gradient(160deg, rgb(20 50 42) 0%, rgb(11 14 12) 78%);
+  }
+  .stage { position: absolute; inset: 0; overflow: hidden; }
   svg { display: block; }
 
-  /* ---------- Знак и заголовки ---------- */
+  /* ---------- Знак, режимы, заголовки ---------- */
   .brand { position: absolute; display: flex; align-items: center; font-weight: 800; letter-spacing: -0.01em; }
   .brand small { font-weight: 600; color: var(--muted); }
   .logo {
@@ -49,15 +58,22 @@
     background: linear-gradient(145deg, rgb(var(--b400)), rgb(var(--b700)));
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
   }
+  .modes { position: absolute; display: flex; }
+  .modes div {
+    flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 800;
+    border-radius: 999px; color: rgb(243 246 244 / 0.55);
+    background: rgb(255 255 255 / 0.06); border: 1px solid rgb(255 255 255 / 0.07);
+  }
   .heads { position: absolute; }
   .head { position: absolute; left: 0; top: 0; right: 0; will-change: transform, opacity; }
   .badge {
     display: inline-block; border-radius: 999px; font-weight: 800;
-    background: rgb(var(--b400) / 0.18); color: rgb(var(--b200));
+    background: rgb(var(--acc) / 0.2); color: rgb(var(--acc-l));
   }
   .h1 { font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; }
+  .h1 em { font-style: normal; color: rgb(var(--acc)); }
   .sub { font-weight: 600; color: var(--muted); line-height: 1.3; }
-  .said { font-weight: 700; color: rgb(var(--b200)); line-height: 1.3; }
+  .said { font-weight: 700; color: rgb(var(--acc-l)); line-height: 1.3; }
   .foot { position: absolute; color: var(--muted); font-weight: 600; }
 
   /* ---------- Чат ---------- */
@@ -87,14 +103,14 @@
   .in .bubble { background: #1c2320; border-bottom-left-radius: 6px !important; }
   .out .bubble {
     color: #fff; border-bottom-right-radius: 6px !important;
-    background: linear-gradient(135deg, rgb(56 152 114), rgb(40 122 92));
+    background: linear-gradient(135deg, rgb(var(--me1)), rgb(var(--me2)));
   }
   .bubble b { font-weight: 800; }
   .bubble i { font-style: italic; color: rgb(243 246 244 / 0.82); }
   .bubble blockquote {
     margin: 0.3em 0 0; padding: 0.22em 0.5em 0.26em 0.55em; border-radius: 0.3em;
     border-left: 0.16em solid rgb(var(--b400));
-    background: rgb(var(--b400) / calc(0.1 + var(--glow, 0) * 0.16));
+    background: rgb(var(--b400) / calc(0.1 + var(--glow-q, 0) * 0.18));
   }
   .bubble code { font-family: 'DejaVu Sans Mono', monospace; font-size: 0.86em; color: rgb(var(--b200)); letter-spacing: -0.04em; }
   .kb { display: flex; flex-direction: column; }
@@ -130,13 +146,13 @@
   .receipt .sep { border-top: 1px dashed rgb(0 0 0 / 0.35); margin: 0.45em 0; }
   .receipt .tot {
     font-weight: 700; font-size: 1.32em; margin: 0 -0.35em; padding: 0.08em 0.35em; border-radius: 0.3em;
-    box-shadow: 0 0 0 0.14em rgb(var(--b500) / var(--hl, 0));
-    background: rgb(var(--b300) / calc(var(--hl, 0) * 0.35));
+    box-shadow: 0 0 0 0.14em rgb(217 119 6 / var(--hl, 0));
+    background: rgb(251 191 36 / calc(var(--hl, 0) * 0.45));
   }
   .scan {
     position: absolute; left: 0; right: 0; height: 3px; opacity: 0;
-    background: linear-gradient(90deg, transparent, rgb(var(--b200)), transparent);
-    box-shadow: 0 0 22px 8px rgb(var(--b400) / 0.5);
+    background: linear-gradient(90deg, transparent, rgb(253 230 138), transparent);
+    box-shadow: 0 0 22px 8px rgb(251 191 36 / 0.5);
   }
 
   /* Поле ввода */
@@ -146,30 +162,37 @@
   }
   .field { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; }
   .field.typed { color: var(--ink); }
-  .caret { display: inline-block; vertical-align: -0.12em; background: rgb(var(--b300)); }
+  .caret { display: inline-block; vertical-align: -0.12em; background: rgb(var(--me1)); }
   .send { display: grid; place-items: center; border-radius: 50%; flex: none; }
   .rec { position: absolute; inset: 0; display: flex; align-items: center; opacity: 0; background: #0e1210; }
   .rec .dot { border-radius: 50%; background: #ff5a5f; flex: none; }
   .rec .timer { font-weight: 700; font-variant-numeric: tabular-nums; }
   .rec .live { display: flex; align-items: center; flex: 1; }
-  .rec .live i { display: block; border-radius: 99px; background: rgb(var(--b300)); }
-  .rec .mic { display: grid; place-items: center; border-radius: 50%; background: rgb(var(--b500)); flex: none; }
+  .rec .live i { display: block; border-radius: 99px; background: rgb(196 181 253); }
+  .rec .mic { display: grid; place-items: center; border-radius: 50%; background: rgb(var(--me1)); flex: none; }
+
+  /* Касание пальцем: точка и расходящееся кольцо. */
+  .tap { position: absolute; z-index: 5; pointer-events: none; opacity: 0; }
+  .tap .f, .tap .r { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+  .tap .f { background: rgb(255 255 255 / 0.42); box-shadow: 0 0 0 2px rgb(255 255 255 / 0.25); }
+  .tap .r { border: 3px solid rgb(255 255 255 / 0.7); }
 
   /* Финальная карточка */
   .end {
-    position: absolute; inset: 0; z-index: 10; opacity: 0; background: var(--surface);
+    position: absolute; inset: 0; z-index: 10; opacity: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
   }
   .end > * { will-change: transform, opacity; }
   .end .brand { position: static; }
-  .end .t { font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; }
+  .end .t { font-weight: 800; letter-spacing: -0.035em; line-height: 1.04; }
+  .end .t em { font-style: normal; }
   .end .s { font-weight: 600; color: var(--muted); line-height: 1.3; }
-  .chips { display: flex; justify-content: center; }
+  .chips { display: flex; justify-content: center; flex-wrap: wrap; }
   .chips div {
     display: flex; align-items: center; border-radius: 999px; font-weight: 700;
-    background: rgb(255 255 255 / 0.08); border: 1px solid rgb(255 255 255 / 0.08);
+    background: rgb(var(--acc) / 0.14); border: 1px solid rgb(var(--acc) / 0.35);
   }
-  .chips svg { color: rgb(var(--b300)); }
+  .chips svg { color: rgb(var(--acc)); }
   .cta { font-weight: 800; color: rgb(var(--b200)); }
 
   /* ---------- Раскладки ---------- */
@@ -207,13 +230,15 @@
   .land .rec .live { gap: 3px; height: 34px; }
   .land .rec .live i { width: 4px; }
   .land .rec .mic { width: 56px; height: 56px; }
-  .land .end .brand { gap: 14px; font-size: 30px; margin-bottom: 24px; }
+  .land .tap .f { width: 34px; height: 34px; }
+  .land .tap .r { width: 34px; height: 34px; border-width: 2px; }
+  .land .end .brand { gap: 14px; font-size: 30px; margin-bottom: 22px; }
   .land .end .brand .logo { width: 52px; height: 52px; border-radius: 16px; }
   .land .end .t { font-size: 56px; }
-  .land .end .s { font-size: 23px; margin-top: 16px; max-width: 700px; }
-  .land .chips { gap: 12px; margin-top: 28px; }
-  .land .chips div { gap: 9px; padding: 10px 18px; font-size: 21px; }
-  .land .cta { font-size: 22px; margin-top: 26px; }
+  .land .end .s { font-size: 23px; margin-top: 14px; max-width: 700px; }
+  .land .chips { gap: 10px; margin-top: 24px; }
+  .land .chips div { gap: 8px; padding: 9px 16px; font-size: 20px; }
+  .land .cta { font-size: 22px; margin-top: 22px; }
 
   .square { width: 1080px; height: 1080px; }
   .square .brand { left: 60px; top: 50px; gap: 16px; font-size: 34px; }
@@ -249,13 +274,67 @@
   .square .rec .live { gap: 4px; height: 46px; }
   .square .rec .live i { width: 6px; }
   .square .rec .mic { width: 76px; height: 76px; }
-  .square .end .brand { gap: 18px; font-size: 40px; margin-bottom: 40px; }
+  .square .tap .f { width: 48px; height: 48px; }
+  .square .tap .r { width: 48px; height: 48px; }
+  .square .end .brand { gap: 18px; font-size: 40px; margin-bottom: 36px; }
   .square .end .brand .logo { width: 72px; height: 72px; border-radius: 22px; }
   .square .end .t { font-size: 84px; }
-  .square .end .s { font-size: 34px; margin-top: 24px; max-width: 900px; }
-  .square .chips { gap: 16px; margin-top: 44px; flex-wrap: wrap; }
-  .square .chips div { gap: 12px; padding: 14px 26px; font-size: 32px; }
-  .square .cta { font-size: 34px; margin-top: 44px; }
+  .square .end .s { font-size: 34px; margin-top: 22px; max-width: 900px; }
+  .square .chips { gap: 14px; margin-top: 40px; max-width: 940px; }
+  .square .chips div { gap: 12px; padding: 13px 24px; font-size: 30px; }
+  .square .cta { font-size: 34px; margin-top: 40px; }
+
+  /*
+   * Сторис: верх (~220 px) и низ (~260 px) закрывает интерфейс Telegram и
+   * Instagram — главное держим между ними.
+   */
+  .story { width: 1080px; height: 1920px; }
+  .story .stage, .story .end { --glow-a: 0.42; }
+  .story .brand { left: 64px; top: 236px; gap: 18px; font-size: 40px; }
+  .story .brand .logo { width: 66px; height: 66px; border-radius: 20px; }
+  .story .modes { left: 60px; right: 60px; top: 334px; gap: 14px; }
+  .story .modes div { gap: 10px; height: 74px; font-size: 28px; }
+  .story .heads { left: 64px; top: 452px; width: 952px; height: 290px; }
+  .story .badge { font-size: 26px; padding: 7px 18px; position: absolute; right: 0; top: 30px; }
+  .story .h1 { font-size: 126px; }
+  .story .sub, .story .said { font-size: 46px; margin-top: 18px; }
+  .story .foot { left: 0; right: 0; text-align: center; top: 1648px; font-size: 32px; }
+  .story .chat { left: 48px; right: 48px; top: 760px; height: 860px; border-radius: 48px; }
+  .story .chat-head { height: 112px; gap: 20px; padding: 0 34px; }
+  .story .chat-head .logo { width: 70px; height: 70px; }
+  .story .chat-head .name { font-size: 35px; }
+  .story .chat-head .status { font-size: 27px; }
+  .story .msgs { padding: 0 28px 20px; font-size: 35px; }
+  .story .bubble { max-width: 900px; padding: 16px 24px 17px; border-radius: 34px; }
+  .story .kb { gap: 9px; margin-top: 9px; }
+  .story .kb .kr { gap: 9px; }
+  .story .kb .kr div { font-size: 30px; padding: 15px 10px; border-radius: 20px; }
+  .story .voice { gap: 20px; padding: 16px 28px 16px 16px; }
+  .story .play { width: 80px; height: 80px; }
+  .story .wave { gap: 5px; height: 58px; }
+  .story .wave i { width: 7px; }
+  .story .dur { font-size: 29px; margin-left: 8px; }
+  .story .photo { width: 400px; height: 496px; border-radius: 34px; }
+  .story .receipt { left: 58px; top: 27px; width: 294px; padding: 20px 18px 27px; font-size: 15px; }
+  .story .input { height: 118px; gap: 20px; padding: 0 24px 0 32px; font-size: 37px; }
+  .story .caret { width: 4px; height: 1.05em; margin-left: 2px; }
+  .story .send { width: 76px; height: 76px; }
+  .story .rec { gap: 20px; padding: 0 20px 0 34px; }
+  .story .rec .dot { width: 22px; height: 22px; }
+  .story .rec .timer { font-size: 35px; width: 86px; }
+  .story .rec .live { gap: 5px; height: 58px; }
+  .story .rec .live i { width: 7px; }
+  .story .rec .mic { width: 94px; height: 94px; }
+  .story .tap .f { width: 62px; height: 62px; }
+  .story .tap .r { width: 62px; height: 62px; border-width: 4px; }
+  .story .end { justify-content: flex-start; padding-top: 520px; }
+  .story .end .brand { gap: 20px; font-size: 46px; margin-bottom: 48px; }
+  .story .end .brand .logo { width: 84px; height: 84px; border-radius: 26px; }
+  .story .end .t { font-size: 104px; }
+  .story .end .s { font-size: 42px; margin-top: 30px; max-width: 900px; }
+  .story .chips { gap: 18px; margin-top: 60px; max-width: 580px; }
+  .story .chips div { gap: 14px; padding: 18px 30px; font-size: 38px; }
+  .story .cta { font-size: 44px; margin-top: 70px; padding: 22px 40px; border-radius: 999px; background: rgb(var(--b400) / 0.16); border: 2px solid rgb(var(--b400) / 0.5); }
 </style>
 </head>
 <body>
@@ -264,11 +343,13 @@
 'use strict'
 
 const params = new URLSearchParams(location.search)
-const LAYOUT = params.get('layout') === 'square' ? 'square' : 'land'
+const LAYOUT = ['square', 'story'].includes(params.get('layout')) ? params.get('layout') : 'land'
 const CTA = params.get('cta') === 'ad' ? 'ad' : 'start'
-const SQ = LAYOUT === 'square'
-const px = (land, square) => (SQ ? square : land)
 document.body.className = LAYOUT
+/** Размер под раскладку: стартовый экран / квадрат / сторис. */
+const px = (land, square, story = square) => (LAYOUT === 'story' ? story : LAYOUT === 'square' ? square : land)
+// «Новое» новичку на стартовом экране бота ни о чём не говорит — там бейджа нет.
+const BADGE = CTA === 'ad'
 
 const R = window.REPLIES
 
@@ -281,10 +362,25 @@ const ICON = {
   play: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
   pen: '<path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>',
   camera: '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
+  ask: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
 }
 const svg = (name, size, { color = 'currentColor', fill = 'none', stroke = 2 } = {}) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`
 const logo = (icon) => `<div class="logo">${svg('wallet', icon, { color: '#fff', stroke: 2.2 })}</div>`
+
+/*
+ * Четыре способа — четыре цвета: мятный (бренд) у текста, фиолетовый у голоса,
+ * янтарный у чека, голубой у вопроса. Цвет несут заголовок, бейдж, сказанное,
+ * подсветка фона и фишки в конце — по нему эпизоды различаются с одного взгляда.
+ */
+const MODES = [
+  { key: 'text', label: 'Текст', icon: 'pen', acc: [93, 185, 150], light: [184, 229, 204] },
+  { key: 'voice', label: 'Голос', icon: 'mic', acc: [167, 139, 250], light: [221, 214, 254] },
+  { key: 'photo', label: 'Чек', icon: 'camera', acc: [251, 191, 36], light: [253, 230, 138] },
+  { key: 'ask', label: 'Вопрос', icon: 'ask', acc: [56, 189, 248], light: [186, 230, 253] },
+]
+const rgb = (c) => c.join(' ')
+const accVars = (m) => `--acc:${rgb(m.acc)};--acc-l:${rgb(m.light)}`
 
 /* ---------- Тайминг (секунды) ---------- */
 const T = {
@@ -300,6 +396,7 @@ const T = {
   end: 20.6, outro: 23.0, total: 23.6,
 }
 window.DURATION = T.total
+const HEAD_AT = [-1, T.head2, T.head3, T.head4, T.end]
 
 const clamp = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
 const prog = (t, a, d) => clamp((t - a) / d)
@@ -308,59 +405,80 @@ const inOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
 /** Пружинка: чуть проскакивает и садится — для появления пузырей. */
 const back = (x) => { const c = 1.4; return x === 0 ? 0 : 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2) }
 
+/*
+ * Звук — те же моменты, что и в картинке. sound.mjs синтезирует по этому списку:
+ * клавиши, отправка, ответ, микрофон, затвор, скан, финал.
+ */
+const SOUNDS = []
+{
+  const [a, b] = T.type
+  for (let i = 0; i < R.typed.length; i++) {
+    if (R.typed[i] !== ' ') SOUNDS.push({ t: a + ((i + 0.5) * (b - a)) / R.typed.length, kind: 'key', i })
+  }
+  SOUNDS.push({ t: T.send1, kind: 'send' }, { t: T.reply1, kind: 'receive' })
+  for (const at of [T.head2, T.head3, T.head4]) SOUNDS.push({ t: at, kind: 'swish' })
+  SOUNDS.push({ t: T.rec2[0] - 0.12, kind: 'recStart' }, { t: T.rec2[1], kind: 'recStop' }, { t: T.send2, kind: 'send' }, { t: T.reply2, kind: 'receive' })
+  SOUNDS.push({ t: T.photo - 0.32, kind: 'shutter' }, { t: T.photo, kind: 'send' })
+  SOUNDS.push({ t: T.scan[0], kind: 'scan', dur: T.scan[1] - T.scan[0] }, { t: T.scan[1] - 0.12, kind: 'found' }, { t: T.reply3, kind: 'receive' })
+  SOUNDS.push({ t: T.rec4[0] - 0.12, kind: 'recStart' }, { t: T.rec4[1], kind: 'recStop' }, { t: T.send4, kind: 'send' }, { t: T.reply4, kind: 'card' })
+  SOUNDS.push({ t: T.end, kind: 'whoosh' }, { t: T.end + 0.3, kind: 'chord' })
+  SOUNDS.sort((x, y) => x.t - y.t)
+}
+window.SOUNDS = SOUNDS
+
 /* ---------- Сцена ---------- */
 const words = (s) => s.split(' ').map((w) => `<span>${w}</span>`).join(' ')
+const badge = BADGE ? '<div class="badge">Новое</div>' : ''
+// На стартовом экране место бейджа держим пустым, чтобы заголовки не прыгали.
+const badgeSlot = (show) => (LAYOUT === 'land' ? `<div class="badge" style="${show && BADGE ? '' : 'visibility:hidden'}">Новое</div>` : show ? badge : '')
 const stage = document.getElementById('stage')
 stage.innerHTML = `
-  <div class="brand">${logo(px(22, 30))}<span>Кошель${SQ ? ' <small>· бот для учёта денег</small>' : ''}</span></div>
+  <div class="brand">${logo(px(22, 30, 34))}<span>Кошель${LAYOUT === 'land' ? '' : ' <small>· бот для учёта денег</small>'}</span></div>
+  ${LAYOUT === 'story' ? `<div class="modes">${MODES.map((m) => `<div style="${accVars(m)}">${svg(m.icon, 30)}${m.label}</div>`).join('')}</div>` : ''}
   <div class="heads">
-    <div class="head">
-      ${SQ ? '' : '<div class="badge" style="visibility:hidden">Новое</div>'}
-      <div class="h1">Напиши</div>
+    <div class="head" style="${accVars(MODES[0])}">
+      ${badgeSlot(false)}
+      <div class="h1">Напиши<em>.</em></div>
       <div class="sub">несколько трат — одним сообщением</div>
     </div>
-    <div class="head">
-      <div class="badge">Новое</div>
-      <div class="h1">Скажи</div>
+    <div class="head" style="${accVars(MODES[1])}">
+      ${badgeSlot(true)}
+      <div class="h1">Скажи<em>.</em></div>
       <div class="said">${words(`«${R.said}»`)}</div>
     </div>
-    <div class="head">
-      <div class="badge">Новое</div>
-      <div class="h1">Сфоткай чек</div>
+    <div class="head" style="${accVars(MODES[2])}">
+      ${badgeSlot(true)}
+      <div class="h1">Сфоткай чек<em>.</em></div>
       <div class="sub">запишу итог и магазин</div>
     </div>
-    <div class="head">
-      <div class="badge">Новое</div>
-      <div class="h1">Спроси</div>
+    <div class="head" style="${accVars(MODES[3])}">
+      ${badgeSlot(true)}
+      <div class="h1">Спроси<em>.</em></div>
       <div class="said">${words(`«${R.asked}»`)}</div>
     </div>
   </div>
   <div class="foot">Бот в Telegram · бесплатно</div>
   <div class="chat">
-    <div class="chat-head">${logo(px(22, 29))}<div><div class="name">Кошель</div><div class="status" id="status">бот</div></div></div>
+    <div class="chat-head">${logo(px(22, 29, 35))}<div><div class="name">Кошель</div><div class="status" id="status">бот</div></div></div>
     <div class="msgs"><div class="col" id="col"></div></div>
     <div class="input">
-      ${svg('clip', px(24, 34), { color: 'rgb(243 246 244 / 0.45)' })}
+      <div id="clipBtn">${svg('clip', px(24, 34, 42), { color: 'rgb(243 246 244 / 0.45)' })}</div>
       <div class="field" id="field">Сообщение</div>
       <div class="send" id="sendBtn"></div>
       <div class="rec" id="rec">
         <div class="dot" id="recDot"></div>
         <div class="timer" id="recTimer">0:00</div>
         <div class="live" id="live"></div>
-        <div class="mic" id="recMic">${svg('mic', px(27, 37), { color: '#fff', stroke: 2.2 })}</div>
+        <div class="mic" id="recMic">${svg('mic', px(27, 37, 46), { color: '#fff', stroke: 2.2 })}</div>
       </div>
     </div>
   </div>
   <div class="end" id="end">
-    <div class="brand">${logo(px(28, 40))}<span>Кошель</span></div>
-    <div class="t">Пиши, говори<br>или сфоткай чек</div>
+    <div class="brand">${logo(px(28, 40, 46))}<span>Кошель</span></div>
+    <div class="t"><em style="color:rgb(${rgb(MODES[0].acc)})">Пиши</em>, <em style="color:rgb(${rgb(MODES[1].acc)})">говори</em><br>или <em style="color:rgb(${rgb(MODES[2].acc)})">сфоткай чек</em></div>
     <div class="s">Кошель запишет траты сам — и ответит, куда ушли деньги</div>
-    <div class="chips">
-      <div>${svg('pen', px(22, 32))}Текст</div>
-      <div>${svg('mic', px(22, 32))}Голос</div>
-      <div>${svg('camera', px(22, 32))}Фото чека</div>
-    </div>
-    <div class="cta">${CTA === 'ad' ? '@TrueManiManager_Bot · бесплатно в Telegram' : 'Бесплатно · без регистрации'}</div>
+    <div class="chips">${MODES.map((m) => `<div style="${accVars(m)}">${svg(m.icon, px(21, 30, 38))}${m.key === 'photo' ? 'Фото чека' : m.label}</div>`).join('')}</div>
+    <div class="cta">${CTA === 'ad' ? '@TrueManiManager_Bot · бесплатно' : 'Бесплатно · без регистрации'}</div>
   </div>`
 
 /* ---------- Сообщения ---------- */
@@ -371,7 +489,7 @@ function addRow(side, html, at, until) {
   row.className = `row ${side}`
   row.innerHTML = `<div class="cell">${html}</div>`
   col.appendChild(row)
-  const item = { row, cell: row.firstChild, at, until, h: 0 }
+  const item = { row, cell: row.firstChild, at, until, h: 0, grow: 0 }
   rows.push(item)
   return item
 }
@@ -380,12 +498,12 @@ function addRow(side, html, at, until) {
 const bubble = (html) => `<div class="bubble">${html.replace(/\n<blockquote>/g, '<blockquote>').replace(/<\/blockquote>\n/g, '</blockquote>')}</div>`
 const keyboard = (btns) => `<div class="kb">${btns.map((r) => `<div class="kr">${r.map((b) => `<div>${b}</div>`).join('')}</div>`).join('')}</div>`
 // Ответ бота: пузырь и кнопки под ним одной ширины, не уже кнопок — как в Telegram.
-const reply = (r) => `<div style="display:inline-flex;flex-direction:column;min-width:${px(320, 540)}px;max-width:${px(462, 760)}px">${bubble(r.text)}${keyboard(r.buttons)}</div>`
+const reply = (r) => `<div style="display:inline-flex;flex-direction:column;min-width:${px(320, 540, 640)}px;max-width:${px(462, 760, 900)}px">${bubble(r.text)}${keyboard(r.buttons)}</div>`
 
 const WAVE = [5, 9, 14, 8, 18, 24, 15, 10, 20, 27, 22, 12, 8, 16, 25, 30, 21, 14, 9, 17, 23, 13, 7, 11, 19, 12, 6, 9]
 const voiceBubble = (dur) => `<div class="bubble voice" style="white-space:normal">
-  <div class="play">${svg('play', px(21, 29), { color: 'rgb(45 136 102)', fill: 'rgb(45 136 102)', stroke: 1.5 })}</div>
-  <div class="wave">${WAVE.map((h) => `<i style="height:${Math.round(h * px(1.1, 1.5))}px"></i>`).join('')}</div>
+  <div class="play">${svg('play', px(21, 29, 36), { color: `rgb(${'139 92 246'})`, fill: 'rgb(139 92 246)', stroke: 1.5 })}</div>
+  <div class="wave">${WAVE.map((h) => `<i style="height:${Math.round(h * px(1.1, 1.5, 1.9))}px"></i>`).join('')}</div>
   <div class="dur">${dur}</div></div>`
 
 const receipt = `<div class="receipt" id="receipt">
@@ -416,9 +534,9 @@ addRow('out', photoBubble, T.photo)
 const a3 = addRow('in', reply(R.photo), T.reply3)
 addRow('out', voiceBubble('0:03'), T.send4)
 // Черновик ответа: пока думает модель, Telegram показывает пузырь «Думает…».
-const think = addRow('in', `<div class="bubble think">Думает<span id="thinkDots"></span></div>`, T.think[0], T.think[1])
+addRow('in', `<div class="bubble think">Думает<span id="thinkDots"></span></div>`, T.think[0], T.think[1])
 const a4 = addRow('in', reply(R.answer), T.reply4)
-const GAP = px(9, 13)
+const GAP = px(9, 13, 16)
 
 // Рваный низ у чека.
 {
@@ -431,15 +549,30 @@ const GAP = px(9, 13)
 }
 
 const live = document.getElementById('live')
-const LIVE_BARS = SQ ? 26 : 18
+const LIVE_BARS = px(18, 26, 30)
 live.innerHTML = Array.from({ length: LIVE_BARS }, () => '<i></i>').join('')
+
+/* Касания: отправка, удержание микрофона, скрепка перед фото. */
+const TAPS = [
+  { target: 'sendBtn', at: T.send1 - 0.18 },
+  { target: 'sendBtn', at: T.rec2[0] - 0.25, until: T.rec2[1] },
+  { target: 'clipBtn', at: T.photo - 0.62 },
+  { target: 'sendBtn', at: T.rec4[0] - 0.25, until: T.rec4[1] },
+].map((tap) => {
+  const el = document.createElement('div')
+  el.className = 'tap'
+  el.innerHTML = '<div class="r"></div><div class="f"></div>'
+  stage.appendChild(el)
+  return { ...tap, el }
+})
 
 /* ---------- Кадр ---------- */
 const $ = (id) => document.getElementById(id)
 const field = $('field'), sendBtn = $('sendBtn'), rec = $('rec'), statusEl = $('status'), msgsEl = col.parentElement
 const heads = [...document.querySelectorAll('.head')]
+const modeEls = [...document.querySelectorAll('.modes div')]
 const saidOf = heads.map((h) => [...(h.querySelector('.said')?.children ?? [])])
-const HEAD_AT = [-1, T.head2, T.head3, T.head4, T.end]
+const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k))
 
 // Слова сказанного проявляются, пока идёт запись.
 function revealWords(list, t, [a, b]) {
@@ -459,23 +592,48 @@ function recording(t, [a, b], maxSec) {
   const talking = t >= a && t <= b
   live.querySelectorAll('i').forEach((bar, i) => {
     const v = Math.abs(Math.sin(t * 7.3 + i * 0.83) * Math.cos(t * 3.1 + i * 0.37))
-    bar.style.height = `${(px(5, 7) + (talking ? v * px(26, 36) : 0)).toFixed(1)}px`
+    bar.style.height = `${(px(5, 7, 9) + (talking ? v * px(26, 36, 46) : 0)).toFixed(1)}px`
   })
   const pulse = 0.5 + 0.5 * Math.sin(t * 6)
-  $('recMic').style.boxShadow = `0 0 0 ${(px(6, 8) + pulse * px(8, 11)).toFixed(1)}px rgb(60 163 123 / ${(0.28 - pulse * 0.12).toFixed(3)})`
+  $('recMic').style.boxShadow = `0 0 0 ${(px(6, 8, 10) + pulse * px(8, 11, 14)).toFixed(1)}px rgb(139 92 246 / ${(0.32 - pulse * 0.14).toFixed(3)})`
   return true
+}
+
+/** Какой эпизод сейчас (дробное: в переходах цвет перетекает). */
+function modeAt(t) {
+  for (let i = 3; i >= 1; i--) {
+    if (t >= HEAD_AT[i] - 0.3) return i - 1 + out3(prog(t, HEAD_AT[i] - 0.3, 0.8))
+  }
+  return 0
 }
 
 window.renderAt = function renderAt(t) {
   // После outro под карточкой всё уже вернулось к первому кадру — петля без шва.
   const looped = t >= T.outro
 
-  /* Заголовки слева: один сменяет другой */
+  /* Цвет эпизода: фон, режимы */
+  const m = looped ? 0 : modeAt(t)
+  const lo = Math.floor(m), k = m - lo
+  const glow = mix(MODES[lo].acc, MODES[Math.min(3, lo + 1)].acc, k)
+  stage.style.setProperty('--glow', rgb(glow))
+  modeEls.forEach((el, i) => {
+    const on = clamp(1 - Math.abs(m - i))
+    el.style.background = `rgb(${rgb(MODES[i].acc)} / ${(0.06 + on * 0.9).toFixed(3)})`
+    el.style.color = on > 0.5 ? '#0b0e0c' : `rgb(243 246 244 / ${(0.55 + on * 0.45).toFixed(3)})`
+    el.style.borderColor = `rgb(${rgb(MODES[i].acc)} / ${(0.07 + on * 0.6).toFixed(3)})`
+  })
+
+  /* Заголовки: один сменяет другой */
   heads.forEach((h, i) => {
     const enter = i === 0 || looped ? 1 : out3(prog(t, HEAD_AT[i], 0.5))
     const leave = looped ? (i === 0 ? 0 : 1) : out3(prog(t, HEAD_AT[i + 1] - 0.3, 0.3))
     h.style.opacity = (enter * (1 - leave)).toFixed(3)
-    h.style.transform = `translateY(${((1 - enter) * px(26, 34) - leave * px(10, 14)).toFixed(2)}px)`
+    h.style.transform = `translateY(${((1 - enter) * px(26, 34, 44) - leave * px(10, 14, 18)).toFixed(2)}px)`
+    // Точка в цвет эпизода «щёлкает», когда заголовок встал.
+    const dot = h.querySelector('em')
+    const pop = i === 0 || looped ? 1 : back(prog(t, HEAD_AT[i] + 0.25, 0.35))
+    dot.style.display = 'inline-block'
+    dot.style.transform = `scale(${pop.toFixed(3)})`
   })
   revealWords(saidOf[1], t, T.rec2)
   revealWords(saidOf[3], t, T.rec4)
@@ -489,10 +647,10 @@ window.renderAt = function renderAt(t) {
     r.row.style.height = `${(r.h * grow).toFixed(2)}px`
     r.row.style.marginTop = `${(GAP * grow).toFixed(2)}px`
     r.cell.style.opacity = clamp(p * 1.6).toFixed(3)
-    r.cell.style.transform = `translateY(${((1 - grow) * px(14, 20)).toFixed(2)}px) scale(${(0.9 + 0.1 * back(p)).toFixed(4)})`
+    r.cell.style.transform = `translateY(${((1 - grow) * px(14, 20, 26)).toFixed(2)}px) scale(${(0.9 + 0.1 * back(p)).toFixed(4)})`
   }
   // Длинную карточку ответа показываем с начала и прокручиваем вниз — как читают.
-  const room = msgsEl.clientHeight - px(14, 20)
+  const room = msgsEl.clientHeight - px(14, 20, 24)
   const over = Math.max(0, a4.h * a4.grow + GAP - room)
   const scrolled = inOut(prog(t, T.read[0], T.read[1] - T.read[0]))
   col.style.transform = `translateY(${(over * (1 - scrolled)).toFixed(2)}px)`
@@ -500,7 +658,7 @@ window.renderAt = function renderAt(t) {
   $('thinkDots').textContent = '.'.repeat(1 + (Math.floor(t * 4) % 3))
   for (const a of [a1, a2, a3]) {
     const g = looped ? 0 : Math.sin(Math.PI * prog(t, a.at + 0.35, 1.1))
-    a.cell.querySelector('blockquote').style.setProperty('--glow', g.toFixed(3))
+    a.cell.querySelector('blockquote').style.setProperty('--glow-q', g.toFixed(3))
   }
   const typing = !looped && [T.typing1, T.typing2, T.typing3, T.think].some(([a, b]) => t >= a && t < b)
   statusEl.textContent = typing ? `печатает${'.'.repeat(1 + (Math.floor(t * 4) % 3))}` : 'бот'
@@ -518,13 +676,32 @@ window.renderAt = function renderAt(t) {
     field.className = 'field'
     field.innerHTML = (focused ? caret(Math.floor(t * 2.4) % 2 === 0) : '') + 'Сообщение'
   }
-  sendBtn.style.background = n > 0 ? 'rgb(60 163 123)' : 'transparent'
+  sendBtn.style.background = n > 0 ? 'rgb(139 92 246)' : 'transparent'
   sendBtn.innerHTML = n > 0
-    ? svg('send', px(21, 29), { color: '#fff', stroke: 2.2 })
-    : svg('mic', px(25, 34), { color: 'rgb(243 246 244 / 0.45)' })
+    ? svg('send', px(21, 29, 36), { color: '#fff', stroke: 2.2 })
+    : svg('mic', px(25, 34, 42), { color: 'rgb(243 246 244 / 0.45)' })
 
   /* Голосовые */
   if (looped || !(recording(t, T.rec2, 4) || recording(t, T.rec4, 3))) rec.style.opacity = '0'
+
+  /* Касания */
+  const sr = stage.getBoundingClientRect()
+  for (const tap of TAPS) {
+    const hold = tap.until !== undefined
+    const end = hold ? tap.until : tap.at + 0.45
+    const vis = looped ? 0 : out3(prog(t, tap.at, 0.12)) * (1 - prog(t, end, 0.2))
+    tap.el.style.opacity = vis.toFixed(3)
+    if (vis <= 0) continue
+    // Цель ищем в каждом кадре: кнопка записи сдвигается вместе с полем.
+    const target = (tap.target === 'sendBtn' && hold ? $('recMic') : $(tap.target)).getBoundingClientRect()
+    tap.el.style.left = `${(target.left + target.width / 2 - sr.left).toFixed(1)}px`
+    tap.el.style.top = `${(target.top + target.height / 2 - sr.top).toFixed(1)}px`
+    const press = prog(t, tap.at, 0.5)
+    tap.el.querySelector('.f').style.transform = `translate(-50%, -50%) scale(${(1.1 - 0.15 * out3(clamp(press * 3)) + (hold ? 0.06 * Math.sin(t * 6) : 0)).toFixed(3)})`
+    const ring = tap.el.querySelector('.r')
+    ring.style.transform = `translate(-50%, -50%) scale(${(1 + 1.4 * out3(press)).toFixed(3)})`
+    ring.style.opacity = (1 - press).toFixed(3)
+  }
 
   /* Чек: луч и рамка вокруг итога */
   const [sa, sb] = T.scan
@@ -535,11 +712,12 @@ window.renderAt = function renderAt(t) {
 
   /* Финальная карточка */
   const end = $('end')
+  end.style.setProperty('--glow', rgb(MODES[0].acc))
   end.style.opacity = (out3(prog(t, T.end, 0.45)) * (1 - inOut(prog(t, T.outro, T.total - T.outro)))).toFixed(3)
   ;[...end.children].forEach((el, i) => {
     const q = out3(prog(t, T.end + 0.12 + i * 0.13, 0.5))
     el.style.opacity = q.toFixed(3)
-    el.style.transform = `translateY(${((1 - q) * px(18, 26)).toFixed(2)}px)`
+    el.style.transform = `translateY(${((1 - q) * px(18, 26, 34)).toFixed(2)}px)`
   })
 }
 
