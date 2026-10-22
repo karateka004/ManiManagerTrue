@@ -25,3 +25,6 @@ worker/_secrets.json
 .env.*.local
 *.pem
 *.key
+
+# Промо-ролики: кадры и видео собираются заново (promo/render.cjs)
+promo/out/

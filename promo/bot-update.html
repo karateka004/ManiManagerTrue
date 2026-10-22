@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Кошель 2.7 — текст, голос, фото чека</title>
+<!--
+  Ролик про обновление 2.7: бот записывает траты из текста, голосового и фото
+  чека и отвечает на вопрос голосом.
+
+  Это не запись экрана, а сцена с часами: render.cjs вызывает renderAt(t) на
+  каждый кадр и снимает его — анимация ровная при любой скорости машины.
+  Ответы бота — настоящие: их печатает код воркера (replies.mjs → replies.js).
+
+  ?layout=land   — 960×540, стартовый экран бота («Что умеет этот бот?»);
+  ?layout=square — 1080×1080, посты и пересылка.
+  ?cta=start|ad  — последняя карточка: для стартового экрана или с адресом бота.
+-->
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/manrope/index.css">
+<script src="replies.js"></script>
+<style>
+  :root {
+    --b200: 184 229 204;
+    --b300: 143 211 172;
+    --b400: 93 185 150;
+    --b500: 60 163 123;
+    --b700: 36 110 84;
+    --ink: #f3f6f4;
+    --muted: rgb(243 246 244 / 0.6);
+    --surface:
+      radial-gradient(70% 90% at 100% 0%, rgb(var(--b400) / 0.30), transparent 62%),
+      radial-gradient(60% 70% at 0% 100%, rgb(var(--b500) / 0.14), transparent 70%),
+      linear-gradient(160deg, rgb(20 63 48) 0%, rgb(11 14 12) 78%);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; overflow: hidden; background: #0b0e0c; }
+  body {
+    font-family: 'Manrope Variable', Manrope, system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage { position: absolute; inset: 0; overflow: hidden; background: var(--surface); }
+  svg { display: block; }
+
+  /* ---------- Знак и заголовки ---------- */
+  .brand { position: absolute; display: flex; align-items: center; font-weight: 800; letter-spacing: -0.01em; }
+  .brand small { font-weight: 600; color: var(--muted); }
+  .logo {
+    display: grid; place-items: center; flex: none;
+    background: linear-gradient(145deg, rgb(var(--b400)), rgb(var(--b700)));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25);
+  }
+  .heads { position: absolute; }
+  .head { position: absolute; left: 0; top: 0; right: 0; will-change: transform, opacity; }
+  .badge {
+    display: inline-block; border-radius: 999px; font-weight: 800;
+    background: rgb(var(--b400) / 0.18); color: rgb(var(--b200));
+  }
+  .h1 { font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; }
+  .sub { font-weight: 600; color: var(--muted); line-height: 1.3; }
+  .said { font-weight: 700; color: rgb(var(--b200)); line-height: 1.3; }
+  .foot { position: absolute; color: var(--muted); font-weight: 600; }
+
+  /* ---------- Чат ---------- */
+  .chat {
+    position: absolute; display: flex; flex-direction: column; overflow: hidden;
+    background: #0e1210;
+    border: 1px solid rgb(255 255 255 / 0.07);
+    box-shadow: 0 30px 80px rgb(0 0 0 / 0.45);
+  }
+  .chat-head {
+    display: flex; align-items: center; flex: none; position: relative; z-index: 2;
+    border-bottom: 1px solid rgb(255 255 255 / 0.06);
+    background: #121715;
+  }
+  .chat-head .logo { border-radius: 50%; }
+  .chat-head .name { font-weight: 800; line-height: 1.15; }
+  .chat-head .status { font-weight: 600; color: var(--muted); line-height: 1.2; }
+  .chat-head .status.on { color: rgb(var(--b300)); }
+  .msgs { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  .col { display: flex; flex-direction: column; flex: none; will-change: transform; }
+  .row { display: flex; flex: none; overflow: hidden; }
+  .row.out { justify-content: flex-end; }
+  .row.in { justify-content: flex-start; }
+  .row > .cell { transform-origin: bottom left; will-change: transform, opacity; }
+  .row.out > .cell { transform-origin: bottom right; }
+  .bubble { line-height: 1.32; white-space: pre-wrap; }
+  .in .bubble { background: #1c2320; border-bottom-left-radius: 6px !important; }
+  .out .bubble {
+    color: #fff; border-bottom-right-radius: 6px !important;
+    background: linear-gradient(135deg, rgb(56 152 114), rgb(40 122 92));
+  }
+  .bubble b { font-weight: 800; }
+  .bubble i { font-style: italic; color: rgb(243 246 244 / 0.82); }
+  .bubble blockquote {
+    margin: 0.3em 0 0; padding: 0.22em 0.5em 0.26em 0.55em; border-radius: 0.3em;
+    border-left: 0.16em solid rgb(var(--b400));
+    background: rgb(var(--b400) / calc(0.1 + var(--glow, 0) * 0.16));
+  }
+  .bubble code { font-family: 'DejaVu Sans Mono', monospace; font-size: 0.86em; color: rgb(var(--b200)); letter-spacing: -0.04em; }
+  .kb { display: flex; flex-direction: column; }
+  .kb .kr { display: flex; }
+  .kb .kr div {
+    flex: 1; text-align: center; font-weight: 700; color: var(--ink);
+    background: rgb(255 255 255 / 0.08);
+  }
+  .think { font-style: italic; color: var(--muted); white-space: nowrap; }
+
+  /* Голосовое */
+  .voice { display: flex; align-items: center; }
+  .play { display: grid; place-items: center; border-radius: 50%; background: #fff; flex: none; }
+  .wave { display: flex; align-items: center; }
+  .wave i { display: block; border-radius: 99px; background: rgb(255 255 255 / 0.95); }
+  .dur { font-weight: 700; opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+  /* Фото чека */
+  .photo { position: relative; overflow: hidden; border-bottom-right-radius: 6px !important; }
+  .photo .table {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 80% at 20% 10%, rgb(255 255 255 / 0.10), transparent 60%),
+      linear-gradient(160deg, #6b5a49, #3f3329);
+  }
+  .receipt {
+    position: absolute; background: #f3f0e9; color: #2b2a28;
+    font-family: 'DejaVu Sans Mono', monospace; line-height: 1.38; letter-spacing: -0.02em;
+    box-shadow: 0 12px 26px rgb(0 0 0 / 0.5);
+  }
+  .receipt .c { text-align: center; }
+  .receipt .l { display: flex; justify-content: space-between; gap: 0.6em; white-space: nowrap; }
+  .receipt .sep { border-top: 1px dashed rgb(0 0 0 / 0.35); margin: 0.45em 0; }
+  .receipt .tot {
+    font-weight: 700; font-size: 1.32em; margin: 0 -0.35em; padding: 0.08em 0.35em; border-radius: 0.3em;
+    box-shadow: 0 0 0 0.14em rgb(var(--b500) / var(--hl, 0));
+    background: rgb(var(--b300) / calc(var(--hl, 0) * 0.35));
+  }
+  .scan {
+    position: absolute; left: 0; right: 0; height: 3px; opacity: 0;
+    background: linear-gradient(90deg, transparent, rgb(var(--b200)), transparent);
+    box-shadow: 0 0 22px 8px rgb(var(--b400) / 0.5);
+  }
+
+  /* Поле ввода */
+  .input {
+    display: flex; align-items: center; flex: none; position: relative; z-index: 2;
+    border-top: 1px solid rgb(255 255 255 / 0.06); background: #0e1210;
+  }
+  .field { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; }
+  .field.typed { color: var(--ink); }
+  .caret { display: inline-block; vertical-align: -0.12em; background: rgb(var(--b300)); }
+  .send { display: grid; place-items: center; border-radius: 50%; flex: none; }
+  .rec { position: absolute; inset: 0; display: flex; align-items: center; opacity: 0; background: #0e1210; }
+  .rec .dot { border-radius: 50%; background: #ff5a5f; flex: none; }
+  .rec .timer { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rec .live { display: flex; align-items: center; flex: 1; }
+  .rec .live i { display: block; border-radius: 99px; background: rgb(var(--b300)); }
+  .rec .mic { display: grid; place-items: center; border-radius: 50%; background: rgb(var(--b500)); flex: none; }
+
+  /* Финальная карточка */
+  .end {
+    position: absolute; inset: 0; z-index: 10; opacity: 0; background: var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  }
+  .end > * { will-change: transform, opacity; }
+  .end .brand { position: static; }
+  .end .t { font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; }
+  .end .s { font-weight: 600; color: var(--muted); line-height: 1.3; }
+  .chips { display: flex; justify-content: center; }
+  .chips div {
+    display: flex; align-items: center; border-radius: 999px; font-weight: 700;
+    background: rgb(255 255 255 / 0.08); border: 1px solid rgb(255 255 255 / 0.08);
+  }
+  .chips svg { color: rgb(var(--b300)); }
+  .cta { font-weight: 800; color: rgb(var(--b200)); }
+
+  /* ---------- Раскладки ---------- */
+  .land { width: 960px; height: 540px; }
+  .land .brand { left: 40px; top: 34px; gap: 12px; font-size: 25px; }
+  .land .brand .logo { width: 42px; height: 42px; border-radius: 13px; }
+  .land .heads { left: 40px; top: 128px; width: 380px; height: 330px; }
+  .land .badge { font-size: 17px; padding: 5px 13px; margin-bottom: 16px; }
+  .land .h1 { font-size: 72px; }
+  .land .sub, .land .said { font-size: 25px; margin-top: 18px; }
+  .land .foot { left: 40px; bottom: 32px; font-size: 18px; }
+  .land .chat { right: 28px; top: 24px; width: 494px; height: 492px; border-radius: 30px; }
+  .land .chat-head { height: 68px; gap: 13px; padding: 0 20px; }
+  .land .chat-head .logo { width: 44px; height: 44px; }
+  .land .chat-head .name { font-size: 21px; }
+  .land .chat-head .status { font-size: 16px; }
+  .land .msgs { padding: 0 16px 12px; font-size: 20px; }
+  .land .bubble { max-width: 462px; padding: 9px 14px 10px; border-radius: 19px; }
+  .land .kb { gap: 5px; margin-top: 5px; }
+  .land .kb .kr { gap: 5px; }
+  .land .kb .kr div { font-size: 17px; padding: 8px 6px; border-radius: 11px; }
+  .land .voice { gap: 12px; padding: 9px 16px 9px 9px; }
+  .land .play { width: 46px; height: 46px; }
+  .land .wave { gap: 3px; height: 34px; }
+  .land .wave i { width: 4px; }
+  .land .dur { font-size: 16px; margin-left: 4px; }
+  .land .photo { width: 226px; height: 280px; border-radius: 19px; }
+  .land .receipt { left: 32px; top: 15px; width: 166px; padding: 11px 10px 15px; font-size: 8.4px; }
+  .land .input { height: 70px; gap: 12px; padding: 0 14px 0 18px; font-size: 21px; }
+  .land .caret { width: 2px; height: 1.05em; margin-left: 1px; }
+  .land .send { width: 44px; height: 44px; }
+  .land .rec { gap: 12px; padding: 0 10px 0 20px; }
+  .land .rec .dot { width: 13px; height: 13px; }
+  .land .rec .timer { font-size: 19px; width: 48px; }
+  .land .rec .live { gap: 3px; height: 34px; }
+  .land .rec .live i { width: 4px; }
+  .land .rec .mic { width: 56px; height: 56px; }
+  .land .end .brand { gap: 14px; font-size: 30px; margin-bottom: 24px; }
+  .land .end .brand .logo { width: 52px; height: 52px; border-radius: 16px; }
+  .land .end .t { font-size: 56px; }
+  .land .end .s { font-size: 23px; margin-top: 16px; max-width: 700px; }
+  .land .chips { gap: 12px; margin-top: 28px; }
+  .land .chips div { gap: 9px; padding: 10px 18px; font-size: 21px; }
+  .land .cta { font-size: 22px; margin-top: 26px; }
+
+  .square { width: 1080px; height: 1080px; }
+  .square .brand { left: 60px; top: 50px; gap: 16px; font-size: 34px; }
+  .square .brand .logo { width: 58px; height: 58px; border-radius: 18px; }
+  .square .heads { left: 60px; top: 132px; width: 960px; height: 200px; }
+  .square .badge { font-size: 22px; padding: 6px 16px; position: absolute; right: 0; top: 24px; }
+  .square .h1 { font-size: 100px; }
+  .square .sub, .square .said { font-size: 33px; margin-top: 14px; }
+  .square .foot { left: 60px; bottom: 30px; font-size: 24px; }
+  .square .chat { left: 60px; right: 60px; top: 338px; height: 654px; border-radius: 40px; }
+  .square .chat-head { height: 92px; gap: 16px; padding: 0 28px; }
+  .square .chat-head .logo { width: 58px; height: 58px; }
+  .square .chat-head .name { font-size: 29px; }
+  .square .chat-head .status { font-size: 22px; }
+  .square .msgs { padding: 0 24px 16px; font-size: 28px; }
+  .square .bubble { max-width: 760px; padding: 13px 20px 14px; border-radius: 28px; }
+  .square .kb { gap: 7px; margin-top: 7px; }
+  .square .kb .kr { gap: 7px; }
+  .square .kb .kr div { font-size: 24px; padding: 12px 8px; border-radius: 16px; }
+  .square .voice { gap: 16px; padding: 13px 22px 13px 13px; }
+  .square .play { width: 64px; height: 64px; }
+  .square .wave { gap: 4px; height: 46px; }
+  .square .wave i { width: 6px; }
+  .square .dur { font-size: 23px; margin-left: 6px; }
+  .square .photo { width: 316px; height: 392px; border-radius: 28px; }
+  .square .receipt { left: 46px; top: 21px; width: 232px; padding: 16px 14px 21px; font-size: 11.8px; }
+  .square .input { height: 98px; gap: 16px; padding: 0 20px 0 26px; font-size: 30px; }
+  .square .caret { width: 3px; height: 1.05em; margin-left: 2px; }
+  .square .send { width: 62px; height: 62px; }
+  .square .rec { gap: 16px; padding: 0 16px 0 28px; }
+  .square .rec .dot { width: 18px; height: 18px; }
+  .square .rec .timer { font-size: 28px; width: 70px; }
+  .square .rec .live { gap: 4px; height: 46px; }
+  .square .rec .live i { width: 6px; }
+  .square .rec .mic { width: 76px; height: 76px; }
+  .square .end .brand { gap: 18px; font-size: 40px; margin-bottom: 40px; }
+  .square .end .brand .logo { width: 72px; height: 72px; border-radius: 22px; }
+  .square .end .t { font-size: 84px; }
+  .square .end .s { font-size: 34px; margin-top: 24px; max-width: 900px; }
+  .square .chips { gap: 16px; margin-top: 44px; flex-wrap: wrap; }
+  .square .chips div { gap: 12px; padding: 14px 26px; font-size: 32px; }
+  .square .cta { font-size: 34px; margin-top: 44px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+'use strict'
+
+const params = new URLSearchParams(location.search)
+const LAYOUT = params.get('layout') === 'square' ? 'square' : 'land'
+const CTA = params.get('cta') === 'ad' ? 'ad' : 'start'
+const SQ = LAYOUT === 'square'
+const px = (land, square) => (SQ ? square : land)
+document.body.className = LAYOUT
+
+const R = window.REPLIES
+
+/* Иконки — lucide, как в приложении. */
+const ICON = {
+  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  mic: '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
+  clip: '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
+  send: '<path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/>',
+  play: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+  pen: '<path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>',
+  camera: '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
+}
+const svg = (name, size, { color = 'currentColor', fill = 'none', stroke = 2 } = {}) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`
+const logo = (icon) => `<div class="logo">${svg('wallet', icon, { color: '#fff', stroke: 2.2 })}</div>`
+
+/* ---------- Тайминг (секунды) ---------- */
+const T = {
+  // 1. Текстом — три траты одним сообщением
+  type: [0.3, 1.55], send1: 1.7, typing1: [1.8, 2.4], reply1: 2.4,
+  // 2. Голосом
+  head2: 4.4, rec2: [4.7, 7.2], send2: 7.3, typing2: [7.4, 8.0], reply2: 8.0,
+  // 3. Фото чека
+  head3: 10.0, photo: 10.3, scan: [10.65, 11.6], typing3: [11.4, 12.1], reply3: 12.1,
+  // 4. Вопрос голосом — черновик «Думает…», потом карточка
+  head4: 14.1, rec4: [14.4, 16.2], send4: 16.3, think: [16.45, 17.4], reply4: 17.4, read: [18.1, 19.7],
+  // Итог и петля
+  end: 20.6, outro: 23.0, total: 23.6,
+}
+window.DURATION = T.total
+
+const clamp = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
+const prog = (t, a, d) => clamp((t - a) / d)
+const out3 = (x) => 1 - Math.pow(1 - x, 3)
+const inOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+/** Пружинка: чуть проскакивает и садится — для появления пузырей. */
+const back = (x) => { const c = 1.4; return x === 0 ? 0 : 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2) }
+
+/* ---------- Сцена ---------- */
+const words = (s) => s.split(' ').map((w) => `<span>${w}</span>`).join(' ')
+const stage = document.getElementById('stage')
+stage.innerHTML = `
+  <div class="brand">${logo(px(22, 30))}<span>Кошель${SQ ? ' <small>· бот для учёта денег</small>' : ''}</span></div>
+  <div class="heads">
+    <div class="head">
+      ${SQ ? '' : '<div class="badge" style="visibility:hidden">Новое</div>'}
+      <div class="h1">Напиши</div>
+      <div class="sub">несколько трат — одним сообщением</div>
+    </div>
+    <div class="head">
+      <div class="badge">Новое</div>
+      <div class="h1">Скажи</div>
+      <div class="said">${words(`«${R.said}»`)}</div>
+    </div>
+    <div class="head">
+      <div class="badge">Новое</div>
+      <div class="h1">Сфоткай чек</div>
+      <div class="sub">запишу итог и магазин</div>
+    </div>
+    <div class="head">
+      <div class="badge">Новое</div>
+      <div class="h1">Спроси</div>
+      <div class="said">${words(`«${R.asked}»`)}</div>
+    </div>
+  </div>
+  <div class="foot">Бот в Telegram · бесплатно</div>
+  <div class="chat">
+    <div class="chat-head">${logo(px(22, 29))}<div><div class="name">Кошель</div><div class="status" id="status">бот</div></div></div>
+    <div class="msgs"><div class="col" id="col"></div></div>
+    <div class="input">
+      ${svg('clip', px(24, 34), { color: 'rgb(243 246 244 / 0.45)' })}
+      <div class="field" id="field">Сообщение</div>
+      <div class="send" id="sendBtn"></div>
+      <div class="rec" id="rec">
+        <div class="dot" id="recDot"></div>
+        <div class="timer" id="recTimer">0:00</div>
+        <div class="live" id="live"></div>
+        <div class="mic" id="recMic">${svg('mic', px(27, 37), { color: '#fff', stroke: 2.2 })}</div>
+      </div>
+    </div>
+  </div>
+  <div class="end" id="end">
+    <div class="brand">${logo(px(28, 40))}<span>Кошель</span></div>
+    <div class="t">Пиши, говори<br>или сфоткай чек</div>
+    <div class="s">Кошель запишет траты сам — и ответит, куда ушли деньги</div>
+    <div class="chips">
+      <div>${svg('pen', px(22, 32))}Текст</div>
+      <div>${svg('mic', px(22, 32))}Голос</div>
+      <div>${svg('camera', px(22, 32))}Фото чека</div>
+    </div>
+    <div class="cta">${CTA === 'ad' ? '@TrueManiManager_Bot · бесплатно в Telegram' : 'Бесплатно · без регистрации'}</div>
+  </div>`
+
+/* ---------- Сообщения ---------- */
+const col = document.getElementById('col')
+const rows = []
+function addRow(side, html, at, until) {
+  const row = document.createElement('div')
+  row.className = `row ${side}`
+  row.innerHTML = `<div class="cell">${html}</div>`
+  col.appendChild(row)
+  const item = { row, cell: row.firstChild, at, until, h: 0 }
+  rows.push(item)
+  return item
+}
+// Переводы строк — как в Telegram (pre-wrap). Вокруг цитаты они лишние: цитата — блок и
+// сама начинается и заканчивается строкой.
+const bubble = (html) => `<div class="bubble">${html.replace(/\n<blockquote>/g, '<blockquote>').replace(/<\/blockquote>\n/g, '</blockquote>')}</div>`
+const keyboard = (btns) => `<div class="kb">${btns.map((r) => `<div class="kr">${r.map((b) => `<div>${b}</div>`).join('')}</div>`).join('')}</div>`
+// Ответ бота: пузырь и кнопки под ним одной ширины, не уже кнопок — как в Telegram.
+const reply = (r) => `<div style="display:inline-flex;flex-direction:column;min-width:${px(320, 540)}px;max-width:${px(462, 760)}px">${bubble(r.text)}${keyboard(r.buttons)}</div>`
+
+const WAVE = [5, 9, 14, 8, 18, 24, 15, 10, 20, 27, 22, 12, 8, 16, 25, 30, 21, 14, 9, 17, 23, 13, 7, 11, 19, 12, 6, 9]
+const voiceBubble = (dur) => `<div class="bubble voice" style="white-space:normal">
+  <div class="play">${svg('play', px(21, 29), { color: 'rgb(45 136 102)', fill: 'rgb(45 136 102)', stroke: 1.5 })}</div>
+  <div class="wave">${WAVE.map((h) => `<i style="height:${Math.round(h * px(1.1, 1.5))}px"></i>`).join('')}</div>
+  <div class="dur">${dur}</div></div>`
+
+const receipt = `<div class="receipt" id="receipt">
+  <div class="c"><b>СУПЕРМАРКЕТ «ЛЕТО»</b></div>
+  <div class="c">ул. Садовая, 12</div>
+  <div class="sep"></div>
+  <div class="l"><span>Молоко 3,2%</span><span>109</span></div>
+  <div class="l"><span>Хлеб бородинский</span><span>65</span></div>
+  <div class="l"><span>Сыр российский</span><span>489</span></div>
+  <div class="l"><span>Яблоки 1,2 кг</span><span>238</span></div>
+  <div class="l"><span>Кофе молотый</span><span>699</span></div>
+  <div class="l"><span>Бананы 0,9 кг</span><span>147</span></div>
+  <div class="l"><span>Йогурт 2 шт</span><span>100</span></div>
+  <div class="sep"></div>
+  <div class="l tot" id="tot"><span>ИТОГО</span><span>1 847</span></div>
+  <div class="l"><span>Карта</span><span>1 847,00</span></div>
+  <div class="sep"></div>
+  <div class="c">22.10.2026  18:42</div>
+  <div class="c">Спасибо за покупку!</div>
+</div>`
+const photoBubble = `<div class="bubble photo" style="padding:0;white-space:normal"><div class="table"></div>${receipt}<div class="scan" id="scan"></div></div>`
+
+addRow('out', bubble(R.typed), T.send1)
+const a1 = addRow('in', reply(R.text), T.reply1)
+addRow('out', voiceBubble('0:04'), T.send2)
+const a2 = addRow('in', reply(R.voice), T.reply2)
+addRow('out', photoBubble, T.photo)
+const a3 = addRow('in', reply(R.photo), T.reply3)
+addRow('out', voiceBubble('0:03'), T.send4)
+// Черновик ответа: пока думает модель, Telegram показывает пузырь «Думает…».
+const think = addRow('in', `<div class="bubble think">Думает<span id="thinkDots"></span></div>`, T.think[0], T.think[1])
+const a4 = addRow('in', reply(R.answer), T.reply4)
+const GAP = px(9, 13)
+
+// Рваный низ у чека.
+{
+  const rc = document.getElementById('receipt')
+  const teeth = 14
+  const pts = ['0 0', '100% 0']
+  for (let i = teeth; i >= 0; i--) pts.push(`${(i / teeth) * 100}% ${i % 2 ? 'calc(100% - 7px)' : '100%'}`)
+  rc.style.clipPath = `polygon(${pts.join(',')})`
+  rc.style.transform = 'rotate(-4deg)'
+}
+
+const live = document.getElementById('live')
+const LIVE_BARS = SQ ? 26 : 18
+live.innerHTML = Array.from({ length: LIVE_BARS }, () => '<i></i>').join('')
+
+/* ---------- Кадр ---------- */
+const $ = (id) => document.getElementById(id)
+const field = $('field'), sendBtn = $('sendBtn'), rec = $('rec'), statusEl = $('status'), msgsEl = col.parentElement
+const heads = [...document.querySelectorAll('.head')]
+const saidOf = heads.map((h) => [...(h.querySelector('.said')?.children ?? [])])
+const HEAD_AT = [-1, T.head2, T.head3, T.head4, T.end]
+
+// Слова сказанного проявляются, пока идёт запись.
+function revealWords(list, t, [a, b]) {
+  list.forEach((w, i) => {
+    const at = a + 0.12 + (i / list.length) * (b - a - 0.3)
+    w.style.opacity = (0.16 + 0.84 * out3(prog(t, at, 0.22))).toFixed(3)
+  })
+}
+
+// Запись голосового в поле ввода.
+function recording(t, [a, b], maxSec) {
+  const vis = out3(prog(t, a - 0.2, 0.25)) * (1 - out3(prog(t, b, 0.2)))
+  rec.style.opacity = vis.toFixed(3)
+  if (vis <= 0) return false
+  $('recTimer').textContent = `0:0${Math.min(maxSec, Math.floor(clamp((t - a) / (b - a)) * (maxSec + 0.99)))}`
+  $('recDot').style.opacity = (0.45 + 0.55 * (0.5 + 0.5 * Math.cos(t * 7))).toFixed(3)
+  const talking = t >= a && t <= b
+  live.querySelectorAll('i').forEach((bar, i) => {
+    const v = Math.abs(Math.sin(t * 7.3 + i * 0.83) * Math.cos(t * 3.1 + i * 0.37))
+    bar.style.height = `${(px(5, 7) + (talking ? v * px(26, 36) : 0)).toFixed(1)}px`
+  })
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6)
+  $('recMic').style.boxShadow = `0 0 0 ${(px(6, 8) + pulse * px(8, 11)).toFixed(1)}px rgb(60 163 123 / ${(0.28 - pulse * 0.12).toFixed(3)})`
+  return true
+}
+
+window.renderAt = function renderAt(t) {
+  // После outro под карточкой всё уже вернулось к первому кадру — петля без шва.
+  const looped = t >= T.outro
+
+  /* Заголовки слева: один сменяет другой */
+  heads.forEach((h, i) => {
+    const enter = i === 0 || looped ? 1 : out3(prog(t, HEAD_AT[i], 0.5))
+    const leave = looped ? (i === 0 ? 0 : 1) : out3(prog(t, HEAD_AT[i + 1] - 0.3, 0.3))
+    h.style.opacity = (enter * (1 - leave)).toFixed(3)
+    h.style.transform = `translateY(${((1 - enter) * px(26, 34) - leave * px(10, 14)).toFixed(2)}px)`
+  })
+  revealWords(saidOf[1], t, T.rec2)
+  revealWords(saidOf[3], t, T.rec4)
+
+  /* Строки чата: растут из нуля, старые уезжают вверх */
+  for (const r of rows) {
+    let p = looped ? 0 : prog(t, r.at, 0.42)
+    if (r.until !== undefined) p = Math.min(p, 1 - prog(t, r.until, 0.18))
+    const grow = out3(p)
+    r.grow = grow
+    r.row.style.height = `${(r.h * grow).toFixed(2)}px`
+    r.row.style.marginTop = `${(GAP * grow).toFixed(2)}px`
+    r.cell.style.opacity = clamp(p * 1.6).toFixed(3)
+    r.cell.style.transform = `translateY(${((1 - grow) * px(14, 20)).toFixed(2)}px) scale(${(0.9 + 0.1 * back(p)).toFixed(4)})`
+  }
+  // Длинную карточку ответа показываем с начала и прокручиваем вниз — как читают.
+  const room = msgsEl.clientHeight - px(14, 20)
+  const over = Math.max(0, a4.h * a4.grow + GAP - room)
+  const scrolled = inOut(prog(t, T.read[0], T.read[1] - T.read[0]))
+  col.style.transform = `translateY(${(over * (1 - scrolled)).toFixed(2)}px)`
+
+  $('thinkDots').textContent = '.'.repeat(1 + (Math.floor(t * 4) % 3))
+  for (const a of [a1, a2, a3]) {
+    const g = looped ? 0 : Math.sin(Math.PI * prog(t, a.at + 0.35, 1.1))
+    a.cell.querySelector('blockquote').style.setProperty('--glow', g.toFixed(3))
+  }
+  const typing = !looped && [T.typing1, T.typing2, T.typing3, T.think].some(([a, b]) => t >= a && t < b)
+  statusEl.textContent = typing ? `печатает${'.'.repeat(1 + (Math.floor(t * 4) % 3))}` : 'бот'
+  statusEl.classList.toggle('on', typing)
+
+  /* Поле ввода: набор текста */
+  const [ta, tb] = T.type
+  const n = looped || t >= T.send1 ? 0 : Math.round(R.typed.length * prog(t, ta, tb - ta))
+  const focused = !looped && t >= ta - 0.2 && t < T.send1
+  const caret = (on) => `<span class="caret" style="opacity:${on ? 1 : 0}"></span>`
+  if (n > 0) {
+    field.className = 'field typed'
+    field.innerHTML = R.typed.slice(0, n) + caret(n < R.typed.length || Math.floor(t * 2.4) % 2 === 0)
+  } else {
+    field.className = 'field'
+    field.innerHTML = (focused ? caret(Math.floor(t * 2.4) % 2 === 0) : '') + 'Сообщение'
+  }
+  sendBtn.style.background = n > 0 ? 'rgb(60 163 123)' : 'transparent'
+  sendBtn.innerHTML = n > 0
+    ? svg('send', px(21, 29), { color: '#fff', stroke: 2.2 })
+    : svg('mic', px(25, 34), { color: 'rgb(243 246 244 / 0.45)' })
+
+  /* Голосовые */
+  if (looped || !(recording(t, T.rec2, 4) || recording(t, T.rec4, 3))) rec.style.opacity = '0'
+
+  /* Чек: луч и рамка вокруг итога */
+  const [sa, sb] = T.scan
+  const sp = prog(t, sa, sb - sa)
+  $('scan').style.top = `${(6 + 86 * inOut(sp)).toFixed(2)}%`
+  $('scan').style.opacity = (looped ? 0 : Math.sin(Math.PI * sp)).toFixed(3)
+  $('tot').style.setProperty('--hl', (looped ? 0 : out3(prog(t, sb - 0.25, 0.35))).toFixed(3))
+
+  /* Финальная карточка */
+  const end = $('end')
+  end.style.opacity = (out3(prog(t, T.end, 0.45)) * (1 - inOut(prog(t, T.outro, T.total - T.outro)))).toFixed(3)
+  ;[...end.children].forEach((el, i) => {
+    const q = out3(prog(t, T.end + 0.12 + i * 0.13, 0.5))
+    el.style.opacity = q.toFixed(3)
+    el.style.transform = `translateY(${((1 - q) * px(18, 26)).toFixed(2)}px)`
+  })
+}
+
+// Высоты строк — один раз, когда шрифты на месте и всё раскрыто.
+window.sceneReady = document.fonts.ready.then(() => {
+  for (const r of rows) {
+    r.row.style.height = 'auto'
+    r.row.style.marginTop = '0px'
+    r.cell.style.transform = 'none'
+  }
+  for (const r of rows) r.h = r.row.offsetHeight
+  window.renderAt(0)
+  return true
+})
+</script>
+</body>
+</html>
