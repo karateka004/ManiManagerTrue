@@ -187,6 +187,39 @@ export async function answerCallback(env: Env, id: string, text?: string, alert 
 }
 
 /**
+ * Отправить файл байтами (multipart): анимацию или документ. По ссылке Telegram
+ * берёт файл не всегда — тип он смотрит по заголовкам чужого хранилища.
+ * `asIs` — документ остаётся файлом: иначе .gif Telegram сам превратит в анимацию.
+ */
+export async function sendFile(
+  env: Env,
+  chatId: string | number,
+  kind: 'animation' | 'document',
+  file: Blob,
+  filename: string,
+  caption?: string,
+  asIs = false,
+): Promise<boolean> {
+  const form = new FormData()
+  form.append('chat_id', String(chatId))
+  form.append(kind, file, filename)
+  if (caption) {
+    form.append('caption', caption)
+    form.append('parse_mode', 'HTML')
+  }
+  if (asIs) form.append('disable_content_type_detection', 'true')
+  try {
+    const method = kind === 'animation' ? 'sendAnimation' : 'sendDocument'
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/${method}`, { method: 'POST', body: form })
+    if (!res.ok) console.error(`[tg] ${method} ${res.status} ${(await res.text()).slice(0, 200)}`)
+    return res.ok
+  } catch (e) {
+    console.error('[tg] файл не отправлен', e)
+    return false
+  }
+}
+
+/**
  * Показать «печатает…» в чате.
  *
  * Разбор сообщения занимает около секунды, а иногда до пяти. Без этой пометки

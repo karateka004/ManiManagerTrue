@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 8) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -148,6 +148,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26) · `np
   `ADMIN_KEY` или `/admin` в боте. `check-admin-js.mjs` проверяет скрипт внутри `ADMIN_HTML`
   (tsc его не видит; в шаблоне нельзя `` ` ``, `${`, `\`).
 - Профиль бота (описания, команды) выставляет крон сам (`ensureBotProfile`).
+- **Промо-ролики** (`promo/`): сцена `bot-update.html` с часами `renderAt(t)`, ответы бота — настоящим
+  кодом (`replies.mjs` → `replies.js`), `render.cjs` (Chromium + ffmpeg) → `promo/out/` (не в git).
+  Готовые файлы — `promo/media/`; `worker/src/promo.ts` шлёт их владельцу один раз после выката
+  (крон `*/5`, метка `promo:sent` = `PROMO_ID`) и по `/promo`; адрес закреплён за коммитом файлов.
 - Рефералы: `?startapp=ref<id>` доходит, только если у бота включён Main Mini App в BotFather.
 
 ## Оформление (2.0+)

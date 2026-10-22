@@ -63,6 +63,7 @@ import { CURRENCY_META, formatMoney } from './money'
 import { MAX_IMPORT_ROWS, parseCsvRows } from './csv'
 import { plural } from './facts'
 import { isRateLimited } from './limits'
+import { sendPromo } from './promo'
 import { campaignTag, rememberSource } from './sources'
 import {
   BTN_TURN_OFF,
@@ -383,6 +384,8 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
       await sendMessage(env, userId, screen.text, screen.keyboard)
     }
     else if (cmd === 'icons' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await setupIcons(env, userId, msg)
+    // Промо-ролик последнего обновления — владельцу, чтобы переслать.
+    else if (cmd === 'promo' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendPromo(env, userId)
     else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
       // Только владельцу и только в личке: кнопка web_app открывает дашборд
       // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
