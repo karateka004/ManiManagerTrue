@@ -18,10 +18,11 @@
 import type { Env } from './env'
 import { APP_URL, BTN_OPEN } from './app'
 import { parseEntries } from './entry'
-import { askGemini, type ParsedOp } from './gemini'
+import { askGemini, askGeminiMedia, type ParsedOp } from './gemini'
 import {
   answerCard,
   cardToText,
+  DEFAULT_ANSWER_MODEL,
   ICONS,
   langOfTelegram,
   isSmallTalk,
@@ -118,7 +119,7 @@ export const BOT_COMMANDS = [
 export const BOT_DESCRIPTION = [
   'Учёт денег без таблиц и форм — просто пиши траты в чат.',
   '',
-  'Как в заметках: «кофе 300», «вчера такси 450», «обед 12 €». Кошель сам разложит их по категориям, а с бюджетом на месяц ещё и подскажет, сколько можно потратить сегодня.',
+  'Как в заметках: «кофе 300», «вчера такси 450», «обед 12 €». Можно голосом или фото чека. Кошель сам разложит траты по категориям, а с бюджетом на месяц ещё и подскажет, сколько можно потратить сегодня.',
   '',
   'Можно и спросить: «на что больше всего ушло в этом месяце?»',
   '',
@@ -127,7 +128,7 @@ export const BOT_DESCRIPTION = [
 
 /** Короткое описание: профиль бота и превью пересланной ссылки. До 120 символов. */
 export const BOT_SHORT_DESCRIPTION =
-  'Учёт денег без таблиц и форм: пиши «кофе 300» — Кошель запишет трату и сам определит категорию. Бесплатно.'
+  'Учёт денег без таблиц и форм: напиши «кофе 300», скажи голосом или пришли фото чека — Кошель всё запишет. Бесплатно.'
 
 /**
  * Профиль бота (описания и меню команд) выставляется сам после выката: крон
@@ -199,6 +200,7 @@ export const START = [
   '<blockquote>кофе 300',
   'такси 450 и обед 380',
   'вчера продукты 1200</blockquote>',
+  'Можно и голосовым, и фото чека.',
   'Записи появятся и в приложении — там графики, календарь трат и цели. А если задашь в нём бюджет на месяц, после каждой траты покажу, сколько осталось на сегодня.',
   '',
   'Какая была последняя трата? Напиши её сюда.',
@@ -210,12 +212,14 @@ export const START_MORE = [
   'трачу больше, чем раньше?',
   'когда накоплю на отпуск?</blockquote>',
   '',
+  '<b>Голосом и фото</b> — скажи «кофе триста» или пришли фото чека: запишу итог и магазин. Скриншот истории из банка — тоже.',
+  '',
   '<b>Другая валюта</b> — словом или знаком: «обед 12 €», «такси 15 лари». По курсу не пересчитываю.',
   '',
   '<b>В приложении</b> — лимиты по категориям и поиск, а за регулярный учёт — уровни и награды.',
   '',
   'Напоминания — /reminders, траты за сегодня — /today.',
-  '<i>Сообщения разбирает Google Gemini: ему уходят текст, последние вопросы и итоги — по дням, месяцам и категориям, бюджет и цели, но не список трат.</i>',
+  '<i>Сообщения разбирает Google Gemini: ему уходят текст, голосовые и фото, которые ты присылаешь, последние вопросы и итоги — по дням, месяцам и категориям, бюджет и цели, но не список трат.</i>',
 ].join('\n')
 
 export const BTN_MORE = 'Что ещё умею'
@@ -249,6 +253,10 @@ const HELP = [
   'вчера продукты 1200',
   'кроссовки 3500 и пиво 180',
   '',
+  'Голосом или фото — тоже запись:',
+  'голосовое «такси четыреста пятьдесят»',
+  'фото чека — запишу итог и магазин',
+  '',
   'Можно спрашивать — я помню три последних вопроса:',
   'сколько я потратил за неделю',
   'на что больше всего ушло в этом месяце',
@@ -259,7 +267,7 @@ const HELP = [
 ].join('\n')
 
 const TOO_BIG = 'Похоже на опечатку — не записал. Проверь сумму.'
-const NOT_TEXT = 'Пока понимаю текст и файлы .csv. Напиши, например: кофе 300'
+const NOT_TEXT = 'Понимаю текст, голосовые, фото чеков и файлы .csv. Напиши, например: кофе 300'
 const CSV_MAX_BYTES = 1_000_000
 const CSV_BAD =
   'Не смог прочитать файл. Нужен .csv до 1 МБ с колонками «Дата», «Сумма» (и по желанию «Тип», «Категория», «Валюта», «Заметка») — как выгрузка из Кошеля.'
@@ -346,9 +354,12 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     await importCsv(env, userId, msg.document)
     return
   }
+  const media = text ? null : mediaOf(msg)
+  if (media) {
+    await recordFromMedia(env, userId, msg, media, from.language_code)
+    return
+  }
   if (!text) {
-    // Голосовые и фото чеков — следующий шаг: модель умеет и то и другое, но
-    // сначала должен заработать текстовый путь.
     await sendMessage(env, userId, NOT_TEXT, openKeyboard)
     return
   }
@@ -505,6 +516,144 @@ async function importCsv(env: Env, userId: number, doc: NonNullable<TgMessage['d
     await sendMessage(env, userId, reply, {
       inline_keyboard: [[openButton], [{ text: 'Отменить', callback_data: `u:${batch}` }]],
     })
+  } finally {
+    stopTyping()
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Голос и фото                                                        */
+/* ------------------------------------------------------------------ */
+/*
+ * Сказать «кофе триста» или сфотографировать чек быстрее, чем набрать: на ходу,
+ * с пакетами в руках, в очереди у кассы. Разбирает только модель — правилам
+ * звук и картинка не по силам, — поэтому без ключа Gemini и сверх суточной
+ * квоты честно просим написать текстом.
+ */
+
+/** Голосовое длиннее — уже рассказ, а не трата, да и разбор дольше. */
+const VOICE_MAX_SEC = 120
+/** Потолок файла: в модель он уходит целиком. Фото в чате Telegram и так сжимает до сотен КБ. */
+const MEDIA_MAX_BYTES = 8_000_000
+
+/** Звук, который понимает модель: как тип называет Telegram → как его ждёт Gemini. */
+const AUDIO_MIME: Record<string, string> = {
+  'audio/ogg': 'audio/ogg',
+  'audio/mpeg': 'audio/mp3',
+  'audio/mp3': 'audio/mp3',
+  'audio/wav': 'audio/wav',
+  'audio/x-wav': 'audio/wav',
+  'audio/aac': 'audio/aac',
+  'audio/flac': 'audio/flac',
+}
+const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'])
+
+const MEDIA_OFF = 'Голосовые и фото сейчас не разбираю — напиши текстом, например: кофе 300'
+const MEDIA_QUOTA = 'На сегодня голосовых и фото хватит — до завтра пиши текстом, например: кофе 300'
+const MEDIA_FAILED = 'Не получилось разобрать. Пришли ещё раз или напиши текстом, например: кофе 300'
+const VOICE_LONG = `Длинновато — разбираю голосовые до ${VOICE_MAX_SEC / 60} минут. Хватит и короткого: «кофе триста, такси четыреста»`
+const MEDIA_BIG = 'Файл тяжеловат. Фото пришли обычным способом, не файлом, — так оно станет легче.'
+const VOICE_BIG = 'Файл тяжеловат — разбираю до 8 МБ. Запиши голосовое прямо в чате.'
+const MEDIA_FORMAT = 'Такой файл не открою. Запиши голосовое прямо в чате или пришли фото чека.'
+const VOICE_UNCLEAR = 'Не расслышал сумму. Скажи, например: «кофе триста» — или напиши текстом.'
+const PHOTO_UNCLEAR =
+  'Не нашёл на фото суммы к оплате. Сфотографируй чек целиком, чтобы был виден итог, — или напиши: продукты 1200'
+
+/** Что пришло: сказанное (голосовое, кружок, аудио) или картинка — и можно ли его разобрать. */
+interface Media {
+  kind: 'voice' | 'photo'
+  fileId?: string
+  /** Тип для модели. */
+  mime?: string
+  /** Почему не берём: длинное, тяжёлое, незнакомый формат. */
+  problem?: 'long' | 'big' | 'format'
+}
+
+function mediaOf(msg: TgMessage): Media | null {
+  const said = (f: NonNullable<TgMessage['voice']>, mime: string | undefined): Media => {
+    if (!mime || !f.file_id) return { kind: 'voice', problem: 'format' }
+    if ((f.duration ?? 0) > VOICE_MAX_SEC) return { kind: 'voice', problem: 'long' }
+    if ((f.file_size ?? 0) > MEDIA_MAX_BYTES) return { kind: 'voice', problem: 'big' }
+    return { kind: 'voice', fileId: f.file_id, mime }
+  }
+  if (msg.voice) return said(msg.voice, 'audio/ogg')
+  if (msg.video_note) return said(msg.video_note, 'video/mp4')
+  if (msg.audio) return said(msg.audio, AUDIO_MIME[(msg.audio.mime_type ?? '').toLowerCase()])
+  if (msg.photo?.length) {
+    // Самый крупный снимок из тех, что пролезают в потолок: мелкий шрифт чека
+    // читается только в полном размере.
+    const best = msg.photo
+      .filter((p) => p.file_id && (p.file_size ?? 0) <= MEDIA_MAX_BYTES)
+      .sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))[0]
+    return best?.file_id ? { kind: 'photo', fileId: best.file_id, mime: 'image/jpeg' } : { kind: 'photo', problem: 'big' }
+  }
+  // Картинка файлом — без сжатия Telegram: так часто шлют скриншоты из банка.
+  const doc = msg.document
+  if (doc && /^image\//i.test(doc.mime_type ?? '')) {
+    const mime = (doc.mime_type ?? '').toLowerCase()
+    if (!IMAGE_MIME.has(mime) || !doc.file_id) return { kind: 'photo', problem: 'format' }
+    if ((doc.file_size ?? 0) > MEDIA_MAX_BYTES) return { kind: 'photo', problem: 'big' }
+    return { kind: 'photo', fileId: doc.file_id, mime }
+  }
+  return null
+}
+
+/**
+ * Голосовое или фото — в запись. Голос дальше идёт тем же путём, что и текст:
+ * сказанное и есть сообщение («сколько я потратил за неделю?» голосом — это
+ * вопрос). С фото проще: чек — запись, вопрос в подписи — ответ.
+ */
+async function recordFromMedia(env: Env, userId: number, msg: TgMessage, media: Media, tgLang?: string): Promise<void> {
+  if (media.problem || !media.fileId || !media.mime) {
+    const why =
+      media.problem === 'long' ? VOICE_LONG : media.problem === 'big' ? (media.kind === 'photo' ? MEDIA_BIG : VOICE_BIG) : MEDIA_FORMAT
+    await sendMessage(env, userId, why)
+    return
+  }
+  if (!env.GEMINI_API_KEY?.trim()) {
+    await sendMessage(env, userId, MEDIA_OFF)
+    return
+  }
+  if (await isRateLimited(env, 'gem', userId, MODEL_CALLS_PER_DAY, 86_400)) {
+    await sendMessage(env, userId, MEDIA_QUOTA)
+    return
+  }
+
+  const stopTyping = keepTyping(env, userId)
+  try {
+    const now = Date.now()
+    const [bytes, ctx] = await Promise.all([
+      downloadFile(env, media.fileId, MEDIA_MAX_BYTES),
+      loadContext(env, userId, now),
+      forgetBlock(env, userId).catch((e) => console.error('[bot] блокировка не снята', e)),
+    ])
+    const caption = (msg.caption ?? '').trim()
+    const preferred = env.GEMINI_ANSWER_MODEL?.trim() || DEFAULT_ANSWER_MODEL
+    const outcome = bytes ? await askGeminiMedia({ mime: media.mime, bytes }, caption, ctx, env, now, preferred) : null
+    if (!outcome) {
+      await sendMessage(env, userId, MEDIA_FAILED)
+      return
+    }
+
+    if (media.kind === 'photo') {
+      if (outcome.intent === 'record') await recordOps(env, userId, outcome.ops, ctx, now)
+      // Картинка с вопросом в подписи («могу ли я это купить?») — отвечаем на подпись.
+      else if (outcome.intent === 'answer' && caption) await replyWithAnswer(env, userId, caption, ctx, now, { tgLang })
+      else await sendMessage(env, userId, PHOTO_UNCLEAR)
+      return
+    }
+
+    const said = outcome.heard ?? ''
+    if (said && (outcome.intent === 'answer' || (looksLikeQuestion(said) && outcome.intent !== 'record'))) {
+      // Над ответом — что услышали: голос не перечитаешь, а ответ на
+      // ослышку без этой строки выглядел бы ответом невпопад.
+      await replyWithAnswer(env, userId, said, ctx, now, { echo: said, tgLang })
+      return
+    }
+    // Модель не нашла записи, а в расшифровке сумма есть — пусть попробуют правила.
+    const { ops, reason } = resolveOps(outcome.ops, said, ctx, now)
+    if (ops.length > 0) await recordOps(env, userId, ops, ctx, now)
+    else await sendMessage(env, userId, reason === 'too_big' ? TOO_BIG : VOICE_UNCLEAR)
   } finally {
     stopTyping()
   }

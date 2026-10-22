@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.6.0'
+export const APP_VERSION = '2.7.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,25 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.7.0',
+    date: '2026-10-22',
+    title: { ru: 'Голосом и фото чека', en: 'By voice and receipt photo' },
+    items: [
+      {
+        text: {
+          ru: 'Скажи боту голосовым «кофе триста, такси четыреста» — он запишет обе траты. Голосом можно и спросить: «сколько ушло на кафе?»',
+          en: 'Send the bot a voice message like “coffee 3, taxi 12” and it records both. You can ask by voice too: “how much went on cafes?”',
+        },
+      },
+      {
+        text: {
+          ru: 'Пришли фото чека — бот запишет итог, магазин и дату с чека. Скриншот истории из банка — каждую операцию',
+          en: 'Send a receipt photo and the bot records the total, the shop and the date on the receipt. A screenshot of your bank history — every entry on it',
+        },
+      },
+    ],
+  },
   {
     version: '2.6.0',
     date: '2026-10-18',

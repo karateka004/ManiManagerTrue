@@ -32,6 +32,13 @@ export interface TgFrom {
   language_code?: string
 }
 
+/** Файл в сообщении: голос, фото, документ. */
+export interface TgFile {
+  file_id?: string
+  file_size?: number
+  mime_type?: string
+}
+
 export interface TgMessage {
   message_id: number
   chat: TgChat
@@ -45,11 +52,13 @@ export interface TgMessage {
    */
   reply_markup?: { inline_keyboard?: { text?: string; callback_data?: string }[][] }
   /** Непустое поле = сообщение не текстовое (голос, фото, документ и т.п.). */
-  voice?: unknown
-  audio?: unknown
-  photo?: unknown[]
-  document?: { file_id?: string; file_name?: string; mime_type?: string; file_size?: number }
-  video_note?: unknown
+  voice?: TgFile & { duration?: number }
+  audio?: TgFile & { duration?: number }
+  photo?: (TgFile & { width?: number; height?: number })[]
+  document?: TgFile & { file_name?: string }
+  video_note?: TgFile & { duration?: number }
+  /** Подпись к фото или файлу. */
+  caption?: string
 }
 
 export interface TgCallbackQuery {
