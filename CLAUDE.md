@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 18) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 16) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -179,9 +179,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
   владельца → предпросмотр поста как в канале с «Опубликовать в канал» (`n:<id>`); публикация один раз
   (`channel:<id>` = id сообщения), ролик в канал — тем же `file_id`. Кнопка «Открыть Кошель» —
   `?startapp=channel` (источник в аналитике). Новый пост — новый `POST.id`, файл и коммит ролика.
-  Аватарки (`promo/avatar.html` → `node promo/avatar.cjs`, JPG 640): светлая — боту (`setMyProfilePhoto`),
-  тёмная — каналу (`setChatPhoto`); первый пост и аватарки бот выставил сам — `launchOnce`, разово
-  по крону (метка `channel:launch` = `LAUNCH_ID`), отчёт владельцу.
+  Аватарки (`promo/avatar.html` → `node promo/avatar.cjs`, JPG 640): светлая — боту, тёмная — каналу;
+  поставлены разово 23.10.2026 (`setMyProfilePhoto`/`setChatPhoto` в `tg.ts`). «Выложи сам» —
+  `launchOnce`: пост `POST` разово по крону (метка `channel:launch` = `LAUNCH_ID`), итог владельцу.
+  Ролик со звуком — `kind: 'video'`, немой как гиф — `'animation'`. В канале: 2.7.1 (№4), 2.7 (тизер Кошель+).
   Ролик: `vite preview` → `node promo/capture.cjs` (съёмка, данные в $, касания дорожкой) →
   `node promo/render.cjs square <id> --scene channel --jobs 4` (`channel.html`: телефон на мятном
   фоне, палец, камера по касаниям) → `promo/media/` → коммит → адрес в `channel.ts`.

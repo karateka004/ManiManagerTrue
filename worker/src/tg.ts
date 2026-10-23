@@ -57,8 +57,9 @@ export interface TgMessage {
   photo?: (TgFile & { width?: number; height?: number })[]
   document?: TgFile & { file_name?: string }
   video_note?: TgFile & { duration?: number }
-  /** Анимация — в предпросмотре поста для канала: её file_id уходит в канал без загрузки. */
+  /** Ролик предпросмотра поста (анимация или видео): его file_id уходит в канал без загрузки. */
   animation?: TgFile
+  video?: TgFile
   /** Подпись к фото или файлу. */
   caption?: string
 }
@@ -355,39 +356,44 @@ export function escapeHtml(s: string): string {
 }
 
 /**
- * Анимация с подписью и клавиатурой: файлом или уже загруженная (file_id).
- * Возвращает id сообщения и file_id — второй раз тот же ролик уходит без
- * загрузки (предпросмотр поста → публикация в канал).
+ * Ролик с подписью и клавиатурой: анимацией (крутится без звука, как гиф) или
+ * видео со звуком; файлом или уже загруженный (file_id). Возвращает id
+ * сообщения и file_id — второй раз тот же ролик уходит без загрузки
+ * (предпросмотр поста → публикация в канал).
  */
-export async function sendAnimation(
+export async function sendMedia(
   env: Env,
   chatId: string | number,
-  animation: Blob | string,
+  kind: 'animation' | 'video',
+  media: Blob | string,
   caption: string,
   replyMarkup?: unknown,
 ): Promise<{ ok: boolean; messageId?: number; fileId?: string; description?: string }> {
   const form = new FormData()
   form.append('chat_id', String(chatId))
-  if (typeof animation === 'string') form.append('animation', animation)
-  else form.append('animation', animation, 'animation.mp4')
+  if (typeof media === 'string') form.append(kind, media)
+  else form.append(kind, media, `${kind}.mp4`)
+  if (kind === 'video') form.append('supports_streaming', 'true')
   form.append('caption', caption)
   form.append('parse_mode', 'HTML')
   if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup))
   try {
-    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendAnimation`, { method: 'POST', body: form })
+    const method = kind === 'video' ? 'sendVideo' : 'sendAnimation'
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/${method}`, { method: 'POST', body: form })
     const body = (await res.json().catch(() => null)) as {
-      result?: { message_id?: number; animation?: { file_id?: string }; document?: { file_id?: string } }
+      result?: { message_id?: number } & Partial<Record<'animation' | 'video' | 'document', { file_id?: string }>>
       description?: string
     } | null
     const r = body?.result
+    const fileId = r?.[kind]?.file_id ?? r?.document?.file_id
     return {
       ok: res.ok && !!r,
       ...(r?.message_id ? { messageId: r.message_id } : {}),
-      ...(r?.animation?.file_id || r?.document?.file_id ? { fileId: r.animation?.file_id ?? r.document?.file_id } : {}),
+      ...(fileId ? { fileId } : {}),
       ...(body?.description ? { description: body.description } : {}),
     }
   } catch (e) {
-    console.error('[tg] анимация не отправлена', e)
+    console.error('[tg] ролик не отправлен', e)
     return { ok: false }
   }
 }

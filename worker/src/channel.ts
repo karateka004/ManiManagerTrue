@@ -1,52 +1,52 @@
 /**
- * Канал обновлений @koshel_update — самые крупные обновления: анимация с
- * настоящим приложением в телефоне (promo/capture.cjs → promo/channel.html →
- * render.cjs --scene channel) и подпись.
+ * Канал обновлений @koshel_update — самые крупные обновления: ролик (анимация с
+ * настоящим приложением в телефоне — promo/capture.cjs → promo/channel.html →
+ * render.cjs --scene channel, или промо со звуком) и подпись.
  *
  * Пишет бот — он админ канала, — по кнопке владельца: /post присылает владельцу
- * пост ровно таким, каким он уйдёт, а под ним «Опубликовать в канал». Первый пост
- * и аватарки бот выставил сам, разово после выката (launchOnce). Один пост — одна
- * публикация (метка `channel:<id>` в KV). Файлы берутся по адресу, закреплённому
- * за коммитом, — как у промо (promo.ts).
+ * пост ровно таким, каким он уйдёт, а под ним «Опубликовать в канал». Если
+ * владелец просит выложить самому — разово после выката (launchOnce). Один пост —
+ * одна публикация (метка `channel:<id>` в KV). Ролик берётся по адресу,
+ * закреплённому за коммитом, — как у промо (promo.ts).
  *
  * Новый пост: собрать ролик в promo/media/, закоммитить, вписать коммит, файл,
- * подпись и новый id в POST.
+ * подпись и новый id в POST (выложить самому — ещё и новый LAUNCH_ID).
  */
 import type { Env } from './env'
 import {
   answerCallback,
   editMessageReplyMarkup,
   escapeHtml,
-  sendAnimation,
+  sendMedia,
   sendMessage,
-  setChatPhoto,
-  setMyProfilePhoto,
   type TgCallbackQuery,
 } from './tg'
 
 export const CHANNEL = '@koshel_update'
 const RAW = 'https://raw.githubusercontent.com/karateka004/ManiManagerTrue/'
-/** Коммит, в котором лежит ролик поста. */
-const MEDIA_COMMIT = 'c7946cfefb9804d72f075260c44013a4bb8cc5b8'
-/** Аватарки (promo/avatar.html → promo/avatar.cjs): светлая — боту, тёмная — каналу. */
-const AVATAR_COMMIT = '7831f64c167f2b445becb065b77ed83d99e13037'
-export const AVATARS = { bot: 'koshel-bot-avatar.jpg', channel: 'koshel-channel-avatar.jpg' }
 /** Приложение из канала: метка `channel` — заходы видны в аналитике отдельным источником. */
 export const APP_URL = 'https://t.me/TrueManiManager_Bot?startapp=channel'
 
 export const POST = {
-  id: '2.7.1',
-  media: 'koshel-post-2.7.1-1080.mp4',
+  id: '2.7.0',
+  /** Коммит, в котором лежит ролик: промо 2.7 — квадрат со звуком и цветом эпизодов. */
+  commit: 'eecddb7e97125fcdb007dc54eeb07467ed58b262',
+  media: 'koshel-2.7-square-sound.mp4',
+  /** Со звуком — видео; немой ролик, крутящийся как гиф, — 'animation'. */
+  kind: 'video' as 'animation' | 'video',
+  // Голос и фото пока у тестеров Кошель+ — пост их не обещает сейчас.
   caption: [
-    '⚡️ <b>Кошель стал плавнее и быстрее</b>',
+    '🎙 <b>Скоро в Кошель+: траты голосом и по фото чека</b>',
     '',
-    'Вкладки переключаются мгновенно: где уже был — открывается сразу, а свайп идёт ровно за пальцем.',
+    'Трату можно будет надиктовать или сфотографировать — бот сам разберёт сумму, категорию и дату.',
     '',
-    '<b>Записать трату — пара касаний:</b> «+», сумма, категория. Шторка закрывается сразу, без подвисаний.',
+    '<b>Голосовое:</b> говори своими словами, хоть несколько трат подряд — каждая станет отдельной записью.',
     '',
-    '<b>Тёмная тема — с первого кадра:</b> при запуске Кошель больше не вспыхивает светлым.',
+    '<b>Фото чека:</b> итог, магазин и дата прямо с чека. Скриншот из банка — до 15 операций за раз.',
     '',
-    '<b>Скоро — Кошель+:</b> записи голосовым и по фото чека. Сейчас тестируем.',
+    '<b>Вопрос голосом:</b> «сколько ушло на кафе в этом месяце?» — бот ответит.',
+    '',
+    'Сейчас идёт закрытый тест. Как откроем — расскажем здесь первыми.',
   ].join('\n'),
 }
 
@@ -65,7 +65,7 @@ async function download(commit: string, file: string, type: string): Promise<Blo
     return null
   }
 }
-const downloadMedia = () => download(MEDIA_COMMIT, POST.media, 'video/mp4')
+const downloadMedia = () => download(POST.commit, POST.media, 'video/mp4')
 
 /**
  * Пост в канал — один раз. Метка ставится до отправки (со сроком — на случай
@@ -82,7 +82,7 @@ async function publishPost(
   await env.REFERRALS.put(key, 'sending', { expirationTtl: 120 })
   // Ролик уже у Telegram (предпросмотр) — без загрузки; иначе качаем заново.
   const media = fileId ?? (await downloadMedia())
-  const r = media ? await sendAnimation(env, CHANNEL, media, POST.caption, { inline_keyboard: [openRow] }) : null
+  const r = media ? await sendMedia(env, CHANNEL, POST.kind, media, POST.caption, { inline_keyboard: [openRow] }) : null
   if (!r?.ok || !r.messageId) {
     await env.REFERRALS.delete(key)
     return { ok: false, why: r ? (r.description ?? 'ошибка Telegram') : 'ролик не скачан' }
@@ -110,7 +110,7 @@ export async function sendPostPreview(env: Env, chatId: number): Promise<void> {
     published && published !== 'sending'
       ? [{ text: 'Уже в канале — открыть', url: postLink(published) }]
       : [{ text: 'Опубликовать в канал', callback_data: `n:${POST.id}` }]
-  const r = await sendAnimation(env, chatId, media, POST.caption, { inline_keyboard: [openRow, control] })
+  const r = await sendMedia(env, chatId, POST.kind, media, POST.caption, { inline_keyboard: [openRow, control] })
   if (!r.ok) await sendMessage(env, chatId, `Предпросмотр не отправился: ${r.description ?? 'ошибка Telegram'}.`)
 }
 
@@ -124,8 +124,8 @@ export async function publishPostButton(q: TgCallbackQuery, env: Env, userId: nu
     await answerCallback(env, q.id, 'Этот предпросмотр устарел — пришли /post заново.', true)
     return
   }
-  const { chat, message_id } = q.message
-  const r = await publishPost(env, q.message.animation?.file_id ?? q.message.document?.file_id)
+  const { chat, message_id, video, animation, document } = q.message
+  const r = await publishPost(env, (video ?? animation ?? document)?.file_id)
   if (r.ok) {
     await answerCallback(env, q.id, 'Опубликовано в канале.')
     await editMessageReplyMarkup(env, chat.id, message_id, {
@@ -143,37 +143,27 @@ export async function publishPostButton(q: TgCallbackQuery, env: Env, userId: nu
   }
 }
 
-/** Разовый запуск после выката: новый — новый id (как PROMO_ID). */
-export const LAUNCH_ID = '2.7.1'
+/** Выложить самому после выката: новый пост — новый id (как PROMO_ID). */
+export const LAUNCH_ID = '2.7.0'
 const LAUNCH_KEY = 'channel:launch'
 
 /**
- * Разово после выката (крон раз в 5 минут): аватарки бота и канала, затем пост —
- * владелец попросил выложить самому. Аватарка канала — раньше поста. Метка
- * ставится до работы, как у промо: сбой не обернётся повторами; что вышло и что
- * нет — владельцу одним сообщением (пост можно выложить и кнопкой из /post).
+ * Разово после выката (крон раз в 5 минут) — пост в канал, когда владелец
+ * попросил выложить самому. Метка ставится до работы, как у промо: сбой не
+ * обернётся повторами; итог — владельцу (не вышло — есть кнопка из /post).
  */
 export async function launchOnce(env: Env): Promise<void> {
   const owner = String(env.OWNER_CHAT_ID ?? '').trim()
   if (!owner || (await env.REFERRALS.get(LAUNCH_KEY)) === LAUNCH_ID) return
   await env.REFERRALS.put(LAUNCH_KEY, LAUNCH_ID)
-
-  const report: string[] = []
-  const line = (what: string, r: { ok: boolean; description?: string } | null) =>
-    report.push(r?.ok ? `— ${what}: готово` : `— ${what}: не вышло (${escapeHtml(r?.description ?? 'файл не скачан')})`)
-  const [botJpg, channelJpg] = await Promise.all([
-    download(AVATAR_COMMIT, AVATARS.bot, 'image/jpeg'),
-    download(AVATAR_COMMIT, AVATARS.channel, 'image/jpeg'),
-  ])
-  line('аватарка бота', botJpg && (await setMyProfilePhoto(env, botJpg)))
-  line(`аватарка канала ${CHANNEL}`, channelJpg && (await setChatPhoto(env, CHANNEL, channelJpg)))
   const post = await publishPost(env)
-  report.push(
+  await sendMessage(
+    env,
+    owner,
     post.ok
-      ? `— пост: ${postLink(post.messageId)}`
+      ? `Пост ${POST.id} в канале: ${postLink(post.messageId)}`
       : post.state
-        ? '— пост уже был в канале'
-        : `— пост: не вышло (${escapeHtml(post.why ?? 'ошибка')}) — выложи кнопкой из /post`,
+        ? `Пост ${POST.id} уже был в канале.`
+        : `Пост ${POST.id} не вышел: ${escapeHtml(post.why ?? 'ошибка')}. Выложи кнопкой из /post.`,
   )
-  await sendMessage(env, owner, ['Канал обновлений:', ...report].join('\n'))
 }

@@ -5,7 +5,7 @@
  *   - публикует только владелец, один раз; ролик — тот же file_id, что в предпросмотре;
  *   - Telegram отказал (нет прав) — метка снята, владелец видит причину;
  *   - подпись влезает в лимит Telegram, кнопка ведёт в приложение с меткой канала;
- *   - разово после выката: аватарки бота и канала, потом пост, отчёт владельцу.
+ *   - разово после выката: пост, итог владельцу; второй раз — ничего.
  *
  * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/test-channel.mjs`
  */
@@ -32,7 +32,6 @@ class FakeKV {
 
 const calls = []
 let channelFails = false
-let photoFails = false
 let nextMessage = 70
 globalThis.fetch = async (url, init) => {
   const u = String(url)
@@ -40,14 +39,11 @@ globalThis.fetch = async (url, init) => {
   const method = u.split('/').pop()
   const body = init?.body instanceof FormData ? Object.fromEntries(init.body.entries()) : init?.body ? JSON.parse(init.body) : {}
   calls.push({ method, body })
-  if (method === 'setChatPhoto' && photoFails) {
-    return new Response(JSON.stringify({ ok: false, description: 'Bad Request: not enough rights to change chat photo' }), { status: 400 })
-  }
-  if (method === 'sendAnimation') {
+  if (method === 'sendAnimation' || method === 'sendVideo') {
     if (body.chat_id === CHANNEL && channelFails) {
       return new Response(JSON.stringify({ ok: false, description: 'Bad Request: need administrator rights in the channel chat' }), { status: 400 })
     }
-    return new Response(JSON.stringify({ ok: true, result: { message_id: nextMessage++, animation: { file_id: 'F1' } } }), { status: 200 })
+    return new Response(JSON.stringify({ ok: true, result: { message_id: nextMessage++, [method === 'sendVideo' ? 'video' : 'animation']: { file_id: 'F1' } } }), { status: 200 })
   }
   return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 })
 }
@@ -55,9 +51,9 @@ globalThis.fetch = async (url, init) => {
 const kv = new FakeKV()
 const env = { BOT_TOKEN: 'x', OWNER_CHAT_ID: '42', REFERRALS: kv }
 const msg = (id, text) => ({ message: { message_id: 1, chat: { id, type: 'private' }, from: { id, first_name: 'Т' }, text } })
-const anims = () => calls.filter((c) => c.method === 'sendAnimation')
+const anims = () => calls.filter((c) => c.method === 'sendAnimation' || c.method === 'sendVideo')
 const toChannel = () => anims().filter((c) => c.body.chat_id === CHANNEL)
-const preview = { message_id: 5, chat: { id: 42, type: 'private' }, animation: { file_id: 'F1' } }
+const preview = { message_id: 5, chat: { id: 42, type: 'private' }, [POST.kind]: { file_id: 'F1' } }
 const tap = (id) => handleTgUpdate({ callback_query: { id: 'cb', from: { id }, data: `n:${POST.id}`, message: preview } }, env)
 const lastAnswer = () => calls.filter((c) => c.method === 'answerCallbackQuery').at(-1)?.body
 
@@ -67,7 +63,7 @@ check('/post у чужого — без предпросмотра', anims().len
 await handleTgUpdate(msg(42, '/post'), env)
 const pv = anims().at(-1)
 const kb = JSON.parse(pv?.body.reply_markup ?? '{}')
-check('владельцу — предпросмотр анимацией с подписью', pv?.body.chat_id === '42' && pv.body.caption === POST.caption && pv.body.parse_mode === 'HTML', pv?.body)
+check('владельцу — предпросмотр роликом с подписью', pv?.body.chat_id === '42' && pv.body.caption === POST.caption && pv.body.parse_mode === 'HTML', pv?.body)
 check('под ним — «Открыть Кошель» и «Опубликовать в канал»', kb.inline_keyboard?.[0]?.[0]?.url === APP_URL && kb.inline_keyboard?.[1]?.[0]?.callback_data === `n:${POST.id}`, kb)
 check('подпись в пределах 1024 знаков без разметки', POST.caption.replace(/<[^>]+>/g, '').length <= 1024)
 check('кнопка ведёт в приложение с меткой канала', /startapp=channel$/.test(APP_URL))
@@ -84,7 +80,7 @@ channelFails = false
 await tap(42)
 const posted = toChannel().at(-1)
 const postKb = JSON.parse(posted?.body.reply_markup ?? '{}')
-check('владелец — пост в канал тем же роликом (file_id), с подписью', posted?.body.animation === 'F1' && posted.body.caption === POST.caption, posted?.body)
+check('владелец — пост в канал тем же роликом (file_id), с подписью', posted?.body[POST.kind] === 'F1' && posted.body.caption === POST.caption, posted?.body)
 check('в канале под постом — только «Открыть Кошель»', postKb.inline_keyboard?.length === 1 && postKb.inline_keyboard[0][0].url === APP_URL, postKb)
 const mark = kv.m.get(`channel:${POST.id}`)
 check('метка — id сообщения в канале, без срока', mark && /^\d+$/.test(mark.value) && mark.ttl === undefined, mark)
@@ -100,24 +96,20 @@ const again = JSON.parse(anims().at(-1)?.body.reply_markup ?? '{}')
 check('/post после публикации — вместо кнопки ссылка на пост', again.inline_keyboard?.[1]?.[0]?.url?.includes(`/${mark?.value}`), again)
 
 /* Разовый запуск после выката */
-const launch = async () => {
+const launch = async (kv) => {
   calls.length = 0
-  const e = { ...env, REFERRALS: new FakeKV() }
+  const e = { ...env, REFERRALS: kv }
   await launchOnce(e)
   await launchOnce(e)
   return calls.filter((c) => c.method === 'sendMessage').map((c) => c.body)
 }
-let report = await launch()
-const botPhoto = calls.find((c) => c.method === 'setMyProfilePhoto')?.body
-const chatPhoto = calls.find((c) => c.method === 'setChatPhoto')?.body
-check('аватарка бота — JPG новой загрузкой (attach://)', JSON.parse(botPhoto?.photo ?? '{}').photo === 'attach://avatar' && botPhoto.avatar instanceof Blob, botPhoto)
-check('аватарка канала — в канал', chatPhoto?.chat_id === CHANNEL && chatPhoto.photo instanceof Blob, chatPhoto)
-const order = calls.map((c) => c.method).filter((m) => m !== 'sendMessage')
-check('аватарки раньше поста, всё один раз', JSON.stringify(order) === '["setMyProfilePhoto","setChatPhoto","sendAnimation"]', order)
-check('владельцу — один отчёт со ссылкой на пост', report.length === 1 && report[0].chat_id === '42' && report[0].text.includes(`https://t.me/${CHANNEL.slice(1)}/`), report)
-photoFails = true
-report = await launch()
-check('нет права менять профиль — причина в отчёте, пост всё равно выходит', report[0]?.text.includes('not enough rights') && toChannel().length === 1, report)
+let report = await launch(new FakeKV())
+check('запуск — пост в канал один раз, ролик нужного вида', toChannel().length === 1 && toChannel()[0].method === (POST.kind === 'video' ? 'sendVideo' : 'sendAnimation'), toChannel().map((c) => c.method))
+check('владельцу — одно сообщение со ссылкой на пост', report.length === 1 && report[0].chat_id === '42' && report[0].text.includes(`https://t.me/${CHANNEL.slice(1)}/`), report)
+const done = new FakeKV()
+await done.put(`channel:${POST.id}`, '9')
+report = await launch(done)
+check('пост уже в канале (кнопкой) — второго нет', toChannel().length === 0 && report[0]?.text.includes('уже был'), report)
 
 if (failed) {
   console.log(`test-channel: ${failed} из ${total} упали`)
