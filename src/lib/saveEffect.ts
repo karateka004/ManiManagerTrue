@@ -9,7 +9,7 @@ import { burst, BRAND_FX } from './fx'
  *
  * `preview` — проиграть конкретный эффект (примерка в магазине).
  */
-export function playSaveEffect(from: Element | null | undefined, preview?: SaveEffect) {
+export function playSaveEffect(from: Parameters<typeof burst>[0], preview?: SaveEffect) {
   const effect: SaveEffect = preview ?? getReward(useStore.getState().equipped.effect)?.effect ?? 'none'
   switch (effect) {
     case 'sparks':

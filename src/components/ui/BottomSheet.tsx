@@ -12,6 +12,7 @@ import {
   m,
   useDragControls,
   useMotionValue,
+  useReducedMotion,
   useTransform,
   type MotionStyle,
 } from 'framer-motion'
@@ -51,6 +52,8 @@ interface Props {
 const OPEN = { type: 'spring', stiffness: 420, damping: 40, mass: 0.9 } as const
 /** Уход — короче и с разгоном: закрытие не должно задерживать человека. */
 const CLOSE = { duration: 0.24, ease: [0.4, 0, 1, 1] } as const
+/** «Меньше движения» в системе: лист появляется и исчезает без выезда. */
+const INSTANT = { duration: 0 } as const
 
 /** Сдвиг, после которого отпущенный лист закрывается, px. */
 const CLOSE_OFFSET = 110
@@ -94,6 +97,7 @@ export function BottomSheet({
   padBottom = 16,
 }: Props) {
   const controls = useDragControls()
+  const reduceMotion = useReducedMotion()
   const dragY = useMotionValue(0)
   // Затемнение уходит вслед за листом: к 360 px сдвига — почти прозрачное.
   const shade = useTransform(dragY, [0, 360], [1, 0.1])
@@ -153,9 +157,15 @@ export function BottomSheet({
       {open && (
         <m.div
           key="sheet"
-          initial={{ y: '100%' }}
-          animate={{ y: 0, transition: OPEN }}
-          exit={{ y: '100%', transition: CLOSE }}
+          // Выезд и уход — сырым transform, а не `y`: такую анимацию framer
+          // отдаёт браузеру (WAAPI, пружину заранее раскладывает в кадры), и она
+          // идёт на композиторе — не стоит, пока главный поток занят монтажом
+          // содержимого или записью операции. `y` framer двигает сам, кадр за
+          // кадром на главном потоке. «Меньше движения» MotionConfig у сырого
+          // transform не гасит — гасим сами.
+          initial={{ transform: 'translateY(100%)' }}
+          animate={{ transform: 'translateY(0%)', transition: reduceMotion ? INSTANT : OPEN }}
+          exit={{ transform: 'translateY(100%)', transition: reduceMotion ? INSTANT : CLOSE }}
           className="fixed inset-x-0 bottom-0"
           style={{ zIndex: z + 1 }}
         >
