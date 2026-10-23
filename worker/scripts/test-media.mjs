@@ -5,7 +5,8 @@
  *   - фото чека → одна запись с магазином и датой; самый крупный снимок;
  *   - модель не нашла суммы, а в расшифровке она есть — записывают правила;
  *   - отказы: нет ключа, квота, длинное, тяжёлое, незнакомый формат, сбой загрузки;
- *   - сильная модель отказала — лёгкая; отказ «нет такой» запоминается.
+ *   - сильная модель отказала — лёгкая; отказ «нет такой» запоминается;
+ *   - Кошель+ на закрытом тесте: не тестеру — «скоро», текст — правилами.
  *
  * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/test-media.mjs`
  */
@@ -65,7 +66,8 @@ globalThis.fetch = async (url, init) => {
 }
 
 const kv = new FakeKV()
-const env = { BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REFERRALS: kv, GEMINI_API_KEY: 'k' }
+// PLUS_TESTERS '*' — Кошель+ у всех: проверяем сам разбор. Закрытость — ниже.
+const env = { BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', REFERRALS: kv, GEMINI_API_KEY: 'k', PLUS_TESTERS: '*' }
 let nextId = 500
 const send = async (fields, who = nextId++, e = env) => {
   await handleTgUpdate({ message: { message_id: 1, chat: { id: who, type: 'private' }, from: { id: who, first_name: 'Т' }, ...fields } }, e)
@@ -195,11 +197,34 @@ const b64 = Buffer.from(FILE).toString('base64')
 /* Прочее не текстом — подсказка, что бот понимает */
 {
   await send({ sticker: { file_id: 'S' } })
-  check('стикер — список того, что понимаю', lastText().startsWith('Понимаю текст, голосовые, фото чеков'), lastText())
+  check('стикер — список того, что понимаю (без голоса и фото)', lastText().startsWith('Понимаю текст и файлы .csv'), lastText())
+}
+
+/* Кошель+ на закрытом тесте: голос, фото и разбор текста моделью — только у тестеров */
+{
+  const closed = { ...env, PLUS_TESTERS: '' }
+  const gemBefore = gem.length
+  const filesBefore = tg.filter((c) => c.method === 'getFile').length
+  await send({ voice }, nextId++, closed)
+  check('голосовое не у тестера — «скоро в Кошель+»', lastText().startsWith('Голосовые и фото чеков скоро будут в Кошель+'), lastText())
+  await send({ photo: [{ file_id: 'P', width: 800, height: 1200, file_size: 90_000 }] }, nextId++, closed)
+  check('фото не у тестера — то же', lastText().startsWith('Голосовые и фото чеков скоро будут в Кошель+'), lastText())
+  check('…модель не звали и файл не качали', gem.length === gemBefore && tg.filter((c) => c.method === 'getFile').length === filesBefore)
+
+  const who = await send({ text: 'кофе 300 и такси 450' }, nextId++, closed)
+  const items = await inbox(who)
+  check('текст не у тестера — записали правила, без модели', items.length === 2 && items[0].amount + items[1].amount === 750 && gem.length === gemBefore, items)
+
+  mediaReplies = [{ intent: 'record', entries: [{ type: 'expense', amount: 300, categoryId: 'cafe' }], heard: 'кофе триста' }]
+  await send({ voice }, 1, closed)
+  check('владелец — тестер и без PLUS_TESTERS: голосовое разобрала модель', gem.length === gemBefore + 1 && (await inbox(1)).some((x) => x.amount === 300), gem.length - gemBefore)
+
+  await send({ voice }, 777, { ...closed, PLUS_TESTERS: '555, 777' })
+  check('тестер из PLUS_TESTERS (через запятую, с пробелами) — модель зовём', gem.length === gemBefore + 2)
 }
 
 if (failed) {
   console.log(`test-media: ${failed} из ${total} упали`)
   process.exit(1)
 }
-console.log(`test-media: ${total} проверок — голос, кружок, фото чека, скриншот, отказы, откат модели`)
+console.log(`test-media: ${total} проверок — голос, кружок, фото чека, скриншот, отказы, откат модели, закрытый Кошель+`)

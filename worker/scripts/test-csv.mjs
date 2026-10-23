@@ -75,7 +75,7 @@ fileBody = 'просто текст без чисел'
 await handleTgUpdate(doc('x.csv'), env)
 check('бот: нечитаемый файл — подсказка о формате', calls.filter((c) => c.method === 'sendMessage').at(-1)?.body.text.startsWith('Не смог прочитать файл'))
 await handleTgUpdate(doc('photo.jpg'), env)
-check('бот: не CSV и не картинка — «понимаю текст, голосовые, фото чеков и файлы .csv»', calls.filter((c) => c.method === 'sendMessage').at(-1)?.body.text.startsWith('Понимаю текст, голосовые, фото чеков и файлы .csv'))
+check('бот: не CSV и не картинка — «понимаю текст и файлы .csv»', calls.filter((c) => c.method === 'sendMessage').at(-1)?.body.text.startsWith('Понимаю текст и файлы .csv'))
 
 if (failed) {
   console.log(`test-csv: ${failed} из ${total} упали`)

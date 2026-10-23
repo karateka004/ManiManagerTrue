@@ -349,7 +349,8 @@ globalThis.fetch = async (url, init) => {
 const byMethod = (m) => calls.filter((c) => c.method === m)
 const lastSent = () => byMethod('sendMessage').at(-1)?.body
 
-const makeEnv = (kv, over = {}) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', GEMINI_API_KEY: 'k', REFERRALS: kv, ...over })
+// PLUS_TESTERS '*' — разбор записи моделью у всех (Кошель+ закрыт отдельно, см. test-media).
+const makeEnv = (kv, over = {}) => ({ BOT_TOKEN: 'x', OWNER_CHAT_ID: '1', GEMINI_API_KEY: 'k', PLUS_TESTERS: '*', REFERRALS: kv, ...over })
 const msg = (id, text, extra = {}) => ({
   message: { message_id: 10, chat: { id, type: 'private' }, from: { id, first_name: 'Т' }, text, ...extra },
 })
