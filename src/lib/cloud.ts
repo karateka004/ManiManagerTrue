@@ -29,6 +29,7 @@ import { dedupeKey } from './csvImport'
 import { translate } from './i18n'
 import { showToast } from './toast'
 import { tg } from './telegram'
+import { whenIdle } from './idle'
 
 /** Ключ persist-стора (см. `name` в store/transactions.ts). */
 const PERSIST_KEY = 'finance-mini-app:v1'
@@ -67,6 +68,7 @@ function legacyLocalAt(): number {
 type OwnedBase = SyncBase & { uid?: number }
 
 function readOwnedBase(): OwnedBase | null {
+  settleBase()
   try {
     return parseBase(localStorage.getItem(BASE_KEY)) as OwnedBase | null
   } catch {
@@ -87,6 +89,9 @@ function baseOfOtherAccount(): boolean {
 }
 
 function writeBase(base: SyncBase): void {
+  // Новая основа заменяет и ещё не досчитанную прежнюю.
+  pendingBase = null
+  cancelPendingBase()
   try {
     localStorage.setItem(BASE_KEY, JSON.stringify({ ...base, uid: tg.user?.id }))
     // Метку держим и для старого формата: откатись приложение на 2.5 — оно
@@ -101,6 +106,29 @@ function writeBase(base: SyncBase): void {
       /* совсем плохо */
     }
   }
+}
+
+/**
+ * Основа после принятой отправки — в простое: разбор снимка и отпечатки всех
+ * операций — десятки миллисекунд на слабом телефоне, а отправка уходит через
+ * полторы секунды после правки, когда человек уже листает дальше. Кто читает
+ * основу раньше (следующая отправка, слияние, сворачивание), сначала её
+ * досчитывает — порядок тот же, что был.
+ */
+let pendingBase: { blob: string; v: number } | null = null
+let cancelPendingBase: () => void = () => {}
+function deferBase(blob: string, v: number): void {
+  cancelPendingBase()
+  pendingBase = { blob, v }
+  cancelPendingBase = whenIdle(settleBase)
+}
+function settleBase(): void {
+  const p = pendingBase
+  if (!p) return
+  pendingBase = null
+  cancelPendingBase()
+  const base = baseFromBlob(p.blob, p.v)
+  if (base) writeBase(base)
 }
 
 /** Основа из снимка, который лежит в облаке под версией `v`. */
@@ -131,12 +159,19 @@ const MAX_CLOUD_BLOB = 1_500_000
  * (если KV когда-нибудь скомпрометируют) и от падения на слабых устройствах.
  */
 function isValidBlob(blob: unknown): blob is string {
-  if (typeof blob !== 'string' || blob.length === 0 || blob.length > MAX_CLOUD_BLOB) return false
+  return inspectBlob(blob).valid
+}
+
+/** Годен ли блоб (см. isValidBlob) и сколько в нём операций — одним разбором. */
+function inspectBlob(blob: unknown): { valid: boolean; tx: number } {
+  if (typeof blob !== 'string' || blob.length === 0 || blob.length > MAX_CLOUD_BLOB) return { valid: false, tx: 0 }
   try {
-    const parsed = JSON.parse(blob) as { version?: unknown } | null
-    return !!parsed && typeof parsed === 'object' && typeof parsed.version === 'number'
+    const parsed = JSON.parse(blob) as { version?: unknown; state?: { transactions?: unknown[] } } | null
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.version !== 'number') return { valid: false, tx: 0 }
+    const list = parsed.state?.transactions
+    return { valid: true, tx: Array.isArray(list) ? list.length : -1 }
   } catch {
-    return false
+    return { valid: false, tx: 0 }
   }
 }
 
@@ -157,6 +192,10 @@ function txCount(blob: string | null): number {
 }
 
 let started = false
+/** Поля вида: период, счёт, шапка Главной, вид диаграммы, счётчики заданий. */
+const VIEW_KEYS = new Set<string>(['period', 'account', 'events', 'homeHeaderMode', 'homeHeaderGoalId', 'chartStyle'])
+/** Менялись только поля вида — отправить при сворачивании или со следующей правкой. */
+let viewDirty = false
 /** Пока сливаем с облаком — не пушим (иначе отправили бы полуготовое состояние). */
 let adopting = false
 let pushTimer: ReturnType<typeof setTimeout> | null = null
@@ -236,6 +275,7 @@ async function flushPush(): Promise<void> {
 }
 
 async function pushOnce(): Promise<void> {
+  viewDirty = false // снимок ниже несёт и их
   flushPersist() // на диске должен лежать актуальный снимок, а не отложенный
   const blob = readBlob()
   if (!blob) return
@@ -258,8 +298,7 @@ async function pushOnce(): Promise<void> {
     // Принято. Все прежние отправки без ответа облаком не стали: иначе эта
     // получила бы конфликт.
     unanswered.clear()
-    const base = baseFromBlob(blob, res.updatedAt)
-    if (base) writeBase(base)
+    deferBase(blob, res.updatedAt)
     return
   }
   // Облако изменил другой телефон (или старый сервер сказал «у меня новее»).
@@ -324,7 +363,8 @@ function mergeCloud(
       if (differs) useStore.setState(merged)
       const next = makeBase(cloud, snap.updatedAt)
       writeBase(next)
-      if (txCount(snap.blob) > 0 || (Array.isArray(local.transactions) && local.transactions.length > 0)) hadDataThisSession = true
+      const cloudList = cloud.transactions
+      if ((Array.isArray(cloudList) && cloudList.length > 0) || (Array.isArray(local.transactions) && local.transactions.length > 0)) hadDataThisSession = true
       const visible = hashString(JSON.stringify(local.transactions)) !== hashString(JSON.stringify(useStore.getState().transactions))
       return { differs, visible }
     } catch {
@@ -367,11 +407,12 @@ function legacyMerge(
 }
 
 function flushNow(): void {
-  if (pushTimer) {
-    clearTimeout(pushTimer)
-    pushTimer = null
-    void flushPush()
-  }
+  // Основу — на диск, пока страница жива: иначе следующий запуск слил бы с облаком лишний раз.
+  settleBase()
+  if (!pushTimer && !viewDirty) return
+  if (pushTimer) clearTimeout(pushTimer)
+  pushTimer = null
+  void flushPush()
 }
 
 /* ------------------------------------------------------------------ */
@@ -517,8 +558,9 @@ export async function initCloudSync(): Promise<void> {
     const base = readBase()
     flushPersist() // читаем блоб напрямую — сначала дожидаемся отложенной записи
     const localTx = txCount(readBlob())
-    const valid = !!cloud && isValidBlob(cloud.blob)
-    const cloudTx = valid ? txCount(cloud!.blob) : 0
+    const inspected = cloud ? inspectBlob(cloud.blob) : { valid: false, tx: 0 }
+    const valid = inspected.valid
+    const cloudTx = valid ? inspected.tx : 0
     cloudTxAtStart = Math.max(0, cloudTx)
     hadDataThisSession = localTx > 0
 
@@ -548,8 +590,18 @@ export async function initCloudSync(): Promise<void> {
     /* офлайн/ошибка — работаем локально, синхронизируемся позже */
   }
 
-  // Любое изменение стора → отложенный пуш.
-  useStore.subscribe(() => schedulePush())
+  // Правка данных → отложенная отправка. Поля вида меняются от каждого
+  // взгляда (листание периода, заход в раздел) — ради них снимок в сотни КБ не
+  // шлём: уедут со следующей правкой или при сворачивании (flushNow).
+  useStore.subscribe((s, p) => {
+    let view = false
+    for (const k of Object.keys(s) as (keyof typeof s)[]) {
+      if (Object.is(s[k], p[k])) continue
+      if (!VIEW_KEYS.has(k)) return schedulePush()
+      view = true
+    }
+    if (view) viewDirty = true
+  })
   if (pushAfter) void flushPush()
 
   // Записи из бота забираем ПОСЛЕ того, как разобрались с облаком: слияние

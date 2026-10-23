@@ -607,6 +607,21 @@ export function flushPersist(): void {
   writePersist()
 }
 
+/**
+ * Что последним ушло в запись. Persist зовёт запись после КАЖДОГО set — и
+ * когда экшен ничего не поменял (вернул прежнее состояние): тогда весь стор
+ * сериализовался бы впустую.
+ */
+let persistLast: StorageValue<unknown> | null = null
+function sameState(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  for (const k of ka) if (!Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false
+  return true
+}
+
 const throttledStorage: PersistStorage<unknown> = {
   getItem: (name) => {
     // Ещё не записанное значение свежее того, что лежит на диске.
@@ -619,11 +634,14 @@ const throttledStorage: PersistStorage<unknown> = {
     }
   },
   setItem: (name, value) => {
+    if (persistLast && persistLast.version === value.version && sameState(persistLast.state, value.state)) return
+    persistLast = value
     persistPending = { name, value }
     schedulePersist()
   },
   removeItem: (name: string): void => {
     if (persistPending && persistPending.name === name) persistPending = null
+    persistLast = null
     try {
       localStorage.removeItem(name)
     } catch {
@@ -713,11 +731,11 @@ export const useStore = create<State & Actions>()(
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
 
       restoreTransaction: (t) =>
-        set((s) => (s.transactions.some((x) => x.id === t.id) ? {} : { transactions: [t, ...s.transactions] })),
+        set((s) => (s.transactions.some((x) => x.id === t.id) ? s : { transactions: [t, ...s.transactions] })),
 
       undoCommit: (id, refund) =>
         set((s) => {
-          if (!s.transactions.some((t) => t.id === id)) return {}
+          if (!s.transactions.some((t) => t.id === id)) return s
           const patch: Partial<State> = { transactions: s.transactions.filter((t) => t.id !== id) }
           if (refund && refund.coins > 0) {
             patch.coins = Math.max(0, s.coins - refund.coins)
@@ -773,7 +791,7 @@ export const useStore = create<State & Actions>()(
       shiftPeriod: (delta) =>
         set((s) => {
           const p = s.period
-          if (p.mode === 'all' || p.mode === 'range') return {}
+          if (p.mode === 'all' || p.mode === 'range') return s
           const next = dayjs(p.anchor).add(delta, UNIT[p.mode]).format('YYYY-MM-DD')
           return { period: { ...p, anchor: next } }
         }),
@@ -797,7 +815,7 @@ export const useStore = create<State & Actions>()(
       //    в них первой.
       setCurrency: (c) =>
         set((s) => {
-          if (c === s.currency) return {}
+          if (c === s.currency) return s
           const old = s.currency
           const patch: Partial<State> = { currency: c, lastTxCurrency: c }
           if (s.transactions.some((t) => !t.currency)) {
@@ -837,7 +855,7 @@ export const useStore = create<State & Actions>()(
             result.investments.push(i.id)
             return { ...i, currency: to }
           })
-          if (!result.tx.length && !result.goals.length && !result.investments.length) return {}
+          if (!result.tx.length && !result.goals.length && !result.investments.length) return s
           return {
             transactions,
             goals,
@@ -980,7 +998,7 @@ export const useStore = create<State & Actions>()(
           // Пока список пуст, он вычисляется автоматически — фиксируем то, что
           // человек уже видит, и правим один слот, а не сбрасываем всё.
           const base = s.quickCurrencies.length > 0 ? [...s.quickCurrencies] : quickCurrenciesOf(s)
-          if (slot < 0 || slot > 2) return {}
+          if (slot < 0 || slot > 2) return s
           base[slot] = code
           // Дубликаты не нужны: если валюта уже стоит в другом слоте — меняем их местами.
           const twin = base.findIndex((c, i) => c === code && i !== slot)
@@ -999,7 +1017,7 @@ export const useStore = create<State & Actions>()(
       claimQuest: (id, xp, coins) =>
         set((s) =>
           s.claimedQuests.includes(id)
-            ? {}
+            ? s
             : {
                 claimedQuests: [...s.claimedQuests, id],
                 questClaims: { ...s.questClaims, [id]: Date.now() },
@@ -1064,7 +1082,7 @@ export const useStore = create<State & Actions>()(
         set((s) => {
           const total = Math.max(0, Math.floor(count))
           const n = total - s.rewardedReferrals
-          if (n <= 0) return {}
+          if (n <= 0) return s
           return {
             rewardedReferrals: total,
             bonusXp: Math.max(0, s.bonusXp + n * REF_REWARD.xp),
