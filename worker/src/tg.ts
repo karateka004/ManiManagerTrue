@@ -318,6 +318,37 @@ export async function setMyShortDescription(env: Env, shortDescription: string):
   return r.ok
 }
 
+/** Вызов с файлом (multipart). Сеть не бросает наружу; `description` — причина отказа. */
+async function callForm(env: Env, method: string, form: FormData): Promise<{ ok: boolean; description?: string }> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/${method}`, { method: 'POST', body: form })
+    const body = (await res.json().catch(() => null)) as { ok?: boolean; description?: string } | null
+    return { ok: res.ok && body?.ok === true, ...(body?.description ? { description: body.description } : {}) }
+  } catch (e) {
+    console.error(`[tg] ${method} не дошёл`, e)
+    return { ok: false }
+  }
+}
+
+/**
+ * Аватарка самого бота. Только JPG и только новой загрузкой: Telegram не берёт
+ * file_id, файл идёт отдельной частью и указывается как `attach://`.
+ */
+export function setMyProfilePhoto(env: Env, jpg: Blob): Promise<{ ok: boolean; description?: string }> {
+  const form = new FormData()
+  form.append('photo', JSON.stringify({ type: 'static', photo: 'attach://avatar' }))
+  form.append('avatar', jpg, 'avatar.jpg')
+  return callForm(env, 'setMyProfilePhoto', form)
+}
+
+/** Аватарка канала или группы: бот — админ с правом менять профиль. */
+export function setChatPhoto(env: Env, chatId: string | number, jpg: Blob): Promise<{ ok: boolean; description?: string }> {
+  const form = new FormData()
+  form.append('chat_id', String(chatId))
+  form.append('photo', jpg, 'avatar.jpg')
+  return callForm(env, 'setChatPhoto', form)
+}
+
 /** Экранирование для parse_mode: 'HTML'. */
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

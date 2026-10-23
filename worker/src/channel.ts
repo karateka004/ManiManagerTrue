@@ -3,21 +3,34 @@
  * настоящим приложением в телефоне (promo/capture.cjs → promo/channel.html →
  * render.cjs --scene channel) и подпись.
  *
- * Пишет бот — он админ канала, — но только по кнопке владельца: /post присылает
- * владельцу пост ровно таким, каким он уйдёт, а под ним «Опубликовать в канал».
- * Один пост — одна публикация (метка `channel:<id>` в KV). Ролик берётся по
- * адресу, закреплённому за коммитом, — как у промо (promo.ts).
+ * Пишет бот — он админ канала, — по кнопке владельца: /post присылает владельцу
+ * пост ровно таким, каким он уйдёт, а под ним «Опубликовать в канал». Первый пост
+ * и аватарки бот выставил сам, разово после выката (launchOnce). Один пост — одна
+ * публикация (метка `channel:<id>` в KV). Файлы берутся по адресу, закреплённому
+ * за коммитом, — как у промо (promo.ts).
  *
  * Новый пост: собрать ролик в promo/media/, закоммитить, вписать коммит, файл,
  * подпись и новый id в POST.
  */
 import type { Env } from './env'
-import { answerCallback, editMessageReplyMarkup, sendAnimation, sendMessage, type TgCallbackQuery } from './tg'
+import {
+  answerCallback,
+  editMessageReplyMarkup,
+  escapeHtml,
+  sendAnimation,
+  sendMessage,
+  setChatPhoto,
+  setMyProfilePhoto,
+  type TgCallbackQuery,
+} from './tg'
 
 export const CHANNEL = '@koshel_update'
+const RAW = 'https://raw.githubusercontent.com/karateka004/ManiManagerTrue/'
 /** Коммит, в котором лежит ролик поста. */
 const MEDIA_COMMIT = 'c7946cfefb9804d72f075260c44013a4bb8cc5b8'
-const MEDIA_BASE = `https://raw.githubusercontent.com/karateka004/ManiManagerTrue/${MEDIA_COMMIT}/promo/media/`
+/** Аватарки (promo/avatar.html → promo/avatar.cjs): светлая — боту, тёмная — каналу. */
+const AVATAR_COMMIT = '7831f64c167f2b445becb065b77ed83d99e13037'
+export const AVATARS = { bot: 'koshel-bot-avatar.jpg', channel: 'koshel-channel-avatar.jpg' }
 /** Приложение из канала: метка `channel` — заходы видны в аналитике отдельным источником. */
 export const APP_URL = 'https://t.me/TrueManiManager_Bot?startapp=channel'
 
@@ -42,15 +55,40 @@ const postLink = (messageId: string | number) => `https://t.me/${CHANNEL.slice(1
 const openRow = [{ text: 'Открыть Кошель', url: APP_URL }]
 const isOwner = (env: Env, userId: number) => String(userId) === String(env.OWNER_CHAT_ID ?? '').trim()
 
-async function downloadMedia(): Promise<Blob | null> {
+async function download(commit: string, file: string, type: string): Promise<Blob | null> {
   try {
-    const res = await fetch(MEDIA_BASE + POST.media)
+    const res = await fetch(`${RAW}${commit}/promo/media/${file}`)
     if (!res.ok) throw new Error(`${res.status}`)
-    return new Blob([await res.arrayBuffer()], { type: 'video/mp4' })
+    return new Blob([await res.arrayBuffer()], { type })
   } catch (e) {
-    console.error(`[channel] ${POST.media} не скачан`, e)
+    console.error(`[channel] ${file} не скачан`, e)
     return null
   }
+}
+const downloadMedia = () => download(MEDIA_COMMIT, POST.media, 'video/mp4')
+
+/**
+ * Пост в канал — один раз. Метка ставится до отправки (со сроком — на случай
+ * сбоя посреди): двойное нажатие и запуск после выката не дадут двух постов.
+ * `state` — пост уже публикуется ('sending') или вышел (id сообщения).
+ */
+async function publishPost(
+  env: Env,
+  fileId?: string,
+): Promise<{ ok: true; messageId: number } | { ok: false; state?: string; why?: string }> {
+  const key = keyOf(POST.id)
+  const state = await env.REFERRALS.get(key)
+  if (state) return { ok: false, state }
+  await env.REFERRALS.put(key, 'sending', { expirationTtl: 120 })
+  // Ролик уже у Telegram (предпросмотр) — без загрузки; иначе качаем заново.
+  const media = fileId ?? (await downloadMedia())
+  const r = media ? await sendAnimation(env, CHANNEL, media, POST.caption, { inline_keyboard: [openRow] }) : null
+  if (!r?.ok || !r.messageId) {
+    await env.REFERRALS.delete(key)
+    return { ok: false, why: r ? (r.description ?? 'ошибка Telegram') : 'ролик не скачан' }
+  }
+  await env.REFERRALS.put(key, String(r.messageId))
+  return { ok: true, messageId: r.messageId }
 }
 
 /** /post — владельцу: пост, каким он уйдёт в канал, и кнопка публикации под ним. */
@@ -76,10 +114,7 @@ export async function sendPostPreview(env: Env, chatId: number): Promise<void> {
   if (!r.ok) await sendMessage(env, chatId, `Предпросмотр не отправился: ${r.description ?? 'ошибка Telegram'}.`)
 }
 
-/**
- * «Опубликовать в канал» под предпросмотром. Метка ставится до отправки (со
- * сроком — на случай сбоя посреди): двойное нажатие не даст двух постов.
- */
+/** «Опубликовать в канал» под предпросмотром — только владельцу. */
 export async function publishPostButton(q: TgCallbackQuery, env: Env, userId: number, id: string): Promise<void> {
   if (!isOwner(env, userId) || !q.message) {
     await answerCallback(env, q.id)
@@ -89,34 +124,56 @@ export async function publishPostButton(q: TgCallbackQuery, env: Env, userId: nu
     await answerCallback(env, q.id, 'Этот предпросмотр устарел — пришли /post заново.', true)
     return
   }
-  const key = keyOf(POST.id)
-  const state = await env.REFERRALS.get(key)
-  if (state === 'sending') {
-    await answerCallback(env, q.id, 'Уже публикую…')
-    return
-  }
-  if (state) {
-    await answerCallback(env, q.id, 'Этот пост уже в канале.')
-    await editMessageReplyMarkup(env, q.message.chat.id, q.message.message_id, {
-      inline_keyboard: [openRow, [{ text: 'Уже в канале — открыть', url: postLink(state) }]],
+  const { chat, message_id } = q.message
+  const r = await publishPost(env, q.message.animation?.file_id ?? q.message.document?.file_id)
+  if (r.ok) {
+    await answerCallback(env, q.id, 'Опубликовано в канале.')
+    await editMessageReplyMarkup(env, chat.id, message_id, {
+      inline_keyboard: [openRow, [{ text: 'Опубликовано — открыть пост', url: postLink(r.messageId) }]],
     })
-    return
+  } else if (r.state === 'sending') {
+    await answerCallback(env, q.id, 'Уже публикую…')
+  } else if (r.state) {
+    await answerCallback(env, q.id, 'Этот пост уже в канале.')
+    await editMessageReplyMarkup(env, chat.id, message_id, {
+      inline_keyboard: [openRow, [{ text: 'Уже в канале — открыть', url: postLink(r.state) }]],
+    })
+  } else {
+    await answerCallback(env, q.id, `Не опубликовал: ${r.why}. Проверь, что бот — админ канала с правом публикации.`, true)
   }
-  await env.REFERRALS.put(key, 'sending', { expirationTtl: 120 })
+}
 
-  // Ролик уже у Telegram — тот, что в предпросмотре; иначе качаем заново.
-  const fileId = q.message.animation?.file_id ?? q.message.document?.file_id
-  const media = fileId ?? (await downloadMedia())
-  const r = media ? await sendAnimation(env, CHANNEL, media, POST.caption, { inline_keyboard: [openRow] }) : { ok: false as const }
-  if (!r.ok || !('messageId' in r) || !r.messageId) {
-    await env.REFERRALS.delete(key)
-    const why = 'description' in r && r.description ? r.description : 'ошибка Telegram'
-    await answerCallback(env, q.id, `Не опубликовал: ${why}. Проверь, что бот — админ канала с правом публикации.`, true)
-    return
-  }
-  await env.REFERRALS.put(key, String(r.messageId))
-  await answerCallback(env, q.id, 'Опубликовано в канале.')
-  await editMessageReplyMarkup(env, q.message.chat.id, q.message.message_id, {
-    inline_keyboard: [openRow, [{ text: 'Опубликовано — открыть пост', url: postLink(r.messageId) }]],
-  })
+/** Разовый запуск после выката: новый — новый id (как PROMO_ID). */
+export const LAUNCH_ID = '2.7.1'
+const LAUNCH_KEY = 'channel:launch'
+
+/**
+ * Разово после выката (крон раз в 5 минут): аватарки бота и канала, затем пост —
+ * владелец попросил выложить самому. Аватарка канала — раньше поста. Метка
+ * ставится до работы, как у промо: сбой не обернётся повторами; что вышло и что
+ * нет — владельцу одним сообщением (пост можно выложить и кнопкой из /post).
+ */
+export async function launchOnce(env: Env): Promise<void> {
+  const owner = String(env.OWNER_CHAT_ID ?? '').trim()
+  if (!owner || (await env.REFERRALS.get(LAUNCH_KEY)) === LAUNCH_ID) return
+  await env.REFERRALS.put(LAUNCH_KEY, LAUNCH_ID)
+
+  const report: string[] = []
+  const line = (what: string, r: { ok: boolean; description?: string } | null) =>
+    report.push(r?.ok ? `— ${what}: готово` : `— ${what}: не вышло (${escapeHtml(r?.description ?? 'файл не скачан')})`)
+  const [botJpg, channelJpg] = await Promise.all([
+    download(AVATAR_COMMIT, AVATARS.bot, 'image/jpeg'),
+    download(AVATAR_COMMIT, AVATARS.channel, 'image/jpeg'),
+  ])
+  line('аватарка бота', botJpg && (await setMyProfilePhoto(env, botJpg)))
+  line(`аватарка канала ${CHANNEL}`, channelJpg && (await setChatPhoto(env, CHANNEL, channelJpg)))
+  const post = await publishPost(env)
+  report.push(
+    post.ok
+      ? `— пост: ${postLink(post.messageId)}`
+      : post.state
+        ? '— пост уже был в канале'
+        : `— пост: не вышло (${escapeHtml(post.why ?? 'ошибка')}) — выложи кнопкой из /post`,
+  )
+  await sendMessage(env, owner, ['Канал обновлений:', ...report].join('\n'))
 }

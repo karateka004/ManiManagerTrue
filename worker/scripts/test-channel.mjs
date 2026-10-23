@@ -4,12 +4,13 @@
  *   - /post: владельцу — предпросмотр с «Опубликовать в канал», чужим — ничего;
  *   - публикует только владелец, один раз; ролик — тот же file_id, что в предпросмотре;
  *   - Telegram отказал (нет прав) — метка снята, владелец видит причину;
- *   - подпись влезает в лимит Telegram, кнопка ведёт в приложение с меткой канала.
+ *   - подпись влезает в лимит Telegram, кнопка ведёт в приложение с меткой канала;
+ *   - разово после выката: аватарки бота и канала, потом пост, отчёт владельцу.
  *
  * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/test-channel.mjs`
  */
 import { handleTgUpdate } from '../src/bot.ts'
-import { APP_URL, CHANNEL, POST } from '../src/channel.ts'
+import { APP_URL, CHANNEL, POST, launchOnce } from '../src/channel.ts'
 
 let failed = 0
 let total = 0
@@ -31,6 +32,7 @@ class FakeKV {
 
 const calls = []
 let channelFails = false
+let photoFails = false
 let nextMessage = 70
 globalThis.fetch = async (url, init) => {
   const u = String(url)
@@ -38,6 +40,9 @@ globalThis.fetch = async (url, init) => {
   const method = u.split('/').pop()
   const body = init?.body instanceof FormData ? Object.fromEntries(init.body.entries()) : init?.body ? JSON.parse(init.body) : {}
   calls.push({ method, body })
+  if (method === 'setChatPhoto' && photoFails) {
+    return new Response(JSON.stringify({ ok: false, description: 'Bad Request: not enough rights to change chat photo' }), { status: 400 })
+  }
   if (method === 'sendAnimation') {
     if (body.chat_id === CHANNEL && channelFails) {
       return new Response(JSON.stringify({ ok: false, description: 'Bad Request: need administrator rights in the channel chat' }), { status: 400 })
@@ -94,8 +99,28 @@ await handleTgUpdate(msg(42, '/post'), env)
 const again = JSON.parse(anims().at(-1)?.body.reply_markup ?? '{}')
 check('/post после публикации — вместо кнопки ссылка на пост', again.inline_keyboard?.[1]?.[0]?.url?.includes(`/${mark?.value}`), again)
 
+/* Разовый запуск после выката */
+const launch = async () => {
+  calls.length = 0
+  const e = { ...env, REFERRALS: new FakeKV() }
+  await launchOnce(e)
+  await launchOnce(e)
+  return calls.filter((c) => c.method === 'sendMessage').map((c) => c.body)
+}
+let report = await launch()
+const botPhoto = calls.find((c) => c.method === 'setMyProfilePhoto')?.body
+const chatPhoto = calls.find((c) => c.method === 'setChatPhoto')?.body
+check('аватарка бота — JPG новой загрузкой (attach://)', JSON.parse(botPhoto?.photo ?? '{}').photo === 'attach://avatar' && botPhoto.avatar instanceof Blob, botPhoto)
+check('аватарка канала — в канал', chatPhoto?.chat_id === CHANNEL && chatPhoto.photo instanceof Blob, chatPhoto)
+const order = calls.map((c) => c.method).filter((m) => m !== 'sendMessage')
+check('аватарки раньше поста, всё один раз', JSON.stringify(order) === '["setMyProfilePhoto","setChatPhoto","sendAnimation"]', order)
+check('владельцу — один отчёт со ссылкой на пост', report.length === 1 && report[0].chat_id === '42' && report[0].text.includes(`https://t.me/${CHANNEL.slice(1)}/`), report)
+photoFails = true
+report = await launch()
+check('нет права менять профиль — причина в отчёте, пост всё равно выходит', report[0]?.text.includes('not enough rights') && toChannel().length === 1, report)
+
 if (failed) {
   console.log(`test-channel: ${failed} из ${total} упали`)
   process.exit(1)
 }
-console.log(`test-channel: ${total} проверок — предпросмотр владельцу, публикация по кнопке один раз, отказ Telegram`)
+console.log(`test-channel: ${total} проверок — предпросмотр владельцу, публикация по кнопке один раз, отказ Telegram, разовый запуск`)

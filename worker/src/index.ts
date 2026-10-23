@@ -27,6 +27,7 @@ import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
 import { sendPromoOnce } from './promo'
+import { launchOnce } from './channel'
 import { sendStorageReportOnce } from './storage'
 import {
   cleanTz,
@@ -450,6 +451,8 @@ export default {
       ctx.waitUntil(sendPromoOnce(env).catch((e) => console.error('[cron] промо', e)))
       // Отчёт по базе — владельцу, один раз после выката (см. storage.ts).
       ctx.waitUntil(sendStorageReportOnce(env).catch((e) => console.error('[cron] отчёт по базе', e)))
+      // Аватарки бота и канала и пост в канал — один раз (см. channel.ts).
+      ctx.waitUntil(launchOnce(env).catch((e) => console.error('[cron] канал', e)))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
     }
