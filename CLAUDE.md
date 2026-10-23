@@ -40,7 +40,7 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 
 - В коммитах/PR не упоминать модель. Банковские/личные данные (CSV и т. п.) не коммитить.
 - В аналитику и рейтинг — только геймификация, никаких денежных сумм.
 - После правок стартового кода сравнивай размер `index-*.js` со сборкой прошлого коммита
-  (`git worktree` в scratchpad, не `git stash` — см. «Грабли»).
+  (`git worktree` в scratchpad — см. «Грабли»).
 - **При заметном релизе:** `APP_VERSION` + запись в начало `RELEASES` (`src/lib/whatsnew.ts`, ru/en).
 
 ## Карта кода
@@ -186,8 +186,9 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 
 - **Tailwind молча не генерирует прозрачность вне шкалы** (`/16`, `/12`) — пиши `/[.16]`;
   сторожит `check-tw-opacity.mjs`.
 - **`formatMoney` печатает модуль** — для сумм, уходящих в минус, `sign={value < 0}`.
-- **Не `git stash` вокруг сборки** (`tsconfig.tsbuildinfo` в git, `stash pop` падает) и не
-  `git checkout -- файл` во время замеров (откатывает правки) — сначала коммит.
+- **Замеры «до/после» — в `git worktree`**, не `git stash` и не `git checkout -- файл` (откатывает
+  правки) — сначала коммит. `vite.config.js`/`.d.ts` и `*.tsbuildinfo` — вывод `tsc -b`, не в git;
+  `vite.config.js` перекрывает `.ts`, поэтому конфиг правь в `.ts` и пересобирай.
 - **Шрифты не встраивать в CSS** (`assetsInlineLimit`): CSP `font-src 'self'` блокирует `data:`.
   После сборки в `dist/assets/index-*.css` не должно быть `url(data:font`.
 - **`\b` в JS не видит кириллицу** — граница слова `(?![\p{L}\p{N}-])`.

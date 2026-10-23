@@ -28,3 +28,8 @@ worker/_secrets.json
 
 # Промо-ролики: кадры и видео собираются заново (promo/render.cjs)
 promo/out/
+
+# Вывод `tsc -b` (tsconfig.node.json — composite): собирается заново на каждой сборке
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo
