@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import {
+  BellRing,
   CalendarCheck,
   CalendarRange,
   Compass,
@@ -61,6 +62,7 @@ const ICONS: Record<string, ComponentType<LucideProps>> = {
   invite_1: UserPlus,
   invite_3: Users,
   invite_5: Crown,
+  fan_channel: BellRing,
 }
 
 export function QuestIcon({ id, size = 20 }: { id: string; size?: number }) {

@@ -236,6 +236,54 @@
   50% { opacity: 1; }
 }
 
+/* ---------- Особое задание (Прогресс): светящаяся рамка ----------
+   Под карточкой крутится подложка с бегущим светом — только transform, на
+   композиторе; карточка поверх оставляет видимым кант в 2 px. Свечение
+   вокруг — статичная тень. На паузе и на слабых устройствах подложка стоит. */
+.quest-glow {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  padding: 2px;
+  background: rgb(var(--brand-400) / 0.45);
+  box-shadow:
+    0 0 22px -4px rgb(var(--brand-400) / 0.6),
+    0 12px 30px -12px rgb(var(--brand-500) / 0.7);
+}
+.quest-glow::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  width: 170%;
+  aspect-ratio: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(var(--brand-200)) 45deg,
+    #ffffff 70deg,
+    #f5c451 95deg,
+    transparent 140deg,
+    transparent 180deg,
+    rgb(var(--brand-200)) 225deg,
+    #ffffff 250deg,
+    #f5c451 275deg,
+    transparent 320deg
+  );
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: quest-glow-spin 5s linear infinite;
+}
+.quest-glow-body {
+  position: relative;
+  border-radius: calc(1.5rem - 2px);
+  background: rgb(var(--c-surface-raised));
+}
+@keyframes quest-glow-spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
 /* =====================================================================
    Экономия: слабое устройство и свёрнутый Telegram
    ===================================================================== */
@@ -245,6 +293,7 @@ html.anim-paused .frame-ring::before,
 html.anim-paused .frame-ring::after,
 html.anim-paused .hero-surface::before,
 html.anim-paused .breathe,
+html.anim-paused .quest-glow::before,
 html.anim-paused .typing-dot {
   animation-play-state: paused !important;
 }
@@ -254,6 +303,7 @@ html.anim-paused .typing-dot {
 html.perf-low .frame-ring::before,
 html.perf-low .frame-ring::after,
 html.perf-low .hero-surface::before,
+html.perf-low .quest-glow::before,
 html.perf-low .breathe {
   animation: none !important;
 }
@@ -262,7 +312,8 @@ html.perf-low .frame-anim-pulse::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .frame-ring::before,
   .frame-ring::after,
-  .hero-surface::before {
+  .hero-surface::before,
+  .quest-glow::before {
     animation: none !important;
   }
   .hero-surface.skin-holo::before { transition: none; }

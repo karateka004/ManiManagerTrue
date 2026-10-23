@@ -26,6 +26,8 @@ export type QuestMetric =
   | 'transactions'
   | 'referrals'
   | 'subscribe'
+  /** Подписка на канал обновлений @koshel_update (особое задание). */
+  | 'subscribeUpdates'
   /** Счётчик действия из `s.events` — ключ задаётся полем `event`. */
   | 'event'
   | 'streak'
@@ -34,7 +36,8 @@ export type QuestMetric =
   | 'goalsReached'
   | 'budgetKept'
 
-export type QuestGroup = 'main' | 'special'
+/** 'limited' — особое задание на время: своя карточка над бордом, без перезарядки. */
+export type QuestGroup = 'main' | 'special' | 'limited'
 
 export interface QuestDef {
   id: string
@@ -51,12 +54,17 @@ export interface QuestDef {
   group: QuestGroup
   /** Внешнее действие (для подписки — ссылка на канал). */
   actionUrl?: string
+  /** Вещь из REWARDS, которая выдаётся вместе с XP (титул особого задания). */
+  reward?: string
+  /** Особое задание видно до этого момента (мс), потом исчезает. */
+  until?: number
 }
 
 export interface QuestMetrics {
   transactions: number
   referrals: number
   subscribed: boolean
+  subscribedUpdates: boolean
   /** Счётчики действий-вовлечения из стора. */
   events: Record<string, number>
   /** Лучшая серия дней. */
@@ -123,6 +131,19 @@ export const QUESTS: QuestDef[] = [
   { id: 'invite_1', metric: 'referrals', goal: 1, xp: 60, coins: 5, group: 'special' },
   { id: 'invite_3', metric: 'referrals', goal: 3, xp: 120, coins: 10, group: 'special' },
   { id: 'invite_5', metric: 'referrals', goal: 5, xp: 250, coins: 20, group: 'special' },
+
+  /* ── Особое, ровно на неделю: канал обновлений ─────────────────────── */
+  {
+    id: 'fan_channel',
+    metric: 'subscribeUpdates',
+    goal: 1,
+    xp: 299,
+    coins: 0,
+    group: 'limited',
+    actionUrl: 'https://t.me/koshel_update',
+    reward: 'title_fan',
+    until: Date.parse('2026-10-30T18:00:00Z'),
+  },
 ]
 
 /** Суммарный XP пула — держать в синхроне с XP_ALL_QUESTS в воркере. */
@@ -150,6 +171,8 @@ function metricValue(def: QuestDef, m: QuestMetrics): number {
       return m.referrals
     case 'subscribe':
       return m.subscribed ? 1 : 0
+    case 'subscribeUpdates':
+      return m.subscribedUpdates ? 1 : 0
     case 'event':
       return def.event ? (m.events[def.event] ?? 0) : 0
     case 'streak':
@@ -235,4 +258,20 @@ export function questBoard(
 /** Сколько заданий группы ещё не забрано (для подписи «осталось»). */
 export function questsLeft(claimedQuests: string[], group: QuestGroup): number {
   return QUESTS.filter((q) => q.group === group && !claimedQuests.includes(q.id)).length
+}
+
+/** Особое задание, которое идёт сейчас и ещё не забрано. */
+export function openLimited(claimedQuests: string[], now: number = Date.now()): QuestDef | undefined {
+  return QUESTS.find((q) => q.group === 'limited' && (q.until ?? 0) > now && !claimedQuests.includes(q.id))
+}
+
+/** Прогресс особого задания для карточки; нет его (кончилось или забрано) — null. */
+export function limitedQuest(metrics: QuestMetrics, claimedQuests: string[], now: number = Date.now()): QuestProgress | null {
+  const def = openLimited(claimedQuests, now)
+  return def ? progressOf(def, metrics, claimedQuests) : null
+}
+
+/** Есть ли на бордах перезаряжающийся слот (особое задание перезарядку не запускает). */
+export function boardCooling(questClaims: Record<string, number>, now: number): boolean {
+  return Object.entries(questClaims).some(([id, at]) => GROUP_BY_ID.get(id) !== 'limited' && at + QUEST_COOLDOWN_MS > now)
 }

@@ -143,11 +143,12 @@ function QuestRow({
   )
 }
 
-/** Остаток времени словами: «7 ч 42 мин» / «42 мин» / «меньше минуты». */
-function formatLeft(ms: number, t: TFunc): string {
+/** Остаток времени словами: «6 д 23 ч» / «7 ч 42 мин» / «42 мин» / «меньше минуты». */
+export function formatLeft(ms: number, t: TFunc): string {
   const minutes = Math.ceil(ms / 60_000)
   if (minutes <= 0) return t('time.soon')
-  const h = Math.floor(minutes / 60)
+  const d = Math.floor(minutes / 1440)
+  const h = Math.floor((minutes % 1440) / 60)
   const m = minutes % 60
-  return h > 0 ? t('time.hm', { h, m }) : t('time.m', { m })
+  return d > 0 ? t('time.dh', { d, h }) : h > 0 ? t('time.hm', { h, m }) : t('time.m', { m })
 }

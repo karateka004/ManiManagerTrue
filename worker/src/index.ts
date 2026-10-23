@@ -27,7 +27,7 @@ import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
 import { sendPromoOnce } from './promo'
-import { launchOnce } from './channel'
+import { appInviteLink, CHANNEL, ensureAppLink, fanStats, launchOnce, trackFan } from './channel'
 import { sendStorageReportOnce } from './storage'
 import {
   cleanTz,
@@ -152,7 +152,7 @@ const LB_MAX = 500
  */
 const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
 const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
-const XP_ALL_QUESTS = 1385 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP)
+const XP_ALL_QUESTS = 1684 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP), с особым fan_channel
 /**
  * Запас на XP от ежедневной серии (src/lib/streak.ts: 2 XP в день плюс 20/40/100
  * на рубежах 7/14/30). Величина не фиксированная — она копится со временем,
@@ -453,6 +453,8 @@ export default {
       ctx.waitUntil(sendStorageReportOnce(env).catch((e) => console.error('[cron] отчёт по базе', e)))
       // Аватарки бота и канала и пост в канал — один раз (см. channel.ts).
       ctx.waitUntil(launchOnce(env).catch((e) => console.error('[cron] канал', e)))
+      // Ссылка канала для особого задания в приложении — один раз (см. channel.ts).
+      ctx.waitUntil(ensureAppLink(env).catch((e) => console.error('[cron] ссылка канала', e)))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
     }
@@ -1220,29 +1222,33 @@ async function handleReminders(req: Request, env: Env, origin: string | null, re
 const CHANNEL_USERNAME = '@Svyat_research'
 
 /**
- * Проверка подписки на канал (задание subscribe_channel): бот вызывает getChatMember.
- * Требует, чтобы бот был АДМИНОМ канала — иначе Telegram не отдаст членство, и мы
- * мягко возвращаем subscribed:false (без 500), чтобы клиент просто показал «Подписаться».
+ * Проверка подписок: канал задания subscribe_channel и канал обновлений (особое
+ * задание fan_channel) — бот вызывает getChatMember. Требует, чтобы бот был
+ * АДМИНОМ канала — иначе Telegram не отдаст членство, и мы мягко отвечаем false
+ * (без 500), чтобы клиент просто показал «Подписаться». `fan` — шаг воронки
+ * особого задания (см. trackFan), `link` — ссылка канала «из приложения».
  */
 async function handleCheckSub(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string }
+  const body = (await req.json().catch(() => ({}))) as { initData?: string; fan?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'sub', user.id, 20, 60)) return tooMany(env, origin)
 
-  let subscribed = false
-  try {
-    const u =
-      `https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/getChatMember` +
-      `?chat_id=${encodeURIComponent(CHANNEL_USERNAME)}&user_id=${user.id}`
-    const r = await fetch(u)
-    const data = (await r.json()) as { ok?: boolean; result?: { status?: string } }
-    const st = data?.result?.status
-    subscribed = data?.ok === true && (st === 'creator' || st === 'administrator' || st === 'member')
-  } catch {
-    subscribed = false
+  const member = async (chat: string): Promise<boolean> => {
+    try {
+      const u =
+        `https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/getChatMember` +
+        `?chat_id=${encodeURIComponent(chat)}&user_id=${user.id}`
+      const data = (await (await fetch(u)).json()) as { ok?: boolean; result?: { status?: string } }
+      const st = data?.result?.status
+      return data?.ok === true && (st === 'creator' || st === 'administrator' || st === 'member')
+    } catch {
+      return false
+    }
   }
-  return json({ ok: true, subscribed }, { status: 200 }, env, origin)
+  const [subscribed, updates, link] = await Promise.all([member(CHANNEL_USERNAME), member(CHANNEL), appInviteLink(env)])
+  if (body.fan === 'saw' || body.fan === 'click') await trackFan(env, user.id, body.fan, updates).catch(() => {})
+  return json({ ok: true, subscribed, updates, link }, { status: 200 }, env, origin)
 }
 
 /* ------------------------------------------------------------------ */
@@ -1406,13 +1412,14 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
   }
 
   const now = Date.now()
-  const [c, history, webhook] = await Promise.all([
+  const [c, history, webhook, fan] = await Promise.all([
     collectFresh(env, body.fresh ? 0 : COLLECT_TTL_MS),
     readHistory(env),
     webhookHealth(env),
+    fanStats(env, Date.now()).catch(() => null),
   ])
   return json(
-    { ...computeDashboard(c, history, now, webhook), backfill },
+    { ...computeDashboard(c, history, now, webhook), backfill, fan },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
     env,
     origin,

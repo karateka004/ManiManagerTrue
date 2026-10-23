@@ -14,16 +14,28 @@ import {
   submitProfile,
   isBackendConfigured,
   checkSubscription,
+  NO_SUB,
+  type SubStatus,
   type ReferralFriend,
 } from '../lib/api'
 import { useLevel } from '../components/LevelBar'
 import { LEVELS } from '../lib/levels'
-import { questBoard, questsLeft, BOARD_SIZE, QUEST_COOLDOWN_MS, type QuestProgress } from '../lib/quests'
+import {
+  questBoard,
+  questsLeft,
+  limitedQuest,
+  openLimited,
+  boardCooling,
+  BOARD_SIZE,
+  type QuestProgress,
+} from '../lib/quests'
 import { useT } from '../lib/i18n'
 import { Group } from '../components/ui/Group'
 import { StreakTile } from '../components/rewards/StreakTile'
 import { Tile, TileBadge } from '../components/ui/Tile'
 import { QuestRows } from '../components/rewards/QuestRow'
+import { LimitedQuestCard } from '../components/rewards/LimitedQuest'
+import { showToast } from '../lib/toast'
 import { ReferralBlock } from '../components/rewards/ReferralBlock'
 import { ShopScreen } from './Shop'
 import { LevelRewardsScreen } from './LevelRewards'
@@ -95,10 +107,13 @@ export function RewardsPage() {
   if (leaderboardOpen) seenLeaderboard.current = true
   const rank = useMyRank()
 
-  // Подписка на канал (задание subscribe_channel) — проверяет бот через getChatMember.
-  const [subscribed, setSubscribed] = useState(false)
-  const recheckSub = () => {
-    checkSubscription().then(setSubscribed).catch(() => {})
+  // Подписки на каналы (subscribe_channel и особое fan_channel) — проверяет бот
+  // через getChatMember. Пока особое задание на экране, проверка — ещё и шаг его
+  // воронки для аналитики ('saw'; нажатие «Подписаться» — 'click').
+  const [sub, setSub] = useState<SubStatus>(NO_SUB)
+  const recheckSub = (fan?: 'click') => {
+    const shown = openLimited(useStore.getState().claimedQuests)
+    checkSubscription(shown ? (fan ?? 'saw') : undefined).then(setSub).catch(() => {})
   }
   useEffect(() => {
     if (!active) return
@@ -141,7 +156,8 @@ export function RewardsPage() {
   const metrics = {
     transactions: transactions.length,
     referrals: referral?.count ?? 0,
-    subscribed,
+    subscribed: sub.subscribed,
+    subscribedUpdates: sub.updates,
     events,
     streak: Math.max(streak.count, streak.best),
     categories: categoriesUsed,
@@ -174,7 +190,7 @@ export function RewardsPage() {
   const celebrate = (from: Element | null, xp: number, coins: number) => {
     if (!from) return
     floatText(from, `+${xp} XP`)
-    flyCoins(from, Math.min(9, 3 + Math.round(coins / 5)))
+    if (coins > 0) flyCoins(from, Math.min(9, 3 + Math.round(coins / 5)))
   }
 
   const onClaim = (q: QuestProgress, from: Element | null = null) => {
@@ -188,6 +204,32 @@ export function RewardsPage() {
   const onSubscribe = (q: QuestProgress) => {
     if (q.def.actionUrl) openTelegramLink(q.def.actionUrl)
     setTimeout(recheckSub, 1500)
+  }
+
+  // Особое задание: своя карточка над бордом, пока идёт его время. Таймер
+  // карточки по окончании перерисовывает вкладку — и карточка уходит.
+  const [, setLimitedEnded] = useState(0)
+  const fanQuest = limitedQuest(metrics, claimedQuests)
+  const equipReward = useStore((s) => s.equipReward)
+  // Канал — по ссылке «из приложения» (Telegram считает вступивших по ней).
+  const onFanSubscribe = (q: QuestProgress) => {
+    const url = sub.link ?? q.def.actionUrl
+    if (url) openTelegramLink(url)
+    recheckSub('click')
+    setTimeout(recheckSub, 1500)
+  }
+  const onFanClaim = (q: QuestProgress, from: Element | null) => {
+    if (!q.claimable) return
+    hapticNotify('success')
+    celebrate(from, q.def.xp, q.def.coins)
+    claimQuest(q.def.id, q.def.xp, q.def.coins, q.def.reward)
+    const reward = q.def.reward
+    if (reward)
+      showToast({
+        icon: 'gift',
+        text: t('quest.fan_toast'),
+        action: { label: t('quest.fan_wear'), run: () => equipReward('title', reward) },
+      })
   }
 
   // Всё готовое к получению — одним нажатием: восемь одинаковых зелёных
@@ -350,6 +392,16 @@ export function RewardsPage() {
         />
       </div>
 
+      {fanQuest && (
+        <LimitedQuestCard
+          q={fanQuest}
+          t={t}
+          onAction={() => onFanSubscribe(fanQuest)}
+          onClaim={(from) => onFanClaim(fanQuest, from)}
+          onExpire={() => setLimitedEnded((n) => n + 1)}
+        />
+      )}
+
       <Group
         className="mx-4 mt-6"
         title={t('profile.quests')}
@@ -425,7 +477,7 @@ function useMyRank() {
  */
 function useCountdownTick(questClaims: Record<string, number>): number {
   const [now, setNow] = useState(() => Date.now())
-  const cooling = Object.values(questClaims).some((at) => at + QUEST_COOLDOWN_MS > now)
+  const cooling = boardCooling(questClaims, now)
 
   useEffect(() => {
     // Сразу подтягиваем время: страница могла провисеть открытой несколько часов.

@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.7.1'
+export const APP_VERSION = '2.7.2'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,19 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.7.2',
+    date: '2026-10-23',
+    title: { ru: 'Особое задание на неделю', en: 'A special quest, one week only' },
+    items: [
+      {
+        text: {
+          ru: 'Подпишись на канал обновлений @koshel_update — сразу 299 XP и легендарный титул «Преданный фанат». Задание в «Прогрессе», только неделю',
+          en: 'Follow the @koshel_update channel — 299 XP right away and the legendary “True fan” title. Find it in Progress, one week only',
+        },
+      },
+    ],
+  },
   {
     version: '2.7.1',
     date: '2026-10-23',

@@ -63,9 +63,10 @@ export interface RewardDef {
   /**
    * Откуда берётся награда. Не задано — обычный товар магазина (за монеты);
    * 'level' — выдаётся бесплатно по достижении unlockLevel (экран «Титулы уровня»);
-   * 'gift' — персональный подарок от команды (PERSONAL_GIFTS), в магазине не виден.
+   * 'gift' — персональный подарок от команды (PERSONAL_GIFTS), в магазине не виден;
+   * 'quest' — награда особого задания (QuestDef.reward), выдаётся вместе с его XP.
    */
-  source?: 'level' | 'gift'
+  source?: 'level' | 'gift' | 'quest'
   /** Для title — текст титула. */
   title?: string
   /** Для accent — палитра. */
@@ -210,6 +211,8 @@ export const REWARDS: RewardDef[] = [
 
   // Персональные подарки (source: 'gift') — выдаются вручную через PERSONAL_GIFTS.
   { id: 'title_ambassador', kind: 'title', name: 'Амбассадор', rarity: 'legendary', unlockLevel: 1, hint: 'Особый знак от команды Кошеля', source: 'gift', title: 'Амбассадор' },
+  // За особое задание (source: 'quest') — подписка на канал обновлений, только неделю.
+  { id: 'title_fan', kind: 'title', name: 'Преданный фанат', rarity: 'legendary', unlockLevel: 1, hint: 'За подписку на канал обновлений', source: 'quest', title: 'Преданный фанат' },
 ]
 
 /* ---------- Хелперы ---------- */

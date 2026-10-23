@@ -15,6 +15,7 @@
 import type { Env } from './env'
 import {
   answerCallback,
+  createChatInviteLink,
   editMessageReplyMarkup,
   escapeHtml,
   sendMedia,
@@ -141,6 +142,73 @@ export async function publishPostButton(q: TgCallbackQuery, env: Env, userId: nu
   } else {
     await answerCallback(env, q.id, `Не опубликовал: ${r.why}. Проверь, что бот — админ канала с правом публикации.`, true)
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Особое задание «подпишись на канал» (приложение, fan_channel)       */
+/* ------------------------------------------------------------------ */
+
+/** Ссылка канала «из приложения»: по ней Telegram считает вступивших. */
+const APP_LINK_KEY = 'channel:applink'
+export const APP_LINK_NAME = 'Кошель — задание'
+
+/** Для кнопки задания; ещё нет (не создана, нет права) — null: приложение откроет канал напрямую. */
+export const appInviteLink = (env: Env): Promise<string | null> => env.REFERRALS.get(APP_LINK_KEY)
+
+/**
+ * Крон: создать ссылку один раз. Нет права приглашать — владельцу причина,
+ * повтор через сутки; создана — владельцу ссылка и где смотреть счётчик.
+ */
+export async function ensureAppLink(env: Env): Promise<void> {
+  const [have, paused] = await Promise.all([env.REFERRALS.get(APP_LINK_KEY), env.REFERRALS.get(`${APP_LINK_KEY}:fail`)])
+  if (have || paused) return
+  const owner = String(env.OWNER_CHAT_ID ?? '').trim()
+  const r = await createChatInviteLink(env, CHANNEL, APP_LINK_NAME)
+  if (r.link) {
+    await env.REFERRALS.put(APP_LINK_KEY, r.link)
+    if (owner)
+      await sendMessage(env, owner, `Ссылка канала для задания в приложении: ${r.link}\nСколько людей по ней вступило — в ${CHANNEL} → Управление → Пригласительные ссылки.`)
+    return
+  }
+  await env.REFERRALS.put(`${APP_LINK_KEY}:fail`, '1', { expirationTtl: 86400 })
+  if (owner)
+    await sendMessage(env, owner, `Не создал ссылку канала для задания: ${escapeHtml(r.description ?? 'ошибка Telegram')}. Дай боту право «Пригласительные ссылки» — попробую снова через сутки.`)
+}
+
+/**
+ * Воронка задания по человеку (KV `fan:<id>`): задание на экране, а он не
+ * подписан — 'saw'; нажал «Подписаться» — 'click'; подписался после этого —
+ * 'joined'. Подписан с первого показа — 'had' (не заслуга задания).
+ * Конечные состояния не меняются; запись — только при смене состояния.
+ */
+export type FanState = 'saw' | 'click' | 'joined' | 'had'
+export function nextFan(prev: FanState | null, step: 'saw' | 'click', subscribed: boolean): FanState {
+  if (prev === 'joined' || prev === 'had') return prev
+  if (subscribed) return prev ? 'joined' : 'had'
+  return step === 'click' || prev === 'click' ? 'click' : 'saw'
+}
+
+export async function trackFan(env: Env, userId: number, step: 'saw' | 'click', subscribed: boolean): Promise<void> {
+  const key = `fan:${userId}`
+  const prev = (await env.REFERRALS.get(key)) as FanState | null
+  const next = nextFan(prev, step, subscribed)
+  if (next !== prev) await env.REFERRALS.put(key, next, { metadata: { s: next, at: Date.now() } })
+}
+
+/** Для админки: сколько людей на каждом шаге воронки и сколько подписалось за неделю. */
+export async function fanStats(env: Env, now = Date.now()): Promise<Record<FanState, number> & { joined7: number }> {
+  const out = { saw: 0, click: 0, joined: 0, had: 0, joined7: 0 }
+  let cursor: string | undefined
+  do {
+    const page = await env.REFERRALS.list<{ s?: FanState; at?: number }>({ prefix: 'fan:', cursor })
+    for (const k of page.keys) {
+      const st = k.metadata?.s
+      if (st && st in out) out[st]++
+      if (st === 'joined' && (k.metadata?.at ?? 0) > now - 7 * 86_400_000) out.joined7++
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  return out
 }
 
 /** Выложить самому после выката: новый пост — новый id (как PROMO_ID). */

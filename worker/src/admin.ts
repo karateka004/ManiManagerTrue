@@ -1214,7 +1214,20 @@ export const ADMIN_HTML = `<!doctype html>
           +(e.u?'<div class="l2">@'+esc(e.u)+'</div>':'')+'</div><div class="v">'+nf(e[val])+'<small>'+unit+'</small></div></div></button>';
       }).join('')+'</div>';
     }
-    return botBlock+sectionBlock
+    // Особое задание «подпишись на канал»: воронка по людям (fan:<id>, см. channel.ts).
+    var f=D.fan, fanBlock='';
+    if(f){
+      var seen=f.saw+f.click+f.joined, tapped=f.click+f.joined;
+      var share=function(a,b){ return b?Math.round(a*100/b)+'%':'—'; };
+      fanBlock='<div class="sec"><h2>Канал обновлений</h2><span class="aside">особое задание</span></div>'
+        +'<div class="grid g4">'
+        +tile('Видели задание',nf(seen),'','<span>не подписанными</span>')
+        +tile('Нажали «Подписаться»',nf(tapped),'','<span>'+share(tapped,seen)+' видевших</span>')
+        +tile('Подписались',nf(f.joined),'','<span>'+share(f.joined,seen)+' видевших · за неделю '+nf(f.joined7)+'</span>')
+        +tile('Уже были подписаны',nf(f.had),'','<span>задание сразу готово</span>')
+        +'</div>';
+    }
+    return fanBlock+botBlock+sectionBlock
       +'<div class="sec"><h2>Глубина использования</h2></div><div class="grid g2 start">'+planBlock+opsBlock+daysBlock+setBlock+'</div>'
       +'<div class="sec"><h2>Игра</h2></div><p class="note" style="margin:-4px 4px 10px">Опыта у всех '+nf(g.sumXp)+' · монет '+nf(g.sumCoins)+' · средний уровень '+g.avgLevel+'</p>'
       +'<div class="grid g2 start"><div><div class="note" style="margin:0 4px 8px;font-weight:600">По опыту</div>'+top(D.topXp,'xp','XP')+'</div>'

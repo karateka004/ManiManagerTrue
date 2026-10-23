@@ -10,7 +10,7 @@
  * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/test-channel.mjs`
  */
 import { handleTgUpdate } from '../src/bot.ts'
-import { APP_URL, CHANNEL, POST, launchOnce } from '../src/channel.ts'
+import { APP_URL, CHANNEL, POST, launchOnce, nextFan, ensureAppLink, appInviteLink, fanStats, trackFan } from '../src/channel.ts'
 
 let failed = 0
 let total = 0
@@ -39,6 +39,9 @@ globalThis.fetch = async (url, init) => {
   const method = u.split('/').pop()
   const body = init?.body instanceof FormData ? Object.fromEntries(init.body.entries()) : init?.body ? JSON.parse(init.body) : {}
   calls.push({ method, body })
+  if (method === 'createChatInviteLink') {
+    return new Response(JSON.stringify({ ok: true, result: { invite_link: 'https://t.me/+AppLink', name: body.name } }), { status: 200 })
+  }
   if (method === 'sendAnimation' || method === 'sendVideo') {
     if (body.chat_id === CHANNEL && channelFails) {
       return new Response(JSON.stringify({ ok: false, description: 'Bad Request: need administrator rights in the channel chat' }), { status: 400 })
@@ -110,6 +113,31 @@ const done = new FakeKV()
 await done.put(`channel:${POST.id}`, '9')
 report = await launch(done)
 check('пост уже в канале (кнопкой) — второго нет', toChannel().length === 0 && report[0]?.text.includes('уже был'), report)
+
+/* Особое задание: воронка и ссылка «из приложения» */
+check('воронка: не подписан при показе → saw', nextFan(null, 'saw', false) === 'saw')
+check('воронка: подписан при первом показе → had', nextFan(null, 'saw', true) === 'had')
+check('воронка: нажал → click, подписался → joined', nextFan('saw', 'click', false) === 'click' && nextFan('click', 'saw', true) === 'joined')
+check('воронка: конечные состояния не меняются', nextFan('had', 'click', false) === 'had' && nextFan('joined', 'saw', false) === 'joined')
+check('воронка: после нажатия обычная проверка не откатывает к saw', nextFan('click', 'saw', false) === 'click')
+const fkv = new FakeKV()
+fkv.list = async ({ prefix = '' } = {}) => ({ keys: [...fkv.m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name, metadata: fkv.m.get(name).metadata })), list_complete: true })
+const putWithMeta = fkv.put.bind(fkv)
+fkv.put = async (k, v, opts) => { await putWithMeta(k, v, opts); fkv.m.get(k).metadata = opts?.metadata }
+const fenv = { ...env, REFERRALS: fkv }
+await trackFan(fenv, 1, 'saw', false)
+await trackFan(fenv, 1, 'click', false)
+await trackFan(fenv, 1, 'saw', true)
+await trackFan(fenv, 2, 'saw', true)
+await trackFan(fenv, 3, 'saw', false)
+const fs = await fanStats(fenv)
+check('статистика воронки для админки', fs.joined === 1 && fs.had === 1 && fs.saw === 1 && fs.click === 0 && fs.joined7 === 1, fs)
+calls.length = 0
+await ensureAppLink(fenv)
+await ensureAppLink(fenv)
+const created = calls.filter((c) => c.method === 'createChatInviteLink')
+check('ссылка «из приложения» создаётся один раз, в канал, с именем', created.length === 1 && created[0].body.chat_id === CHANNEL && !!created[0].body.name, created)
+check('ссылка сохранена и отдаётся приложению', (await appInviteLink(fenv)) === 'https://t.me/+AppLink')
 
 if (failed) {
   console.log(`test-channel: ${failed} из ${total} упали`)

@@ -288,7 +288,8 @@ interface Actions {
    * Забрать награду за задание (идемпотентно): помечает задание выполненным
    * и начисляет XP + монеты. Повторный вызов с тем же id ничего не делает.
    */
-  claimQuest: (id: string, xp: number, coins: number) => void
+  /** `reward` — вещь, которая выдаётся вместе с XP (титул особого задания). */
+  claimQuest: (id: string, xp: number, coins: number, reward?: string) => void
   /**
    * Забрать ежедневную награду серии (идемпотентно за день).
    * Возвращает начисленную награду или null, если сегодня уже забирали.
@@ -1014,7 +1015,7 @@ export const useStore = create<State & Actions>()(
       track: (event) => set((s) => ({ events: bumpEvent(s.events, event) })),
       addXp: (amount) => set((s) => ({ bonusXp: Math.max(0, s.bonusXp + amount) })),
       addCoins: (amount) => set((s) => ({ coins: Math.max(0, s.coins + amount) })),
-      claimQuest: (id, xp, coins) =>
+      claimQuest: (id, xp, coins, reward) =>
         set((s) =>
           s.claimedQuests.includes(id)
             ? s
@@ -1023,6 +1024,7 @@ export const useStore = create<State & Actions>()(
                 questClaims: { ...s.questClaims, [id]: Date.now() },
                 bonusXp: Math.max(0, s.bonusXp + xp),
                 coins: Math.max(0, s.coins + coins),
+                ...(reward && !s.owned.includes(reward) ? { owned: [...s.owned, reward] } : {}),
               },
         ),
 
@@ -1066,7 +1068,8 @@ export const useStore = create<State & Actions>()(
         const s = get()
         if (s.owned.includes(id)) return false
         const r = getReward(id)
-        if (!r || !r.source) return false
+        // Награда особого задания приходит только с ним самим (claimQuest).
+        if (!r || !r.source || r.source === 'quest') return false
         // Титул за уровень — только если выполнены оба условия: уровень и рекорд
         // ежедневной серии (streak.best) — та же «Серия дня», что на хабе наград.
         if (r.source === 'level') {

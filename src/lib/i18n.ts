@@ -319,6 +319,7 @@ const DICT: Dict = {
   'time.hm': { ru: '{h} ч {m} мин', en: '{h} h {m} min' },
   'time.m': { ru: '{m} мин', en: '{m} min' },
   'time.soon': { ru: 'меньше минуты', en: 'less than a minute' },
+  'time.dh': { ru: '{d} д {h} ч', en: '{d} d {h} h' },
   'quest.empty': { ru: 'Все задания выполнены. Новые появятся с обновлениями — загляни позже!', en: 'All quests done. New ones arrive with updates — check back later!' },
   'quest.left': { ru: 'ещё {n} впереди', en: '{n} more ahead' },
   'profile.all_time': { ru: 'За всё время', en: 'All time' },
@@ -802,6 +803,8 @@ const DICT: Dict = {
   /* Награды: персональные подарки */
   'reward.title_ambassador.name': { ru: 'Амбассадор', en: 'Ambassador' },
   'reward.title_ambassador.hint': { ru: 'Особый знак от команды Кошеля', en: 'A special token from the Koshel team' },
+  'reward.title_fan.name': { ru: 'Преданный фанат', en: 'True fan' },
+  'reward.title_fan.hint': { ru: 'За подписку на канал обновлений', en: 'For following the updates channel' },
 
   /* Задания (quests.ts) */
   'quest.first_tx.title': { ru: 'Первая операция', en: 'First operation' },
@@ -842,6 +845,13 @@ const DICT: Dict = {
   'quest.under_budget.desc': { ru: 'Удержи месяц в пределах бюджета', en: 'Keep the month within budget' },
   'quest.subscribe_channel.title': { ru: 'Подпишись на канал', en: 'Subscribe to the channel' },
   'quest.subscribe_channel.desc': { ru: 'Подпишись на @Svyat_research и забери награду', en: 'Follow @Svyat_research and claim the reward' },
+  'quest.fan_channel.title': { ru: 'Подпишись на канал обновлений', en: 'Follow the updates channel' },
+  'quest.fan_channel.desc': { ru: 'Новое в Кошеле — первым, в @koshel_update', en: 'Be first to see what’s new — in @koshel_update' },
+  'quest.limited': { ru: 'Особое задание', en: 'Special quest' },
+  'quest.limited_left': { ru: 'Осталось {time}', en: '{time} left' },
+  'quest.limited_reward': { ru: '+{xp} XP и титул', en: '+{xp} XP and the title' },
+  'quest.fan_toast': { ru: 'Титул «Преданный фанат» — твой', en: 'The “True fan” title is yours' },
+  'quest.fan_wear': { ru: 'Надеть', en: 'Wear' },
   'quest.invite_1.title': { ru: 'Пригласи друга', en: 'Invite a friend' },
   'quest.invite_1.desc': { ru: 'Позови одного по своей ссылке', en: 'Bring one person via your link' },
   'quest.invite_3.title': { ru: 'Пригласи 3 друзей', en: 'Invite 3 friends' },

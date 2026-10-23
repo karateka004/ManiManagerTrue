@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import {
+  Heart,
   Sprout, Calculator, PiggyBank, Briefcase, TrendingUp, Crown,
   GraduationCap, Gem, Landmark, Coins, Sparkles, Bitcoin, Swords, BadgeCheck,
   Star, Leaf, Anchor, Grape, Sunset, Flower, TreePalm, Pencil,
@@ -28,6 +29,7 @@ const ICON_BY_ID: Record<string, ComponentType<LucideProps>> = {
   title_shark: Swords,
   title_crypto: Bitcoin,
   title_ambassador: BadgeCheck,
+  title_fan: Heart,
   title_minimal: Feather,
   title_treasurer: Vault,
   title_stoic: Mountain,

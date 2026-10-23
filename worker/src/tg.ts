@@ -319,6 +319,21 @@ export async function setMyShortDescription(env: Env, shortDescription: string):
   return r.ok
 }
 
+/**
+ * Именная пригласительная ссылка канала (бот — админ с правом приглашать):
+ * Telegram считает вступивших по ней — видно в канале, «Пригласительные ссылки».
+ */
+export async function createChatInviteLink(
+  env: Env,
+  chatId: string | number,
+  name: string,
+): Promise<{ link?: string; description?: string }> {
+  const r = await call(env, 'createChatInviteLink', { chat_id: chatId, name })
+  const body = r.body as { result?: { invite_link?: string }; description?: string } | null
+  const link = r.ok ? body?.result?.invite_link : undefined
+  return { ...(link ? { link } : {}), ...(body?.description ? { description: body.description } : {}) }
+}
+
 /** Вызов с файлом (multipart). Сеть не бросает наружу; `description` — причина отказа. */
 async function callForm(env: Env, method: string, form: FormData): Promise<{ ok: boolean; description?: string }> {
   try {

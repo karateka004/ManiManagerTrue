@@ -413,19 +413,35 @@ export async function fetchReminders(): Promise<boolean | null> {
   }
 }
 
-/* ---------- Подписка на канал (задание subscribe_channel) ---------- */
+/* ---------- Подписки на каналы (задания subscribe_channel и fan_channel) ---------- */
+
+export interface SubStatus {
+  /** Канал задания subscribe_channel. */
+  subscribed: boolean
+  /** Канал обновлений — особое задание. */
+  updates: boolean
+  /** Пригласительная ссылка канала обновлений «из приложения» (по ней Telegram считает вступивших). */
+  link: string | null
+}
+
+export const NO_SUB: SubStatus = { subscribed: false, updates: false, link: null }
 
 /**
- * Проверяет на сервере, подписан ли текущий пользователь на канал (бот делает
- * getChatMember). Вне Telegram / без бэкенда / при ошибке → false.
+ * Подписки текущего пользователя — бот делает getChatMember. `fan` — шаг
+ * воронки особого задания для аналитики: задание на экране ('saw') или нажали
+ * «Подписаться» ('click'). Вне Telegram / без бэкенда / при ошибке — всё false.
  */
-export async function checkSubscription(): Promise<boolean> {
-  if (!isBackendConfigured() || !tg.initData) return false
+export async function checkSubscription(fan?: 'saw' | 'click'): Promise<SubStatus> {
+  if (!isBackendConfigured() || !tg.initData) return NO_SUB
   try {
-    const res = await post('/check-sub', { initData: tg.initData })
-    return !!res?.subscribed
+    const res = await post('/check-sub', { initData: tg.initData, ...(fan ? { fan } : {}) })
+    return {
+      subscribed: !!res?.subscribed,
+      updates: !!res?.updates,
+      link: typeof res?.link === 'string' && res.link.startsWith('https://t.me/') ? res.link : null,
+    }
   } catch {
-    return false
+    return NO_SUB
   }
 }
 

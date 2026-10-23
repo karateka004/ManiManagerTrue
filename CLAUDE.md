@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 16) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 24) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -101,7 +101,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 валютой; перенос — явно `relabelCurrency`/`RelabelPrompt`.
 
 **Геймификация:** уровни `lib/levels.ts` (XP = операции×12 + bonusXp), задания `lib/quests.ts`
-(пул 22, борд 3, перезарядка 8 ч), серия `lib/streak.ts`, косметика `lib/rewards.ts` (цена =
+(пул 22, борд 3, перезарядка 8 ч; особое задание на время — группа `limited`, `until`, карточка
+`LimitedQuestCard` со светящейся рамкой `.quest-glow` и таймером над бордом, без перезарядки; награда-вещь
+`reward` (`source: 'quest'`) выдаётся в `claimQuest` вместе с XP. Сейчас: `fan_channel` — подписка на
+@koshel_update до 30.10.2026 21:00 МСК, 299 XP + титул «Преданный фанат»), серия `lib/streak.ts`, косметика `lib/rewards.ts` (цена =
 рарность, обложки `styles/skins.css`, рамки `rewards/FrameRing`). **`QUESTS_TOTAL_XP` продублирован
 в воркере (`XP_ALL_QUESTS`, потолок XP рейтинга)** — меняешь награды, правь обе стороны.
 
@@ -183,6 +186,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
   поставлены разово 23.10.2026 (`setMyProfilePhoto`/`setChatPhoto` в `tg.ts`). «Выложи сам» —
   `launchOnce`: пост `POST` разово по крону (метка `channel:launch` = `LAUNCH_ID`), итог владельцу.
   Ролик со звуком — `kind: 'video'`, немой как гиф — `'animation'`. В канале: 2.7.1 (№4), 2.7 (тизер Кошель+).
+  Задание «подпишись» в приложении ведёт по именной ссылке «Кошель — задание» (`ensureAppLink`, крон, KV
+  `channel:applink`; вступивших по ней Telegram показывает в канале → «Пригласительные ссылки»). `/check-sub`
+  проверяет оба канала и ведёт воронку `fan:<id>` (saw → click → joined, had — уже был) — блок «Канал
+  обновлений» в админке, вкладка «Продукт».
   Ролик: `vite preview` → `node promo/capture.cjs` (съёмка, данные в $, касания дорожкой) →
   `node promo/render.cjs square <id> --scene channel --jobs 4` (`channel.html`: телефон на мятном
   фоне, палец, камера по касаниям) → `promo/media/` → коммит → адрес в `channel.ts`.
@@ -240,6 +247,8 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 - **График админки:** `viewBox` — по фактической ширине блока; потоки и накопления — на разных осях.
 
 ## Текущее состояние
+**2.7.2** (23.10.2026): особое задание на неделю — подписка на @koshel_update (299 XP, титул «Преданный
+фанат»), ссылка канала «из приложения» и воронка в админке; аватарки бота и канала, посты 2.7.1 и 2.7 в канале.
 **2.7.1** (23.10.2026): плавность. Скрытые вкладки — `content-visibility`, посещённые остаются
 отрисованными; тема с первого кадра; шторки на композиторе, «Записать» закрывает сразу; синк не шлёт
 снимок ради полей вида; поиск с `useDeferredValue`; стор без JSON на каждое изменение. CPU ×4,
@@ -267,4 +276,8 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 Идеи на потом: GIF-описание бота в BotFather; окно напоминаний по местному времени; защита облака
 от тихого принятия копии, если стор менялся после старта; разбор правилами «на 3 месяца»
 (число перед единицей времени — не сумма); канал: новое крупное обновление → пост с роликом и
-оформление сами (сейчас — вручную: `POST`, `LAUNCH_ID`).
+оформление сами (сейчас — вручную: `POST`, `LAUNCH_ID`); **Google Play** — Capacitor-обёртка той же
+сборки (без Telegram приложение уже работает: облако, рейтинг, ассистент, бот выключаются), вход через
+Telegram (токен воркера вместо initData), локальные напоминания; аккаунт $25 + проверка личности, закрытый
+тест 12 человек × 14 дней; Кошель+ в Play — только Google Play Billing (из РФ выплат нет) → бесплатно, Кошель+
+купленным в Telegram; параллельно RuStore. Оценка: 1–2 недели работы, 4–6 недель до публикации.
