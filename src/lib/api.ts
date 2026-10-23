@@ -429,19 +429,22 @@ export const NO_SUB: SubStatus = { subscribed: false, updates: false, link: null
 /**
  * Подписки текущего пользователя — бот делает getChatMember. `fan` — шаг
  * воронки особого задания для аналитики: задание на экране ('saw') или нажали
- * «Подписаться» ('click'). Вне Telegram / без бэкенда / при ошибке — всё false.
+ * «Подписаться» ('click'); без него канал обновлений воркер не проверяет.
+ * Вне Telegram / без бэкенда / при ошибке — null: прежний ответ не затирать
+ * (иначе сбой сети превращал бы «Забрать» обратно в «Подписаться»).
  */
-export async function checkSubscription(fan?: 'saw' | 'click'): Promise<SubStatus> {
-  if (!isBackendConfigured() || !tg.initData) return NO_SUB
+export async function checkSubscription(fan?: 'saw' | 'click'): Promise<SubStatus | null> {
+  if (!isBackendConfigured() || !tg.initData) return null
   try {
     const res = await post('/check-sub', { initData: tg.initData, ...(fan ? { fan } : {}) })
+    if (res?.ok !== true) return null
     return {
       subscribed: !!res?.subscribed,
       updates: !!res?.updates,
       link: typeof res?.link === 'string' && res.link.startsWith('https://t.me/') ? res.link : null,
     }
   } catch {
-    return NO_SUB
+    return null
   }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useStore } from '../../store/transactions'
 import { Clock3 } from 'lucide-react'
 import type { QuestProgress } from '../../lib/quests'
 import type { TFunc } from '../../lib/i18n'
@@ -25,6 +26,7 @@ export function LimitedQuestCard({
   onExpire: () => void
 }) {
   const { def, claimable } = q
+  const en = useStore((s) => s.lang) === 'en'
   return (
     <section className="quest-glow tab-enter mx-4 mt-6">
       <div className="quest-glow-body p-4">
@@ -41,7 +43,11 @@ export function LimitedQuestCard({
             <div className="caption mt-0.5 leading-snug text-ink-subtle">{t('quest.' + def.id + '.desc')}</div>
             <div className="caption mt-1.5 font-semibold tabular-nums text-ink-muted">
               {t('quest.limited_reward', { xp: def.xp })}{' '}
-              <span className="plus-gold-ink font-bold">«{t('reward.' + def.reward + '.name')}»</span>
+              <span className="plus-gold-ink font-bold">
+                {en ? '“' : '«'}
+                {t('reward.' + def.reward + '.name')}
+                {en ? '”' : '»'}
+              </span>
             </div>
           </div>
         </div>

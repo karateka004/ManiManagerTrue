@@ -110,10 +110,16 @@ export function RewardsPage() {
   // Подписки на каналы (subscribe_channel и особое fan_channel) — проверяет бот
   // через getChatMember. Пока особое задание на экране, проверка — ещё и шаг его
   // воронки для аналитики ('saw'; нажатие «Подписаться» — 'click').
+  // Применяется только ответ на последний запрос: запоздавший старый не
+  // перетрёт свежий, а сбой (null) оставит то, что уже знали.
   const [sub, setSub] = useState<SubStatus>(NO_SUB)
+  const subSeq = useRef(0)
   const recheckSub = (fan?: 'click') => {
+    const seq = ++subSeq.current
     const shown = openLimited(useStore.getState().claimedQuests)
-    checkSubscription(shown ? (fan ?? 'saw') : undefined).then(setSub).catch(() => {})
+    checkSubscription(shown ? (fan ?? 'saw') : undefined)
+      .then((r) => { if (r && seq === subSeq.current) setSub(r) })
+      .catch(() => {})
   }
   useEffect(() => {
     if (!active) return
@@ -209,7 +215,8 @@ export function RewardsPage() {
   // Особое задание: своя карточка над бордом, пока идёт его время. Таймер
   // карточки по окончании перерисовывает вкладку — и карточка уходит.
   const [, setLimitedEnded] = useState(0)
-  const fanQuest = limitedQuest(metrics, claimedQuests)
+  // Вне Telegram подписку не проверить — невыполнимое задание не показываем.
+  const fanQuest = tg.initData && isBackendConfigured() ? limitedQuest(metrics, claimedQuests) : null
   const equipReward = useStore((s) => s.equipReward)
   // Канал — по ссылке «из приложения» (Telegram считает вступивших по ней).
   const onFanSubscribe = (q: QuestProgress) => {

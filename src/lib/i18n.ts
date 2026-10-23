@@ -66,6 +66,7 @@ const DICT: Dict = {
   'lvlrew.kicker': { ru: 'Награды', en: 'Rewards' },
 
   'lvlrew.title': { ru: 'Титулы уровня', en: 'Level titles' },
+  'lvlrew.special': { ru: 'Особые', en: 'Special' },
   'lvlrew.subtitle': { ru: 'Уникальный титул за каждый уровень', en: 'A unique title for every level' },
   'lvlrew.hint': {
     ru: 'Титул открывается за уровень И за рекорд ежедневной серии — заходи каждый день и забирай награду серии. Надень титул в профиль, и его увидят все в таблице лидеров.',

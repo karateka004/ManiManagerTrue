@@ -1217,13 +1217,13 @@ export const ADMIN_HTML = `<!doctype html>
     // Особое задание «подпишись на канал»: воронка по людям (fan:<id>, см. channel.ts).
     var f=D.fan, fanBlock='';
     if(f){
-      var seen=f.saw+f.click+f.joined, tapped=f.click+f.joined;
+      var seen=f.saw+f.click+f.joined+(f.self||0), tapped=f.click+f.joined;
       var share=function(a,b){ return b?Math.round(a*100/b)+'%':'—'; };
       fanBlock='<div class="sec"><h2>Канал обновлений</h2><span class="aside">особое задание</span></div>'
         +'<div class="grid g4">'
         +tile('Видели задание',nf(seen),'','<span>не подписанными</span>')
         +tile('Нажали «Подписаться»',nf(tapped),'','<span>'+share(tapped,seen)+' видевших</span>')
-        +tile('Подписались',nf(f.joined),'','<span>'+share(f.joined,seen)+' видевших · за неделю '+nf(f.joined7)+'</span>')
+        +tile('Подписались по кнопке',nf(f.joined),'','<span>'+share(f.joined,seen)+' видевших · за неделю '+nf(f.joined7)+' · сами '+nf(f.self||0)+'</span>')
         +tile('Уже были подписаны',nf(f.had),'','<span>задание сразу готово</span>')
         +'</div>';
     }

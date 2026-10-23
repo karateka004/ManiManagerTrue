@@ -1246,8 +1246,15 @@ async function handleCheckSub(req: Request, env: Env, origin: string | null): Pr
       return false
     }
   }
-  const [subscribed, updates, link] = await Promise.all([member(CHANNEL_USERNAME), member(CHANNEL), appInviteLink(env)])
-  if (body.fan === 'saw' || body.fan === 'click') await trackFan(env, user.id, body.fan, updates).catch(() => {})
+  // Канал обновлений — только пока у человека на экране особое задание (`fan`):
+  // после его срока и у старых клиентов лишних запросов к Telegram и KV нет.
+  const fan = body.fan === 'saw' || body.fan === 'click' ? body.fan : null
+  const [subscribed, updates, link] = await Promise.all([
+    member(CHANNEL_USERNAME),
+    fan ? member(CHANNEL) : false,
+    fan ? appInviteLink(env).catch(() => null) : null,
+  ])
+  if (fan) await trackFan(env, user.id, fan, updates).catch(() => {})
   return json({ ok: true, subscribed, updates, link }, { status: 200 }, env, origin)
 }
 

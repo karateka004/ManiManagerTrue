@@ -164,6 +164,12 @@ export async function ensureAppLink(env: Env): Promise<void> {
   if (have || paused) return
   const owner = String(env.OWNER_CHAT_ID ?? '').trim()
   const r = await createChatInviteLink(env, CHANNEL, APP_LINK_NAME)
+  // Сеть или лимит Telegram — просто попробуем на следующем тике крона.
+  const noRights = /right|admin|forbidden|not enough/i.test(r.description ?? '')
+  if (!r.link && !noRights) {
+    await env.REFERRALS.put(`${APP_LINK_KEY}:fail`, '1', { expirationTtl: 600 })
+    return
+  }
   if (r.link) {
     await env.REFERRALS.put(APP_LINK_KEY, r.link)
     if (owner)
@@ -177,27 +183,30 @@ export async function ensureAppLink(env: Env): Promise<void> {
 
 /**
  * Воронка задания по человеку (KV `fan:<id>`): задание на экране, а он не
- * подписан — 'saw'; нажал «Подписаться» — 'click'; подписался после этого —
- * 'joined'. Подписан с первого показа — 'had' (не заслуга задания).
- * Конечные состояния не меняются; запись — только при смене состояния.
+ * подписан — 'saw'; нажал «Подписаться» — 'click'; подписался после нажатия —
+ * 'joined'; подписался, не нажимая (из поста, по чужой ссылке), — 'self'.
+ * Подписан с первого показа — 'had' (не заслуга задания). Конечные состояния
+ * не меняются; запись — только при смене состояния.
  */
-export type FanState = 'saw' | 'click' | 'joined' | 'had'
+export type FanState = 'saw' | 'click' | 'joined' | 'self' | 'had'
 export function nextFan(prev: FanState | null, step: 'saw' | 'click', subscribed: boolean): FanState {
-  if (prev === 'joined' || prev === 'had') return prev
-  if (subscribed) return prev ? 'joined' : 'had'
-  return step === 'click' || prev === 'click' ? 'click' : 'saw'
+  if (prev === 'joined' || prev === 'self' || prev === 'had') return prev
+  const clicked = step === 'click' || prev === 'click'
+  if (subscribed) return !prev ? 'had' : clicked ? 'joined' : 'self'
+  return clicked ? 'click' : 'saw'
 }
 
 export async function trackFan(env: Env, userId: number, step: 'saw' | 'click', subscribed: boolean): Promise<void> {
   const key = `fan:${userId}`
   const prev = (await env.REFERRALS.get(key)) as FanState | null
   const next = nextFan(prev, step, subscribed)
-  if (next !== prev) await env.REFERRALS.put(key, next, { metadata: { s: next, at: Date.now() } })
+  // Срок — с запасом после недели задания: потом воронка уже не нужна.
+  if (next !== prev) await env.REFERRALS.put(key, next, { metadata: { s: next, at: Date.now() }, expirationTtl: 90 * 86_400 })
 }
 
 /** Для админки: сколько людей на каждом шаге воронки и сколько подписалось за неделю. */
 export async function fanStats(env: Env, now = Date.now()): Promise<Record<FanState, number> & { joined7: number }> {
-  const out = { saw: 0, click: 0, joined: 0, had: 0, joined7: 0 }
+  const out = { saw: 0, click: 0, joined: 0, self: 0, had: 0, joined7: 0 }
   let cursor: string | undefined
   do {
     const page = await env.REFERRALS.list<{ s?: FanState; at?: number }>({ prefix: 'fan:', cursor })

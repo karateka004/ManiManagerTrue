@@ -5,7 +5,7 @@ import { hapticTap, hapticNotify } from '../lib/telegram'
 import { Group, Row } from '../components/ui/Group'
 import { ScreenHeader } from '../components/ui/ScreenHeader'
 import { useLevel } from '../components/LevelBar'
-import { LEVEL_REWARDS, type RewardDef } from '../lib/rewards'
+import { LEVEL_REWARDS, REWARDS, type RewardDef } from '../lib/rewards'
 import { RewardBadge } from '../components/rewards/RewardBadge'
 import { burst, RARITY_FX } from '../lib/fx'
 
@@ -22,6 +22,11 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   const streakNow = useStore((s) => s.streak.count)
   const owned = useStore((s) => s.owned)
   const claimed = LEVEL_REWARDS.filter((r) => owned.includes(r.id)).length
+  // Особые титулы (за задание, подарок от команды) — только полученные: надеть
+  // или вернуть их больше негде, в Магазине их нет.
+  const special = REWARDS.filter(
+    (r) => r.kind === 'title' && (r.source === 'quest' || r.source === 'gift') && owned.includes(r.id),
+  )
 
   return (
     <div className="pb-28">
@@ -42,6 +47,14 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
           value={<span className="text-ink-muted">{t('lvlrew.streak_value', { best: days, now: streakNow })}</span>}
         />
       </Group>
+
+      {special.length > 0 && (
+        <Group className="mx-4 mt-6" title={t('lvlrew.special')}>
+          {special.map((r) => (
+            <LevelRewardRow key={r.id} reward={r} currentLevel={lvl.level} days={days} />
+          ))}
+        </Group>
+      )}
 
       <Group className="mx-4 mt-6" footer={t('lvlrew.progress', { n: claimed, total: LEVEL_REWARDS.length })}>
         {LEVEL_REWARDS.map((r) => (
@@ -94,7 +107,11 @@ function LevelRewardRow({
     <div className={`row ${unlocked ? '' : 'opacity-55'}`}>
       {/* Жетон уровня: градиент по редкости + номер уровня в углу */}
       <span key={owned ? 'own' : 'no'} className={`mr-3 shrink-0 ${owned ? 'pop' : ''}`}>
-        <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={40} dim={!unlocked} />
+        {reward.source === 'level' ? (
+          <RewardBadge level={reward.unlockLevel} rarity={reward.rarity} size={40} dim={!unlocked} />
+        ) : (
+          <RewardBadge rewardId={reward.id} rarity={reward.rarity} size={40} />
+        )}
       </span>
 
       <div className="row-main">

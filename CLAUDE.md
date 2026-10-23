@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 24) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -188,7 +188,7 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
   Ролик со звуком — `kind: 'video'`, немой как гиф — `'animation'`. В канале: 2.7.1 (№4), 2.7 (тизер Кошель+).
   Задание «подпишись» в приложении ведёт по именной ссылке «Кошель — задание» (`ensureAppLink`, крон, KV
   `channel:applink`; вступивших по ней Telegram показывает в канале → «Пригласительные ссылки»). `/check-sub`
-  проверяет оба канала и ведёт воронку `fan:<id>` (saw → click → joined, had — уже был) — блок «Канал
+  проверяет канал обновлений только при идущем задании (`fan`) и ведёт воронку `fan:<id>` (saw → click → joined; self — сам, без кнопки; had — уже был; срок 90 дн.) — блок «Канал
   обновлений» в админке, вкладка «Продукт».
   Ролик: `vite preview` → `node promo/capture.cjs` (съёмка, данные в $, касания дорожкой) →
   `node promo/render.cjs square <id> --scene channel --jobs 4` (`channel.html`: телефон на мятном
