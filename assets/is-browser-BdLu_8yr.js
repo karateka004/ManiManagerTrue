@@ -1,0 +1,1 @@
+import{cx as e}from"./vendor-JvJkt7FX.js";const l=e.createContext({}),a=e.createContext(null);function x(t=!0){const s=e.useContext(a);if(s===null)return[!0,null];const{isPresent:r,onExitComplete:n,register:u}=s,o=e.useId();e.useEffect(()=>{t&&u(o)},[t]);const c=e.useCallback(()=>t&&n&&n(o),[o,n,t]);return!r&&n?[!1,c]:[!0]}const i=typeof window<"u";export{l as L,a as P,i,x as u};
