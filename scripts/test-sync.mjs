@@ -9,7 +9,7 @@
  *
  * Запуск: `node scripts/test-sync.mjs` (Node 22.18+ сам понимает .ts).
  */
-import { createdAtOf, localAdditions, makeBase, mergeStates, planStartup, canonical } from '../src/lib/syncMerge.ts'
+import { createdAtOf, localAdditions, makeBase, mergeStates, planStartup, canonical, doubledRewards } from '../src/lib/syncMerge.ts'
 
 let failed = 0
 let passed = 0
@@ -170,6 +170,30 @@ check('чужой формат id — неизвестно', createdAtOf('t1', N
   check('пусто здесь, в облаке операции — принять как есть (даже с основой)', planStartup({ ...s, cloudAt: 200, localTx: 0, baseV: 100 }) === 'adopt')
   check('до 2.6: облако новее — принять', planStartup({ ...s, cloudAt: 400, localAt: 300 }) === 'adopt')
   check('до 2.6: своё новее — отправить', planStartup({ ...s, cloudAt: 200, localAt: 300 }) === 'push')
+}
+
+{
+  // Разовые награды на двух устройствах до синка — одна, а не две.
+  const R = { quest: (id) => ({ q1: { xp: 30, coins: 10 }, q2: { xp: 50, coins: 20 } })[id], streak: (n) => ({ xp: 2, coins: 5 + n }), referral: { xp: 25, coins: 10 } }
+  const B3 = { bonusXp: 100, coins: 50, claimedQuests: ['q0'], streak: { count: 2, best: 2, lastClaim: 'd2' }, rewardedReferrals: 1 }
+  const base3 = makeBase(B3, 1)
+  // Оба забрали q1; здесь ещё q2.
+  const L = { ...B3, bonusXp: 180, coins: 80, claimedQuests: ['q0', 'q1', 'q2'] }
+  const C = { ...B3, bonusXp: 130, coins: 60, claimedQuests: ['q0', 'q1'] }
+  const m = mergeStates(L, C, base3, undefined, R).merged
+  check('задание, забранное на обоих, — одна награда (XP 100+30+50)', m.bonusXp === 180, m.bonusXp)
+  check('и монеты — одни (50+10+20)', m.coins === 80, m.coins)
+  check('без таблиц — по-старому (складываем)', mergeStates(L, C, base3).merged.bonusXp === 210)
+  // Пришли к одному и тому же числу — вычитать нечего.
+  const same = mergeStates({ ...C }, { ...C, themeMode: 'dark' }, base3, undefined, R).merged
+  check('одинаковые счётчики не трогаем', same.bonusXp === 130 && same.coins === 60, same)
+  // День серии на обоих — один; друзья, вознаграждённые обоими, — по разу.
+  const L2 = { ...B3, bonusXp: 102 + 50, coins: 58 + 20, streak: { count: 3, best: 3, lastClaim: 'd3' }, rewardedReferrals: 3 }
+  const C2 = { ...B3, bonusXp: 102 + 25, coins: 58 + 10, streak: { count: 3, best: 3, lastClaim: 'd3' }, rewardedReferrals: 2 }
+  const d = doubledRewards(L2, C2, B3, R)
+  check('серия и друзья: вычесть один день и одного друга', d.xp === 2 + 25 && d.coins === 8 + 10, d)
+  const m2 = mergeStates(L2, C2, base3, undefined, R).merged
+  check('серия и друзья: итог как с одного устройства', m2.bonusXp === 100 + 2 + 50 && m2.coins === 50 + 8 + 20, { xp: m2.bonusXp, coins: m2.coins })
 }
 
 if (failed) {

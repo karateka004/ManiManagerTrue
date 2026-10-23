@@ -15,7 +15,8 @@
  *   - добавлено с обеих сторон — оставляем всё (запись бота, которую забрали
  *     оба телефона, — один раз: ключ содержимого `sameAs`);
  *   - изменено с обеих сторон: счётчики (монеты, опыт, события) складываются
- *     приращениями, купленное и полученные задания объединяются, у серии дней
+ *     приращениями (разовая награда, полученная на обоих устройствах, — одна:
+ *     `doubledRewards`), купленное и полученные задания объединяются, у серии дней
  *     побеждает более поздняя, у меток времени — поздняя; настройки-объекты
  *     (лимиты) сливаются по ключам; в остальном побеждает это устройство —
  *     в нём человек действовал последним.
@@ -261,15 +262,58 @@ export function mergeList<T>(
   return opts.newFirst ? [...mineNew, ...out] : [...out, ...mineNew]
 }
 
+/** Таблицы разовых наград. Даёт вызывающий: у этого модуля нет зависимостей. */
+export interface OnceRewards {
+  quest: (id: string) => { xp: number; coins: number } | undefined
+  streak: (count: number) => { xp: number; coins: number }
+  referral: { xp: number; coins: number }
+}
+
+type StreakLike = { count?: unknown; lastClaim?: unknown }
+
+/**
+ * Разовые награды, полученные на ОБОИХ устройствах с прошлой синхронизации:
+ * одно и то же задание, один и тот же день серии, одни и те же друзья. Каждая
+ * сидит в обоих приращениях, и счётчик сложил бы её дважды — сколько вычесть.
+ * Без нужного поля в основе — ничего не вычитаем (не знаем, что было).
+ */
+export function doubledRewards(local: Data, cloud: Data, base: Data, r: OnceRewards): { xp: number; coins: number } {
+  let xp = 0
+  let coins = 0
+  const add = (v: { xp: number; coins: number } | undefined, n = 1) => {
+    if (v) {
+      xp += v.xp * n
+      coins += v.coins * n
+    }
+  }
+  const ids = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : [])
+  if (Array.isArray(base.claimedQuests)) {
+    const was = new Set(ids(base.claimedQuests))
+    const there = new Set(ids(cloud.claimedQuests))
+    for (const id of new Set(ids(local.claimedQuests))) if (!was.has(id) && there.has(id)) add(r.quest(id))
+  }
+  const ls = local.streak as StreakLike | undefined
+  const cs = cloud.streak as StreakLike | undefined
+  const bs = base.streak as StreakLike | undefined
+  if (isPlainObject(bs) && isPlainObject(ls) && isPlainObject(cs) && typeof ls.lastClaim === 'string' && num(ls.count)) {
+    if (ls.lastClaim === cs.lastClaim && ls.lastClaim !== bs.lastClaim && ls.count === cs.count) add(r.streak(ls.count))
+  }
+  const [lr, cr, br] = [local.rewardedReferrals, cloud.rewardedReferrals, base.rewardedReferrals]
+  if (num(lr) && num(cr) && num(br) && Math.min(lr, cr) > br) add(r.referral, Math.min(lr, cr) - br)
+  return { xp, coins }
+}
+
 /**
  * Слить локальное состояние с облачным относительно основы. Возвращает итог и
- * признак «отличается от облачного» — тогда итог надо отправить.
+ * признак «отличается от облачного» — тогда итог надо отправить. `rewards` —
+ * таблицы разовых наград: без них награда с двух устройств могла задвоиться.
  */
 export function mergeStates(
   local: Data,
   cloud: Data,
   base: SyncBase,
   sameAs?: (t: unknown) => string,
+  rewards?: OnceRewards,
 ): { merged: Data; differs: boolean } {
   const merged: Data = {}
   for (const k of new Set([...Object.keys(cloud), ...Object.keys(local)])) {
@@ -282,6 +326,17 @@ export function mergeStates(
       const v = mergeValue(k, local[k], cloud[k], base.scalars[k])
       if (v !== undefined) merged[k] = v
     }
+  }
+  if (rewards) {
+    const dup = doubledRewards(local, cloud, base.scalars, rewards)
+    // Только где счётчик и правда сложил обе стороны; пришли к одному числу —
+    // награда уже одна.
+    const summed = (k: string) => {
+      const [l, c, b] = [local[k], cloud[k], base.scalars[k]]
+      return num(l) && num(c) && num(b) && l !== c && l !== b && c !== b
+    }
+    if (dup.xp > 0 && summed('bonusXp')) merged.bonusXp = Math.max(0, (merged.bonusXp as number) - dup.xp)
+    if (dup.coins > 0 && summed('coins')) merged.coins = Math.max(0, (merged.coins as number) - dup.coins)
   }
   return { merged, differs: !same(merged, cloud) }
 }

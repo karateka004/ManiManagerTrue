@@ -22,9 +22,20 @@
  * Вне Telegram (обычный браузер, превью) синк выключен — приложение работает
  * локально, как раньше.
  */
-import { useStore, flushPersist } from '../store/transactions'
+import { useStore, flushPersist, REF_REWARD } from '../store/transactions'
 import { ackInbox, isBackendConfigured, pullCloud, pullInbox, pushCloud, type CloudSnapshot } from './api'
-import { dataOf, hashString, localAdditions, makeBase, mergeStates, parseBase, planStartup, type SyncBase } from './syncMerge'
+import {
+  dataOf,
+  hashString,
+  localAdditions,
+  makeBase,
+  mergeStates,
+  parseBase,
+  planStartup,
+  type OnceRewards,
+  type SyncBase,
+} from './syncMerge'
+import { streakReward } from './streak'
 import { dedupeKey } from './csvImport'
 import { translate } from './i18n'
 import { showToast } from './toast'
@@ -337,6 +348,20 @@ async function resolveConflict(snap: CloudSnapshot): Promise<void> {
  * `differs` — итог отличается от облачного, его надо отправить; `visible` —
  * на экране что-то поменялось.
  */
+/**
+ * Таблицы разовых наград для слияния: одно задание, забранное на двух
+ * устройствах, — одна награда. Задания — ленивым чанком (в стартовом их нет);
+ * не загрузился — сливаем без поправки, как раньше.
+ */
+function onceRewards(): Promise<OnceRewards | undefined> {
+  return import('./quests')
+    .then(({ QUESTS }) => {
+      const byId = new Map(QUESTS.map((q) => [q.id, { xp: q.xp, coins: q.coins }]))
+      return { quest: (id: string) => byId.get(id), streak: (n: number) => streakReward(n), referral: REF_REWARD }
+    })
+    .catch(() => undefined)
+}
+
 function mergeCloud(
   snap: CloudSnapshot,
   mode: 'merge' | 'adopt' | 'replace' = 'merge',
@@ -346,6 +371,7 @@ function mergeCloud(
     // времени создания, без трёхстороннего слияния. 'replace' — в сторе данные
     // другого аккаунта: облако как есть, ничего своего не возвращаем.
     const base = mode === 'merge' ? readBase() : null
+    const rewards = base ? await onceRewards() : undefined
     const local = dataOf(useStore.getState())
     adopting = true
     flushPersist() // отложенная запись не должна «догнать» и затереть облако
@@ -356,7 +382,7 @@ function mergeCloud(
       await useStore.persist.rehydrate()
       const cloud = dataOf(useStore.getState())
       const { merged, differs } = base
-        ? mergeStates(local, cloud, base, (t) => dedupeKey(t as Parameters<typeof dedupeKey>[0]))
+        ? mergeStates(local, cloud, base, (t) => dedupeKey(t as Parameters<typeof dedupeKey>[0]), rewards)
         : mode === 'replace'
           ? { merged: cloud, differs: false }
           : legacyMerge(local, cloud, legacyLocalAt())
