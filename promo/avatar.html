@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  Аватарки бота и канала обновлений: белый кошелёк (lucide `wallet`, как иконки
+  в приложении) и искра «новое». Telegram режет аватарку кругом — всё важное
+  внутри вписанного круга.
+
+  #mint — светлая, фон роликов канала: аватарка бота.
+  #night — тёмная карта-герой приложения: аватарка канала @koshel_update.
+    node promo/avatar.cjs   → promo/media/koshel-bot-avatar.jpg и koshel-channel-avatar.jpg
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; background: #0b0e0c; }
+  .a {
+    position: relative;
+    width: 640px;
+    height: 640px;
+    overflow: hidden;
+    /* Зерно — как у карты-героя в приложении: убирает пластиковую гладкость. */
+    --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.22'/></svg>");
+  }
+  /* Фон роликов канала (channel.html). */
+  .mint {
+    background-image:
+      var(--noise),
+      radial-gradient(55% 45% at 50% 44%, rgb(255 255 255 / 0.2), transparent 72%),
+      radial-gradient(90% 70% at 8% 0%, rgb(140 236 190 / 0.75), transparent 60%),
+      radial-gradient(80% 70% at 100% 100%, rgb(10 70 52 / 0.7), transparent 70%),
+      linear-gradient(160deg, #4fc597 0%, #2f9d75 50%, #1b6f52 100%);
+    background-blend-mode: overlay, normal, normal, normal, normal;
+  }
+  /* Карта-герой приложения: мятное сияние сверху справа, низ уходит в почти чёрный. */
+  .night {
+    background-image:
+      var(--noise),
+      radial-gradient(48% 48% at 50% 46%, rgb(93 185 150 / 0.3), transparent 72%),
+      radial-gradient(70% 70% at 82% 10%, rgb(93 185 150 / 0.55), transparent 64%),
+      radial-gradient(60% 60% at 10% 96%, rgb(60 163 123 / 0.2), transparent 70%),
+      linear-gradient(160deg, rgb(29 87 67) 0%, rgb(14 30 24) 52%, rgb(11 14 12) 86%);
+    background-blend-mode: overlay, normal, normal, normal, normal;
+  }
+  svg { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div id="a" class="a mint">
+  <svg width="640" height="640" viewBox="0 0 640 640">
+    <defs>
+      <!-- Свет сверху: белый к чуть мятному внизу — объём без пластика. -->
+      <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff" />
+        <stop offset="1" stop-color="#d9f2e5" />
+      </linearGradient>
+      <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#b8f0d0" />
+        <stop offset="1" stop-color="#5db996" />
+      </linearGradient>
+      <!-- Области фильтров и маски — с запасом и в единицах знака: иначе размытие
+           обрезается по краю области и на фоне проступает квадрат. -->
+      <filter id="shadow" filterUnits="userSpaceOnUse" x="-12" y="-12" width="48" height="48">
+        <feDropShadow dx="0" dy="0.75" stdDeviation="1.1" flood-color="#04110b" flood-opacity="0.4" />
+      </filter>
+      <filter id="glow" filterUnits="userSpaceOnUse" x="-24" y="-24" width="72" height="72">
+        <feGaussianBlur stdDeviation="3.2" />
+      </filter>
+      <!-- Искра вырезает себе место в кошельке — как метка на иконке. -->
+      <mask id="cut" maskUnits="userSpaceOnUse" x="-12" y="-12" width="48" height="48">
+        <rect x="-12" y="-12" width="48" height="48" fill="#fff" />
+        <circle cx="19.6" cy="4.4" r="4.7" fill="#000" />
+      </mask>
+    </defs>
+
+    <!-- Знак 24×24 (lucide) → 340 px в центре круга. -->
+    <g transform="translate(320 322) scale(14.2) translate(-12 -12)">
+      <g filter="url(#shadow)">
+        <g mask="url(#cut)" fill="none" stroke="url(#ink)" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
+          <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+        </g>
+      </g>
+      <!-- Искра «новое»: lucide `sparkle`, свечение под ней. -->
+      <g transform="translate(19.6 4.4) scale(0.31) translate(-12 -12)">
+        <path id="sp-glow" filter="url(#glow)" opacity="0.55" fill="#ffffff"
+          d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+        <path id="sp" fill="#ffffff"
+          d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+      </g>
+    </g>
+  </svg>
+</div>
+<script>
+  // #night — на тёмном искра мятная: белая там теряет «новизну».
+  if (location.hash === '#night') {
+    document.getElementById('a').className = 'a night'
+    document.getElementById('sp').setAttribute('fill', 'url(#spark)')
+    document.getElementById('sp-glow').setAttribute('fill', '#7fe0b0')
+  }
+</script>
+</body>
+</html>
