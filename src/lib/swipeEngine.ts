@@ -85,6 +85,7 @@ export function attachSwipe(root: HTMLElement, host: () => SwipeHost): () => voi
       el.style.transform = ''
       el.style.opacity = ''
       el.style.visibility = ''
+      el.style.contentVisibility = ''
       el.style.willChange = ''
     }
     styled = []
@@ -111,13 +112,17 @@ export function attachSwipe(root: HTMLElement, host: () => SwipeHost): () => voi
     if (shown && shown !== panel) {
       // Палец повернул в другую сторону — прежнего соседа прячем.
       shown.style.visibility = ''
+      shown.style.contentVisibility = ''
       shown.style.transform = ''
       shown.style.transition = ''
       shown = null
     }
     if (!panel || target?.kind !== 'panel') return
     shown = panel
+    // Скрытую панель прячет content-visibility (на старых iOS — visibility):
+    // открываем оба, высоту ниже читаем уже у показанной.
     panel.style.visibility = 'visible'
+    panel.style.contentVisibility = 'visible'
     put(panel, x + (dir === 'next' ? d.width : -d.width), neighborY(d, panel, target.scroll), transition)
   }
 

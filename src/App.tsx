@@ -2,6 +2,7 @@ import {
   Component,
   Suspense,
   lazy,
+  startTransition,
   memo,
   useCallback,
   useEffect,
@@ -23,6 +24,7 @@ import { initCloudSync } from './lib/cloud'
 import { computeXp, levelFor } from './lib/levels'
 import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
+import { whenIdle } from './lib/idle'
 import { useBackButton } from './lib/useBackButton'
 import { resetRewardsNav, rewardsNav } from './lib/rewardsNav'
 import { useSwipeNav, type SwipeDir, type SwipeHost } from './lib/useSwipeNav'
@@ -62,20 +64,6 @@ function swipeNeighbors(tab: Tab): Record<SwipeDir, Tab | null> {
 function keptFor(tab: Tab): Tab[] {
   const n = swipeNeighbors(tab)
   return ALL_TABS.filter((t) => t === tab || t === n.prev || t === n.next)
-}
-
-/** Сделать в простое; возвращает отмену. На iOS requestIdleCallback нет — таймер. */
-function whenIdle(fn: () => void): () => void {
-  const w = window as Window & {
-    requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number
-    cancelIdleCallback?: (id: number) => void
-  }
-  if (w.requestIdleCallback) {
-    const id = w.requestIdleCallback(fn, { timeout: 1000 })
-    return () => w.cancelIdleCallback?.(id)
-  }
-  const id = setTimeout(fn, 400)
-  return () => clearTimeout(id)
 }
 
 // Лениво грузим вкладки кроме главной — каждая едет отдельным чанком.
@@ -334,12 +322,16 @@ export default function App() {
   // блокировку со счётчиком — их закрытие её не снимет.
   useEffect(() => lockVerticalSwipes(), [])
 
-  // Какие экраны держим отрисованными, кроме открытого: соседей по свайпу.
-  // Дорисовываем в простое после переключения — сам переход их не ждёт.
+  // Какие экраны держим отрисованными, кроме открытого: соседей по свайпу и
+  // вкладки, где уже побывали, — на них возвращаемся без монтажа заново
+  // (скрытая панель браузеру почти ничего не стоит, см. .tab-panel[data-off]).
+  // Дорисовываем в простое после переключения и переходом (startTransition):
+  // React режет монтаж на куски и не держит касания, а свайп подхватит соседа,
+  // как только тот появится.
   const [kept, setKept] = useState<Tab[]>([])
   useEffect(() => {
     const want = keptFor(tab)
-    return whenIdle(() => setKept((k) => (sameTabs(k, want) ? k : want)))
+    return whenIdle(() => startTransition(() => setKept((k) => keepWith(k, want))))
   }, [tab])
   const panelRefs = useRef<Partial<Record<Tab, HTMLDivElement | null>>>({})
   const setPanelRef = useCallback((t: Tab, el: HTMLDivElement | null) => {
@@ -362,7 +354,7 @@ export default function App() {
       },
       begin: () => {
         const want = keptFor(navRef.current.tab)
-        setKept((k) => (want.every((t) => k.includes(t)) ? k : [...new Set([...k, ...want])]))
+        startTransition(() => setKept((k) => keepWith(k, want)))
       },
       progress: (p, follow) => {
         // Капсула нижней панели едет вместе с экранами. С Настроек — нет: там
@@ -468,16 +460,25 @@ interface PageProps {
   openRewards: () => void
 }
 
-function sameTabs(a: Tab[], b: Tab[]): boolean {
-  return a.length === b.length && a.every((t, i) => t === b[i])
+/**
+ * Отрисованные экраны: прежние плюс нужные сейчас. Настройки — только пока
+ * нужны: у них свои запросы при открытии, держать их скрытыми незачем.
+ */
+function keepWith(kept: Tab[], want: Tab[]): Tab[] {
+  const next = [...new Set([...kept.filter((t) => t !== 'settings' || want.includes(t)), ...want])]
+  return next.length === kept.length && next.every((t) => kept.includes(t)) ? kept : next
 }
 
 /**
  * Панель одного экрана. memo: App перерисовывается на каждую шторку и поиск,
  * а скрытым соседям это незачем — у них меняются только свои данные из стора.
  *
- * Скрытая панель — `inert` и `aria-hidden`: ни фокуса, ни озвучки, ни нажатий.
- * Своим эффектам она сообщает это через TabActiveContext.
+ * Скрытую панель прячет CSS (`.tab-panel[data-off]`, content-visibility): её
+ * содержимое не видно, не нажимается и не получает фокус; `aria-hidden` — для
+ * озвучки. `inert` не ставим: это наследуемый флаг стиля, и его снятие при
+ * каждом показе заставляло браузер пересчитать стили всей страницы. Своим
+ * эффектам панель сообщает о скрытости через TabActiveContext, заранее
+ * посчитанной её держит Prewarm.
  */
 const TabPanel = memo(function TabPanel({
   tab,
@@ -492,15 +493,20 @@ const TabPanel = memo(function TabPanel({
   setRef: (t: Tab, el: HTMLDivElement | null) => void
   pages: PageProps
 }) {
-  const ref = useCallback((el: HTMLDivElement | null) => setRef(tab, el), [setRef, tab])
+  const self = useRef<HTMLDivElement | null>(null)
+  const ref = useCallback(
+    (el: HTMLDivElement | null) => {
+      self.current = el
+      setRef(tab, el)
+    },
+    [setRef, tab],
+  )
   return (
     <div
       ref={ref}
       className="tab-panel"
       data-off={active ? undefined : ''}
       aria-hidden={active ? undefined : true}
-      // `inert` React 18 не знает — передаём строкой, как обычный атрибут.
-      {...(active ? null : ({ inert: '' } as Record<string, string>))}
     >
       <div className={`tab-host ${enter}`}>
         <TabActiveContext.Provider value={active}>
@@ -518,6 +524,7 @@ const TabPanel = memo(function TabPanel({
               {tab === 'rewards' && <RewardsPage />}
               {tab === 'profile' && <ProfilePage onOpenSettings={pages.openSettings} onOpenRewards={pages.openRewards} />}
               {tab === 'settings' && <SettingsPage onBack={pages.openProfile} />}
+              {!active && <Prewarm panel={self} />}
             </Suspense>
           </ChunkErrorBoundary>
         </TabActiveContext.Provider>
@@ -525,6 +532,29 @@ const TabPanel = memo(function TabPanel({
     </div>
   )
 })
+
+/**
+ * Скрытую панель (content-visibility: hidden) браузер не считает вовсе — ни
+ * стилей, ни раскладки. Когда её содержимое смонтировалось, один раз в простое
+ * считаем всё: браузер сохранит результат, и свайп или нажатие на вкладку
+ * покажут её без пересчёта. Показать, прочитать и спрятать — в одной задаче:
+ * кадр между ними не рисуется.
+ */
+function Prewarm({ panel }: { panel: { readonly current: HTMLElement | null } }) {
+  useEffect(
+    () =>
+      whenIdle(() => {
+        const el = panel.current
+        // Свайп уже показывает панель сам — не мешаем.
+        if (!el || !el.hasAttribute('data-off') || el.style.contentVisibility) return
+        el.style.contentVisibility = 'visible'
+        void el.offsetHeight
+        el.style.contentVisibility = ''
+      }),
+    [panel],
+  )
+  return null
+}
 
 /**
  * Крайний предохранитель: если чанк всё-таки не загрузился (и авто-reload из

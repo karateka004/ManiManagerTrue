@@ -93,13 +93,24 @@ button.row:active,
    соседний экран и ведёт обе панели за пальцем. Сдвиги ставит JS прямо в style
    и сам же их снимает; здесь только состояние покоя. */
 .tab-pager { overflow-x: hidden; overflow-x: clip; }
+/* Скрыта через content-visibility, а не visibility: та наследуется, и каждое
+   переключение заставляло браузер заново считать стили всех элементов обеих
+   панелей (~900, 20 мс под CPU ×4). content-visibility не наследуется, а уже
+   посчитанное браузер хранит — показ панели почти бесплатный. Содержимое при
+   этом не видно, не нажимается и не получает фокус. */
 .tab-panel[data-off] {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  visibility: hidden;
-  pointer-events: none;
+  content-visibility: hidden;
+}
+/* iOS до 18 content-visibility не знает — там прячем по-старому. */
+@supports not (content-visibility: hidden) {
+  .tab-panel[data-off] {
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 
 /* ---------- Нижняя панель ----------

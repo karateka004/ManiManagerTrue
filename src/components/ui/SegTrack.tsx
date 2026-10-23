@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type HTMLAttributes, type RefObject } from 'react'
 import clsx from 'clsx'
+import { useTabActive } from '../../lib/tabActive'
+import { whenIdle } from '../../lib/idle'
 
 /**
  * Скользящая плашка под выбранным пунктом сегмента.
@@ -13,11 +15,11 @@ import clsx from 'clsx'
  */
 /*
  * Расстановка плашек — одним проходом в кадре: сначала все замеры, потом все
- * записи. Замер в момент монтирования (useLayoutEffect) заставлял браузер
- * раскладывать весь экран посреди отрисовки React, а каждая следующая плашка —
- * ещё раз (замер после записи соседней). На старте под CPU ×4 это была самая
- * дорогая функция профиля. Кадр тот же: rAF идёт до отрисовки, и первая
- * картинка уже с плашкой; до замера сегмент рабочий и с обычной заливкой.
+ * записи. Замер в момент монтирования или нажатия (useLayoutEffect) заставлял
+ * браузер раскладывать весь экран посреди отрисовки React, а каждая следующая
+ * плашка — ещё раз (замер после записи соседней). Кадр тот же: rAF идёт до
+ * отрисовки, и первая картинка уже с плашкой на новом месте (переход едет от
+ * старого); до замера сегмент рабочий и с обычной заливкой.
  */
 type Measure = () => (() => void) | null
 const queue = new Set<Measure>()
@@ -39,6 +41,12 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
   const trackRef = useRef<T>(null)
   const pillRef = useRef<HTMLSpanElement>(null)
   const placed = useRef(false)
+  // Сегмент на скрытой вкладке (App держит её отрисованной рядом, а период у
+  // Главной и Аналитики общий): замер заставил бы браузер считать всю скрытую
+  // страницу посреди нажатия. Там плашку ставим в простое, без анимации.
+  const shown = useTabActive()
+  const shownRef = useRef(shown)
+  shownRef.current = shown
 
   /** Замер выбранного пункта → запись плашки (или null, если ставить некуда). */
   const measure = (animate: boolean): (() => void) | null => {
@@ -68,15 +76,26 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
     }
   }
 
-  // Смена выбора (нажатие) — сразу, до отрисовки: плашка едет от старого места.
-  // Первая расстановка — в общем проходе кадра (см. schedule). Измерять после
-  // каждой перерисовки нельзя: шторка операции перерисовывается на каждое
-  // нажатие клавиши, и браузер пересчитывал бы раскладку посреди ввода.
+  /** Поставить плашку: на виду — в ближайшем кадре, на скрытой вкладке — в простое. */
+  const place = (animate: boolean): (() => void) | undefined => {
+    if (shownRef.current) {
+      schedule(() => measure(animate))
+      return undefined
+    }
+    return whenIdle(() => measure(false)?.())
+  }
+
+  // Смена выбора (нажатие) — плашка едет от старого места; вкладку просто
+  // показали — встаёт на место без анимации. Измерять после каждой перерисовки
+  // нельзя: шторка операции перерисовывается на каждое нажатие клавиши, и
+  // браузер пересчитывал бы раскладку посреди ввода.
+  const prev = useRef({ active, shown })
   useLayoutEffect(() => {
-    if (placed.current) measure(true)?.()
-    else schedule(() => measure(false))
+    const was = prev.current
+    prev.current = { active, shown }
+    return place(was.shown && was.active !== active)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active])
+  }, [active, shown])
 
   // Размеры поменялись (поворот экрана, догрузился шрифт, сменился язык и
   // подписи стали другой ширины) — переставить без анимации. Наблюдаем и
@@ -91,7 +110,7 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
         first = false
         return
       }
-      schedule(() => measure(false))
+      place(false)
     })
     ro.observe(track)
     for (const child of Array.from(track.children)) {
@@ -99,7 +118,7 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
     }
     let alive = true
     document.fonts?.ready.then(() => {
-      if (alive) schedule(() => measure(false))
+      if (alive) place(false)
     })
     return () => {
       alive = false
@@ -120,10 +139,15 @@ export function useSegPill<T extends HTMLElement = HTMLDivElement>(active: unkno
  * анимации (и без движения вовсе, если пункт и так виден).
  */
 export function useKeepSegVisible(trackRef: RefObject<HTMLElement>, active: unknown) {
-  const first = useRef(true)
+  // На скрытой вкладке не трогаем: замер раскладывал бы всю скрытую страницу.
+  // Покажут — поправим без анимации.
+  const shown = useTabActive()
+  const prev = useRef({ active, shown })
   useEffect(() => {
-    const smooth = !first.current
-    first.current = false
+    const was = prev.current
+    prev.current = { active, shown }
+    if (!shown) return
+    const smooth = was.shown && was.active !== active
     const track = trackRef.current
     const on = track?.querySelector<HTMLElement>(':scope > .seg-on')
     if (!track || !on) return
@@ -135,7 +159,7 @@ export function useKeepSegVisible(trackRef: RefObject<HTMLElement>, active: unkn
     if (Math.abs(left - track.scrollLeft) < 1) return
     if (smooth) track.scrollTo({ left, behavior: 'smooth' })
     else track.scrollLeft = left
-  }, [active, trackRef])
+  }, [active, trackRef, shown])
 }
 
 /**
