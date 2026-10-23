@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.7.0'
+export const APP_VERSION = '2.7.1'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,37 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.7.1',
+    date: '2026-10-23',
+    title: { ru: 'Плавнее и быстрее', en: 'Smoother and faster' },
+    items: [
+      {
+        text: {
+          ru: 'Вкладки переключаются мгновенно: где уже был — открывается сразу, без загрузки, а свайп идёт ровно за пальцем',
+          en: 'Tabs switch instantly: the ones you’ve visited open right away, and swipes follow your finger smoothly',
+        },
+      },
+      {
+        text: {
+          ru: '«Записать» закрывает шторку сразу, без подвисания, а клавиши отвечают быстрее',
+          en: '“Save” closes the sheet right away without a hitch, and the keypad responds faster',
+        },
+      },
+      {
+        text: {
+          ru: 'Тёмная тема — с первого кадра: при запуске приложение больше не вспыхивает светлым',
+          en: 'Dark theme from the very first frame: no more light flash on launch',
+        },
+      },
+      {
+        text: {
+          ru: 'Поиск по операциям не тормозит при наборе, а в фоне Кошель меньше нагружает телефон',
+          en: 'Search no longer lags as you type, and Koshel puts less load on your phone in the background',
+        },
+      },
+    ],
+  },
   {
     version: '2.7.0',
     date: '2026-10-22',

@@ -252,6 +252,9 @@ function AddForm({
   const amountRef = useRef<HTMLDivElement>(null)
   const hintRef = useRef<HTMLDivElement>(null)
   const saveRef = useRef<HTMLButtonElement>(null)
+  // Уходящая шторка ещё на экране и нажимается: второй тап по «Записать» не
+  // должен дать вторую запись.
+  const done = useRef(false)
 
   const numeric = useMemo(() => evalExpr(expr), [expr])
   const hasOps = useMemo(() => [...expr].some(isOp), [expr])
@@ -348,6 +351,7 @@ function AddForm({
   }
 
   const submit = () => {
+    if (done.current) return
     // Сохранить пока нельзя — показываем, чего не хватает, а не молчим
     // серой кнопкой: трясётся сумма или сетка категорий.
     if (!canSubmit) {
@@ -361,6 +365,7 @@ function AddForm({
       }
       return
     }
+    done.current = true
     hapticNotify('success')
     // Дата: если день не меняли — сохраняем исходное время операции (не сдвигаем).
     // Иначе сегодня → текущее время, прошлый день → полдень выбранной даты.
@@ -426,7 +431,8 @@ function AddForm({
   // Удаление операции прямо из формы правки — с возможностью вернуть. Тоже
   // после того, как шторка поехала.
   const removeEditing = () => {
-    if (!editing) return
+    if (!editing || done.current) return
+    done.current = true
     hapticNotify('warning')
     const removed = editing
     onClose()
