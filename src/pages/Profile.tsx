@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
-import { Settings, Target, Check, ScrollText } from 'lucide-react'
+import { Settings, Target, Check, ScrollText, Sparkles, Mic, ScanLine, MessageSquareText } from 'lucide-react'
 import { useStore, selectAllCategories, getCategory } from '../store/transactions'
 import { formatMoney, dayjs } from '../lib/format'
 import { Avatar } from '../components/Avatar'
@@ -13,6 +13,7 @@ import { useCatName, useT, type TFunc } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
 import { Group, Row } from '../components/ui/Group'
 import { RewardBadge } from '../components/rewards/RewardBadge'
+import { isPlusTester, usePlusT } from '../lib/plus'
 
 import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
 
@@ -20,6 +21,8 @@ import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
 const PlanningSheet = lazy(() => import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })))
 // История обновлений — тоже лениво, открывается из строки «Обновления».
 const ChangelogSheet = lazy(() => import('../components/ChangelogSheet').then((m) => ({ default: m.ChangelogSheet })))
+// Кошель+ — лениво, открывается с плашки (пока только у тестеров).
+const PlusSheet = lazy(() => import('../components/PlusSheet').then((m) => ({ default: m.PlusSheet })))
 
 /** Версия, до которой пользователь уже видел изменения (из localStorage). */
 function readSeenVersion(): string {
@@ -75,6 +78,12 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
     track('open_planning')
     setPlanningOpen(true)
   }
+
+  // Кошель+: тестерам плашка открывает шторку, остальным — «Скоро».
+  const plusTester = useMemo(isPlusTester, [])
+  const [plusOpen, setPlusOpen] = useState(false)
+  const seenPlus = useRef(false)
+  if (plusOpen) seenPlus.current = true
 
   // История обновлений: версия, до которой человек уже всё видел, и счётчик новых.
   const [seenVersion, setSeenVersion] = useState(readSeenVersion)
@@ -195,7 +204,9 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
         )}
       </Group>
 
-      <Group className="mx-4 mt-6">
+      <PlusCard onOpen={plusTester ? () => { hapticTap(); setPlusOpen(true) } : undefined} />
+
+      <Group className="mx-4 mt-4">
         {/* Уровень — строкой с полосой; подробности и награды на «Прогрессе». */}
         <Row
           lead={
@@ -257,10 +268,70 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       </Suspense>
 
       <Suspense fallback={null}>
+        {seenPlus.current && <PlusSheet open={plusOpen} onClose={() => setPlusOpen(false)} />}
+      </Suspense>
+
+      <Suspense fallback={null}>
         {seenChangelog.current && (
           <ChangelogSheet open={changelogOpen} onClose={closeChangelog} seenVersion={seenVersion} />
         )}
       </Suspense>
+    </div>
+  )
+}
+
+const PLUS_PILLS = [
+  { icon: Mic, key: 'pill_voice' },
+  { icon: ScanLine, key: 'pill_photo' },
+  { icon: MessageSquareText, key: 'pill_text' },
+] as const
+
+/**
+ * Плашка Кошель+ над меню: премиум-функции бота (голос, фото чеков, свободный
+ * текст — разбирает ИИ). Тестерам — кнопка в шторку с функциями; остальным
+ * пока приглушена, подписана «Скоро» и не нажимается.
+ */
+function PlusCard({ onOpen }: { onOpen?: () => void }) {
+  const t = usePlusT()
+  const body = (
+    <>
+      <span className="flex items-center gap-2">
+        <span className="plus-dim flex items-center gap-2">
+          <Sparkles size={18} strokeWidth={2.2} className="plus-gold shrink-0" />
+          <span className="text-[17px] font-extrabold tracking-tight text-white">
+            {t('brand')}
+            <span className="plus-gold">+</span>
+          </span>
+        </span>
+        <span className="ml-auto rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-semibold text-white/80">
+          {onOpen ? t('beta') : t('soon')}
+        </span>
+      </span>
+      <span className="plus-dim caption mt-1.5 block text-white/70">{t('tagline')}</span>
+      <span className="plus-dim mt-3 flex flex-wrap gap-1.5">
+        {PLUS_PILLS.map(({ icon: Icon, key }) => (
+          <span
+            key={key}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 py-1 pl-2 pr-2.5 text-[12px] font-semibold text-white/80"
+          >
+            <Icon size={13} strokeWidth={2.2} />
+            {t(key)}
+          </span>
+        ))}
+      </span>
+    </>
+  )
+  const cls = 'hero-surface plus-surface mx-4 mt-6 block rounded-3xl p-4 text-left'
+  if (onOpen) {
+    return (
+      <button type="button" onClick={onOpen} className={`${cls} press-soft w-[calc(100%-2rem)]`}>
+        {body}
+      </button>
+    )
+  }
+  return (
+    <div className={`${cls} plus-off`} aria-disabled="true" aria-label={t('soon_label')}>
+      {body}
     </div>
   )
 }

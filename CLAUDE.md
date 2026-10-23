@@ -89,6 +89,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 
 `ScreenHeader`, `SegTrack`+`useSegPill`, `Odometer`/`AnimatedMoney`, `Money`, `DeltaChip`,
 `Toaster`, `Reveal`). Онбординг — `QuickStart` (валюта по региону `lib/currencyDetect.ts`),
 «Что нового» — `Intro.tsx`. Планирование (бюджет, лимиты, цели, активы) — `PlanningSheet`.
+**Кошель+** (премиум: голосовые, фото чеков, свободный текст — Gemini; покупка за звёзды Telegram —
+следующий шаг): плашка над меню Профиля — у всех приглушена и «Скоро», не нажимается; тестерам
+(`lib/plus.ts`, id Telegram) открывает `PlusSheet` с «Попробовать в боте». Тексты раздела — в
+`lib/plus.ts` (ru/en), не в общем словаре: тот целиком в стартовом чанке.
 Ассистент — `AssistantSheet` (карточки ответа воркера `/ask`).
 
 **Валюты (92):** ядро `src/lib/currencies.ts` (символ, локаль, флаг — в стартовом чанке), названия
