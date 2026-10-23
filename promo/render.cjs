@@ -6,6 +6,9 @@
  *   node promo/render.cjs land start      стартовый экран бота: 960×540 mp4 и 640×360 gif (без звука)
  *   node promo/render.cjs square ad       пост: 1080×1080 mp4 со звуком и без, gif 600×600
  *   node promo/render.cjs story ad        сторис: 1080×1920 mp4 — звуки действий; звуки и фон
+ *   node promo/render.cjs square 2.7.1 --scene channel
+ *                                         пост в канал: телефон с настоящим приложением
+ *                                         (сначала promo/capture.cjs), mp4 1080 и gif 600
  *   … --jobs 4                            кадры в 4 процесса (по числу ядер)
  *   … --stills 2.9,8.6                    отдельные кадры в png
  *
@@ -33,16 +36,22 @@ const [layout = 'land', cta = 'start'] = argv.filter((a, i) => !a.startsWith('--
 const stills = flag('--stills')?.split(',').map(Number)
 const jobs = Number(flag('--jobs') ?? 1)
 const part = flag('--part') !== undefined ? Number(flag('--part')) : null
+/** Сцена: bot-update.html (переписка с ботом) или channel.html (пост в канал). */
+const scene = flag('--scene') ?? 'bot-update'
 const FPS = 30
 const SIZE = { land: [960, 540], square: [1080, 1080], story: [1080, 1920] }[layout]
 // Сторис крупная — хватает полуторного запаса для сглаживания.
 const DPR = layout === 'story' ? 1.5 : 2
 const OUT = path.join(__dirname, 'out')
-const name = `koshel-2.7-${layout}-${cta}`
+const name = scene === 'channel' ? `koshel-post-${cta}` : `koshel-2.7-${layout}-${cta}`
 fs.mkdirSync(OUT, { recursive: true })
 
 /** Что получаем из мастера: [файл, масштаб, вид]; звук — 'sfx' или 'music'. */
-const TARGETS = {
+const TARGETS = scene === 'channel' ? [
+  // В канал — анимацией (крутится по кругу без звука, как гифка) и .gif про запас.
+  [`${name}-1080.mp4`, `scale=${SIZE[0]}:${SIZE[1]}`, 'mp4'],
+  [`${name}-600.gif`, `scale=600:${Math.round((600 * SIZE[1]) / SIZE[0])}:flags=lanczos`, 'gif'],
+] : {
   land: [
     [`${name}-960x540.mp4`, 'scale=960:540', 'mp4'],
     [`${name}-640x360.gif`, 'scale=640:360:flags=lanczos', 'gif'],
@@ -88,7 +97,7 @@ async function openScene() {
   const browser = await chromium.launch()
   const page = await browser.newPage({ viewport: { width: SIZE[0], height: SIZE[1] }, deviceScaleFactor: DPR })
   page.on('pageerror', (e) => console.error('[сцена]', e.message))
-  await page.goto(`file://${path.join(__dirname, 'bot-update.html')}?layout=${layout}&cta=${cta}`)
+  await page.goto(`file://${path.join(__dirname, `${scene}.html`)}?layout=${layout}&cta=${cta}`)
   await page.evaluate(() => window.sceneReady)
   return { browser, page, duration: await page.evaluate(() => window.DURATION), sounds: await page.evaluate(() => window.SOUNDS) }
 }
@@ -139,7 +148,9 @@ async function renderFrames(page, from, to, file, label) {
   if (jobs > 1) {
     await browser.close()
     await Promise.all(
-      Array.from({ length: jobs }, (_, k) => run(process.execPath, [__filename, layout, cta, '--jobs', String(jobs), '--part', String(k)])),
+      Array.from({ length: jobs }, (_, k) =>
+        run(process.execPath, [__filename, layout, cta, '--scene', scene, '--jobs', String(jobs), '--part', String(k)]),
+      ),
     )
     const list = path.join(OUT, `${name}-parts.txt`)
     fs.writeFileSync(list, Array.from({ length: jobs }, (_, k) => `file '${path.join(OUT, `${name}-part${k}.mkv`)}'`).join('\n'))
