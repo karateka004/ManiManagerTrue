@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { LazyMotion, MotionConfig } from 'framer-motion'
 import App from './App'
 import { initTelegram } from './lib/telegram'
+import { applyInitialAppearance } from './lib/useTheme'
 import { initPerfFlags } from './lib/perf'
 import { clearChunkReloadFlag } from './lib/lazyRetry'
 // Шрифт лежит в нашем же бандле, а не на Google Fonts. С внешнего домена он
@@ -17,6 +18,9 @@ import './index.css'
 import './styles/motion.css'
 import './styles/skins.css'
 
+// Тема и акцент — до первого кадра и до `ready()`: Telegram показывает
+// приложение сразу после него, и первый кадр должен быть уже в своих цветах.
+applyInitialAppearance()
 // Initialize Telegram WebApp (graceful fallback if outside Telegram)
 initTelegram()
 // Слабое устройство и свёрнутый мини-апп — флаги для анимаций (lib/perf).

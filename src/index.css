@@ -85,7 +85,9 @@
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
     user-select: none;
-    transition: background-color 200ms ease, color 200ms ease;
+    /* Без transition цвета: color наследуется, и переход пересчитывал стили
+       всего документа на каждом кадре. Смену темы плавно ведёт View
+       Transitions (lib/useTheme). */
   }
 
   /* Better numeric alignment for amounts */
