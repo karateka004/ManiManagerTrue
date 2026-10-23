@@ -65,6 +65,7 @@ import { plural } from './facts'
 import { isRateLimited } from './limits'
 import { sendPromo } from './promo'
 import { cleanStorage, sendStorageReport } from './storage'
+import { publishPostButton, sendPostPreview } from './channel'
 import { campaignTag, rememberSource } from './sources'
 import {
   BTN_TURN_OFF,
@@ -395,6 +396,7 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     else if (cmd === 'promo' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendPromo(env, userId)
     // Что лежит в базе и сколько мусора — владельцу (см. storage.ts).
     else if (cmd === 'storage' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendStorageReport(env, userId)
+    else if (cmd === 'post' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendPostPreview(env, userId)
     else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
       // Только владельцу и только в личке: кнопка web_app открывает дашборд
       // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
@@ -1192,6 +1194,7 @@ async function handleCallback(q: TgCallbackQuery, env: Env): Promise<void> {
   if (action === 'm:') return showStartBranch(q, env, rest)
   if (action === 'r:') return toggleReminders(q, env, userId, rest)
   if (action === 'k:') return cleanStorageButton(q, env, userId)
+  if (action === 'n:') return publishPostButton(q, env, userId, rest)
   await answerCallback(env, q.id)
 }
 

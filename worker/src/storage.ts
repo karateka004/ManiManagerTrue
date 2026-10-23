@@ -44,6 +44,7 @@ export const FAMILIES: Family[] = [
   { prefix: 'giftmsg:', label: 'подарки' },
   { prefix: 'bot:', label: 'служебное' },
   { prefix: 'promo:', label: 'служебное' },
+  { prefix: 'channel:', label: 'канал обновлений' },
   { prefix: 'admin:', label: 'служебное' },
 ]
 

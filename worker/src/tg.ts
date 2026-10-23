@@ -57,6 +57,8 @@ export interface TgMessage {
   photo?: (TgFile & { width?: number; height?: number })[]
   document?: TgFile & { file_name?: string }
   video_note?: TgFile & { duration?: number }
+  /** Анимация — в предпросмотре поста для канала: её file_id уходит в канал без загрузки. */
+  animation?: TgFile
   /** Подпись к фото или файлу. */
   caption?: string
 }
@@ -319,4 +321,42 @@ export async function setMyShortDescription(env: Env, shortDescription: string):
 /** Экранирование для parse_mode: 'HTML'. */
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
+ * Анимация с подписью и клавиатурой: файлом или уже загруженная (file_id).
+ * Возвращает id сообщения и file_id — второй раз тот же ролик уходит без
+ * загрузки (предпросмотр поста → публикация в канал).
+ */
+export async function sendAnimation(
+  env: Env,
+  chatId: string | number,
+  animation: Blob | string,
+  caption: string,
+  replyMarkup?: unknown,
+): Promise<{ ok: boolean; messageId?: number; fileId?: string; description?: string }> {
+  const form = new FormData()
+  form.append('chat_id', String(chatId))
+  if (typeof animation === 'string') form.append('animation', animation)
+  else form.append('animation', animation, 'animation.mp4')
+  form.append('caption', caption)
+  form.append('parse_mode', 'HTML')
+  if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup))
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN.trim()}/sendAnimation`, { method: 'POST', body: form })
+    const body = (await res.json().catch(() => null)) as {
+      result?: { message_id?: number; animation?: { file_id?: string }; document?: { file_id?: string } }
+      description?: string
+    } | null
+    const r = body?.result
+    return {
+      ok: res.ok && !!r,
+      ...(r?.message_id ? { messageId: r.message_id } : {}),
+      ...(r?.animation?.file_id || r?.document?.file_id ? { fileId: r.animation?.file_id ?? r.document?.file_id } : {}),
+      ...(body?.description ? { description: body.description } : {}),
+    }
+  } catch (e) {
+    console.error('[tg] анимация не отправлена', e)
+    return { ok: false }
+  }
 }
