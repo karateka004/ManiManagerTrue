@@ -64,6 +64,7 @@ import { MAX_IMPORT_ROWS, parseCsvRows } from './csv'
 import { plural } from './facts'
 import { isRateLimited } from './limits'
 import { sendPromo } from './promo'
+import { cleanStorage, sendStorageReport } from './storage'
 import { campaignTag, rememberSource } from './sources'
 import {
   BTN_TURN_OFF,
@@ -386,6 +387,8 @@ async function handleMessage(msg: TgMessage, env: Env): Promise<void> {
     else if (cmd === 'icons' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await setupIcons(env, userId, msg)
     // Промо-ролик последнего обновления — владельцу, чтобы переслать.
     else if (cmd === 'promo' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendPromo(env, userId)
+    // Что лежит в базе и сколько мусора — владельцу (см. storage.ts).
+    else if (cmd === 'storage' && String(userId) === String(env.OWNER_CHAT_ID).trim()) await sendStorageReport(env, userId)
     else if (cmd === 'admin' && String(userId) === String(env.OWNER_CHAT_ID).trim()) {
       // Только владельцу и только в личке: кнопка web_app открывает дашборд
       // внутри Telegram, и вход идёт по его подписи — пароль не нужен.
@@ -1173,7 +1176,21 @@ async function handleCallback(q: TgCallbackQuery, env: Env): Promise<void> {
   if (action === 'q:') return askFollowup(q, env, userId, data)
   if (action === 'm:') return showStartBranch(q, env, rest)
   if (action === 'r:') return toggleReminders(q, env, userId, rest)
+  if (action === 'k:') return cleanStorageButton(q, env, userId)
   await answerCallback(env, q.id)
+}
+
+/** «Удалить мусор» под отчётом по базе — только владельцу; удаляет по свежему просмотру базы. */
+async function cleanStorageButton(q: TgCallbackQuery, env: Env, userId: number): Promise<void> {
+  await answerCallback(env, q.id)
+  if (String(userId) !== String(env.OWNER_CHAT_ID).trim() || !q.message) return
+  const r = await cleanStorage(env)
+  await editMessageText(
+    env,
+    q.message.chat.id,
+    q.message.message_id,
+    `<b>База воркера</b>\nУдалено мусора: ${r.deleted}. Ключей в базе: ${r.left}.${r.more ? '\nОсталось ещё — пришли /storage и нажми снова.' : ''}`,
+  )
 }
 
 /**

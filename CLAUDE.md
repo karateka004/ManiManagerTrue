@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 9) · `npx wrangler dev --local --port 8787` +
+reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 9, storage 10) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -154,6 +154,10 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 26, promo 
   → `promo/out/` (не в git).
   Готовые файлы — `promo/media/`; `worker/src/promo.ts` шлёт их владельцу один раз после выката
   (крон `*/5`, метка `promo:sent` = `PROMO_ID`) и по `/promo`; адрес закреплён за коммитом файлов.
+- **База (KV) — отчёт и мусор** (`storage.ts`): `/storage` у владельца (и один раз после выката) —
+  ключи по семействам `FAMILIES`; кнопка «Удалить мусор» удаляет ТОЛЬКО короткоживущие ключи без
+  срока (семейства с `ttl`) и пустые очереди бота без статистики. Незнакомые ключи — показать, не
+  трогать. Новый вид ключа — добавь в `FAMILIES` (`test-storage.mjs` сверяет с кодом).
 - Рефералы: `?startapp=ref<id>` доходит, только если у бота включён Main Mini App в BotFather.
 
 ## Оформление (2.0+)

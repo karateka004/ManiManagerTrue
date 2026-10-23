@@ -27,6 +27,7 @@ import type { Env } from './env'
 import { ADMIN_URL, answerQuestion, APP_URL, BOT_COMMANDS, ensureBotProfile, handleTgUpdate } from './bot'
 import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
 import { sendPromoOnce } from './promo'
+import { sendStorageReportOnce } from './storage'
 import {
   cleanTz,
   pickReminderText,
@@ -447,6 +448,8 @@ export default {
       ctx.waitUntil(ensureBotProfile(env).catch((e) => console.error('[cron] профиль бота', e)))
       // Новый промо-ролик — владельцу, один раз (см. promo.ts).
       ctx.waitUntil(sendPromoOnce(env).catch((e) => console.error('[cron] промо', e)))
+      // Отчёт по базе — владельцу, один раз после выката (см. storage.ts).
+      ctx.waitUntil(sendStorageReportOnce(env).catch((e) => console.error('[cron] отчёт по базе', e)))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
     }
