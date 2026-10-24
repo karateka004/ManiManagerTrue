@@ -23,6 +23,7 @@ import {
   collectPeople,
   computeDashboard,
   dayReport,
+  firstDayOutcome,
   digestText,
   snapshotRow,
 } from '../src/analytics.ts'
@@ -284,4 +285,17 @@ if (failed) {
   console.error(`test-analytics: ${failed} провалено, ${passed} прошло`)
   process.exit(1)
 }
+{
+  // Где теряются новички: исход первого дня.
+  const T = 1000
+  const P = (fday, days, ops, remind) => ({ fday, days, ops, botOps: 0, knownFrom: 0, remind })
+  const fd = firstDayOutcome(
+    [P(T - 5, [T - 5], 0), P(T - 5, [T - 5], 2, 'n'), P(T - 4, [T - 4], 5), P(T - 3, [T - 3, T - 2], 4), P(T - 1, [T - 1], 0), P(T - 40, [T - 40], 0)],
+    0,
+    T,
+  )
+  check('первый день: 0 / 1–2 / 3+ / вернулись', fd.size === 4 && fd.gone0 === 1 && fd.gone12 === 1 && fd.gone3 === 1 && fd.back === 1, fd)
+  check('первый день: вчерашних и старше месяца не берём; бот не смог написать — 1', fd.goneTotal === 3 && fd.goneNoBot === 1, fd)
+}
+
 console.log(`test-analytics: ${passed} проверок — маски, бот, метки, люди, воронка, удержание, сводка`)

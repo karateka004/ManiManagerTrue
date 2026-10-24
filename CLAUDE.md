@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
-reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
+reply, analytics 64, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -169,7 +169,9 @@ reply, analytics 62, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 - **Рейтинг:** каждый пишет только `lb:<id>`; общий `leaderboard` пересобирает крон `*/5`. XP режется
   потолком по облачному блобу; достигнутое не опускается.
 - **Админка:** `admin.ts` (страница), `analytics.ts` (чистые расчёты), маски дней активности в
-  метаданных, метки рекламы `?start=`/`?startapp=`, ночная сводка владельцу (`ADMIN_DIGEST`). Вход —
+  метаданных, метки рекламы `?start=`/`?startapp=`, ночная сводка владельцу (`ADMIN_DIGEST`).
+  «Удержание» начинается с «Где теряются новички» (`firstDayOutcome`: исход первого дня пришедших
+  2–30 дней назад — 0 / 1–2 / 3+ записей и ушли, вернулись; у скольких ушедших бот не мог писать). Вход —
   `ADMIN_KEY` или `/admin` в боте. `check-admin-js.mjs` проверяет скрипт внутри `ADMIN_HTML`
   (tsc его не видит; в шаблоне нельзя `` ` ``, `${`, `\`).
 - Профиль бота (описания, команды) выставляет крон сам (`ensureBotProfile`).

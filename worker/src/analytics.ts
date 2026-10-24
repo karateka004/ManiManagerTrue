@@ -255,10 +255,11 @@ export interface Person {
   blocked: boolean
   /**
    * Выбор про напоминания на сервере (`remind:<id>`): '1' — включил, '0' —
-   * выключил (в приложении или кнопкой в боте), 'b' — бот заблокирован.
-   * Нет — не выбирал, действует тумблер из карточки блоба.
+   * выключил (в приложении или кнопкой в боте), 'b' — бот заблокирован,
+   * 'n' — не нажимал Start (бот не может написать). Нет — не выбирал,
+   * действует тумблер из карточки блоба.
    */
-  remind?: '1' | '0' | 'b'
+  remind?: '1' | '0' | 'b' | 'n'
   /** Открывал мини-апп: есть облачный ключ или карточка рейтинга. */
   inApp: boolean
   card?: UserCard
@@ -432,8 +433,8 @@ export function assemble(
   remind: [string, unknown][] = [],
 ): Collected {
   const meta = new Map(data)
-  const choices = new Map<string, '1' | '0' | 'b'>()
-  for (const [id, v] of remind) if (v === '1' || v === '0' || v === 'b') choices.set(id, v)
+  const choices = new Map<string, '1' | '0' | 'b' | 'n'>()
+  for (const [id, v] of remind) if (v === '1' || v === '0' || v === 'b' || v === 'n') choices.set(id, v)
   const bots = new Map<string, InboxMeta>()
   for (const [id, x] of inbox) {
     const b = botMeta(x)
@@ -1102,10 +1103,37 @@ export function computeDashboard(
     people: rows,
     peopleTotal: ps.length,
     insights: insights({ kpi, bot, webhook, segs: sources, trackFrom: tf, today }),
+    firstDay: firstDayOutcome(ps, tf, today),
   }
 }
 
 export type Dashboard = ReturnType<typeof computeDashboard>
+
+/**
+ * Чем кончился первый день у новичков, пришедших 2–30 дней назад (второй день
+ * у них уже прожит). Кто был активен только в день прихода — все его записи из
+ * первого дня, поэтому делим ушедших по числу записей. `noBot` — бот не смог
+ * им написать (не нажимали Start или заблокировали): напоминание не дошло бы.
+ */
+export function firstDayOutcome(ps: Person[], trackFrom: number | null, today: number) {
+  const out = { size: 0, back: 0, gone0: 0, gone12: 0, gone3: 0, goneNoBot: 0, goneTotal: 0 }
+  if (trackFrom === null) return out
+  for (const p of ps) {
+    if (p.fday > today - 2 || p.fday < today - 30 || p.fday < trackFrom || p.fday < p.knownFrom) continue
+    out.size++
+    if (p.days.some((d) => d > p.fday)) {
+      out.back++
+      continue
+    }
+    out.goneTotal++
+    if (p.remind === 'n' || p.remind === 'b') out.goneNoBot++
+    const ops = totalOps(p)
+    if (ops === 0) out.gone0++
+    else if (ops <= 2) out.gone12++
+    else out.gone3++
+  }
+  return out
+}
 
 function median(xs: number[]): number {
   if (!xs.length) return 0

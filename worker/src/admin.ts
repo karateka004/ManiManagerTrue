@@ -939,7 +939,20 @@ export const ADMIN_HTML = `<!doctype html>
       +'<div style="width:'+(lc.active/total*100)+'%;background:'+(isDark()?'#5DB996':'#2D8866')+'"></div>'
       +'<div style="width:'+(lc.sleeping/total*100)+'%;background:'+(isDark()?'#2D7A5A':'#9BD8B6')+'"></div>'
       +'<div style="width:'+(lc.gone/total*100)+'%;background:var(--context)"></div></div>';
-    return '<div class="sec"><h2>Возвращаются ли люди</h2><span class="aside">доля пришедших</span></div>'
+    // Где теряются новички: чем кончился их первый день (firstDayOutcome).
+    var fd=D.firstDay, fdBlock='';
+    if(fd&&fd.size){
+      var sh=function(n){ return Math.round(n*100/fd.size)+'%'; };
+      fdBlock='<div class="sec"><h2>Где теряются новички</h2><span class="aside">пришли 2–30 дней назад · '+nf(fd.size)+' чел.</span></div>'
+        +'<div class="grid g4">'
+        +tile('Ничего не записали и ушли',nf(fd.gone0),'','<span>'+sh(fd.gone0)+' новичков</span>')
+        +tile('1–2 записи и ушли',nf(fd.gone12),'','<span>'+sh(fd.gone12)+' новичков</span>')
+        +tile('3+ записи и ушли',nf(fd.gone3),'','<span>'+sh(fd.gone3)+' новичков</span>')
+        +tile('Вернулись',nf(fd.back),'','<span>'+sh(fd.back)+' · хоть раз после первого дня</span>')
+        +'</div><p class="note" style="margin:8px 4px 0">Из ушедших бот не смог написать '+nf(fd.goneNoBot)+' из '+nf(fd.goneTotal)
+        +' (не нажимали Start или заблокировали) — им напоминание не дошло бы.</p>';
+    }
+    return fdBlock+'<div class="sec"><h2>Возвращаются ли люди</h2><span class="aside">доля пришедших</span></div>'
       +'<div class="filters">'+segButtons('ret',[['d','По дням'],['w','По неделям']],S.retMode)+segSelect('retsrc',S.retSrc)+'</div>'
       +'<div class="card">'+html+(any?scale:'')+keyRow+'<p class="note" style="margin:10px 0 0">'+esc(since)+'</p></div>'
       +'<div class="sec"><h2>Что с базой сейчас</h2></div>'
