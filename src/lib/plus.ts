@@ -43,8 +43,8 @@ const TEXT = {
   },
   f_voice: { ru: 'Голосовые', en: 'Voice messages' },
   f_voice_sub: {
-    ru: 'Скажи «кофе триста, такси четыреста» — бот запишет обе траты. Голосом можно и спросить',
-    en: 'Say “coffee 3, taxi 12” and the bot records both. You can ask questions by voice too',
+    ru: 'Скажи: «Утром ушло двести на кофе, вечером четыреста на такси» — бот запишет обе траты. Голосом можно и спросить',
+    en: 'Say “Spent 3 on coffee this morning and 12 on a taxi tonight” and the bot records both. You can ask questions by voice too',
   },
   f_photo: { ru: 'Фото чека и скриншот банка', en: 'Receipts and bank screenshots' },
   f_photo_sub: {
@@ -53,8 +53,8 @@ const TEXT = {
   },
   f_text: { ru: 'Текст своими словами', en: 'Your own words' },
   f_text_sub: {
-    ru: '«Вчера продукты 1240 и такси до дома 380» — ИИ разберёт суммы, категории и даты',
-    en: '“Groceries 42 yesterday and a cab home 15” — the AI works out amounts, categories and dates',
+    ru: '«Вчера ушло 1240 на продукты и 380 на такси до дома» — ИИ разберёт суммы, категории и даты',
+    en: '“Spent 42 on groceries yesterday and 15 on a cab home” — the AI works out amounts, categories and dates',
   },
   try_bot: { ru: 'Попробовать в боте', en: 'Try it in the bot' },
   stars_soon: { ru: 'Подключение за звёзды Telegram — скоро', en: 'Unlock with Telegram Stars — coming soon' },

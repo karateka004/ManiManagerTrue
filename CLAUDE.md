@@ -14,7 +14,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
-Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 97,
+Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 105,
 reply, analytics 64, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
@@ -148,6 +148,10 @@ reply, analytics 64, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
     силам: без ключа или сверх квоты — просим текстом. Голос дальше идёт как текст (`heard` → вопрос
     или правила), фото: чек = одна запись (итог, магазин, дата с чека), скриншот банка — до 15.
     Тест — `test-media.mjs`.
+  - **Примеры записи — обычной фразой** («Ушло 300 на кофе», «Такси до работы за 450», «Пришла зарплата
+    80 000»), не «кофе 300» — в боте, приложении, напоминаниях. Правила такое понимают: глагол траты и
+    висячие предлоги в заметку не идут (`NOTE_FILLER`/`NOTE_PREP`), глагол задаёт направление
+    (`SPEND_VERB`/`INCOME_VERB`: «потратил на подарок» — расход). Новый пример — сперва прогнать через `parseEntries`.
   - Валюта записи — ОСНОВНАЯ (`ctx.currency = main`), не выбранный на Главной счёт.
   - Ответы: модель `gemini-3.8-flash` (`GEMINI_ANSWER_MODEL`), JSON-карточка; `ground` выкидывает
     суммы/проценты, которых нет в выжимке или вопросе; нет модели/квоты — `rulesCard`. Приветствие

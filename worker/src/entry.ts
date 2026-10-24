@@ -42,7 +42,7 @@ export const CATEGORY_RULES: CatRule[] = [
   { id: 'other_in', kind: 'income', name: 'Прочее', words: ['доход', 'приход', 'продал', 'продала', 'перевод'] },
 
   // Расходы
-  { id: 'food', kind: 'expense', name: 'Еда', words: ['еда', 'продукты', 'магазин', 'супермаркет', 'ашан', 'сильпо', 'атб', 'пятерочка', 'пятёрочка', 'лента', 'хлеб', 'молоко', 'обед', 'ужин', 'завтрак'] },
+  { id: 'food', kind: 'expense', name: 'Еда', words: ['еда', 'еду', 'еды', 'едой', 'продукты', 'магазин', 'супермаркет', 'ашан', 'сильпо', 'атб', 'пятерочка', 'пятёрочка', 'лента', 'хлеб', 'молоко', 'обед', 'ужин', 'завтрак'] },
   { id: 'cafe', kind: 'expense', name: 'Кафе', words: ['кафе', 'кофе', 'ресторан', 'бар', 'пиво', 'кофейня', 'старбакс', 'макдак', 'доставка', 'пицца', 'суши', 'бургер', 'латте', 'капучино'] },
   { id: 'transport', kind: 'expense', name: 'Транспорт', words: ['транспорт', 'метро', 'автобус', 'такси', 'убер', 'болт', 'маршрутка', 'трамвай', 'электричка', 'проезд', 'билет'] },
   { id: 'car', kind: 'expense', name: 'Машина', words: ['машина', 'авто', 'бензин', 'заправка', 'топливо', 'парковка', 'шиномонтаж', 'сто', 'мойка'] },
@@ -283,6 +283,15 @@ function isCount(tokens: string[], i: number, n: number): boolean {
   return n <= 1000 || (YEAR_WORD.test(unit) && n >= 1900 && n <= 2100)
 }
 
+/** Слова самой траты — в заметку не идут: «потратил», «ушло», «заплатила», «spent». */
+const NOTE_FILLER =
+  /^(?:я|потратил[аио]?|потрачено|тратил[аи]?|ушл[аоиь]|уш[её]л|заплатил[аи]?|оплатил[аи]?|отдал[аи]?|купил[аи]?|взял[аи]?|сходил[аи]?|съездил[аи]?|пришл[аои]|приш[её]л|получил[аи]?|заработал[аи]?|spent|paid|bought|got|earned)$/u
+/** Глаголы, по которым ясно направление денег (без знака «+»/«−»). */
+const SPEND_VERB = /^(?:потратил[аи]?|потрачено|тратил[аи]?|ушл[аои]|уш[её]л|заплатил[аи]?|оплатил[аи]?|отдал[аи]?|купил[аи]?|spent|paid|bought)$/u
+const INCOME_VERB = /^(?:получил[аи]?|заработал[аи]?|earned)$/u
+/** Предлоги: без своего слова (оно ушло в сумму, категорию…) в заметке висят. */
+const NOTE_PREP = /^(?:на|за|в|во|по|к|ко|до|с|со|для|on|for|at|in|to)$/u
+
 /**
  * Разобрать сообщение в операцию.
  *
@@ -373,13 +382,24 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   }
 
   /* ---------- Категория ---------- */
+  // Глагол сам говорит, куда деньги: «потратил 2000 на подарок» — расход, хотя
+  // «подарок» без глагола — полученный (доход). Знак важнее глагола (ниже).
+  const bare = (tok: string) => tok.replace(/[^\p{L}]/gu, '')
+  const verbKind: 'income' | 'expense' | null = forcedKind
+    ? null
+    : merged.some((t) => SPEND_VERB.test(bare(t)))
+      ? 'expense'
+      : merged.some((t) => INCOME_VERB.test(bare(t)))
+        ? 'income'
+        : null
   // Ищем самое длинное совпадение: «спортзал» должен победить «зал».
   let best: { rule: CatRule; at: number; len: number; exact: boolean } | null = null
   for (let i = 0; i < merged.length; i++) {
     if (i === amountAt || i === currencyAt || dayAt.has(merged[i])) continue
-    const word = merged[i].replace(/[^\p{L}]/gu, '')
+    const word = bare(merged[i])
     if (!word) continue
     for (const rule of CATEGORY_RULES) {
+      if (verbKind && rule.kind !== verbKind) continue
       for (const w of rule.words) {
         // Совпадение по началу слова ловит падежи: «такси», «обеде», «продуктов».
         const exact = word === w
@@ -395,7 +415,7 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
     }
   }
 
-  const fallbackKind: 'income' | 'expense' = forcedKind ?? 'expense'
+  const fallbackKind: 'income' | 'expense' = forcedKind ?? verbKind ?? 'expense'
   let rule = best?.rule
   // Знак спорит с категорией: «+300 такси» — это доход, а такси расходная.
   // Верим знаку, он поставлен осознанно.
@@ -407,15 +427,21 @@ export function parseEntry(raw: string, known?: Set<string>): ParseResult {
   if (known && !known.has(categoryId)) categoryId = kind === 'income' ? 'other_in' : 'other'
 
   /* ---------- Заметка ---------- */
+  // Траты пишут и обычной фразой: «ушло 300 на кофе», «такси до работы за 450».
+  // Глагол траты и предлог, чьё слово ушло в сумму, валюту, категорию или день,
+  // в заметке — мусор («ушло на»), а «до работы» — смысл, его оставляем.
   const skip = new Set<number>([amountAt])
   if (currencyAt >= 0) skip.add(currencyAt)
   if (best && rule) skip.add(best.at)
+  const gone = (i: number) => skip.has(i) || dayAt.has(merged[i]) || NOTE_FILLER.test(bare(merged[i]))
   const note = merged
-    .filter((tok, i) => !skip.has(i) && !dayAt.has(tok))
+    .filter((tok, i) => !gone(i) && !(NOTE_PREP.test(bare(tok)) && (i + 1 >= merged.length || gone(i + 1))))
     .join(' ')
     .replace(/(^|\s)[+-](\s|$)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+    // «spent 3 on coffee»: английский предлог в начале заметки — от глагола.
+    .replace(/^(?:on|for|at|in|to) /u, '')
     .slice(0, 120)
 
   return {

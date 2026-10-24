@@ -651,8 +651,8 @@ const DICT: Dict = {
   /* Пустое состояние списка */
   'empty.title': { ru: 'Пусто, но это поправимо', en: 'Empty — but fixable' },
   'empty.text': {
-    ru: 'Добавь первую операцию кнопкой + внизу или просто напиши боту «кофе 300» — и здесь появится разбивка по категориям.',
-    en: 'Add your first entry with the + button below, or just text the bot “coffee 300” — a category breakdown will appear here.',
+    ru: 'Добавь первую операцию кнопкой + внизу или просто напиши боту своими словами: «Ушло 300 на кофе» — и здесь появится разбивка по категориям.',
+    en: 'Add your first entry with the + button below, or just text the bot in plain words: “Spent 3 on coffee” — a category breakdown will appear here.',
   },
   'empty.enable_demo': { ru: 'Включить демо-режим', en: 'Enable demo mode' },
 
@@ -1021,8 +1021,8 @@ const DICT: Dict = {
   },
   'qs.finish': { ru: 'Открыть приложение', en: 'Open the app' },
   'qs.finish_hint': {
-    ru: 'Операции уже сохранены. Новые — кнопкой + внизу или сообщением боту: «кофе 300».',
-    en: 'Your entries are saved. Add more with the + button below or by texting the bot: “coffee 300”.',
+    ru: 'Операции уже сохранены. Новые — кнопкой + внизу или сообщением боту своими словами: «Ушло 300 на кофе».',
+    en: 'Your entries are saved. Add more with the + button below or by texting the bot in plain words: “Spent 3 on coffee”.',
   },
 
   'home.cap_goal': { ru: 'Цель', en: 'Goal' },

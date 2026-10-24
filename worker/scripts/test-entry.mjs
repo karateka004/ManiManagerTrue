@@ -29,6 +29,16 @@ const CASES = [
   ['оплата 15 числа 5000', { kind: 'expense', amount: 5000 }],
   ['такси 12 км 450', { kind: 'expense', amount: 450, categoryId: 'transport' }],
 
+  // Обычной фразой: глагол траты и висячие предлоги в заметку не идут, глагол задаёт направление
+  ['Ушло 300 на кофе', { kind: 'expense', amount: 300, categoryId: 'cafe', note: undefined }],
+  ['Потратила 20 евро на еду', { kind: 'expense', amount: 20, currency: 'EUR', categoryId: 'food', note: undefined }],
+  ['Такси до работы за 450', { kind: 'expense', amount: 450, categoryId: 'transport', note: 'до работы' }],
+  ['Ушло на ресторан 10 долларов', { kind: 'expense', amount: 10, currency: 'USD', categoryId: 'cafe', note: undefined }],
+  ['Сходил в кино за 600', { kind: 'expense', amount: 600, categoryId: 'fun', note: undefined }],
+  ['Пришла зарплата 80 000', { kind: 'income', amount: 80000, categoryId: 'salary', note: undefined }],
+  ['Я потратил 2000 на подарок для мамы', { kind: 'expense', amount: 2000, categoryId: 'gift', note: 'для мамы' }],
+  ['Пришёл счёт за свет 1200', { kind: 'expense', amount: 1200, categoryId: 'home' }],
+
   // Основное
   ['кофе 300', { kind: 'expense', amount: 300, categoryId: 'cafe' }],
   ['300 кофе', { kind: 'expense', amount: 300, categoryId: 'cafe' }],

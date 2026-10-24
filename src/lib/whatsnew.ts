@@ -84,8 +84,8 @@ export const RELEASES: ReleaseNote[] = [
     items: [
       {
         text: {
-          ru: 'Скажи боту голосовым «кофе триста, такси четыреста» — он запишет обе траты. Голосом можно и спросить: «сколько ушло на кафе?»',
-          en: 'Send the bot a voice message like “coffee 3, taxi 12” and it records both. You can ask by voice too: “how much went on cafes?”',
+          ru: 'Скажи боту голосовым «Ушло триста на кофе и четыреста на такси» — он запишет обе траты. Голосом можно и спросить: «сколько ушло на кафе?»',
+          en: 'Send the bot a voice message like “Spent 3 on coffee and 12 on a taxi” and it records both. You can ask by voice too: “how much went on cafes?”',
         },
       },
       {
@@ -425,14 +425,14 @@ export const RELEASES: ReleaseNote[] = [
     items: [
       {
         text: {
-          ru: 'Напишите боту «кофе 300» — трата записана. Больше не нужно открывать приложение, жать «+», набирать сумму и выбирать категорию: одно сообщение вместо шести действий',
-          en: 'Text the bot “coffee 300” and the expense is recorded. No more opening the app, tapping “+”, typing the amount and picking a category: one message instead of six steps',
+          ru: 'Напишите боту «Ушло 300 на кофе» — трата записана. Больше не нужно открывать приложение, жать «+», набирать сумму и выбирать категорию: одно сообщение вместо шести действий',
+          en: 'Text the bot “Spent 3 on coffee” and the expense is recorded. No more opening the app, tapping “+”, typing the amount and picking a category: one message instead of six steps',
         },
       },
       {
         text: {
-          ru: 'Бот понимает обычную речь: «вчера продукты 1200», «кроссовки 3500 и пиво 180», «отдал за квартиру полтинник». И отвечает на вопросы — «сколько я потратил сегодня»',
-          en: 'The bot understands plain speech: “groceries 1200 yesterday”, “sneakers 3500 and beer 180”. It also answers questions like “how much did I spend today”',
+          ru: 'Бот понимает обычную речь: «Вчера ушло 1200 на продукты», «Кроссовки за 3500 и пиво за 180», «Отдал за квартиру полтинник». И отвечает на вопросы — «сколько я потратил сегодня»',
+          en: 'The bot understands plain speech: “Spent 1200 on groceries yesterday”, “Sneakers for 3500 and beer for 180”. It also answers questions like “how much did I spend today”',
         },
       },
       {

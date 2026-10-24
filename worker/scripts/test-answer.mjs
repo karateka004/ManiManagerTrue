@@ -276,7 +276,7 @@ class FakeKV {
   const unknown = rulesCard('ааа', ctx, NOW, 'ru')
   check('правила: непонятное — «Не понял», а не «Не нашёл сумму»', unknown.title === 'Не понял', unknown)
   const help = rulesCard('как поставить бюджет?', ctx, NOW, 'ru')
-  check('правила: помощь с примерами записи', help.sections[0]?.rows.some((r) => r.value === 'кофе 300'), help)
+  check('правила: помощь с примерами записи', help.sections[0]?.rows.some((r) => r.value === 'Ушло 300 на кофе'), help)
 }
 {
   // Только траты: «доходы минус расходы» отрицательные — со знаком и пояснением.
