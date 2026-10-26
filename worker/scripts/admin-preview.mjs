@@ -201,7 +201,9 @@ createServer(async (req, res) => {
     const webhook = process.env.WEBHOOK === 'bad'
       ? { registered: true, pending: 137, lastError: 'Read timeout expired', lastErrorAt: now - 120000, ok: false }
       : { registered: true, pending: 0, ok: true }
-    return json(res, 200, { ...computeDashboard(c, history, now, webhook), backfill: null })
+    // Воронка особого задания (fan:<id>) живёт в KV отдельно от расчётов — здесь выдумана.
+    const fan = { saw: 31, click: 6, joined: 14, self: 3, had: 9, joined7: 14 }
+    return json(res, 200, { ...computeDashboard(c, history, now, webhook), fan, backfill: null })
   }
   if (url.pathname === '/admin/person') {
     const p = c.people.find((x) => x.id === String(body.id))
