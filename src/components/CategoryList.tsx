@@ -19,6 +19,7 @@ import { Reveal } from './ui/Reveal'
 import { replay } from '../lib/fx'
 import { isFresh, useTouchedAt } from '../lib/touched'
 import { showToast } from '../lib/toast'
+import { MASK } from '../lib/clarity'
 
 /**
  * Категории периода — по одной группе на доходы и расходы.
@@ -284,7 +285,7 @@ function RowTransactions({
             aria-label={tr('common.edit')}
           >
             <span className="min-w-0">
-              <span className="block truncate text-[14px] text-ink">{t.note || formatShortDate(t.date)}</span>
+              <span className="block truncate text-[14px] text-ink" {...MASK}>{t.note || formatShortDate(t.date)}</span>
               {t.note && <span className="caption-sm block text-ink-subtle">{formatShortDate(t.date)}</span>}
             </span>
             <span className="shrink-0 text-[14px] font-semibold tabular-nums text-ink">

@@ -22,6 +22,7 @@ import { currencyAsked } from '../lib/currencyAsked'
 import { remindAsked } from '../lib/remindAsked'
 import { readPendingRelabel } from '../lib/relabelPending'
 import { ONBOARDED_KEY } from '../lib/introKeys'
+import { MASK } from '../lib/clarity'
 
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
 const PlanningSheet = lazy(() =>
@@ -269,7 +270,7 @@ function GoalBody({ goal, currency, netByCur }: { goal: Goal; currency: Currency
           его, а показываем иконку: так чистыми становятся и уже созданные цели. */}
       <div className="flex min-w-0 items-center gap-1.5 text-base font-bold text-ink">
         <Target size={16} strokeWidth={2.2} className="shrink-0 text-brand-600 dark:text-brand-300" aria-hidden />
-        <span className="truncate">{goal.title}</span>
+        <span className="truncate" {...MASK}>{goal.title}</span>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-sunken">

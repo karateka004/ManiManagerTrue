@@ -108,6 +108,23 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 рарность, обложки `styles/skins.css`, рамки `rewards/FrameRing`). **`QUESTS_TOTAL_XP` продублирован
 в воркере (`XP_ALL_QUESTS`, потолок XP рейтинга)** — меняешь награды, правь обе стороны.
 
+**Clarity (записи сессий)** — `src/lib/clarity.ts`: Microsoft Clarity, только сборка для прода внутри
+Telegram и при заданном `CLARITY_ID` (номер проекта, не секрет; `VITE_CLARITY_ID` — для проверочных
+сборок; тот же номер — `CLARITY_PROJECT` в админке воркера, кнопка «Записи в Clarity» в карточке
+человека). Очередь вызовов — сразу в `main.tsx`, скрипт — в простое (+1 КБ gzip к стартовому чанку,
+сам Clarity 26 КБ — потом). Человек — `identify` по id Telegram (фильтр «Custom user ID», подпись в
+списке — тот же id). Метки: platform, source, lang, ops, owner, onboarding, onboarding_exit_at.
+События: onboarding_<шаг>/done/exit, bot_write_yes/no, record_added, first_record, tab_<вкладка>,
+assistant_ask. **Скрыто всё:** `data-clarity-mask` на `<body>` (режим Balanced сумм НЕ прячет —
+«Потрачено 321 $ из 10,000 $» уходил текстом), открыт только неизменный интерфейс `UNMASK`
+(панель вкладок, заголовки экранов и разделов, тексты и кнопки быстрого старта); `MASK` на суммах,
+заметках, именах, целях, ассистенте — вторая линия. Новый открытый элемент — только без данных.
+Выключается в Настройках («Помогать улучшать Кошель», `koshel:clarity` = '0'); тексты —
+`settings.about_clarity`/`clarity_hint`, меняешь объём — правь их. CSP: `www`/`scripts.clarity.ms`,
+`connect-src *.clarity.ms`. Проверка — подменённый настоящий `clarity.js` в Playwright: распаковать
+отправки и искать заметку, имя, суммы. Цена: под CPU ×4 при переключении вкладок 3–4 задачи по ~60 мс
+на 25 действий (без записи — 0–1).
+
 **i18n:** `src/lib/i18n.ts` (`useT()`, `{var}`), RU/EN; незнакомый язык → ru.
 
 **Клиент воркера:** `src/lib/api.ts` (таймауты на каждый запрос), `src/lib/cloud.ts` (синк),

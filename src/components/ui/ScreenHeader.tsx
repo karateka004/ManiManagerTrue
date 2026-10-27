@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { hapticTap } from '../../lib/telegram'
 import { useT } from '../../lib/i18n'
+import { UNMASK } from '../../lib/clarity'
 
 /**
  * Шапка вложенного экрана: «назад», надстрочник и заголовок, справа — значение.
@@ -33,7 +34,7 @@ export function ScreenHeader({
           <ChevronLeft size={20} strokeWidth={2.4} />
         </button>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1" {...UNMASK}>
         <div className="kicker">{kicker}</div>
         <div className="mt-0.5 truncate text-2xl font-bold tracking-tight text-ink">{title}</div>
       </div>

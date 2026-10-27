@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
+import { UNMASK } from '../../lib/clarity'
 
 /**
  * Сгруппированный список — основной строительный блок 2.0.
@@ -39,7 +40,7 @@ export function Group({
     <section className={className}>
       {(title || action) && (
         <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
-          {title && <h2 className="section-title">{title}</h2>}
+          {title && <h2 className="section-title" {...UNMASK}>{title}</h2>}
           {action && <div className="caption shrink-0 text-ink-subtle">{action}</div>}
         </div>
       )}

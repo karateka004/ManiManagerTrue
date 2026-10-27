@@ -8,6 +8,7 @@ import { dayjs } from '../../lib/format'
 import type { TFunc } from '../../lib/i18n'
 import { Group, Row } from '../ui/Group'
 import { showToast } from '../../lib/toast'
+import { MASK } from '../../lib/clarity'
 
 /**
  * Друзья: задания за приглашения, ссылка и список присоединившихся — одной
@@ -90,8 +91,8 @@ export function ReferralBlock({
               {(f.name?.[0] ?? '?').toUpperCase()}
             </span>
           }
-          title={f.name}
-          subtitle={f.username ? '@' + f.username : undefined}
+          title={<span {...MASK}>{f.name}</span>}
+          subtitle={f.username ? <span {...MASK}>@{f.username}</span> : undefined}
           value={<span className="text-ink-muted">+{REF_REWARD.xp} XP</span>}
           valueSub={dayjs(f.at).fromNow()}
         />

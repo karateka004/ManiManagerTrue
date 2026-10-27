@@ -32,6 +32,7 @@ import { TabActiveContext } from './lib/tabActive'
 import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
+import { clarityEvent } from './lib/clarity'
 
 /**
  * Порядок вкладок в панели — по нему выбирается направление перехода: вкладка
@@ -204,6 +205,8 @@ export default function App() {
   const tab = nav.tab
   const navRef = useRef(nav)
   navRef.current = nav
+  // В записи Clarity приложение — одна страница: вкладки метим событиями.
+  useEffect(() => clarityEvent('tab_' + tab), [tab])
   // Прокрутка каждой вкладки: вернулся на Главную — она там же, где была.
   const scrollMemory = useRef<Partial<Record<Tab, number>>>({})
   const track = useStore((s) => s.track)

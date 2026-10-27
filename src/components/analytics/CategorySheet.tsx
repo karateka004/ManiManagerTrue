@@ -13,6 +13,7 @@ import {
 import { formatMoney, dayjs } from '../../lib/format'
 import { useCatName, useT } from '../../lib/i18n'
 import { hapticTap } from '../../lib/telegram'
+import { MASK } from '../../lib/clarity'
 
 interface Props {
   /** Открытая категория; null — шторка закрыта. */
@@ -124,7 +125,7 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
               onClick={() => open(tx)}
               className="flex w-full items-center gap-3 py-2.5 text-left active:opacity-70"
             >
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1" {...MASK}>
                 <div className="truncate text-[14px] font-semibold text-ink">
                   {tx.note?.trim() || dayjs(tx.date).format('D MMMM')}
                 </div>

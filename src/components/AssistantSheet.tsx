@@ -20,6 +20,7 @@ import { askAssistant, type AskCard, type AskError, type AskIcon, type AskTurn }
 import { useT, type TFunc } from '../lib/i18n'
 import { hapticSelect, hapticNotify } from '../lib/telegram'
 import { useStore } from '../store/transactions'
+import { MASK, clarityEvent } from '../lib/clarity'
 
 interface Props {
   open: boolean
@@ -113,6 +114,7 @@ export function AssistantSheet({ open, onClose }: Props) {
     const text = question.trim()
     if (!text || busy) return
     hapticSelect()
+    clarityEvent('assistant_ask')
     setDraft('')
     setBusy(true)
     const history = historyOf(messages)
@@ -142,7 +144,7 @@ export function AssistantSheet({ open, onClose }: Props) {
         {messages.length === 0 ? (
           <Empty t={t} onPick={ask} busy={busy} />
         ) : (
-          <div className="flex flex-col gap-3 py-2">
+          <div className="flex flex-col gap-3 py-2" {...MASK}>
             {messages.map((msg) =>
               msg.from === 'me' ? (
                 <Mine key={msg.id} text={msg.text} />

@@ -252,6 +252,17 @@ const DICT: Dict = {
     ru: 'Кошель — простой трекер расходов и доходов в Telegram. Операции хранятся на устройстве, а при запуске внутри Telegram дублируются в облако — чтобы не пропасть при смене телефона. Боту можно писать словами: он записывает траты и отвечает на вопросы о деньгах. Для ответов в Google Gemini уходят сам вопрос, последние вопросы разговора и итоги — по дням, месяцам и категориям, бюджет, лимиты и цели; список самих операций — нет. Скоро в Кошель+ — голосовые и фото чеков: их Gemini получит целиком.',
     en: 'Koshel is a simple income & expense tracker inside Telegram. Entries live on your device and, when the app runs inside Telegram, are mirrored to the cloud so they survive a change of phone. You can write to the bot in plain words: it records expenses and answers questions about your money. For answers, Google Gemini receives the question itself, your recent questions and your totals — by day, month and category, budget, limits and goals; the list of entries itself is not sent. Coming soon with Koshel+: voice messages and receipt photos, which Gemini will receive as is.',
   },
+  // Обе строки обязаны оставаться правдой (см. src/lib/clarity.ts): скрываем на
+  // устройстве поля ввода, цифры, суммы, заметки, имена, цели и разговор с ассистентом.
+  'settings.about_clarity': {
+    ru: 'Чтобы делать приложение удобнее, Microsoft Clarity записывает, как им пользуются: нажатия, прокрутку и переходы по экранам. Суммы и цифры, заметки, имена и всё, что ты вводишь, скрыты ещё на устройстве и не уходят. Выключается ниже.',
+    en: 'To make the app easier to use, Microsoft Clarity records how it is used: taps, scrolling and screen changes. Amounts and numbers, notes, names and anything you type are hidden on your device and never sent. You can turn it off below.',
+  },
+  'settings.clarity': { ru: 'Помогать улучшать Кошель', en: 'Help improve Koshel' },
+  'settings.clarity_hint': {
+    ru: 'Запись нажатий и переходов без сумм, заметок и имён',
+    en: 'Records taps and screen changes, without amounts, notes or names',
+  },
   'settings.in_telegram': { ru: 'Запущено внутри Telegram:', en: 'Running inside Telegram:' },
   'settings.income_cats': { ru: 'доход', en: 'income' },
   'settings.expense_cats': { ru: 'расход', en: 'expense' },

@@ -17,6 +17,7 @@ import './index.css'
 // без @layer: Tailwind-директивы живут только в index.css.
 import './styles/motion.css'
 import './styles/skins.css'
+import { startClarity } from './lib/clarity'
 
 // Тема и акцент — до первого кадра и до `ready()`: Telegram показывает
 // приложение сразу после него, и первый кадр должен быть уже в своих цветах.
@@ -44,3 +45,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </LazyMotion>
   </React.StrictMode>,
 )
+
+// Записи сессий для владельца (lib/clarity): очередь сразу, скрипт — в простое.
+startClarity()

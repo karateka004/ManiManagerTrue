@@ -6,10 +6,12 @@
       CSP под текущий стек. GitHub Pages не отдаёт HTTP-заголовки, поэтому CSP в meta.
       style 'unsafe-inline' обязателен: framer-motion и темы (useAccent) пишут inline-стили.
       frame-ancestors в meta игнорируется (и приложение живёт в webview Telegram) — не добавляем.
+      clarity.ms — записи сессий (src/lib/clarity.ts): загрузчик www, скрипт scripts, отправка
+      на поддомен под регион проекта (v., k., y.…) — потому *.clarity.ms в connect-src.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://koshel-worker.karateka004.workers.dev; base-uri 'self'; object-src 'none'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' https://telegram.org https://www.clarity.ms https://scripts.clarity.ms; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://koshel-worker.karateka004.workers.dev https://*.clarity.ms; base-uri 'self'; object-src 'none'; form-action 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#3CA37B" />
@@ -18,7 +20,8 @@
     <link rel="preconnect" href="https://koshel-worker.karateka004.workers.dev" crossorigin />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
-  <body>
+  <!-- Записи Clarity скрывают всю страницу; открыт только неизменный интерфейс (UNMASK в src/lib/clarity.ts). -->
+  <body data-clarity-mask="true">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

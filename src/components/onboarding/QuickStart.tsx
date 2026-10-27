@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { m } from 'framer-motion'
 import { X, ArrowRight, Plus } from 'lucide-react'
 import { useStore, selectCategoriesByKind } from '../../store/transactions'
@@ -24,6 +24,7 @@ import {
   tg,
 } from '../../lib/telegram'
 import { useCatName, useT, type Lang, type TFunc } from '../../lib/i18n'
+import { UNMASK, clarityEvent, clarityKeep, clarityTag } from '../../lib/clarity'
 
 // Выбор валюты с поиском — общий ленивый чанк с Настройками и шторкой операции.
 const CurrencyPicker = lazy(() => import('../CurrencyPicker').then((mod) => ({ default: mod.CurrencyPicker })))
@@ -74,9 +75,19 @@ const PRIMARY_BTN =
  */
 const MIN_EXPENSES = 1
 
+/** Имена шагов для событий Clarity: onboarding_<шаг>, выход — onboarding_exit + метка onboarding_exit_at. */
+const STEP_NAMES = ['welcome', 'setup', 'income', 'expenses', 'result'] as const
+
 export function QuickStart({ onDone }: { onDone: () => void }) {
   const t = useT()
   const [step, setStep] = useState(0)
+  // Где уходят из быстрого старта — главная потеря воронки: каждую такую
+  // сессию держим в записях и метим шаги.
+  useEffect(() => {
+    clarityTag('onboarding', 'yes')
+    clarityKeep('onboarding')
+  }, [])
+  useEffect(() => clarityEvent('onboarding_' + STEP_NAMES[step]), [step])
 
   const currency = useStore((s) => s.currency)
   const setCurrency = useStore((s) => s.setCurrency)
@@ -134,6 +145,8 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   const close = async () => {
     // Защита от случайного выхода: спрашиваем подтверждение.
     if (!(await confirmAction(t('qs.exit_confirm')))) return
+    clarityEvent('onboarding_exit')
+    clarityTag('onboarding_exit_at', STEP_NAMES[step])
     hapticSelect()
     applyDetected()
     markCurrencyAsked()
@@ -152,6 +165,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       if (asking.current) return
       asking.current = true
       const answer = requestBotWrite().then((granted) => {
+        clarityEvent(granted ? 'bot_write_yes' : 'bot_write_no')
         if (granted) void setReminders(true)
         else setRemindersEnabled(false)
       })
@@ -187,6 +201,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   // нельзя. Предлагаем бюджет только тем, у кого его нет.
   const hasBudget = useStore((s) => s.monthlyBudget > 0)
   const finish = () => {
+    clarityEvent('onboarding_done')
     hapticNotify('success')
     if (budgetOn && income > 0 && useStore.getState().monthlyBudget === 0) setMonthlyBudget(Math.round(income))
     onDone()
@@ -368,8 +383,8 @@ function markCurrencyAsked() {
 function StepHead({ title, sub }: { title: string; sub?: string }) {
   return (
     <>
-      <h2 className="text-[26px] font-bold leading-[1.15] tracking-tight text-ink">{title}</h2>
-      {sub && <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">{sub}</p>}
+      <h2 className="text-[26px] font-bold leading-[1.15] tracking-tight text-ink" {...UNMASK}>{title}</h2>
+      {sub && <p className="mt-2 text-[15px] leading-relaxed text-ink-muted" {...UNMASK}>{sub}</p>}
     </>
   )
 }
@@ -378,7 +393,7 @@ function StepHead({ title, sub }: { title: string; sub?: string }) {
 
 function StepWelcome({ t, onStart }: { t: TFunc; onStart: () => void }) {
   return (
-    <div className="pb-2">
+    <div className="pb-2" {...UNMASK}>
       <StepHead title={t('qs.welcome_title')} sub={t('qs.welcome_sub')} />
 
       {/* План — нумерованным списком с тонкими линиями. Номер — цифрой, а не
@@ -476,7 +491,7 @@ function StepSetup({
         <Toggle on={reminders} />
       </button>
 
-      <button onClick={onNext} className={`${PRIMARY_BTN} mt-6`}>
+      <button onClick={onNext} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
         {t('qs.next')} <ArrowRight size={17} strokeWidth={2.6} />
       </button>
     </div>
@@ -523,7 +538,7 @@ function StepIncome({
       <div className="caption mt-5 text-ink-subtle">{t('qs.income_source')}</div>
       <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
 
-      <button onClick={onNext} disabled={!canGo} className={`${PRIMARY_BTN} mt-6`}>
+      <button onClick={onNext} disabled={!canGo} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
         {t('qs.next')} <ArrowRight size={17} strokeWidth={2.6} />
       </button>
     </div>
@@ -603,7 +618,7 @@ function StepExpenses({
         {t('qs.expense_counter', { n: items.length })}
       </div>
 
-      <button onClick={onNext} disabled={!enough} className={`${PRIMARY_BTN} mt-3`}>
+      <button onClick={onNext} disabled={!enough} className={`${PRIMARY_BTN} mt-3`} {...UNMASK}>
         {t('qs.show_result')} <ArrowRight size={17} strokeWidth={2.6} />
       </button>
     </div>
@@ -681,7 +696,7 @@ function StepForecast({
         </button>
       )}
 
-      <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`}>
+      <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
         {t('qs.finish')}
       </button>
       <div className="caption mt-3 text-center leading-snug text-ink-subtle">{t('qs.finish_hint')}</div>

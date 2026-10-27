@@ -42,6 +42,7 @@ import { RelabelPrompt, countInCurrency, countOthersInCurrency } from '../compon
 import { readPendingRelabel, writePendingRelabel, type PendingRelabel } from '../lib/relabelPending'
 import { useCatName, useT } from '../lib/i18n'
 import type { Lang } from '../lib/i18n'
+import { clarityAllowed, clarityAvailable, setClarityAllowed } from '../lib/clarity'
 
 /**
  * Настройки.
@@ -66,6 +67,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const demoMode = useStore((s) => s.demoMode)
   const setDemoMode = useStore((s) => s.setDemoMode)
   const remindersEnabled = useStore((s) => s.remindersEnabled)
+  const [clarityOn, setClarityOn] = useState(clarityAllowed)
   const setRemindersEnabled = useStore((s) => s.setRemindersEnabled)
   const count = useStore((s) => s.transactions.length)
   const chartStyle = useStore((s) => s.chartStyle)
@@ -415,8 +417,25 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       {/* О приложении */}
       <Group className="mx-4 mt-6" title={t('settings.about')}>
         <div className="row">
-          <p className="row-main text-[14px] leading-relaxed text-ink-muted">{t('settings.about_text')}</p>
+          <p className="row-main text-[14px] leading-relaxed text-ink-muted">
+            {t('settings.about_text')}
+            {clarityAvailable() && ' ' + t('settings.about_clarity')}
+          </p>
         </div>
+        {clarityAvailable() && (
+          <Row
+            title={t('settings.clarity')}
+            subtitle={t('settings.clarity_hint')}
+            wrap
+            trailing={<Toggle on={clarityOn} />}
+            checked={clarityOn}
+            onClick={() => {
+              hapticSelect()
+              setClarityOn(!clarityOn)
+              setClarityAllowed(!clarityOn)
+            }}
+          />
+        )}
         <Row
           title={t('settings.in_telegram').replace(/:\s*$/, '')}
           value={

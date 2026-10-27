@@ -9,6 +9,7 @@ import { RewardBadge } from './rewards/RewardBadge'
 import { FrameRing, hasFrameRing } from './rewards/FrameRing'
 import { tg, hapticSelect } from '../lib/telegram'
 import { useT, type TFunc } from '../lib/i18n'
+import { MASK } from '../lib/clarity'
 
 interface Props {
   open: boolean
@@ -246,7 +247,7 @@ function Row({
       <RewardBadge level={lvl} size={26} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-sm font-semibold text-ink">
-          <span className="truncate">{entry.name}</span>
+          <span className="truncate" {...MASK}>{entry.name}</span>
           {isMe && <span className="shrink-0 text-[10px] font-bold text-brand-600 dark:text-brand-300">· {t('lb.me')}</span>}
         </div>
         <div className="flex items-center gap-1.5 truncate text-[11px] text-ink-subtle">

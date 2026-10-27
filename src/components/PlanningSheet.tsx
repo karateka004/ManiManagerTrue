@@ -19,6 +19,7 @@ import { formatMoney, dayjs } from '../lib/format'
 import { CategoryIcon } from '../components/icons/CategoryIcon'
 import { hapticSelect, hapticTap, hapticNotify, confirmAction } from '../lib/telegram'
 import { useCatName, useT, type TFunc } from '../lib/i18n'
+import { MASK } from '../lib/clarity'
 
 interface Props {
   open: boolean
@@ -659,7 +660,7 @@ function GoalCard({ goal, t }: { goal: Goal; t: TFunc }) {
       <div className="row-main flex-col items-stretch gap-0">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[15px] font-semibold text-ink">{goal.title}</div>
+          <div className="truncate text-[15px] font-semibold text-ink" {...MASK}>{goal.title}</div>
           <div className="caption mt-0.5 tabular-nums text-ink-subtle">
             {formatMoney(saved, cur)} {t('plan.goal_of')} {formatMoney(goal.target, cur)}
           </div>

@@ -7,6 +7,7 @@ import { categoryName } from '../lib/categoryNames'
 import { useT } from '../lib/i18n'
 import { formatMoney, dayjs } from '../lib/format'
 import { hapticSelect } from '../lib/telegram'
+import { MASK } from '../lib/clarity'
 
 interface Props {
   open: boolean
@@ -164,7 +165,7 @@ function SearchBody({ open, onClose, onEditTx }: Props) {
                 </span>
 
                 <span className="row-main">
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1" {...MASK}>
                     <span className="block truncate text-[15px] font-semibold text-ink">
                       {tx.note || (cat ? categoryName(lang, cat.id, cat.name) : '—')}
                     </span>

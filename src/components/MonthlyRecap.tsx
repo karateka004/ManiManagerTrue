@@ -8,6 +8,7 @@ import { Money } from './ui/Money'
 import { useCatName, useT } from '../lib/i18n'
 import { hapticTap } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
+import { MASK } from '../lib/clarity'
 
 /** Ключ последнего месяца, за который итоги уже посмотрели. */
 const SEEN_KEY = 'koshel:recap'
@@ -132,7 +133,7 @@ function Row({
             {icon}
           </span>
         )}
-        {name && <span className="truncate text-[13px] font-semibold text-ink">{name}</span>}
+        {name && <span className="truncate text-[13px] font-semibold text-ink" {...MASK}>{name}</span>}
         <span className="tabular shrink-0 text-[13px] font-extrabold text-ink">{value}</span>
       </span>
     </div>

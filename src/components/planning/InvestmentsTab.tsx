@@ -13,6 +13,7 @@ import { CurrencyFlag } from '../ui/CurrencyFlag'
 import { formatMoney } from '../../lib/format'
 import { hapticSelect, hapticTap, hapticNotify, confirmAction } from '../../lib/telegram'
 import { type TFunc } from '../../lib/i18n'
+import { MASK } from '../../lib/clarity'
 
 /** Иконка и оттенок под тип актива. */
 const KIND_META: Record<InvestmentKind, { icon: typeof Landmark; color: string }> = {
@@ -263,7 +264,7 @@ function InvestmentCard({ item, t }: { item: Investment; t: TFunc }) {
           <Icon size={18} strokeWidth={2} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink">{item.title}</div>
+          <div className="truncate text-sm font-semibold text-ink" {...MASK}>{item.title}</div>
           <div className="text-[11px] text-ink-subtle">
             {t('inv.kind_' + item.kind)}
             {item.rate > 0 && ` · ${item.rate}% ${t('inv.per_year')}`}

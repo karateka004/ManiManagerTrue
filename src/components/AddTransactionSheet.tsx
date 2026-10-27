@@ -22,6 +22,7 @@ import { centerOf, replay } from '../lib/fx'
 import { showToast } from '../lib/toast'
 import { markTouched } from '../lib/touched'
 import { playSaveEffect } from '../lib/saveEffect'
+import { clarityEvent, clarityKeep } from '../lib/clarity'
 
 
 // Редактор категорий — общий ленивый чанк (тот же, что в Settings).
@@ -391,8 +392,15 @@ function AddForm({
     afterSheetStarts(() => {
       // Одно изменение стора на всё сохранение: добавление/правка, запоминание
       // валюты и сдвиг периода для операции «задним числом» (см. commitTransaction).
-      const { coins: coinsBefore, coinDay: coinDayBefore } = useStore.getState()
+      const { coins: coinsBefore, coinDay: coinDayBefore, transactions: txBefore } = useStore.getState()
       const id = commitTransaction(payload, before?.id ?? null)
+      if (!before) {
+        clarityEvent('record_added')
+        if (!txBefore.length) {
+          clarityEvent('first_record')
+          clarityKeep('first_record')
+        }
+      }
       // Первая запись за день приносит монеты (RECORD_COINS) — скажем об этом.
       const gained = useStore.getState().coins - coinsBefore
       markTouched(payload.categoryId)

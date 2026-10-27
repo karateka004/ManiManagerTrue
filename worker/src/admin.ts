@@ -505,6 +505,9 @@ export const ADMIN_HTML = `<!doctype html>
 (function(){
   'use strict';
   var KEY='koshel_admin_key', THEME='koshel_admin_theme', BOT='TrueManiManager_Bot';
+  /* Проект Microsoft Clarity — тот же номер, что CLARITY_ID в src/lib/clarity.ts
+     приложения. Пусто — кнопки «Записи в Clarity» нет. */
+  var CLARITY_PROJECT='';
   var D=null;
   var S={ tab:'overview', win:'7', src:'all', chart:'growth', range:30, table:false,
           retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'' };
@@ -1424,6 +1427,7 @@ export const ADMIN_HTML = `<!doctype html>
       +'<div style="min-width:0;flex:1"><h3>'+esc(p.name)+'</h3><div class="note">'+tgLink+'id '+esc(p.id)+'</div></div>'
       +'<button class="icon" data-act="close" aria-label="Закрыть">'+IC.close+'</button></div>'
       +'<div class="chips">'+chips+'</div>'
+      +(CLARITY_PROJECT?'<button class="btn ghost" data-act="clarity" data-v="'+esc(p.id)+'" style="margin-top:12px">Записи в Clarity</button>':'')
       +'<div class="sec" style="margin-top:18px"><h2>Активность</h2><span class="aside">'+(weeks>=5?'за 5 недель':'с прихода')+'</span></div>'
       +'<div class="cal">'+cal+'</div>'
       +'<div class="kv" style="margin-top:8px"><span><i class="dotkey" style="background:var(--mark)"></i>был</span><span><i class="dotkey" style="background:var(--well)"></i>не был</span><span><i class="dotkey" style="box-shadow:inset 0 0 0 1px var(--hair)"></i>неизвестно</span></div>'
@@ -1551,6 +1555,14 @@ export const ADMIN_HTML = `<!doctype html>
     else if(act==='srcfunnel'){ S.src=v; S.tab='overview'; haptic(); render(); var f=document.querySelector('.fn'); if(f) f.scrollIntoView({block:'center'}); }
     else if(act==='copy'){ var t=cleanTag(S.tag); if(!t){ toast('Сначала придумайте метку'); return; } copy('https://t.me/'+BOT+(v==='bot'?'?start=':'?startapp=')+t); }
     else if(act==='tglink'){ if(TG && TG.openTelegramLink){ e.preventDefault(); TG.openTelegramLink('https://t.me/'+v); } }
+    else if(act==='clarity'){
+      // Ссылки на запись человека Clarity не даёт — копируем его id для фильтра
+      // «Custom user ID» и открываем записи проекта.
+      var curl='https://clarity.microsoft.com/projects/view/'+CLARITY_PROJECT+'/impressions';
+      copy(v);
+      setTimeout(function(){ toast('id '+v+' скопирован — вставь в фильтр Custom user ID'); },300);
+      if(TG && TG.openLink) TG.openLink(curl); else window.open(curl,'_blank');
+    }
     else if(act==='digest'){
       el.disabled=true;
       api('/admin/digest',{}).then(function(r){ el.disabled=false; toast(r&&r.ok?'Сводка отправлена в Telegram':'Не удалось отправить'); })

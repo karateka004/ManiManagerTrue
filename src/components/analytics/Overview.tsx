@@ -22,6 +22,7 @@ import { AnimatedMoney } from '../ui/Odometer'
 import { daysWord, useCatName, useT, weekdaysAccusative, weekdaysFull, weekdaysShort } from '../../lib/i18n'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { FlowChart } from './FlowChart'
+import { MASK } from '../../lib/clarity'
 
 /**
  * «Обзор» — первый сегмент Аналитики: не ещё один график, а ответ на вопрос
@@ -465,7 +466,7 @@ function Biggest() {
               <CategoryIcon id={c?.icon ?? 'other'} size={18} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[14px] font-semibold text-ink">
+              <div className="truncate text-[14px] font-semibold text-ink" {...MASK}>
                 {tx.note?.trim() || catName(tx.categoryId, c?.name ?? tx.categoryId)}
               </div>
               <div className="text-[12px] text-ink-subtle">{dayjs(tx.date).format('D MMMM')}</div>

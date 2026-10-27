@@ -1,4 +1,5 @@
 import { formatMoney, type Currency } from '../../lib/format'
+import { MASK } from '../../lib/clarity'
 
 /** Разделитель, который formatMoney всегда ставит между числом и символом валюты. */
 const NBSP = String.fromCharCode(160)
@@ -35,7 +36,7 @@ export function Money({ value, currency, sign, compact, className }: Props) {
   const whole = frac ? num.slice(0, frac.index) : num
 
   return (
-    <span className={`money ${className ?? ''}`}>
+    <span className={`money ${className ?? ''}`} {...MASK}>
       {whole}
       {frac && <span className="money-frac">{frac[0]}</span>}
       {symbol && <span className="money-sym">{symbol}</span>}

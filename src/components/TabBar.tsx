@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import { Home, PieChart, User, Rocket, Plus, type LucideProps } from 'lucide-react'
 import { hapticSelect, hapticTap } from '../lib/telegram'
 import { useT } from '../lib/i18n'
+import { UNMASK } from '../lib/clarity'
 
 // 'settings' остаётся валидным значением вкладки (рендерится в App), но в нижней
 // панели его НЕТ — Настройки открываются из шапки Профиля (иконка-шестерёнка).
@@ -47,6 +48,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
       // по бокам от панели, иначе невидимая полоса перехватывала бы тапы.
       className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3"
       style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 10px)' }}
+      {...UNMASK}
     >
       <div className="flex w-full max-w-md items-center gap-2.5">
         <nav className="tabbar-glass pointer-events-auto min-w-0 flex-1 rounded-full border border-black/[0.06] bg-surface-raised/80 p-1.5 shadow-fab backdrop-blur-xl dark:border-white/10 dark:shadow-raised-dark">

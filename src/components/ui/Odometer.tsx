@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { formatMoney, type Currency } from '../../lib/format'
+import { MASK } from '../../lib/clarity'
 
 /**
  * Число с цифрами-барабанами: при изменении значения цифры прокручиваются к
@@ -27,7 +28,7 @@ export const Odometer = memo(function Odometer({
   const n = chars.length
   let digitIndex = 0
   return (
-    <span className={`odo ${className ?? ''}`}>
+    <span className={`odo ${className ?? ''}`} {...MASK}>
       {/* Скринридеру — число целиком, а не россыпь лент с цифрами 0–9. */}
       <span className="sr-only">{text}</span>
       <span aria-hidden>
@@ -93,7 +94,7 @@ export function AnimatedMoney({
   const whole = frac ? num.slice(0, frac.index) : num
 
   return (
-    <span className={`money ${className ?? ''}`}>
+    <span className={`money ${className ?? ''}`} {...MASK}>
       <Odometer text={whole} />
       {frac && (
         <span className="money-frac">

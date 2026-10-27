@@ -5,6 +5,7 @@ import { useT } from '../lib/i18n'
 import { streakWeek } from '../lib/streak'
 import { User } from 'lucide-react'
 import { FrameRing, hasFrameRing } from './rewards/FrameRing'
+import { MASK } from '../lib/clarity'
 
 /**
  * Аватар пользователя Telegram: фото или инициалы + надетая рамка.
@@ -44,6 +45,7 @@ export function Avatar({
         }`}
         style={{ fontSize: Math.round(size * 0.38) }}
         aria-label={t('nav.profile')}
+        {...MASK}
       >
         {photo ? (
           <img src={photo} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />

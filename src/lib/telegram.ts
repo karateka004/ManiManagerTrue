@@ -37,6 +37,8 @@ interface TelegramWebApp {
     onClick: (cb: () => void) => void
     offClick: (cb: () => void) => void
   }
+  /** Клиент Telegram: ios, android, tdesktop, macos, weba, webk… */
+  platform?: string
   /** Сырая подписанная строка для валидации на бэкенде. */
   initData?: string
   initDataUnsafe?: {

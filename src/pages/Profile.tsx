@@ -16,6 +16,7 @@ import { RewardBadge } from '../components/rewards/RewardBadge'
 import { isPlusTester, usePlusT } from '../lib/plus'
 
 import { APP_VERSION, VERSION_KEY, newReleasesSince } from '../lib/whatsnew'
+import { MASK } from '../lib/clarity'
 
 // Планирование (финансы) — ленивая шторка, грузится по первому открытию.
 const PlanningSheet = lazy(() => import('../components/PlanningSheet').then((m) => ({ default: m.PlanningSheet })))
@@ -167,7 +168,7 @@ export function ProfilePage({ onOpenSettings, onOpenRewards }: Props) {
       <div className="mt-3 flex items-center gap-3.5 px-5">
         <Avatar size={56} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[17px] font-bold leading-tight text-ink">{name}</div>
+          <div className="truncate text-[17px] font-bold leading-tight text-ink" {...MASK}>{name}</div>
           <div className="caption mt-1 flex min-w-0 items-center gap-1.5 text-ink-subtle">
             {username && <span className="truncate">@{username}</span>}
             {username && equippedTitle && <span aria-hidden>·</span>}
