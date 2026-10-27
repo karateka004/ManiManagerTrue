@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 105,
-reply, analytics 64, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
+reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -185,7 +185,10 @@ reply, analytics 64, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
   `stackBar` + `legendList`. Когорты: ноль — серая клетка, зелёная шкала только у ненулевых, срок
   не наступил — пусто, нет данных — прочерк; столбцы, пустые по построению (D14/D30 у дневных
   когорт), не рисуются; строка «В среднем». График: значение и изменение за период в шапке, палец
-  ведёт по дням (`readout`). Предпросмотр — `scripts/admin-preview.mjs` (выдуманная база, порт 8790).
+  ведёт по дням (`readout`). Период «Сводки» (`S.win`: Сегодня / 7 / 30 дн / Все) один на «Главное» и
+  воронку — переключатель в шапке «Главного» и в карточке воронки; под него в `kpi`: `newPrev30`,
+  `writersToday`, `d1w` (D1 по окну; «Сегодня» — вчерашние новички, зашедшие сегодня).
+  Предпросмотр — `scripts/admin-preview.mjs` (выдуманная база, порт 8790).
 - Профиль бота (описания, команды) выставляет крон сам (`ensureBotProfile`).
 - **Промо-ролики** (`promo/`): сцена `bot-update.html` с часами `renderAt(t)` (раскладки `land` 960×540,
   `square`, `story` 1080×1920; цвет у каждого эпизода), ответы бота — настоящим кодом (`replies.mjs` →

@@ -147,6 +147,7 @@ export const ADMIN_HTML = `<!doctype html>
   .sec h2{margin:0;font-size:17px;font-weight:800;letter-spacing:-.022em;white-space:nowrap}
   .sec .aside{font-size:12.5px;color:var(--ink-3);font-weight:500;text-align:right;line-height:1.35;min-width:0}
   /* Срез (источник, период) — справа от заголовка: он задаёт весь блок под ним. */
+  .sec .seg button{padding:0 10px}
   .sec .select{flex:0 1 auto;max-width:58%;height:32px;background-position:calc(100% - 17px) 14px,calc(100% - 12px) 14px}
   .card > .seg.full{margin-bottom:4px}
   .card > .seg.full + .fn{margin-top:14px}
@@ -765,19 +766,77 @@ export const ADMIN_HTML = `<!doctype html>
       +(sparkKey?'<div class="spark" data-spark="'+sparkKey+'"></div>':'')+'</div>';
   }
   function panel(cells){ return '<div class="panel">'+cells.join('')+'</div>'; }
+  /** Сутки idx строкой YYYY-MM-DD (МСК) — ключ строки ночного снимка. */
+  function dayStr(idx){ var d=new Date(idx*DAY); return d.getUTCFullYear()+'-'+two(d.getUTCMonth()+1)+'-'+two(d.getUTCDate()); }
+  /** Ночной снимок на конец суток ago дней назад: с ним сравниваем «за 7/30 дней». */
+  function histAgo(ago){
+    var key=dayStr(todayIdx()-ago), h=D.history||[];
+    for(var i=h.length-1;i>=0;i--) if(h[i].date===key) return h[i];
+    return null;
+  }
+  /** Спарклайны под период: 14 дней — посуточные ряды, 30 дней и «Все» — ночные снимки. */
+  var SPARK={};
+  function sparkFor(win){
+    var sp=D.spark, k=D.kpi, h=D.history||[];
+    if(win==='30'){
+      var t=h.slice(-30);
+      return {
+        fresh:t.map(function(r){ return r.new; }).concat([k.newToday]),
+        active:t.map(function(r){ return r.dau; }).concat([k.dau]),
+        writers:t.map(function(r){ return r.writers==null?null:r.writers; }).concat([k.writers7])
+      };
+    }
+    if(win==='all') return { total:h.map(function(r){ return r.total; }).concat([k.total]) };
+    return { fresh:sp.fresh, active:sp.active, writers:sp.writers };
+  }
+  /** «Главное» — за период сводки (тот же, что у воронки ниже): каждое число
+      за выбранный срок и в сравнении с таким же сроком до него. */
   function kpis(){
-    var k=D.kpi, sp=D.spark, n=sp.days.length;
-    var wPrev=sp.writers[n-8], aPrev=sp.active[n-2];
-    var d1=k.d1||{base:0,n:0};
-    var d1v=d1.base>=5 ? pcn(d1.n,d1.base)+'%' : '—';
-    var d1meta=d1.base>=5 ? (nf(d1.n)+' из '+nf(d1.base)+' за две недели') : 'копится: нужно хотя бы 5 новичков с прожитым вторым днём';
-    return sec('Главное',nf(k.total)+' человек всего')
-      +panel([
-        cell('Новые за неделю',nf(k.new7),delta(k.new7,k.newPrev7,true,'неделей раньше'),'fresh'),
-        cell('Пишут за неделю',nf(k.writers7),(wPrev!=null?delta(k.writers7,wPrev,true,'неделей раньше'):'')+'<span>из них боту '+nf(D.bot.writers7)+'</span>','writers'),
-        cell('Заходили сегодня',nf(k.dau),(aPrev!=null?delta(k.dau,aPrev,true,'вчера'):'')+'<span>новых '+nf(k.dauNew)+'</span>','active'),
-        cell('Вернулись на 2-й день',d1v,'<span>'+esc(d1meta)+'</span>',null)
-      ]);
+    var k=D.kpi, sp=D.spark, n=sp.days.length, w=S.win, cells;
+    SPARK=sparkFor(w);
+    var dw=k.d1w?k.d1w[w]:null, d1c;
+    if(w==='1'){
+      d1c=dw&&dw.base ? cell('Вчерашние новички сегодня',nf(dw.n),'<span>из '+nf(dw.base)+' пришедших вчера</span>',null)
+        : cell('Вчерашние новички сегодня','—','<span>вчера никто не пришёл</span>',null);
+    } else {
+      var d=dw||k.d1||{base:0,n:0}, per=!dw?'за две недели':(w==='7'?'за неделю':(w==='30'?'за 30 дней':(D.trackFrom?'с '+dshort(D.trackFrom):'за всё время')));
+      d1c=cell('Вернулись на 2-й день',d.base>=5?pcn(d.n,d.base)+'%':'—',
+        '<span>'+(d.base>=5?nf(d.n)+' из '+nf(d.base)+' '+per:'копится: нужно хотя бы 5 новичков с прожитым вторым днём')+'</span>',null);
+    }
+    if(w==='1'){
+      var t=D.today, yBy=0;
+      for(var i=0;i<=t.hourNow && i<24;i++) yBy+=t.hoursY[i]||0;
+      cells=[
+        cell('Новые сегодня',nf(k.newToday),delta(k.newToday,yBy,true,'вчера к этому часу'),'fresh'),
+        cell('Заходили сегодня',nf(k.dau),'<span>новых '+nf(k.dauNew)+' · вернулись '+nf(k.dauBack)+'</span>','active'),
+        cell('Пишут сегодня',nf(k.writersToday||0),'<span>за 7 дней '+nf(k.writers7)+'</span>','writers'),
+        d1c
+      ];
+    } else if(w==='30'){
+      var ma=histAgo(30);
+      cells=[
+        cell('Новые за 30 дней',nf(k.new30),k.newPrev30!=null?delta(k.new30,k.newPrev30,true,'30 дней до этого'):'','fresh'),
+        cell('Заходили за 30 дней',nf(k.mau),ma?delta(k.mau,ma.mau,true,'месяц назад'):'','active'),
+        cell('Пишут за 30 дней',nf(k.writers30),'<span>за 7 дней '+nf(k.writers7)+'</span>','writers'),
+        d1c
+      ];
+    } else if(w==='all'){
+      cells=[
+        cell('Всего людей',nf(k.total),'<span>сами '+nf(k.organic)+' · по ссылкам друзей '+nf(k.fromRef)+' · реклама '+nf(k.campaign)+'</span>','total'),
+        cell('Открывали приложение',nf(k.inApp),'<span>'+pct(k.inApp,k.total)+' всех</span>',null),
+        cell('С операциями',nf(k.withOps),'<span>'+pct(k.withOps,k.total)+' всех</span>',null),
+        d1c
+      ];
+    } else {
+      var wa=histAgo(7), wPrev=sp.writers[n-8];
+      cells=[
+        cell('Новые за 7 дней',nf(k.new7),delta(k.new7,k.newPrev7,true,'неделей раньше'),'fresh'),
+        cell('Заходили за 7 дней',nf(k.wau),wa?delta(k.wau,wa.wau,true,'неделей раньше'):'','active'),
+        cell('Пишут за 7 дней',nf(k.writers7),(wPrev!=null?delta(k.writers7,wPrev,true,'неделей раньше'):'')+'<span>из них боту '+nf(D.bot.writers7)+'</span>','writers'),
+        d1c
+      ];
+    }
+    return sec('Главное',segButtons('win',WIN_SEGS,S.win))+panel(cells);
   }
 
   function insightsBlock(){
@@ -1011,7 +1070,7 @@ export const ADMIN_HTML = `<!doctype html>
   function drawSparks(){
     var els=document.querySelectorAll('[data-spark]');
     for(var e=0;e<els.length;e++){
-      var el=els[e], vals=D.spark[el.getAttribute('data-spark')]||[];
+      var el=els[e], vals=SPARK[el.getAttribute('data-spark')]||[];
       var W=Math.max(80,el.clientWidth||160), H=28, n=vals.length, max=1, min=Infinity, i;
       for(i=0;i<n;i++) if(vals[i]!=null){ if(vals[i]>max) max=vals[i]; if(vals[i]<min) min=vals[i]; }
       if(min===Infinity){ el.innerHTML=''; continue; }
@@ -1022,7 +1081,7 @@ export const ADMIN_HTML = `<!doctype html>
       for(i=0;i<n;i++){ if(vals[i]==null){ on=false; continue; } d+=(on?' L':'M')+X(i).toFixed(1)+' '+Y(vals[i]).toFixed(1); on=true; last=i; }
       el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'"><path d="'+d+'" fill="none" stroke="var(--context)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
         +(last>=0?'<circle cx="'+X(last).toFixed(1)+'" cy="'+Y(vals[last]).toFixed(1)+'" r="4" fill="var(--mark)" stroke="var(--card)" stroke-width="2"/>':'')+'</svg>';
-      el.setAttribute('title','последние '+n+' дней');
+      el.setAttribute('title','по дням');
     }
   }
 
@@ -1120,7 +1179,7 @@ export const ADMIN_HTML = `<!doctype html>
       var live=false; for(i=0;i<rows.length;i++) if(!cellFuture(rows[i],c,daily)){ live=true; break; }
       if(live) vis.push(c); else gone.push(daily?'D'+keys[c]:keys[c]+'-я нед');
     }
-    var html='<table class="heat"><colgroup><col style="width:'+(daily?62:76)+'px"><col style="width:40px">'
+    var html='<table class="heat"><colgroup><col style="width:'+(daily?62:92)+'px"><col style="width:40px">'
       +vis.map(function(){ return '<col>'; }).join('')+'</colgroup>'
       +'<thead><tr><th class="c0">'+(daily?'Пришли':'Неделя')+'</th><th class="cn">чел.</th>'
       +vis.map(function(c){ return '<th>'+(daily?'D'+keys[c]:keys[c]+'-я нед')+'</th>'; }).join('')+'</tr></thead><tbody>';

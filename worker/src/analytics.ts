@@ -724,14 +724,36 @@ function funnelOf(ps: Person[], now: number) {
   return { n: ps.length, steps: [ps.length, act, back, five, live], app, bot }
 }
 
-/** D1 по когортам последних двух недель — одно число для верхней карточки. */
-function d1Recent(ps: Person[], trackFrom: number | null, today: number): { base: number; n: number } {
+/**
+ * D1 по когортам пришедших за `days` суток до позавчера включительно (у
+ * вчерашних следующий день ещё идёт); `null` — за всё время записи активности.
+ */
+function d1Window(ps: Person[], trackFrom: number | null, today: number, days: number | null): { base: number; n: number } {
   let base = 0
   let n = 0
   for (const p of ps) {
     const f = p.fday
-    if (f < today - 15 || f + 1 >= today) continue
+    if (f + 1 >= today || (days !== null && f < today - 1 - days)) continue
     const a = activeOn(p, f + 1, trackFrom)
+    if (a === null) continue
+    base++
+    if (a) n++
+  }
+  return { base, n }
+}
+
+/** D1 по когортам последних двух недель — одно число для верхней карточки. */
+function d1Recent(ps: Person[], trackFrom: number | null, today: number): { base: number; n: number } {
+  return d1Window(ps, trackFrom, today, 14)
+}
+
+/** Вчерашние новички, зашедшие сегодня (сутки ещё идут — «пока»). */
+function d1Today(ps: Person[], trackFrom: number | null, today: number): { base: number; n: number } {
+  let base = 0
+  let n = 0
+  for (const p of ps) {
+    if (p.fday !== today - 1) continue
+    const a = activeOn(p, today, trackFrom)
     if (a === null) continue
     base++
     if (a) n++
@@ -780,6 +802,8 @@ export function computeDashboard(
   let new7 = 0
   let newPrev7 = 0
   let new30 = 0
+  let newPrev30 = 0
+  let writersToday = 0
   let dau = 0
   let dauNew = 0
   let wau = 0
@@ -812,6 +836,8 @@ export function computeDashboard(
     }
     if (p.firstSeen >= d14 && p.firstSeen < d7) newPrev7++
     if (p.firstSeen >= d30) new30++
+    else if (p.firstSeen >= d30 - 30 * DAY_MS) newPrev30++
+    if (wroteWithin(p, 0, now) || (p.botOps > 0 && !!p.bot?.l && p.bot.l >= todayStart)) writersToday++
     if (p.lastSeen >= todayStart) {
       dau++
       if (isNewToday) dauNew++
@@ -1042,6 +1068,7 @@ export function computeDashboard(
     new7,
     newPrev7,
     new30,
+    newPrev30,
     dau,
     dauNew,
     dauBack: dau - dauNew,
@@ -1049,6 +1076,7 @@ export function computeDashboard(
     mau,
     writers7,
     writers30,
+    writersToday,
     withOps,
     withOpsPct: pct(withOps, ps.length),
     act7,
@@ -1058,6 +1086,8 @@ export function computeDashboard(
     blocked,
     remindersOff,
     d1,
+    /** D1 под переключатель периода «Сводки»: «1» — вчерашние новички сегодня. */
+    d1w: { '1': d1Today(ps, tf, today), '7': d1Window(ps, tf, today, 7), '30': d1Window(ps, tf, today, 30), all: d1Window(ps, tf, today, null) },
     usual,
     lastHour,
   }
