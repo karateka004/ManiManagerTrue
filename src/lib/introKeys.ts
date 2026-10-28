@@ -5,3 +5,9 @@
  */
 export const ONBOARDED_KEY = 'koshel:onboarded'
 export const VERSION_KEY = 'koshel:lastVersion'
+/**
+ * Незаконченный быстрый старт: шаг и id записанных в нём операций. Кто закрыл
+ * приложение посреди быстрого старта (а не крестиком), при следующем входе
+ * продолжает с того же шага, а не попадает на пустую Главную навсегда.
+ */
+export const QS_KEY = 'koshel:qs'

@@ -22,7 +22,8 @@ import { useStore } from '../store/transactions'
  */
 // Номер проекта (clarity.microsoft.com → Settings → Overview → Project ID) — не
 // секрет: он и так виден в коде страницы. VITE_CLARITY_ID — для проверочных сборок.
-export const CLARITY_ID: string = import.meta.env.VITE_CLARITY_ID || ''
+// Тот же номер — CLARITY_PROJECT в админке воркера.
+export const CLARITY_ID: string = import.meta.env.VITE_CLARITY_ID || 'z50dung9vo'
 
 const OFF_KEY = 'koshel:clarity'
 const OWNER_ID = 439944083

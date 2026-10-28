@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { m } from 'framer-motion'
 import { X, ArrowRight, Plus } from 'lucide-react'
-import { useStore, selectCategoriesByKind } from '../../store/transactions'
+import { useStore, selectCategoriesByKind, type Transaction } from '../../store/transactions'
 import { CategoryIcon } from '../icons/CategoryIcon'
 import { getCurrency, type Currency } from '../../lib/currencies'
 import { currencyName } from '../../lib/currencyInfo'
 import { detectCurrency } from '../../lib/currencyDetect'
 import { formatMoney, dayjs } from '../../lib/format'
-import { setReminders } from '../../lib/api'
+import { reportQuickStart, setReminders } from '../../lib/api'
+import { QS_KEY } from '../../lib/introKeys'
 import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
 import { Money } from '../ui/Money'
 import { SegTrack } from '../ui/SegTrack'
@@ -30,9 +31,20 @@ import { UNMASK, clarityEvent, clarityKeep, clarityTag } from '../../lib/clarity
 const CurrencyPicker = lazy(() => import('../CurrencyPicker').then((mod) => ({ default: mod.CurrencyPicker })))
 
 /**
- * Быстрый старт для новичка: четыре шага до первого полезного вывода.
- *   1) настройки (валюта, язык, напоминания) → 2) доход → 3) пара расходов →
- *   4) прогноз на месяц и бюджет.
+ * Быстрый старт для новичка: до первой записи — пара касаний.
+ *   1) настройки (валюта, язык, напоминания) → 2) первая трата →
+ *   3) доход (можно пропустить) → 4) итог: прогноз на месяц и бюджет, если
+ *   есть доход; сколько потрачено, если только траты.
+ *
+ * 2.8: раньше без дохода дальше было не пройти, а «Показать результат» не
+ * нажимался, пока набранную трату не добавили отдельной кнопкой, — выйти
+ * можно было только крестиком, и на этих экранах терялась большая часть
+ * новичков. Теперь трата идёт раньше дохода (сколько получаешь — вопрос
+ * личный, его задают, когда польза уже видна), «Дальше» записывает набранную
+ * сумму сам, и трату, и доход можно пропустить, а итог подстраивается под то,
+ * что есть. Записанное сразу ложится в стор, а шаг с id записей — в koshel:qs:
+ * кто закрыл приложение посреди быстрого старта (не крестиком), продолжает с
+ * того же места. Шаги уходят в админку (reportQuickStart, без сумм).
  *
  * 2.2: раньше валюта стояла сегментом USD/EUR/UAH под полем дохода, выбрана была
  * долларом — и многие так и проходили быстрый старт на долларе, записывая
@@ -58,29 +70,69 @@ const LANGS: { id: Lang; label: string }[] = [
   { id: 'en', label: 'English' },
 ]
 
-interface Draft {
-  amount: number
-  categoryId: string
-}
-
 type Cat = { id: string; name: string; icon: string; color: string }
 
 const PRIMARY_BTN =
   'flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.99] disabled:opacity-40'
 
-/**
- * Сколько трат нужно для прогноза. Хватает одной: раньше требовалось две, и
- * тот, у кого сегодня была одна покупка, застревал на шаге — выйти можно было
- * только через «×». Порог один на кнопку и на её обработчик.
- */
-const MIN_EXPENSES = 1
+const SKIP_BTN = 'mt-2 w-full py-2.5 text-center text-[14px] font-semibold text-ink-muted transition active:opacity-60'
 
+/** Шаги по порядку. Номера — те же, что у воркера (worker/src/quickstart.ts, QS_STEPS). */
+const STEP = { welcome: 0, setup: 1, expense: 2, income: 3, result: 4 } as const
 /** Имена шагов для событий Clarity: onboarding_<шаг>, выход — onboarding_exit + метка onboarding_exit_at. */
-const STEP_NAMES = ['welcome', 'setup', 'income', 'expenses', 'result'] as const
+const STEP_NAMES = ['welcome', 'setup', 'expenses', 'income', 'result'] as const
+
+/** Трат в быстром старте — не больше трёх: дальше это уже обычная запись. */
+const MAX_EXPENSES = 3
+
+/** Сумма из поля: запятая как точка; ноль, минус и нечисловое — 0; абсурдно большое — тоже. */
+function parseAmount(s: string): number {
+  const v = parseFloat(s.replace(',', '.'))
+  return Number.isFinite(v) && v > 0 && v <= 1e12 ? v : 0
+}
+
+/** Незаконченный быстрый старт (QS_KEY): шаг и id записанных в нём операций. */
+interface Saved {
+  s: number
+  ids: string[]
+  inc: string | null
+}
+function readSaved(): Saved | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(QS_KEY) ?? 'null') as Partial<Saved> | null
+    if (!v || typeof v.s !== 'number' || !(v.s >= STEP.welcome && v.s <= STEP.result)) return null
+    return {
+      s: Math.floor(v.s),
+      ids: Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_EXPENSES) : [],
+      inc: typeof v.inc === 'string' ? v.inc : null,
+    }
+  } catch {
+    return null
+  }
+}
+function writeSaved(v: Saved) {
+  try {
+    localStorage.setItem(QS_KEY, JSON.stringify(v))
+  } catch {
+    /* приватный режим — продолжить с места не выйдет, начнём сначала */
+  }
+}
+function clearSaved() {
+  try {
+    localStorage.removeItem(QS_KEY)
+  } catch {
+    /* нечего чистить */
+  }
+}
 
 export function QuickStart({ onDone }: { onDone: () => void }) {
   const t = useT()
-  const [step, setStep] = useState(0)
+  // Продолжаем с того места, где закрыли приложение (QS_KEY), иначе с начала.
+  const [saved] = useState(readSaved)
+  const [step, setStep] = useState<number>(saved?.s ?? STEP.welcome)
+  // id операций, записанных в быстром старте: траты по порядку и доход.
+  const [ids, setIds] = useState<string[]>(saved?.ids ?? [])
+  const [incId, setIncId] = useState<string | null>(saved?.inc ?? null)
   // Где уходят из быстрого старта — главная потеря воронки: каждую такую
   // сессию держим в записях и метим шаги.
   useEffect(() => {
@@ -88,6 +140,12 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     clarityKeep('onboarding')
   }, [])
   useEffect(() => clarityEvent('onboarding_' + STEP_NAMES[step]), [step])
+  // Место — в localStorage (не в стор: сохранённый стор значит «старый
+  // пользователь»), шаг — в админку.
+  useEffect(() => writeSaved({ s: step, ids, inc: incId }), [step, ids, incId])
+  const progress = useRef({ e: ids.length, i: !!incId })
+  progress.current = { e: ids.length, i: !!incId }
+  useEffect(() => reportQuickStart({ s: step, ...progress.current }), [step])
 
   const currency = useStore((s) => s.currency)
   const setCurrency = useStore((s) => s.setCurrency)
@@ -97,8 +155,17 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   const setRemindersEnabled = useStore((s) => s.setRemindersEnabled)
   const setMonthlyBudget = useStore((s) => s.setMonthlyBudget)
   const addTransaction = useStore((s) => s.addTransaction)
+  const removeTransaction = useStore((s) => s.removeTransaction)
   const incomeCats = useStore((s) => selectCategoriesByKind(s, 'income'))
   const expenseCats = useStore((s) => selectCategoriesByKind(s, 'expense'))
+  // Записанное в быстром старте — из стора по id: после перезапуска (QS_KEY)
+  // список и итог те же. Удалённое где-то ещё просто пропадает из списка.
+  const transactions = useStore((s) => s.transactions)
+  const expenses = useMemo(
+    () => ids.map((id) => transactions.find((x) => x.id === id)).filter((x): x is Transaction => !!x),
+    [ids, transactions],
+  )
+  const incomeTx = useMemo(() => (incId ? transactions.find((x) => x.id === incId) ?? null : null), [incId, transactions])
 
   // Валюта по региону. Подставляется по «Поехали» (к шагу настроек) и при
   // выходе через «×» — так и закрывший быстрый старт сразу получит свою валюту,
@@ -123,33 +190,33 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   // Бюджет месяца из дохода — включён по умолчанию, выключается тумблером.
   const [budgetOn, setBudgetOn] = useState(true)
 
-  // Шаг 1 — доход.
-  const [incomeAmount, setIncomeAmount] = useState('')
-  const [incomeCat, setIncomeCat] = useState('salary')
-  // Шаг 2 — расходы (копим в черновике, пишем в стор при переходе дальше).
-  const [expenses, setExpenses] = useState<Draft[]>([])
+  // Шаг траты: сумма в поле ещё не записана.
   const [expAmount, setExpAmount] = useState('')
   const [expCat, setExpCat] = useState('food')
+  // Шаг дохода.
+  const [incomeAmount, setIncomeAmount] = useState('')
+  const [incomeCat, setIncomeCat] = useState('salary')
 
-  const income = parseFloat(incomeAmount.replace(',', '.')) || 0
-  const spentToday = expenses.reduce((sum, e) => sum + e.amount, 0)
-
-  /** Прогноз: если каждый день тратить как сегодня — что останется к концу месяца. */
-  const forecast = useMemo(() => {
-    const daysTotal = dayjs().daysInMonth()
-    const projected = income - spentToday * daysTotal
-    const safeDaily = daysTotal > 0 ? income / daysTotal : 0
-    return { projected, safeDaily, daysTotal }
-  }, [income, spentToday])
+  const expDraft = parseAmount(expAmount)
+  const incomeDraft = parseAmount(incomeAmount)
+  // Итог считаем в основной валюте: запись в другой (валюту сменили уже после
+  // неё) в одну сумму с этой не складываем.
+  const spentToday = expenses.reduce((sum, e) => sum + ((e.currency ?? currency) === currency ? e.amount : 0), 0)
+  const income = incomeTx && (incomeTx.currency ?? currency) === currency ? incomeTx.amount : 0
+  // Валюту меняем, пока в быстром старте ничего не записано: иначе первая
+  // запись осталась бы в прежней валюте, а итог смешал бы две.
+  const canChangeCurrency = ids.length === 0 && !incId
 
   const close = async () => {
     // Защита от случайного выхода: спрашиваем подтверждение.
     if (!(await confirmAction(t('qs.exit_confirm')))) return
     clarityEvent('onboarding_exit')
     clarityTag('onboarding_exit_at', STEP_NAMES[step])
+    reportQuickStart({ s: step, e: ids.length, i: !!incId, x: step })
     hapticSelect()
     applyDetected()
     markCurrencyAsked()
+    clearSaved()
     onDone()
   }
 
@@ -174,7 +241,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       await Promise.race([answer, new Promise<void>((r) => setTimeout(r, 20_000))])
       asking.current = false
     }
-    setStep(2)
+    setStep(STEP.expense)
   }
 
   // Пока сервер не ответил, второе нажатие не принимаем: при двойном тапе без
@@ -202,47 +269,68 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   const hasBudget = useStore((s) => s.monthlyBudget > 0)
   const finish = () => {
     clarityEvent('onboarding_done')
+    reportQuickStart({ s: STEP.result, e: ids.length, i: !!incId, d: true })
     hapticNotify('success')
     if (budgetOn && income > 0 && useStore.getState().monthlyBudget === 0) setMonthlyBudget(Math.round(income))
+    clearSaved()
     onDone()
   }
 
+  /** Трата из поля — сразу в стор (первая запись не теряется, даже если закроют приложение). */
+  const recordExpense = (): boolean => {
+    if (expDraft <= 0 || ids.length >= MAX_EXPENSES) return false
+    const id = addTransaction({
+      type: 'expense',
+      amount: expDraft,
+      categoryId: expCat,
+      date: new Date().toISOString(),
+      note: '',
+      currency,
+    })
+    setIds((prev) => [...prev, id])
+    setExpAmount('')
+    return true
+  }
+  const addExpense = () => {
+    if (recordExpense()) hapticNotify('success')
+  }
+  const removeExpense = (id: string) => {
+    hapticSelect()
+    removeTransaction(id)
+    setIds((prev) => prev.filter((x) => x !== id))
+  }
+  // «Дальше» записывает и набранное, но не добавленное: раньше кнопка ждала
+  // отдельного «Добавить трату», и с суммой в поле человек упирался в серую кнопку.
   const goIncome = () => {
-    if (income <= 0) return
+    const recorded = recordExpense()
+    if (!recorded && ids.length === 0) return
     hapticTap()
-    addTransaction({
+    setStep(STEP.income)
+  }
+  const skipExpense = () => {
+    hapticSelect()
+    clarityEvent('onboarding_skip_expense')
+    setStep(STEP.income)
+  }
+
+  const goResult = () => {
+    if (incomeDraft <= 0) return
+    hapticTap()
+    const id = addTransaction({
       type: 'income',
-      amount: income,
+      amount: incomeDraft,
       categoryId: incomeCat,
       date: new Date().toISOString(),
       note: '',
       currency,
     })
-    setStep(3)
+    setIncId(id)
+    setStep(STEP.result)
   }
-
-  const addExpense = () => {
-    const value = parseFloat(expAmount.replace(',', '.')) || 0
-    if (value <= 0 || expenses.length >= 3) return
-    hapticNotify('success')
-    setExpenses((prev) => [...prev, { amount: value, categoryId: expCat }])
-    setExpAmount('')
-  }
-
-  const goForecast = () => {
-    if (expenses.length < MIN_EXPENSES) return
-    hapticTap()
-    for (const e of expenses) {
-      addTransaction({
-        type: 'expense',
-        amount: e.amount,
-        categoryId: e.categoryId,
-        date: new Date().toISOString(),
-        note: '',
-        currency,
-      })
-    }
-    setStep(4)
+  const skipIncome = () => {
+    hapticSelect()
+    clarityEvent('onboarding_skip_income')
+    setStep(STEP.result)
   }
 
   return (
@@ -285,11 +373,11 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
         <div className="min-h-0 flex-1 overflow-y-auto px-5">
           {/* Шаги идут вперёд — каждый следующий въезжает справа. */}
           <div key={step} className={step === 0 ? 'tab-enter' : 'tab-in-deep'}>
-            {step === 0 && (
-              <StepWelcome t={t} onStart={() => { hapticTap(); applyDetected(); setStep(1) }} />
+            {step === STEP.welcome && (
+              <StepWelcome t={t} onStart={() => { hapticTap(); applyDetected(); setStep(STEP.setup) }} />
             )}
 
-            {step === 1 && (
+            {step === STEP.setup && (
               <StepSetup
                 t={t}
                 lang={lang}
@@ -303,22 +391,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
               />
             )}
 
-            {step === 2 && (
-              <StepIncome
-                t={t}
-                amount={incomeAmount}
-                onAmount={setIncomeAmount}
-                cats={incomeCats}
-                catId={incomeCat}
-                onCat={setIncomeCat}
-                currency={currency}
-                onCurrency={() => { hapticTap(); setPickerOpen(true) }}
-                canGo={income > 0}
-                onNext={goIncome}
-              />
-            )}
-
-            {step === 3 && (
+            {step === STEP.expense && (
               <StepExpenses
                 t={t}
                 amount={expAmount}
@@ -327,21 +400,40 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
                 catId={expCat}
                 onCat={setExpCat}
                 currency={currency}
+                onCurrency={canChangeCurrency ? () => { hapticTap(); setPickerOpen(true) } : undefined}
                 items={expenses}
+                canAdd={expDraft > 0 && ids.length < MAX_EXPENSES}
+                canNext={expDraft > 0 || ids.length > 0}
                 onAdd={addExpense}
-                onRemove={(i) => setExpenses((p) => p.filter((_, idx) => idx !== i))}
-                onNext={goForecast}
+                onRemove={removeExpense}
+                onNext={goIncome}
+                onSkip={skipExpense}
               />
             )}
 
-            {step === 4 && (
-              <StepForecast
+            {step === STEP.income && (
+              <StepIncome
+                t={t}
+                amount={incomeAmount}
+                onAmount={setIncomeAmount}
+                cats={incomeCats}
+                catId={incomeCat}
+                onCat={setIncomeCat}
+                currency={currency}
+                onCurrency={canChangeCurrency ? () => { hapticTap(); setPickerOpen(true) } : undefined}
+                canGo={incomeDraft > 0}
+                onNext={goResult}
+                onSkip={skipIncome}
+              />
+            )}
+
+            {step === STEP.result && (
+              <StepResult
                 t={t}
                 currency={currency}
                 income={income}
                 spentToday={spentToday}
-                projected={forecast.projected}
-                safeDaily={forecast.safeDaily}
+                recorded={expenses.length > 0 || !!incomeTx}
                 budgetOn={budgetOn}
                 hasBudget={hasBudget}
                 onBudget={() => { hapticSelect(); setBudgetOn((v) => !v) }}
@@ -504,10 +596,10 @@ function currencyTag(code: Currency): string {
   return symbol === code ? code : `${symbol} · ${code}`
 }
 
-/* ---------- Шаг 2: доход ---------- */
+/* ---------- Шаг 2: первая трата ---------- */
 
-function StepIncome({
-  t, amount, onAmount, cats, catId, onCat, currency, onCurrency, canGo, onNext,
+function StepExpenses({
+  t, amount, onAmount, cats, catId, onCat, currency, onCurrency, items, canAdd, canNext, onAdd, onRemove, onNext, onSkip,
 }: {
   t: TFunc
   amount: string
@@ -516,10 +608,114 @@ function StepIncome({
   catId: string
   onCat: (id: string) => void
   currency: Currency
-  /** Тап по валюте у поля — сменить её, не возвращаясь на шаг назад. */
-  onCurrency: () => void
+  /** Нет — валюту уже не меняем (в быстром старте есть записи). */
+  onCurrency?: () => void
+  /** Записанные в быстром старте траты. */
+  items: Transaction[]
+  canAdd: boolean
+  canNext: boolean
+  onAdd: () => void
+  onRemove: (id: string) => void
+  onNext: () => void
+  onSkip: () => void
+}) {
+  const lang = useStore((s) => s.lang)
+  const catById = (id: string) => cats.find((c) => c.id === id)
+  const catName = useCatName()
+  const full = items.length >= MAX_EXPENSES
+
+  return (
+    <div className="pb-2">
+      <StepHead title={t('qs.expense_title')} sub={t('qs.expense_sub')} />
+
+      {!full && (
+        <>
+          <AmountField
+            value={amount}
+            onChange={onAmount}
+            currency={currency}
+            onCurrency={onCurrency}
+            currencyLabel={`${currencyName(currency, lang)} — ${t('cur.change').toLowerCase()}`}
+            autoFocus
+          />
+          <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
+          {/* Ещё трата — записать и остаться на шаге. Одну хватает и «Дальше»:
+              он записывает набранную сумму сам. */}
+          <button
+            onClick={onAdd}
+            disabled={!canAdd}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-surface-sunken py-3 text-[15px] font-bold text-ink transition active:scale-[0.99] disabled:opacity-40"
+          >
+            <Plus size={17} strokeWidth={2.6} /> {t('qs.add_expense')}
+          </button>
+        </>
+      )}
+
+      {/* Уже записанные траты — список с линиями. Значок в цвете категории
+          оставлен: по этому цвету её потом узнают на Главной и в Аналитике. */}
+      {items.length > 0 && (
+        <ul className="mt-4 border-y border-hairline">
+          {items.map((e) => {
+            const c = catById(e.categoryId)
+            return (
+              <li key={e.id} className="flex items-center gap-3 border-t border-hairline py-2.5 first:border-t-0">
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                  style={{ background: (c?.color ?? '#888') + '22', color: c?.color ?? '#888' }}
+                >
+                  <CategoryIcon id={c?.icon ?? 'other'} size={16} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-ink">{c && catName(c.id, c.name)}</span>
+                <span className="text-[15px] font-semibold tabular-nums text-ink">−{formatMoney(e.amount, e.currency ?? currency)}</span>
+                <button
+                  onClick={() => onRemove(e.id)}
+                  aria-label={t('common.delete')}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep dark:active:text-expense-soft"
+                >
+                  <X size={15} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {items.length > 0 && (
+        <div className="caption mt-4 text-center tabular-nums text-ink-subtle">
+          {t('qs.expense_counter', { n: items.length })}
+        </div>
+      )}
+
+      <button onClick={onNext} disabled={!canNext} className={`${PRIMARY_BTN} mt-4`} {...UNMASK}>
+        {t('qs.next')} <ArrowRight size={17} strokeWidth={2.6} />
+      </button>
+      {/* Трат сегодня не было — дальше без них, а не только крестиком. */}
+      {!canNext && (
+        <button type="button" onClick={onSkip} className={SKIP_BTN} {...UNMASK}>
+          {t('qs.expense_skip')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ---------- Шаг 3: доход (можно пропустить) ---------- */
+
+function StepIncome({
+  t, amount, onAmount, cats, catId, onCat, currency, onCurrency, canGo, onNext, onSkip,
+}: {
+  t: TFunc
+  amount: string
+  onAmount: (v: string) => void
+  cats: Cat[]
+  catId: string
+  onCat: (id: string) => void
+  currency: Currency
+  /** Тап по валюте у поля — сменить её, не возвращаясь на шаг назад (пока ничего не записано). */
+  onCurrency?: () => void
   canGo: boolean
   onNext: () => void
+  onSkip: () => void
 }) {
   const lang = useStore((s) => s.lang)
   return (
@@ -541,144 +737,104 @@ function StepIncome({
       <button onClick={onNext} disabled={!canGo} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
         {t('qs.next')} <ArrowRight size={17} strokeWidth={2.6} />
       </button>
-    </div>
-  )
-}
-
-/* ---------- Шаг 2: расходы ---------- */
-
-function StepExpenses({
-  t, amount, onAmount, cats, catId, onCat, currency, items, onAdd, onRemove, onNext,
-}: {
-  t: TFunc
-  amount: string
-  onAmount: (v: string) => void
-  cats: Cat[]
-  catId: string
-  onCat: (id: string) => void
-  currency: Currency
-  items: Draft[]
-  onAdd: () => void
-  onRemove: (i: number) => void
-  onNext: () => void
-}) {
-  const catById = (id: string) => cats.find((c) => c.id === id)
-  const catName = useCatName()
-  const enough = items.length >= MIN_EXPENSES
-  const full = items.length >= 3
-
-  return (
-    <div className="pb-2">
-      <StepHead title={t('qs.expense_title')} sub={t('qs.expense_sub')} />
-
-      {!full && (
-        <>
-          <AmountField value={amount} onChange={onAmount} currency={currency} />
-          <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
-          <button
-            onClick={onAdd}
-            disabled={!(parseFloat(amount.replace(',', '.')) > 0)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-surface-sunken py-3 text-[15px] font-bold text-ink transition active:scale-[0.99] disabled:opacity-40"
-          >
-            <Plus size={17} strokeWidth={2.6} /> {t('qs.add_expense')}
-          </button>
-        </>
-      )}
-
-      {/* Уже добавленные траты — список с линиями. Значок в цвете категории
-          оставлен: по этому цвету её потом узнают на Главной и в Аналитике. */}
-      {items.length > 0 && (
-        <ul className="mt-4 border-y border-hairline">
-          {items.map((e, i) => {
-            const c = catById(e.categoryId)
-            return (
-              <li key={i} className="flex items-center gap-3 border-t border-hairline py-2.5 first:border-t-0">
-                <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                  style={{ background: (c?.color ?? '#888') + '22', color: c?.color ?? '#888' }}
-                >
-                  <CategoryIcon id={c?.icon ?? 'other'} size={16} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-ink">{c && catName(c.id, c.name)}</span>
-                <span className="text-[15px] font-semibold tabular-nums text-ink">−{formatMoney(e.amount, currency)}</span>
-                <button
-                  onClick={() => onRemove(i)}
-                  aria-label={t('common.delete')}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-subtle active:text-expense-deep dark:active:text-expense-soft"
-                >
-                  <X size={15} />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      <div className="caption mt-4 text-center tabular-nums text-ink-subtle">
-        {t('qs.expense_counter', { n: items.length })}
-      </div>
-
-      <button onClick={onNext} disabled={!enough} className={`${PRIMARY_BTN} mt-3`} {...UNMASK}>
-        {t('qs.show_result')} <ArrowRight size={17} strokeWidth={2.6} />
+      <button type="button" onClick={onSkip} className={SKIP_BTN} {...UNMASK}>
+        {t('qs.skip')}
       </button>
     </div>
   )
 }
 
-/* ---------- Шаг 3: инсайт ---------- */
+/* ---------- Шаг 4: итог ---------- */
 
-function StepForecast({
-  t, currency, income, spentToday, projected, safeDaily, budgetOn, hasBudget, onBudget, onDone,
+/**
+ * Итог под то, что записали:
+ *   доход и траты — прогноз на месяц и дневная планка;
+ *   только доход — сколько можно тратить в день;
+ *   только траты — сколько потрачено и как получить дневную планку;
+ *   ничего — как записывать дальше.
+ * Бюджет из дохода предлагаем, только если доход есть.
+ */
+function StepResult({
+  t, currency, income, spentToday, recorded, budgetOn, hasBudget, onBudget, onDone,
 }: {
   t: TFunc
   currency: Currency
   income: number
   spentToday: number
-  projected: number
-  safeDaily: number
+  /** В быстром старте что-то записано (подпись «операции уже сохранены»). */
+  recorded: boolean
   budgetOn: boolean
   /** Бюджет уже задан (облако вернувшегося человека) — не предлагаем. */
   hasBudget: boolean
   onBudget: () => void
   onDone: () => void
 }) {
+  const daysTotal = dayjs().daysInMonth()
+  const safeDaily = income > 0 ? income / daysTotal : 0
+  const projected = income - spentToday * daysTotal
   const positive = projected >= 0
+  const hasIncome = income > 0
+  const hasSpent = spentToday > 0
+
+  if (!hasIncome && !hasSpent) {
+    return (
+      <div className="pb-2">
+        <StepHead title={t('qs.done_title')} sub={t('qs.done_sub')} />
+        <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
+          {t('qs.finish')}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="pb-2">
       <StepHead title={t('qs.result_title')} />
 
-      {/* Главная цифра прогноза — на той же глубокой поверхности, что баланс на
-          Главной. Минус говорит подпись и цвет самого числа, а не красная заливка
-          всей карточки: тревожная плашка во весь экран на первой минуте пугала. */}
+      {/* Главная цифра — на той же глубокой поверхности, что баланс на Главной.
+          Минус говорит подпись и цвет самого числа, а не красная заливка всей
+          карточки: тревожная плашка во весь экран на первой минуте пугала. */}
       <div className="hero-surface mt-5 rounded-4xl p-5">
         <div className="caption text-white/70">
-          {positive ? t('qs.result_left_label') : t('qs.result_short_label')}
+          {hasIncome && hasSpent
+            ? positive ? t('qs.result_left_label') : t('qs.result_short_label')
+            : hasIncome ? t('qs.daily_label') : t('qs.spent_today')}
         </div>
-        <div className={`mt-1.5 text-display-lg font-bold ${positive ? '' : 'text-expense-soft'}`}>
-          <Money value={Math.abs(projected)} currency={currency} />
+        <div className={`mt-1.5 text-display-lg font-bold ${hasIncome && hasSpent && !positive ? 'text-expense-soft' : ''}`}>
+          <Money value={hasIncome && hasSpent ? Math.abs(projected) : hasIncome ? Math.round(safeDaily) : spentToday} currency={currency} />
         </div>
-        <div className="caption mt-1.5 leading-snug text-white/70">{t('qs.result_hint')}</div>
+        <div className="caption mt-1.5 leading-snug text-white/70">
+          {hasIncome && hasSpent ? t('qs.result_hint') : hasIncome ? t('qs.daily_hint') : t('qs.no_income_hint')}
+        </div>
       </div>
 
       {/* Расшифровка, чтобы цифра не выглядела магией */}
-      <dl className="mt-4 border-y border-hairline">
-        <div className="flex items-baseline justify-between gap-3 py-3">
-          <dt className="text-[15px] text-ink-muted">{t('common.income')}</dt>
-          <dd className="text-[15px] font-semibold tabular-nums text-ink">+{formatMoney(income, currency)}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 border-t border-hairline py-3">
-          <dt className="text-[15px] text-ink-muted">{t('qs.spent_today')}</dt>
-          <dd className="text-[15px] font-semibold tabular-nums text-ink">−{formatMoney(spentToday, currency)}</dd>
-        </div>
-      </dl>
+      {hasIncome && (
+        <dl className="mt-4 border-y border-hairline">
+          <div className="flex items-baseline justify-between gap-3 py-3">
+            <dt className="text-[15px] text-ink-muted">{t('common.income')}</dt>
+            <dd className="text-[15px] font-semibold tabular-nums text-ink">+{formatMoney(income, currency)}</dd>
+          </div>
+          {hasSpent && (
+            <div className="flex items-baseline justify-between gap-3 border-t border-hairline py-3">
+              <dt className="text-[15px] text-ink-muted">{t('qs.spent_today')}</dt>
+              <dd className="text-[15px] font-semibold tabular-nums text-ink">−{formatMoney(spentToday, currency)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
 
-      <p className="mt-4 text-[14px] leading-relaxed text-ink-muted">
-        {t('qs.result_advice', { sum: formatMoney(Math.round(safeDaily), currency) })}
-      </p>
+      {hasIncome && (
+        <p className="mt-4 text-[14px] leading-relaxed text-ink-muted">
+          {hasSpent
+            ? t('qs.result_advice', { sum: formatMoney(Math.round(safeDaily), currency) })
+            : t('qs.daily_advice')}
+        </p>
+      )}
 
       {/* Доход становится бюджетом месяца: из него Главная и бот считают,
           сколько можно потратить сегодня. Включено — но видно и выключается. */}
-      {!hasBudget && (
+      {hasIncome && !hasBudget && (
         <button
           type="button"
           role="switch"
@@ -699,7 +855,9 @@ function StepForecast({
       <button onClick={onDone} className={`${PRIMARY_BTN} mt-6`} {...UNMASK}>
         {t('qs.finish')}
       </button>
-      <div className="caption mt-3 text-center leading-snug text-ink-subtle">{t('qs.finish_hint')}</div>
+      <div className="caption mt-3 text-center leading-snug text-ink-subtle">
+        {t(recorded ? 'qs.finish_hint' : 'qs.done_sub')}
+      </div>
     </div>
   )
 }

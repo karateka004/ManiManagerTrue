@@ -16,6 +16,8 @@ import { createServer } from 'node:http'
 import { ADMIN_HTML } from '../src/admin.ts'
 import { assemble, computeDashboard, activityStrip, sectionsOf, dayReport, digestText } from '../src/analytics.ts'
 import { markDay, mskDay, mskDayStart, mskDateStr } from '../src/days.ts'
+import { EXPORT_URL, clarityAction, clarityBlock, clarityNightly, dayRow, putDay } from '../src/clarity.ts'
+import { aggregateQs } from '../src/quickstart.ts'
 
 const PORT = Number(process.env.PORT ?? 8790)
 
@@ -168,6 +170,83 @@ function build(now) {
   return { c: assemble(data, lb, inbox, srcs, claimed, blocked), history }
 }
 
+/* ---------- Clarity: выдуманная выгрузка через настоящий код clarity.ts ----------
+   Токен с «bad» внутри Clarity «не принимает» (403), любой другой похожий на
+   токен — принимает. CLARITY_SEED=1 — сразу подключено, с историей по дням. */
+class MemKV {
+  constructor() { this.m = new Map() }
+  async get(k) { return this.m.get(k)?.value ?? null }
+  async getWithMetadata(k) { const v = this.m.get(k); return v ? { value: v.value, metadata: v.metadata } : { value: null, metadata: null } }
+  async put(k, value, opts) { this.m.set(k, { value: String(value), metadata: opts?.metadata ?? null }) }
+  async delete(k) { this.m.delete(k) }
+  async list({ prefix = '' } = {}) { return { keys: [...this.m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name, metadata: this.m.get(name).metadata ?? undefined })), list_complete: true } }
+}
+const clarityEnv = { REFERRALS: new MemKV() }
+const FR = [['DeadClickCount', 9.8, 31], ['RageClickCount', 2.1, 4], ['QuickbackClick', 4.9, 9], ['ExcessiveScroll', 0.7, 1], ['ScriptErrorCount', 1.4, 2], ['ErrorClickCount', 0, 0]]
+function fakeExport(dims) {
+  const s = 143
+  if (dims.includes('OS')) {
+    const os = [['Android', 78, 1.3], ['iOS', 52, 0.6], ['Windows', 9, 1.8], ['MacOSX', 4, 1]]
+    return [
+      { metricName: 'Traffic', information: os.map(([o, n]) => ({ totalSessionCount: String(n), totalBotSessionCount: '0', distantUserCount: String(Math.round(n * 0.45)), PagesPerSessionPercentage: 1, OS: o })) },
+      ...FR.map(([name, p]) => ({ metricName: name, information: os.map(([o, n, k]) => ({ sessionsCount: String(n), sessionsWithMetricPercentage: Math.round(p * k * 10) / 10, sessionsWithoutMetricPercentage: 100 - Math.round(p * k * 10) / 10, pagesViews: String(n), subTotal: String(Math.round((n * p * k) / 30)), OS: o })) })),
+    ]
+  }
+  return [
+    { metricName: 'Traffic', information: [{ totalSessionCount: String(s), totalBotSessionCount: '0', distantUserCount: '61', PagesPerSessionPercentage: 1 }] },
+    ...FR.map(([name, p, sub]) => ({ metricName: name, information: [{ sessionsCount: String(s), sessionsWithMetricPercentage: p, sessionsWithoutMetricPercentage: 100 - p, pagesViews: String(s), subTotal: String(sub) }] })),
+    { metricName: 'EngagementTime', information: [{ totalTime: '412', activeTime: '138' }] },
+    { metricName: 'ScrollDepth', information: [{ averageScrollDepth: 41.7 }] },
+    { metricName: 'OS', information: [{ name: 'Android', sessionsCount: '78' }, { name: 'iOS', sessionsCount: '52' }, { name: 'Windows', sessionsCount: '9' }, { name: 'MacOSX', sessionsCount: '4' }] },
+    { metricName: 'Device', information: [{ name: 'Mobile', sessionsCount: '128' }, { name: 'PC', sessionsCount: '15' }] },
+    { metricName: 'Country/Region', information: [{ name: 'Ukraine', sessionsCount: '71' }, { name: 'Russia', sessionsCount: '38' }, { name: 'Kazakhstan', sessionsCount: '14' }, { name: 'Poland', sessionsCount: '9' }, { name: 'Germany', sessionsCount: '6' }, { name: 'Georgia', sessionsCount: '5' }] },
+    { metricName: 'Browser', information: [{ name: 'MobileApp', sessionsCount: '120' }, { name: 'Chrome', sessionsCount: '17' }, { name: 'Safari', sessionsCount: '6' }] },
+    { metricName: 'PopularPages', information: [{ url: 'https://karateka004.github.io/ManiManagerTrue/', visitsCount: String(s) }] },
+  ]
+}
+const realFetch = globalThis.fetch
+globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith(EXPORT_URL)) {
+    const auth = init?.headers?.Authorization ?? ''
+    if (auth.includes('bad')) return new Response('', { status: 403 })
+    const q = new URL(String(url)).searchParams
+    const dims = [q.get('dimension1'), q.get('dimension2'), q.get('dimension3')].filter(Boolean)
+    return new Response(JSON.stringify(fakeExport(dims)), { status: 200 })
+  }
+  return realFetch(url, init)
+}
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
+if (process.env.CLARITY_SEED === '1') {
+  const now = Date.now()
+  await clarityAction(clarityEnv, { action: 'token', token: `${b64u({ alg: 'RS256' })}.${b64u({ exp: Math.floor(now / 1000) + 300 * 86400 })}.c2ln` }, now)
+  await clarityNightly(clarityEnv, now)
+  // История: три недели «как было» — от дня к дню чуть плавает.
+  let hist = []
+  for (let k = 21; k >= 1; k--) {
+    const m = Object.fromEntries(fakeExport([]).map((x) => [x.metricName, [{ d: {}, n: Object.fromEntries(Object.entries(x.information[0]).map(([a, b]) => [a, Number(b)])) }]]))
+    m.Traffic[0].n.totalSessionCount = 90 + ((k * 37) % 70)
+    m.Traffic[0].n.distantUserCount = 40 + ((k * 13) % 30)
+    m.DeadClickCount[0].n.sessionsWithMetricPercentage = 6 + ((k * 7) % 9)
+    hist = putDay(hist, dayRow(mskDateStr(mskDayStart(mskDay(now) - k)), m))
+  }
+  await clarityEnv.REFERRALS.put('clarity:hist', JSON.stringify(hist))
+}
+/* Быстрый старт по шагам: выдуманные новички за месяц. */
+function fakeQs(now) {
+  const r = rng(777), rows = []
+  for (let i = 0; i < 64; i++) {
+    const t = now - Math.floor(r() * 28 * 86400000)
+    const s = r() < 0.12 ? 0 : r() < 0.15 ? 1 : r() < 0.2 ? 2 : r() < 0.25 ? 3 : 4
+    const row = { t, u: t, s }
+    if (s >= 3 && r() < 0.8) row.e = 1 + Math.floor(r() * 3)
+    if (s >= 4 && r() < 0.55) row.i = 1
+    if (s >= 4 && r() < 0.9) row.d = 1
+    else if (r() < 0.5) row.x = s
+    rows.push(row)
+  }
+  return aggregateQs(rows, now, 30)
+}
+
 /* ---------- Сервер ---------- */
 const json = (res, status, body) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -203,7 +282,11 @@ createServer(async (req, res) => {
       : { registered: true, pending: 0, ok: true }
     // Воронка особого задания (fan:<id>) живёт в KV отдельно от расчётов — здесь выдумана.
     const fan = { saw: 31, click: 6, joined: 14, self: 3, had: 9, joined7: 14 }
-    return json(res, 200, { ...computeDashboard(c, history, now, webhook), fan, backfill: null })
+    const clarity = await clarityBlock(clarityEnv, now)
+    return json(res, 200, { ...computeDashboard(c, history, now, webhook), fan, backfill: null, clarity, qs: fakeQs(now) })
+  }
+  if (url.pathname === '/admin/clarity') {
+    return json(res, 200, await clarityAction(clarityEnv, body, now))
   }
   if (url.pathname === '/admin/person') {
     const p = c.people.find((x) => x.id === String(body.id))

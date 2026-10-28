@@ -451,8 +451,14 @@ export const ADMIN_HTML = `<!doctype html>
     .card{padding:14px}
     .panel > div{padding:13px 14px 12px}
   }
+  /* Шесть вкладок на телефоне: шрифт и поля ужимаются по ширине, чтобы ряд
+     влезал без прокрутки вбок до 360 px; уже — едет сам, открытая видна. */
+  @media(max-width:460px){
+    .tabs{padding:0 6px}
+    .tabs button{font-size:13px;padding:0 4px}
+  }
   @media(max-width:389px){
-    .tabs button{font-size:13.5px;padding:0 5px}
+    .tabs button{font-size:12.5px;padding:0 3px}
   }
   @media(max-width:370px){
     .hero-num{font-size:46px}
@@ -460,9 +466,36 @@ export const ADMIN_HTML = `<!doctype html>
   }
   @media(max-width:359px){
     .tabs{padding:0 4px}
-    .tabs button{font-size:13px;padding:0 4px}
+    .tabs button{font-size:12px;padding:0 2px}
   }
-  @media(max-width:339px){.tabs button{font-size:12.5px;padding:0 3px}}
+  @media(max-width:339px){.tabs button{font-size:11.5px;padding:0 2px}}
+  /* ---------- Clarity ----------
+     Трение — строка на метрику: доля сессий крупно, полоса по шкале, под ней
+     сколько сессий и раз. Отметка «стоит посмотреть» — словом, не цветом. */
+  .cl-steps{margin:2px 0 12px;padding-left:20px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+  .cl-steps b{color:var(--ink);font-weight:700}
+  .cl-form{display:flex;gap:8px;align-items:center}
+  .cl-form .field{flex:1;min-width:0}
+  .cl-form .btn{height:42px;border-radius:14px}
+  .cl-row{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l v" "t t" "s s";align-items:center;column-gap:12px;row-gap:6px;padding:11px 0;border-top:1px solid var(--hair)}
+  .cl-row.first{border-top:0;padding-top:4px}
+  .cl-row .l{grid-area:l;display:flex;align-items:center;gap:8px;min-width:0;font-size:13.5px;font-weight:650;line-height:1.3}
+  .cl-row .v{grid-area:v;font-size:16px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cl-row .t{grid-area:t;height:6px;border-radius:99px;background:var(--well);overflow:hidden}
+  .cl-row .t i{display:block;height:100%;border-radius:99px;background:var(--mark)}
+  .cl-row .s{grid-area:s;font-size:12px;color:var(--ink-3);line-height:1.35}
+  .cl-links{display:flex;flex-wrap:wrap;gap:8px}
+  .cl-tok{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px}
+  .cl-tok .who{flex:1 1 220px;min-width:0;font-size:13px;color:var(--ink-2);line-height:1.5}
+  .cl-tok .who b{color:var(--ink);font-weight:700}
+  .cl-tok .acts{display:flex;flex-wrap:wrap;gap:8px}
+  .cl-tbl{overflow-x:auto;margin:0 -6px}
+  .cl-raw summary{cursor:pointer;font-size:13.5px;font-weight:700;list-style:none;display:flex;align-items:center;gap:6px}
+  .cl-raw summary::-webkit-details-marker{display:none}
+  .cl-raw summary .ic{width:16px;height:16px;color:var(--ink-3);transition:transform .15s}
+  .cl-raw[open] summary .ic{transform:rotate(90deg)}
+  .cl-raw .m{margin-top:10px;padding-top:10px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-3);line-height:1.55;overflow-wrap:anywhere}
+  .cl-raw .m b{color:var(--ink);font-weight:700}
 </style>
 </head>
 <body>
@@ -507,10 +540,10 @@ export const ADMIN_HTML = `<!doctype html>
   var KEY='koshel_admin_key', THEME='koshel_admin_theme', BOT='TrueManiManager_Bot';
   /* Проект Microsoft Clarity — тот же номер, что CLARITY_ID в src/lib/clarity.ts
      приложения. Пусто — кнопки «Записи в Clarity» нет. */
-  var CLARITY_PROJECT='';
+  var CLARITY_PROJECT='z50dung9vo';
   var D=null;
   var S={ tab:'overview', win:'7', src:'all', chart:'growth', range:30, table:false,
-          retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'' };
+          retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'', clEdit:false };
   var TG=null, tgInit='', busy=false, lastLoad=0, sheetOpen=false;
   var DAY=86400000;
 
@@ -584,8 +617,8 @@ export const ADMIN_HTML = `<!doctype html>
   function initTheme(){
     var t=null;
     try{ t=localStorage.getItem(THEME); }catch(e){}
-    if(!t) t=(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-    applyTheme(t,false);
+    // Тёмная — по умолчанию, как в приложении; светлая — только своим выбором.
+    applyTheme(t||'dark',false);
   }
 
   /* ---------- Подсказка ---------- */
@@ -685,11 +718,18 @@ export const ADMIN_HTML = `<!doctype html>
   }
 
   /* ---------- Вкладки ---------- */
-  var TABS=[['overview','Сводка'],['retention','Удержание'],['sources','Источники'],['people','Люди'],['product','Продукт']];
+  var TABS=[['overview','Сводка'],['retention','Удержание'],['sources','Источники'],['people','Люди'],['product','Продукт'],['clarity','Clarity']];
   function renderTabs(){
-    $('tabs').innerHTML=TABS.map(function(t){
+    var row=$('tabs');
+    row.innerHTML=TABS.map(function(t){
       return '<button data-act="tab" data-v="'+t[0]+'"'+(S.tab===t[0]?' class="on" aria-current="page"':'')+'><span>'+t[1]+'</span></button>';
     }).join('');
+    // Не влез ряд — открытую вкладку держим в виду (scrollIntoView двигал бы страницу).
+    var on=row.querySelector('.on');
+    if(on && row.scrollWidth>row.clientWidth){
+      var l=on.offsetLeft, r=l+on.offsetWidth;
+      if(l<row.scrollLeft || r>row.scrollLeft+row.clientWidth) row.scrollLeft=Math.max(0,l-(row.clientWidth-on.offsetWidth)/2);
+    }
   }
   function render(){
     if(!D) return;
@@ -699,8 +739,12 @@ export const ADMIN_HTML = `<!doctype html>
     else if(S.tab==='retention') html=viewRetention();
     else if(S.tab==='sources') html=viewSources();
     else if(S.tab==='people') html=viewPeople();
+    else if(S.tab==='clarity') html=viewClarity();
     else html=viewProduct();
+    // Вставленный токен Clarity переживает перерисовку (сама раз в минуту).
+    var keep=$('cl-token'), kept=keep?keep.value:'';
     $('view').innerHTML=html;
+    if(kept){ var ni=$('cl-token'); if(ni) ni.value=kept; }
     afterRender();
     tickUpdated();
   }
@@ -1222,7 +1266,7 @@ export const ADMIN_HTML = `<!doctype html>
       {lb:'Последний раз 7–30 дней назад',n:lc.sleeping,c:'var(--mark-2)'},
       {lb:'Больше месяца не заходили',n:lc.gone,c:'var(--context)'}
     ];
-    return firstDayBlock()
+    return firstDayBlock()+qsBlock()
       +sec('Возвращаются ли люди',segSelect('retsrc',S.retSrc))
       +'<div class="card">'+segButtons('ret',[['d','По дням'],['w','По неделям']],S.retMode,'full')+html+key+'<p class="note" style="margin:10px 0 0">'+esc(since+hiddenNote)+'</p></div>'
       +sec('Что с базой сейчас',nf(D.kpi.total)+' чел.')
@@ -1522,6 +1566,217 @@ export const ADMIN_HTML = `<!doctype html>
       +'<div><div class="subhead" style="margin:0 4px 8px">По приглашениям</div>'+top(D.topRefs,'refs','друзей')+'</div></div>';
   }
 
+  /* ================================================================== */
+  /* Clarity — цифры выгрузки (worker/src/clarity.ts)                    */
+  /* ================================================================== */
+  var CL_FRICTION=[
+    ['DeadClickCount','Мёртвые нажатия','нажали, а ничего не произошло'],
+    ['RageClickCount','Яростные нажатия','жмут много раз подряд в одно место'],
+    ['QuickbackClick','Быстрые возвраты','открыли экран и сразу ушли назад'],
+    ['ExcessiveScroll','Лишняя прокрутка','листают туда-сюда, не находя нужного'],
+    ['ScriptErrorCount','Ошибки скриптов','что-то сломалось в коде'],
+    ['ErrorClickCount','Нажатия с ошибкой','после нажатия случилась ошибка']
+  ];
+  var CL_NAMES={ OS:'Системы', Device:'Устройства', Browser:'Браузеры', Country:'Страны', 'Country/Region':'Страны',
+    PageTitle:'Заголовки страниц', ReferrerUrl:'Откуда пришли', PopularPages:'Страницы', EngagementTime:'Время', ScrollDepth:'Прокрутка', Traffic:'Трафик' };
+  var CL_FIELDS={ totalTime:'всего', activeTime:'активно', averageScrollDepth:'в среднем' };
+  var CL_SKIP={ Traffic:1, EngagementTime:1, ScrollDepth:1 };
+  function clUrl(page){ return 'https://clarity.microsoft.com/projects/view/'+CLARITY_PROJECT+'/'+page; }
+  function clFirst(m,name){ var r=m&&m[name]&&m[name][0]; return r&&r.n?r.n:null; }
+  /** Секунды → «1 мин 4 с». */
+  function clSec(v){
+    v=Math.round(Number(v)||0);
+    if(v<60) return v+' с';
+    var mm=Math.floor(v/60), ss=v%60;
+    return mm+' мин'+(ss?' '+ss+' с':'');
+  }
+  /** 1 раз, 2 раза, 5 раз. */
+  function plur(n,one,few,many){ var a=Math.abs(n)%100, b=a%10; return a>10&&a<20?many:b>1&&b<5?few:b===1?one:many; }
+  function clNum(v){ return Math.abs(v-Math.round(v))<0.05 ? nf(Math.round(v)) : (Math.round(v*10)/10).toLocaleString('ru-RU'); }
+  /** Время и прокрутка: поля Clarity не документирует — берём первое знакомое, иначе первое число. */
+  function clPick(n,prefer){
+    if(!n) return null;
+    for(var i=0;i<prefer.length;i++) if(typeof n[prefer[i]]==='number') return { k:prefer[i], v:n[prefer[i]] };
+    for(var k in n) if(Object.prototype.hasOwnProperty.call(n,k)) return { k:k, v:n[k] };
+    return null;
+  }
+  function dlong(ms){ var p=mskParts(ms); return p.d+' '+MONF[p.m]+' '+p.y; }
+  function clWhen(ms){
+    var today=mskParts(Date.now()), p=mskParts(ms);
+    return (p.d===today.d && p.m===today.m ? 'сегодня ' : dmsk(ms)+', ')+tmsk(ms)+' МСК';
+  }
+
+  function viewClarity(){
+    var c=D.clarity;
+    if(!c) return sec('Clarity','')+'<div class="card"><div class="empty">Не удалось прочитать данные Clarity — обновите страницу</div></div>';
+    var t=c.token, live=c.live, m=live&&live.m, html='';
+    html+=sec('Clarity',live?('последние 24 часа · '+clWhen(live.at)):'запись сессий');
+    if(t.set && t.bad) html+='<div class="card"><div class="ins bad">'+IC.bad+'<p>Clarity больше не принимает токен (ответ '+esc(String(c.err&&c.err.status||''))+'). Сгенерируй новый в Clarity → Settings → Data Export и вставь ниже.</p></div></div>';
+    else if(t.set && c.err && (!live || c.err.at>live.at)) html+='<div class="card"><div class="ins info">'+IC.info+'<p>'+esc(clErrText(c.err.status))+' · '+esc(clWhen(c.err.at))+'</p></div></div>';
+    if(!t.set || t.bad || S.clEdit) html+=clConnect(t.set);
+    if(m) html+=clOverview(m)+clFriction(m)+clDays(c.hist)+clBreakdown(c.os)+clLists(m)+clRaw(m);
+    else if(t.set && !t.bad) html+='<div class="card" style="margin-top:12px"><div class="empty">Токен сохранён. Цифры появятся после первой выгрузки — в 06, 12, 18 МСК, в полночь или кнопкой «Обновить».</div></div>';
+    var link=function(v,t,sub){ return '<button class="row" data-act="clopen" data-v="'+v+'"><div class="row-main"><div class="who"><div class="t">'+t+'</div><div class="s">'+sub+'</div></div>'+IC.chev+'</div></button>'; };
+    html+=sec('Записи и карты','в Clarity')+'<div class="group">'
+      +link('impressions','Записи сессий','видео каждого захода: нажатия, прокрутка, экраны')
+      +link('heatmaps','Тепловые карты','куда нажимают и докуда листают')
+      +link('dashboard','Дашборд Clarity','все цифры и фильтры у них')+'</div>'
+      +'<p class="note cap">Сами видео Clarity наружу не отдаёт — смотреть их можно только у них. Записи одного человека — кнопкой «Записи в Clarity» в его карточке на вкладке «Люди».</p>';
+    if(t.set) html+=clTokenCard(c);
+    return html;
+  }
+  function clErrText(st){
+    if(st===429) return 'Лимит Clarity на сегодня исчерпан — следующая выгрузка завтра';
+    if(st===401||st===403) return 'Clarity не принял токен';
+    if(st===0) return 'Clarity не ответил вовремя';
+    return 'Clarity ответил ошибкой '+st;
+  }
+  function clConnect(replacing){
+    return '<div class="card" style="margin-top:12px"><div class="cardhead"><h3>'+(replacing?'Новый токен Clarity':'Подключи цифры Clarity')+'</h3></div>'
+      +'<ol class="cl-steps"><li>Clarity → <b>Settings</b> → <b>Data Export</b></li><li><b>Generate new API token</b>, имя — например <b>koshel</b></li><li>Скопируй токен и вставь сюда</li></ol>'
+      +'<div class="cl-form"><input class="field" id="cl-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Токен Data Export"><button class="btn" data-act="cltoken">Подключить</button></div>'
+      +'<p class="note" style="margin:10px 0 0">Токен хранится в базе воркера и обратно не показывается. Clarity даёт 10 запросов в сутки: админка сама берёт пять (06, 12, 18 МСК и итог суток в полночь), остальное — кнопкой «Обновить».</p>'
+      +(replacing?'<button class="linkbtn" data-act="cledit">Отмена</button>':'')+'</div>';
+  }
+  function clOverview(m){
+    var tr=clFirst(m,'Traffic')||{}, s=tr.totalSessionCount, u=tr.distantUserCount;
+    var eng=clPick(clFirst(m,'EngagementTime'),['activeTime','totalTime']);
+    var engAll=clFirst(m,'EngagementTime'), tot=engAll&&typeof engAll.totalTime==='number'&&eng&&eng.k!=='totalTime'?engAll.totalTime:null;
+    var scr=clPick(clFirst(m,'ScrollDepth'),['averageScrollDepth']);
+    return panel([
+      cell('Сессий',s==null?'—':nf(s),tr.totalBotSessionCount?'<span>ботов отсеяно '+nf(tr.totalBotSessionCount)+'</span>':'<span>за 24 часа</span>'),
+      cell('Людей',u==null?'—':nf(u),'<span>разных устройств</span>'),
+      cell('Сессий на человека',s&&u?clNum(s/u):'—','<span>сколько раз открывают</span>'),
+      eng?cell('Время в сессии',/time/i.test(eng.k)?clSec(eng.v):clNum(eng.v),'<span>'+esc(CL_FIELDS[eng.k]||eng.k)+(tot!=null?' · всего '+clSec(tot):'')+'</span>')
+        :cell('Прокрутка',scr?clNum(scr.v)+'<small>%</small>':'—','<span>'+(scr?esc(CL_FIELDS[scr.k]||scr.k):'нет данных')+'</span>')
+    ]);
+  }
+  function clFriction(m){
+    // Шкала — от нуля до четверти сессий (или до худшей метрики): на шкале до
+    // 10% девять процентов выглядели бы «почти всё».
+    var rows=[], max=25, i;
+    for(i=0;i<CL_FRICTION.length;i++){
+      var n=clFirst(m,CL_FRICTION[i][0]);
+      if(!n || typeof n.sessionsWithMetricPercentage!=='number') continue;
+      rows.push({ f:CL_FRICTION[i], p:n.sessionsWithMetricPercentage, s:n.sessionsCount, sub:n.subTotal });
+      if(n.sessionsWithMetricPercentage>max) max=n.sessionsWithMetricPercentage;
+    }
+    if(!rows.length) return '';
+    return sec('Где спотыкаются','доля сессий')+'<div class="card">'+rows.map(function(r,k){
+      var hit=r.s!=null?Math.round(r.s*r.p/100):null, look=r.p>=10 && hit!=null && hit>=3;
+      var meta=(hit!=null?nf(hit)+' из '+nf(r.s)+' '+plur(r.s,'сессии','сессий','сессий'):'')+(r.sub!=null?' · '+nf(r.sub)+' '+plur(r.sub,'раз','раза','раз'):'')+' · '+r.f[2];
+      return '<div class="cl-row'+(k===0?' first':'')+'"><div class="l">'+esc(r.f[1])+(look?'<span class="flag">стоит посмотреть</span>':'')+'</div>'
+        +'<div class="v">'+clNum(r.p)+'%</div><div class="t"><i style="width:'+(r.p?Math.max(1.5,r.p/max*100):0).toFixed(1)+'%"></i></div>'
+        +'<div class="s">'+esc(meta)+'</div></div>';
+    }).join('')+'</div>';
+  }
+  function clDays(hist){
+    if(!hist||!hist.length) return '';
+    var rows=hist.slice(-14).reverse();
+    var cols=[['DeadClickCount','Мёртв.'],['RageClickCount','Ярост.'],['ScriptErrorCount','Ошибки']];
+    return sec('По дням','сутки по МСК')+'<div class="card"><div class="cl-tbl"><table><thead><tr><th>Дата</th><th class="r">Сессии</th><th class="r">Люди</th>'
+      +cols.map(function(c){ return '<th class="r">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'
+      +rows.map(function(r){
+        return '<tr><td>'+dshort(r.d)+'</td><td class="r tnum">'+(r.s==null?'—':nf(r.s))+'</td><td class="r tnum">'+(r.u==null?'—':nf(r.u))+'</td>'
+          +cols.map(function(c){ var v=r.f&&r.f[c[0]]; return '<td class="r tnum">'+(v==null?'—':clNum(v)+'%')+'</td>'; }).join('')+'</tr>';
+      }).join('')+'</tbody></table></div><p class="note" style="margin:8px 0 0">Доли — процент сессий, где это было хоть раз. День пишется в полночь по МСК.</p></div>';
+  }
+  /** Ночная разбивка по ОС: где трения больше — на Android, iOS или компьютере. */
+  function clBreakdown(os){
+    var m=os&&os.m; if(!m||!m.Traffic||!m.Traffic.length) return '';
+    var by={}, order=[];
+    m.Traffic.forEach(function(r){ var k=r.d.OS||'—'; if(!by[k]){ by[k]={}; order.push(k); } by[k].s=r.n.totalSessionCount; });
+    var cols=[['DeadClickCount','Мёртв.'],['RageClickCount','Ярост.'],['ScriptErrorCount','Ошибки']];
+    cols.forEach(function(c){ (m[c[0]]||[]).forEach(function(r){ var k=r.d.OS||'—'; if(!by[k]){ by[k]={}; order.push(k); } by[k][c[0]]=r.n.sessionsWithMetricPercentage; }); });
+    order.sort(function(a,b){ return (by[b].s||0)-(by[a].s||0); });
+    return sec('По системам','итог суток · '+dmsk(os.at))+'<div class="card"><div class="cl-tbl"><table><thead><tr><th>Система</th><th class="r">Сессии</th>'
+      +cols.map(function(c){ return '<th class="r">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'
+      +order.slice(0,8).map(function(k){
+        var r=by[k];
+        return '<tr><td>'+esc(k)+'</td><td class="r tnum">'+(r.s==null?'—':nf(r.s))+'</td>'+cols.map(function(c){ var v=r[c[0]]; return '<td class="r tnum">'+(v==null?'—':clNum(v)+'%')+'</td>'; }).join('')+'</tr>';
+      }).join('')+'</tbody></table></div></div>';
+  }
+  /** Списки выгрузки (системы, устройства, страны…) — по пять самых крупных строк. */
+  function clLists(m){
+    var cards=[];
+    for(var name in m){
+      if(!Object.prototype.hasOwnProperty.call(m,name) || CL_SKIP[name]) continue;
+      var isFr=false; for(var i=0;i<CL_FRICTION.length;i++) if(CL_FRICTION[i][0]===name) isFr=true;
+      if(isFr) continue;
+      var rows=m[name].filter(function(r){ return Object.keys(r.d).length && Object.keys(r.n).length; });
+      if(!rows.length) continue;
+      var items=rows.slice(0,5).map(function(r){
+        var lb=r.d[Object.keys(r.d)[0]], w=clPick(r.n,['totalSessionCount','sessionsCount','visitsCount','subTotal']);
+        return { label:lb, n:w?w.v:0 };
+      });
+      cards.push('<div class="card"><div class="cardhead"><h3>'+esc(CL_NAMES[name]||name)+'</h3></div>'+bars(items)+'</div>');
+      if(cards.length>=4) break;
+    }
+    return cards.length?sec('Кто и откуда','последние 24 часа')+'<div class="grid g2 start">'+cards.join('')+'</div>':'';
+  }
+  /** Вся выгрузка как пришла — чтобы ни одно поле Clarity не потерялось за подписями. */
+  function clRaw(m){
+    var parts=[];
+    for(var name in m){
+      if(!Object.prototype.hasOwnProperty.call(m,name)) continue;
+      var rows=m[name].slice(0,10).map(function(r){
+        var bits=[], k;
+        for(k in r.d) if(Object.prototype.hasOwnProperty.call(r.d,k)) bits.push(k+': '+r.d[k]);
+        for(k in r.n) if(Object.prototype.hasOwnProperty.call(r.n,k)) bits.push(k+' = '+r.n[k]);
+        return bits.join(', ');
+      });
+      parts.push('<div class="m"><b>'+esc(name)+'</b><br>'+rows.map(esc).join('<br>')+(m[name].length>10?'<br>…':'')+'</div>');
+    }
+    return '<details class="card cl-raw" style="margin-top:12px"><summary>'+IC.chev+'Все поля выгрузки</summary>'+parts.join('')+'</details>';
+  }
+  function clTokenCard(c){
+    var t=c.token, q=c.quota;
+    return sec('Подключение','')+'<div class="card"><div class="cl-tok"><div class="who">Токен <b>…'+esc(t.tail||'')+'</b>'
+      +(t.exp?' · действует до <b>'+esc(dlong(t.exp))+'</b>':'')+(t.savedAt?'<br>подключён '+esc(dlong(t.savedAt)):'')
+      +'<br>запросов сегодня <b>'+nf(q.used)+' из '+nf(q.limit)+'</b> (сутки по UTC)</div>'
+      +'<div class="acts"><button class="btn" data-act="clrefresh"'+(q.left>0?'':' disabled')+'>Обновить'+(q.left>0?' · ещё '+nf(q.left):'')+'</button></div></div>'
+      +'<div class="ch-foot"><button class="linkbtn" data-act="cledit">Заменить токен</button><button class="linkbtn" data-act="clforget" style="color:var(--bad)">Отключить</button></div></div>';
+  }
+  function clDo(body,okText,btn){
+    if(btn) btn.disabled=true;
+    api('/admin/clarity',body).then(function(r){
+      if(btn) btn.disabled=false;
+      if(!r || !r.clarity){ toast('Не получилось'); return; }
+      D.clarity=r.clarity;
+      var msg=okText;
+      if(r.error==='bad_format') msg='Это не похоже на токен Data Export';
+      else if(r.error==='rejected') msg='Clarity не принял токен — сгенерируй новый';
+      else if(r.error==='quota') msg=body.action==='token'?'Токен сохранён. Лимит Clarity на сегодня исчерпан — цифры придут в полночь по МСК':'Лимит запросов на сегодня исчерпан';
+      else if(r.error==='unreachable') msg=body.action==='token'?'Токен сохранён, но Clarity сейчас не ответил — цифры придут по расписанию':'Clarity не ответил — попробуй позже';
+      else if(r.error==='no_token') msg='Сначала подключи токен';
+      if(r.ok && body.action==='token') S.clEdit=false;
+      render(); toast(msg);
+    }).catch(function(e){
+      if(btn) btn.disabled=false;
+      if(e && e.code===429){ toast('Слишком часто — подожди минуту'); return; }
+      if(e && e.code===403){ showLogin('Сессия закончилась — войдите снова'); return; }
+      toast('Нет связи с сервером');
+    });
+  }
+  function confirmDo(text,cb){
+    if(TG && TG.showConfirm){ try{ TG.showConfirm(text,function(ok){ if(ok) cb(); }); return; }catch(e){} }
+    if(window.confirm(text)) cb();
+  }
+
+  /** Быстрый старт по шагам (worker/src/quickstart.ts): где новички останавливаются. */
+  function qsBlock(){
+    var q=D.qs; if(!q) return '';
+    var labels=['Открыли быстрый старт','Настройки','Первая трата','Доход','Итог','Дошли до конца'];
+    var steps=q.reached.concat([q.done]);
+    var names=['на приветствии','на настройках','на трате','на доходе','на итоге'], ex=[];
+    for(var i=0;i<q.exits.length;i++) if(q.exits[i]) ex.push(names[i]+' <b>'+nf(q.exits[i])+'</b>');
+    return sec('Быстрый старт','за '+q.days+' дней')
+      +'<div class="card">'+funnelHtml(steps,labels,'С версии 2.8 новичков пока не было — замер идёт с неё')
+      +(q.started?'<div class="facts"><span>записали трату <b>'+nf(q.expense)+'</b></span><span>пропустили трату <b>'+nf(q.skippedExpense)+'</b></span><span>ввели доход <b>'+nf(q.income)+'</b></span><span>пропустили доход <b>'+nf(q.skippedIncome)+'</b></span></div>':'')
+      +(ex.length?'<div class="foot-note">'+IC.info+'<span>Закрыли крестиком и не вернулись: '+ex.join(', ')+'.</span></div>':'')
+      +'</div><p class="note cap">Шаг считается, когда его открыли. Кто закрыл приложение на середине, при следующем входе продолжает с того же шага.'+(q.since?' Замер — с '+esc(dlong(q.since))+'.':'')+'</p>';
+  }
+
   /* ---------- После отрисовки ---------- */
   function afterRender(){
     chartReset=null;
@@ -1563,6 +1818,15 @@ export const ADMIN_HTML = `<!doctype html>
       setTimeout(function(){ toast('id '+v+' скопирован — вставь в фильтр Custom user ID'); },300);
       if(TG && TG.openLink) TG.openLink(curl); else window.open(curl,'_blank');
     }
+    else if(act==='cltoken'){
+      var inp=$('cl-token'), tok=inp?inp.value.trim():'';
+      if(!tok){ toast('Вставь токен'); return; }
+      clDo({action:'token',token:tok},'Clarity подключён',el);
+    }
+    else if(act==='clrefresh'){ clDo({action:'refresh'},'Цифры Clarity обновлены',el); }
+    else if(act==='cledit'){ S.clEdit=!S.clEdit; render(); }
+    else if(act==='clforget'){ confirmDo('Отключить выгрузку Clarity? Токен удалится из базы, собранная история останется.',function(){ clDo({action:'forget'},'Clarity отключён',null); }); }
+    else if(act==='clopen'){ var cu=clUrl(v); if(TG && TG.openLink) TG.openLink(cu); else window.open(cu,'_blank'); }
     else if(act==='digest'){
       el.disabled=true;
       api('/admin/digest',{}).then(function(r){ el.disabled=false; toast(r&&r.ok?'Сводка отправлена в Telegram':'Не удалось отправить'); })
@@ -1622,7 +1886,7 @@ export const ADMIN_HTML = `<!doctype html>
       if(!TG) return;
       try{ TG.ready(); TG.expand(); }catch(e){}
       var saved=null; try{ saved=localStorage.getItem(THEME); }catch(e){}
-      applyTheme(saved || (TG.colorScheme==='light'?'light':'dark'),false);
+      applyTheme(saved || 'dark',false);
       if(D) render();
       try{ TG.BackButton.onClick(closeSheet); }catch(e){}
     };

@@ -14,6 +14,8 @@ interface TelegramWebApp {
   colorScheme: 'light' | 'dark'
   setHeaderColor: (color: string) => void
   setBackgroundColor: (color: string) => void
+  /** Bot API 7.10+: цвет нижней полосы Telegram под приложением. */
+  setBottomBarColor?: (color: string) => void
   onEvent: (event: string, cb: () => void) => void
   offEvent: (event: string, cb: () => void) => void
   HapticFeedback: {
@@ -290,18 +292,21 @@ export function onThemeChange(cb: () => void): () => void {
   return () => wa.offEvent?.('themeChanged', cb)
 }
 
-/** Update Telegram chrome colors to match current theme. */
+/**
+ * Цвета Telegram вокруг приложения — под тему: шапка, фон под страницей и
+ * нижняя полоса (Bot API 7.10). Фон — ровно фон страницы (--c-surface в
+ * index.css): иначе на стыке видна полоса другого оттенка. Тёмная тема бывает
+ * и при светлом Telegram — без нижней полосы под цвет снизу оставалась бы
+ * светлая плашка.
+ */
 export function syncTelegramChrome(isDark: boolean) {
   const wa = tg.webApp
   if (!wa) return
+  const bg = isDark ? '#0E0F0E' : '#F6F6F3'
   try {
-    if (isDark) {
-      wa.setHeaderColor('#0F1A14')
-      wa.setBackgroundColor('#0F1A14')
-    } else {
-      wa.setHeaderColor('#3CA37B')
-      wa.setBackgroundColor('#FAFBF9')
-    }
+    wa.setHeaderColor(isDark ? bg : '#3CA37B')
+    wa.setBackgroundColor(bg)
+    if (wa.setBottomBarColor && wa.isVersionAtLeast?.('7.10')) wa.setBottomBarColor(bg)
   } catch {
     /* older clients */
   }

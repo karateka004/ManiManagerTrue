@@ -395,6 +395,16 @@ export async function setReminders(enabled: boolean): Promise<boolean> {
 }
 
 /**
+ * Шаг быстрого старта — в админку (воркер, qs:<id>): до какого шага дошёл,
+ * сколько трат записал, ввёл ли доход, закрыл ли крестиком. Без сумм. Не
+ * дошло — не страшно: следующий шаг пришлёт то же самое и больше.
+ */
+export function reportQuickStart(p: { s: number; e: number; i: boolean; d?: boolean; x?: number }): void {
+  if (!isBackendConfigured() || !tg.initData) return
+  post('/qs', { initData: tg.initData, ...p }).catch(() => {})
+}
+
+/**
  * Включены ли напоминания на сервере. Их можно выключить и в боте (/reminders,
  * кнопка под напоминанием), поэтому тумблер в Настройках сверяется с сервером, а
  * не верит устройству. null — узнать не получилось (вне Telegram, нет сети).

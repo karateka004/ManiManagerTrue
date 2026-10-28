@@ -29,6 +29,8 @@ import { dropFromInbox, readInbox, MAX_INBOX, MAX_INBOX_IMPORT } from './inbox'
 import { sendPromoOnce } from './promo'
 import { appInviteLink, CHANNEL, ensureAppLink, fanStats, launchOnce, trackFan } from './channel'
 import { sendStorageReportOnce } from './storage'
+import { clarityAction, clarityBlock, clarityNightly, clarityTick } from './clarity'
+import { quickStartStats, trackQuickStart } from './quickstart'
 import {
   cleanTz,
   pickReminderText,
@@ -392,6 +394,9 @@ export default {
       if (url.pathname === '/check-sub' && req.method === 'POST') {
         return await handleCheckSub(req, env, origin)
       }
+      if (url.pathname === '/qs' && req.method === 'POST') {
+        return await handleQuickStart(req, env, origin)
+      }
       if (url.pathname === '/gift-notify' && req.method === 'POST') {
         return await handleGiftNotify(req, env, origin)
       }
@@ -427,6 +432,9 @@ export default {
       if (url.pathname === '/admin/digest' && req.method === 'POST') {
         return await handleAdminDigest(req, env, origin)
       }
+      if (url.pathname === '/admin/clarity' && req.method === 'POST') {
+        return await handleAdminClarity(req, env, origin)
+      }
       if (url.pathname === '/' || url.pathname === '/health') {
         return json({ ok: true, service: 'koshel-worker' }, { status: 200 }, env, origin)
       }
@@ -443,6 +451,8 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '0 21 * * *') {
       ctx.waitUntil(nightlyAnalytics(env, event.scheduledTime))
+      // Итог суток из Clarity — в историю админки (см. clarity.ts).
+      ctx.waitUntil(clarityNightly(env, event.scheduledTime).catch((e) => console.error('[cron] clarity', e)))
     } else if (event.cron === LB_CRON) {
       ctx.waitUntil(rebuildLeaderboard(env))
       // Профиль бота (описания, меню) — сам после выката, см. ensureBotProfile.
@@ -457,6 +467,8 @@ export default {
       ctx.waitUntil(ensureAppLink(env).catch((e) => console.error('[cron] ссылка канала', e)))
     } else {
       ctx.waitUntil(runDailyReminders(env, event.scheduledTime))
+      // Свежие 24 часа Clarity — в 06, 12 и 18 МСК (сам проверяет час).
+      ctx.waitUntil(clarityTick(env, event.scheduledTime).catch((e) => console.error('[cron] clarity', e)))
     }
   },
 }
@@ -1218,6 +1230,26 @@ async function handleReminders(req: Request, env: Env, origin: string | null, re
   return json({ ok: true, enabled: await reminderPreference(env, user.id) }, { status: 200 }, env, origin)
 }
 
+/**
+ * Шаг быстрого старта (см. quickstart.ts): номер шага, сколько трат записал,
+ * ввёл ли доход, закрыл ли крестиком. Сумм нет.
+ */
+async function handleQuickStart(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as {
+    initData?: string
+    s?: unknown
+    e?: unknown
+    i?: unknown
+    d?: unknown
+    x?: unknown
+  }
+  const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
+  if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
+  if (await isRateLimited(env, 'qs', user.id, 30, 60)) return tooMany(env, origin)
+  const ok = await trackQuickStart(env, user.id, body)
+  return json({ ok }, { status: ok ? 200 : 400 }, env, origin)
+}
+
 /** Канал для задания «подписаться» (публичный username). */
 const CHANNEL_USERNAME = '@Svyat_research'
 
@@ -1419,18 +1451,31 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
   }
 
   const now = Date.now()
-  const [c, history, webhook, fan] = await Promise.all([
+  const [c, history, webhook, fan, clarity, qs] = await Promise.all([
     collectFresh(env, body.fresh ? 0 : COLLECT_TTL_MS),
     readHistory(env),
     webhookHealth(env),
     fanStats(env, Date.now()).catch(() => null),
+    clarityBlock(env, now).catch(() => null),
+    quickStartStats(env, now).catch(() => null),
   ])
   return json(
-    { ...computeDashboard(c, history, now, webhook), backfill, fan },
+    { ...computeDashboard(c, history, now, webhook), backfill, fan, clarity, qs },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
     env,
     origin,
   )
+}
+
+/**
+ * Clarity из админки: вставить или убрать токен выгрузки, обновить цифры.
+ * Токен приходит один раз и обратно не отдаётся (см. clarity.ts).
+ */
+async function handleAdminClarity(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const denied = await adminGate(req, env, origin, 'aclarity', 10)
+  if (denied) return denied
+  const body = (await req.json().catch(() => ({}))) as { action?: unknown; token?: unknown }
+  return json(await clarityAction(env, body), { status: 200, headers: { 'Cache-Control': 'no-store' } }, env, origin)
 }
 
 /**

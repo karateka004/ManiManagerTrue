@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="ru">
+<!-- class="dark": тёмная — тема по умолчанию (2.8), первый кадр до скрипта уже тёмный;
+     светлую по выбору ставит applyInitialAppearance в main.tsx до первой отрисовки. -->
+<html lang="ru" class="dark">
   <head>
     <meta charset="UTF-8" />
     <!--
@@ -14,7 +16,7 @@
       content="default-src 'self'; script-src 'self' https://telegram.org https://www.clarity.ms https://scripts.clarity.ms; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://koshel-worker.karateka004.workers.dev https://*.clarity.ms; base-uri 'self'; object-src 'none'; form-action 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#3CA37B" />
+    <meta name="theme-color" content="#0E0F0E" />
     <title>Кошель — финансы</title>
     <!-- Соединение с воркером — заранее: облако и записи бота запрашиваются сразу после старта. -->
     <link rel="preconnect" href="https://koshel-worker.karateka004.workers.dev" crossorigin />

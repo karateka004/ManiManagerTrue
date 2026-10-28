@@ -184,7 +184,8 @@ interface State {
 }
 
 interface Actions {
-  addTransaction: (t: Omit<Transaction, 'id'>) => void
+  /** Добавить операцию как есть (быстрый старт); возвращает её id. */
+  addTransaction: (t: Omit<Transaction, 'id'>) => string
   updateTransaction: (id: string, patch: Partial<Omit<Transaction, 'id'>>) => void
   /**
    * Записать операцию из формы одним изменением стора. `editingId` = null —
@@ -666,7 +667,8 @@ export const useStore = create<State & Actions>()(
       currency: 'USD',
       chartStyle: 'icons',
       budgets: {},
-      themeMode: 'auto',
+      // 2.8: тёмная — основная тема у всех; светлая и «как в Telegram» — выбором в Настройках.
+      themeMode: 'dark',
       customCategories: [],
       bonusXp: 0,
       coins: 0,
@@ -693,11 +695,14 @@ export const useStore = create<State & Actions>()(
       // Валюту записи запоминаем и здесь (как в commitTransaction): через этот
       // путь пишет быстрый старт, и без этого первая ручная операция новичка,
       // выбравшего евро, открывалась в долларах — появлялся второй «счёт».
-      addTransaction: (t) =>
+      addTransaction: (t) => {
+        const id = cuid()
         set((s) => ({
-          transactions: [{ ...t, id: cuid() }, ...s.transactions],
+          transactions: [{ ...t, id }, ...s.transactions],
           ...(t.currency ? { lastTxCurrency: t.currency } : {}),
-        })),
+        }))
+        return id
+      },
       updateTransaction: (id, patch) =>
         set((s) => ({
           transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
@@ -1095,7 +1100,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 17,
+      version: 18,
       storage: throttledStorage as PersistStorage<State & Actions>,
       // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
       merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
@@ -1184,6 +1189,13 @@ export const useStore = create<State & Actions>()(
           if (Array.isArray(persisted.owned)) {
             for (const id of DEFAULT_OWNED) if (!persisted.owned.includes(id)) persisted.owned.push(id)
           }
+        }
+        // v18 (2.8): тёмная тема — основная. «Авто» было значением по умолчанию,
+        // и выбрать его сознательно от умолчания не отличить — переводим на
+        // тёмную; кто выбрал светлую, остаётся на светлой. Облачный снимок старой
+        // версии проходит эту же миграцию при слиянии (cloud.ts → rehydrate).
+        if (persisted && version < 18) {
+          if (persisted.themeMode === 'auto' || persisted.themeMode === undefined) persisted.themeMode = 'dark'
         }
         return persisted
       },

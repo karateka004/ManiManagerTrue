@@ -13,7 +13,7 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.7.2'
+export const APP_VERSION = '2.8.0'
 
 /** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
 export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
@@ -33,6 +33,31 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.8.0',
+    date: '2026-10-29',
+    title: { ru: 'Тёмная тема и быстрый старт проще', en: 'Dark theme and an easier quick start' },
+    items: [
+      {
+        text: {
+          ru: 'Тёмная тема — теперь основная. Вернуть светлую или «как в Telegram»: Настройки → Тема',
+          en: 'Dark theme is now the default. To switch back to light or “Auto”: Settings → Theme',
+        },
+      },
+      {
+        text: {
+          ru: 'Быстрый старт начинается с одной траты, а доход можно пропустить — итог подстроится под то, что записал',
+          en: 'Quick start begins with a single expense, and income is optional — the summary adapts to what you logged',
+        },
+      },
+      {
+        text: {
+          ru: 'Закрыл приложение посреди быстрого старта — в следующий раз продолжишь с того же места',
+          en: 'Closed the app halfway through the quick start? Next time you’ll pick up where you left off',
+        },
+      },
+    ],
+  },
   {
     version: '2.7.2',
     date: '2026-10-23',

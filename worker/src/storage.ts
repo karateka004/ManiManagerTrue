@@ -47,6 +47,9 @@ export const FAMILIES: Family[] = [
   { prefix: 'channel:', label: 'канал обновлений' },
   { prefix: 'fan:', label: 'особое задание (воронка)' },
   { prefix: 'admin:', label: 'служебное' },
+  { prefix: 'qs:', label: 'быстрый старт по шагам', ttl: true },
+  { prefix: 'clarity:quota:', label: 'Clarity', ttl: true },
+  { prefix: 'clarity:', label: 'Clarity' },
 ]
 
 /** За одно нажатие: у KV есть потолок операций на один запуск воркера. */

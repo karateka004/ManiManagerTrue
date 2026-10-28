@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { hapticSelect } from '../lib/telegram'
 import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY } from '../lib/whatsnew'
+import { QS_KEY } from '../lib/introKeys'
 
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
@@ -24,9 +25,13 @@ function useIntro() {
     const onboarded = localStorage.getItem(ONBOARDED_KEY)
     // Уже пользовался приложением? (есть сохранённый стор) → не новичок.
     const hasUsedApp = !!localStorage.getItem(STORE_KEY)
+    // Быстрый старт начат и не закончен: приложение закрыли посреди него, а не
+    // крестиком. Стор к этому времени уже сохранён (валюта, первая трата), и
+    // раньше человек навсегда попадал на пустую Главную — теперь продолжает.
+    const unfinished = !!localStorage.getItem(QS_KEY)
 
-    // Совсем новый пользователь — показываем онбординг.
-    if (!onboarded && !hasUsedApp) {
+    // Совсем новый пользователь или незаконченный быстрый старт — показываем.
+    if (!onboarded && (!hasUsedApp || unfinished)) {
       setMode('onboarding')
       return
     }
@@ -39,6 +44,7 @@ function useIntro() {
 
   const closeOnboarding = () => {
     hapticSelect()
+    localStorage.removeItem(QS_KEY)
     localStorage.setItem(ONBOARDED_KEY, '1')
     localStorage.setItem(VERSION_KEY, APP_VERSION) // новичку changelog не показываем
     // После быстрого старта у человека уже есть данные и первый вывод — гайд

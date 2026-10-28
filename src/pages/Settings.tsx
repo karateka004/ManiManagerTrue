@@ -209,9 +209,9 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Segment
         title={t('settings.theme')}
         options={[
-          { id: 'auto', label: t('settings.theme_auto') },
-          { id: 'light', label: t('settings.theme_light') },
           { id: 'dark', label: t('settings.theme_dark') },
+          { id: 'light', label: t('settings.theme_light') },
+          { id: 'auto', label: t('settings.theme_auto') },
         ]}
         value={themeMode}
         onChange={(id) => { hapticSelect(); setThemeMode(id) }}
