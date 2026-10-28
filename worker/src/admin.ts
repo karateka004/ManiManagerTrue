@@ -468,6 +468,12 @@ export const ADMIN_HTML = `<!doctype html>
     .tabs{padding:0 4px}
     .tabs button{font-size:12px;padding:0 2px}
   }
+  /* Марка «Кошель» не должна прятаться под плашкой бота: на узком экране от
+     плашки остаётся цветная точка, текст — нажатием (тост). */
+  @media(max-width:374px){
+    .status{padding:0 12px}
+    .status span{display:none}
+  }
   @media(max-width:339px){.tabs button{font-size:11.5px;padding:0 2px}}
   /* ---------- Clarity ----------
      Трение — строка на метрику: доля сессий крупно, полоса по шкале, под ней
@@ -764,6 +770,7 @@ export const ADMIN_HTML = `<!doctype html>
     else { color='var(--good-dot)'; text='Бот на связи'; }
     el.querySelector('i').style.background=color;
     el.querySelector('span').textContent=text;
+    el.setAttribute('aria-label',text);
   }
 
   /* ================================================================== */
