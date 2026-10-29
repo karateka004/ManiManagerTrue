@@ -88,7 +88,14 @@ export interface Transaction {
 }
 
 export type ChartStyle = 'compact' | 'icons'
-export type ThemeMode = 'auto' | 'light' | 'dark'
+/**
+ * Тема. 'system' — как в Telegram (или в системе вне его). До 2.8 это значение
+ * называлось 'auto' и было умолчанием; миграция v18 переводит старое 'auto' на
+ * тёмную, поэтому выбор «Авто» в 2.8 пишется новым словом — иначе снимок старого
+ * клиента с 'auto' (его умолчанием) затёр бы сознательный выбор при слиянии.
+ * Незнакомое значение (в т. ч. старое 'auto') читается как 'system'.
+ */
+export type ThemeMode = 'dark' | 'light' | 'system'
 
 /** Что показывать в подзаголовке шапки «Главной». */
 export type HomeHeaderMode = 'date' | 'goal'
@@ -113,7 +120,7 @@ interface State {
   chartStyle: ChartStyle
   /** Monthly limits per expense category id. 0/undefined = no limit */
   budgets: Record<string, number>
-  /** Theme preference: 'auto' follows Telegram colorScheme */
+  /** Тема: 'dark' (по умолчанию с 2.8), 'light' или 'system' — как в Telegram. */
   themeMode: ThemeMode
   /** Пользовательские категории */
   customCategories: Category[]

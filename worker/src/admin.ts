@@ -93,11 +93,12 @@ export const ADMIN_HTML = `<!doctype html>
      Марка с кнопками уезжает вместе со страницей, липнут только вкладки: под
      шапкой Telegram две липкие полосы занимали треть экрана. */
   .appbar{max-width:1080px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 4px;display:flex;align-items:center;gap:8px}
-  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px;letter-spacing:-.022em;white-space:nowrap;min-width:0}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px;letter-spacing:-.022em;white-space:nowrap;flex:none}
   .brand .dot{width:8px;height:8px;border-radius:99px;background:var(--mark);flex:none}
   .brand .sub{font-weight:600;color:var(--ink-3)}
   .spacer{flex:1;min-width:0}
   .status{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:99px;border:0;background:var(--well);font-size:12.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;min-width:0}
+  .status span{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .status i{width:7px;height:7px;border-radius:99px;flex:none}
   .icon{width:34px;height:34px;border-radius:99px;border:0;background:var(--well);display:grid;place-items:center;color:var(--ink-2);flex:none}
   .icon svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -549,7 +550,7 @@ export const ADMIN_HTML = `<!doctype html>
   var CLARITY_PROJECT='z50dung9vo';
   var D=null;
   var S={ tab:'overview', win:'7', src:'all', chart:'growth', range:30, table:false,
-          retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'', clEdit:false };
+          retMode:'d', retSrc:'all', pq:'', pf:'all', ps:'ls', pcap:30, tag:'', clEdit:false, clRaw:false };
   var TG=null, tgInit='', busy=false, lastLoad=0, sheetOpen=false;
   var DAY=86400000;
 
@@ -683,10 +684,13 @@ export const ADMIN_HTML = `<!doctype html>
     opts=opts||{};
     if(busy) return;
     if(!tgInit && !savedKey()){ showLogin(); return; }
+    if(clBusy) return;
     busy=true; if(D) document.body.classList.add('loading');
+    var seq=clSeq;
     api('/admin/stats',{fresh:!!opts.fresh, backfill:!!opts.backfill}).then(function(d){
       busy=false; document.body.classList.remove('loading');
       if(!d || !d.ok){ toast('Не удалось загрузить данные'); return; }
+      if(seq!==clSeq && D) d.clarity=D.clarity;
       D=d; lastLoad=Date.now(); showApp(); render(); paintBanner();
       if(!opts.backfill) autoBackfill();
     }).catch(function(e){
@@ -1547,7 +1551,7 @@ export const ADMIN_HTML = `<!doctype html>
       return '<div class="subhead">'+esc(title)+'</div>'+bars(rowsD);
     }
     var setBlock='<div class="card"><div class="cardhead"><h3>Как настроено</h3></div>'
-      +dist('Валюта',st.currency)+dist('Язык',st.lang,{ru:'Русский',en:'English'})+dist('Тема',st.theme,{auto:'Как в системе',light:'Светлая',dark:'Тёмная'})+dist('Версия хранилища',st.version)+'</div>';
+      +dist('Валюта',st.currency)+dist('Язык',st.lang,{ru:'Русский',en:'English'})+dist('Тема',st.theme,{system:'Авто (как в Telegram)',auto:'Авто (до 2.8)',light:'Светлая',dark:'Тёмная'})+dist('Версия хранилища',st.version)+'</div>';
     var g=D.game;
     function top(list,val,unit){
       if(!list.length) return '<div class="empty">пока пусто</div>';
@@ -1696,7 +1700,7 @@ export const ADMIN_HTML = `<!doctype html>
     var cols=[['DeadClickCount','Мёртв.'],['RageClickCount','Ярост.'],['ScriptErrorCount','Ошибки']];
     cols.forEach(function(c){ (m[c[0]]||[]).forEach(function(r){ var k=r.d.OS||'—'; if(!by[k]){ by[k]={}; order.push(k); } by[k][c[0]]=r.n.sessionsWithMetricPercentage; }); });
     order.sort(function(a,b){ return (by[b].s||0)-(by[a].s||0); });
-    return sec('По системам','итог суток · '+dmsk(os.at))+'<div class="card"><div class="cl-tbl"><table><thead><tr><th>Система</th><th class="r">Сессии</th>'
+    return sec('По системам','итог суток · '+dmsk(os.at-60000))+'<div class="card"><div class="cl-tbl"><table><thead><tr><th>Система</th><th class="r">Сессии</th>'
       +cols.map(function(c){ return '<th class="r">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'
       +order.slice(0,8).map(function(k){
         var r=by[k];
@@ -1734,7 +1738,7 @@ export const ADMIN_HTML = `<!doctype html>
       });
       parts.push('<div class="m"><b>'+esc(name)+'</b><br>'+rows.map(esc).join('<br>')+(m[name].length>10?'<br>…':'')+'</div>');
     }
-    return '<details class="card cl-raw" style="margin-top:12px"><summary>'+IC.chev+'Все поля выгрузки</summary>'+parts.join('')+'</details>';
+    return '<details class="card cl-raw" style="margin-top:12px"'+(S.clRaw?' open':'')+'><summary>'+IC.chev+'Все поля выгрузки</summary>'+parts.join('')+'</details>';
   }
   function clTokenCard(c){
     var t=c.token, q=c.quota;
@@ -1744,9 +1748,15 @@ export const ADMIN_HTML = `<!doctype html>
       +'<div class="acts"><button class="btn" data-act="clrefresh"'+(q.left>0?'':' disabled')+'>Обновить'+(q.left>0?' · ещё '+nf(q.left):'')+'</button></div></div>'
       +'<div class="ch-foot"><button class="linkbtn" data-act="cledit">Заменить токен</button><button class="linkbtn" data-act="clforget" style="color:var(--bad)">Отключить</button></div></div>';
   }
+  /* Пока идёт действие с Clarity, сводка сама не обновляется, а пришедший позже
+     ответ сводки, начатый раньше, не затирает свежий блок Clarity. */
+  var clBusy=false, clSeq=0;
   function clDo(body,okText,btn){
+    if(clBusy) return;
+    clBusy=true;
     if(btn) btn.disabled=true;
     api('/admin/clarity',body).then(function(r){
+      clBusy=false; clSeq++;
       if(btn) btn.disabled=false;
       if(!r || !r.clarity){ toast('Не получилось'); return; }
       D.clarity=r.clarity;
@@ -1756,9 +1766,11 @@ export const ADMIN_HTML = `<!doctype html>
       else if(r.error==='quota') msg=body.action==='token'?'Токен сохранён. Лимит Clarity на сегодня исчерпан — цифры придут в полночь по МСК':'Лимит запросов на сегодня исчерпан';
       else if(r.error==='unreachable') msg=body.action==='token'?'Токен сохранён, но Clarity сейчас не ответил — цифры придут по расписанию':'Clarity не ответил — попробуй позже';
       else if(r.error==='no_token') msg='Сначала подключи токен';
+      else if(r.error==='kept') msg=r.status===429?'Сегодня новый токен не проверить (лимит Clarity) — оставил прежний, попробуй завтра':'Clarity не ответил — оставил прежний токен, попробуй позже';
       if(r.ok && body.action==='token') S.clEdit=false;
       render(); toast(msg);
     }).catch(function(e){
+      clBusy=false;
       if(btn) btn.disabled=false;
       if(e && e.code===429){ toast('Слишком часто — подожди минуту'); return; }
       if(e && e.code===403){ showLogin('Сессия закончилась — войдите снова'); return; }
@@ -1790,6 +1802,7 @@ export const ADMIN_HTML = `<!doctype html>
     if(S.tab==='overview'){ drawSparks(); drawChart(); bindHours(); }
     if(S.tab==='product') drawSparks();
     if(S.tab==='retention') bindHeat();
+    if(S.tab==='clarity'){ var raw=document.querySelector('details.cl-raw'); if(raw) raw.addEventListener('toggle',function(){ S.clRaw=raw.open; }); }
   }
 
   /* ---------- Действия ---------- */

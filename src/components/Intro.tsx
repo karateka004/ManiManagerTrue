@@ -3,6 +3,23 @@ import { AnimatePresence } from 'framer-motion'
 import { hapticSelect } from '../lib/telegram'
 import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY } from '../lib/whatsnew'
 import { QS_KEY } from '../lib/introKeys'
+import { useStore } from '../store/transactions'
+
+/**
+ * Быстрый старт начат и не закончен: закрыли приложение посреди него (с шага
+ * настроек и дальше). Если в сторе есть операции не из быстрого старта —
+ * это вернувшийся с облаком, ему быстрый старт снова не показываем.
+ */
+function unfinishedQuickStart(): boolean {
+  try {
+    const v = JSON.parse(localStorage.getItem(QS_KEY) ?? 'null') as { s?: unknown; ids?: unknown; inc?: unknown } | null
+    if (!v || typeof v.s !== 'number' || v.s < 1) return false
+    const mine = new Set([...(Array.isArray(v.ids) ? v.ids : []), v.inc].filter((x) => typeof x === 'string'))
+    return useStore.getState().transactions.every((x) => mine.has(x.id))
+  } catch {
+    return false
+  }
+}
 
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
@@ -28,7 +45,7 @@ function useIntro() {
     // Быстрый старт начат и не закончен: приложение закрыли посреди него, а не
     // крестиком. Стор к этому времени уже сохранён (валюта, первая трата), и
     // раньше человек навсегда попадал на пустую Главную — теперь продолжает.
-    const unfinished = !!localStorage.getItem(QS_KEY)
+    const unfinished = unfinishedQuickStart()
 
     // Совсем новый пользователь или незаконченный быстрый старт — показываем.
     if (!onboarded && (!hasUsedApp || unfinished)) {

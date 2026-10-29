@@ -211,7 +211,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
         options={[
           { id: 'dark', label: t('settings.theme_dark') },
           { id: 'light', label: t('settings.theme_light') },
-          { id: 'auto', label: t('settings.theme_auto') },
+          { id: 'system', label: t('settings.theme_auto') },
         ]}
         value={themeMode}
         onChange={(id) => { hapticSelect(); setThemeMode(id) }}

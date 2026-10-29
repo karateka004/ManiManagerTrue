@@ -161,7 +161,7 @@ check('запрос по ОС — dimension1=OS', calls.at(-1).url.includes('dim
 const NEXT = Date.UTC(2026, 9, 29, 3, 0)
 reply = () => new Response('Exceeded daily limit', { status: 429 })
 await clarityTick(env, NEXT)
-check('429 — сутки закрыты', Number(kv.m.get('clarity:quota:2026-10-29')?.value) === DAILY_LIMIT)
+check('429 — дневные пути на сегодня закрыты, ночному снимку остаётся попытка', Number(kv.m.get('clarity:quota:2026-10-29')?.value) === DAILY_LIMIT - 2)
 const err429 = await clarityBlock(env, NEXT)
 check('ошибка видна админке', err429.err?.status === 429 && err429.token.bad === false)
 
@@ -190,6 +190,57 @@ res = await clarityAction(env, { action: 'refresh' }, DAY5)
 check('без токена — no_token', res.error === 'no_token')
 res = await clarityAction(env, { action: 'что-то' }, DAY5)
 check('незнакомое действие', res.ok === false && res.error === 'bad_action')
+
+/* ---------- KV с лимитом: не больше записи в секунду в один ключ ---------- */
+class LimitedKV extends FakeKV {
+  constructor() { super(); this.last = new Map() }
+  async put(k, value, opts) {
+    const t = Date.now()
+    if (t - (this.last.get(k) ?? 0) < 1000) throw new Error('KV PUT failed: 429 Too Many Requests')
+    this.last.set(k, t)
+    return super.put(k, value, opts)
+  }
+}
+{
+  const lkv = new LimitedKV()
+  const lenv = { REFERRALS: lkv }
+  const T = Date.UTC(2026, 10, 5, 9, 0)
+  reply = () => new Response('', { status: 403 })
+  const r1 = await clarityAction(lenv, { action: 'token', token: TOKEN }, T)
+  check('лимит KV: неверный токен — понятный отказ, а не исключение', r1.error === 'rejected' && !lkv.m.has('clarity:token'), r1)
+  check('лимит KV: попытка возвращена через секунду', Number(lkv.m.get('clarity:quota:2026-11-05')?.value) === 0)
+  reply = () => new Response(JSON.stringify(SAMPLE), { status: 200 })
+  await new Promise((r) => setTimeout(r, 1100))
+  const r2 = await clarityAction(lenv, { action: 'token', token: TOKEN }, T)
+  check('лимит KV: хороший токен сохранён', r2.ok && lkv.m.has('clarity:token'))
+  await new Promise((r) => setTimeout(r, 1100))
+  reply = () => new Response('', { status: 401 })
+  await clarityNightly(lenv, Date.UTC(2026, 10, 5, 21, 0))
+  const b = await clarityBlock(lenv, Date.UTC(2026, 10, 5, 21, 0))
+  check('лимит KV: 401 ночью — отметка «не принимает», крон замолчит', b.token.bad === true && b.err?.status === 401, b)
+  const n = calls.length
+  await clarityTick(lenv, Date.UTC(2026, 10, 6, 9, 0))
+  check('лимит KV: после 401 крон молчит', calls.length === n)
+  // Новый токен при рабочем старом, а проверить нельзя (Clarity не отвечает) — старый остаётся.
+  const kkv = new FakeKV()
+  const kenv = { REFERRALS: kkv }
+  reply = () => new Response(JSON.stringify(SAMPLE), { status: 200 })
+  await clarityAction(kenv, { action: 'token', token: TOKEN }, T)
+  reply = () => { throw new Error('network') }
+  const other = `${b64({ alg: 'RS256' })}.${b64({ exp: 1830000000 })}.b3RoZXI`
+  const r3 = await clarityAction(kenv, { action: 'token', token: other }, T)
+  check('непроверенный новый токен не затирает рабочий', r3.error === 'kept' && kkv.m.get('clarity:token').value === TOKEN, r3)
+  check('пустая подпись — не токен', !looksLikeToken(`${b64({ a: 1 })}.${b64({ b: 2 })}.`))
+  const url = parseExport([{ metricName: 'PopularPages', information: [{ url: 'https://x.io/app/#tgWebAppData=user%3D1', visitsCount: '3' }] }])
+  check('адрес без хвоста #… (данные входа Telegram)', url.PopularPages[0].d.url === 'https://x.io/app/', url.PopularPages[0])
+  const order = parseExport([{ metricName: 'OS', information: [{ name: 'Other', sessionsCount: '9554' }, { name: 'Android', sessionsCount: '291942' }] }])
+  check('списки — по убыванию', order.OS[0].d.name === 'Android')
+  // Быстрый старт: итог и финиш в одну секунду — финиш не теряется.
+  const qkv2 = new LimitedKV()
+  await trackQuickStart({ REFERRALS: qkv2 }, 9, { s: 4, e: 1 }, T)
+  await trackQuickStart({ REFERRALS: qkv2 }, 9, { s: 4, e: 1, d: true }, T + 10)
+  check('лимит KV: «дошёл до конца» записан со второй попытки', qkv2.m.get('qs:9').metadata.d === 1)
+}
 
 /* ---------- Быстрый старт ---------- */
 const T0 = Date.UTC(2026, 9, 28, 10, 0)

@@ -3,8 +3,8 @@ import { tg, onThemeChange, syncTelegramChrome } from './telegram'
 import { useStore, type ThemeMode } from '../store/transactions'
 import { ACCENT_PALETTES } from './rewards'
 
-/** Тёмная ли тема: выбор в настройках, иначе Telegram, иначе система. */
-function resolveDark(mode: ThemeMode): boolean {
+/** Тёмная ли тема: выбор в настройках, иначе (system, старое auto) Telegram, иначе система. */
+function resolveDark(mode: ThemeMode | string): boolean {
   if (mode === 'dark') return true
   if (mode === 'light') return false
   const fromTg = tg.webApp?.colorScheme
@@ -46,7 +46,7 @@ export function applyInitialAppearance() {
 
 /**
  * Управляет атрибутом `.dark` на <html> в зависимости от themeMode:
- *   'auto'  → следует за Telegram.colorScheme (или prefers-color-scheme).
+ *   'system' → следует за Telegram.colorScheme (или prefers-color-scheme).
  *   'light' → принудительно светлая.
  *   'dark'  → принудительно тёмная.
  *
@@ -92,7 +92,7 @@ export function useTheme() {
     let unsubscribe = () => {}
     let mediaCleanup = () => {}
 
-    if (mode === 'auto') {
+    if (mode !== 'dark' && mode !== 'light') {
       // Reagiruет на Telegram themeChanged
       unsubscribe = onThemeChange(apply)
 

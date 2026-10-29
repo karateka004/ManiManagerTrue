@@ -134,16 +134,16 @@ export function parseExport(raw: unknown, dims: string[] = []): Parsed | null {
         } else if (typeof v === 'string' && NUMERIC.test(v.trim())) {
           row.n[key] = Number(v.trim())
         } else if (typeof v === 'string' && v) {
-          row.d[key] = v.slice(0, 120)
+          // Адрес — без хвоста #…: там могли бы оказаться данные входа Telegram.
+          row.d[key] = (/^https?:\/\//i.test(v) ? v.split('#')[0] : v).slice(0, 120)
         }
       }
       rows.push(row)
     }
-    // Длинные списки (страницы, страны) — самые крупные строки сверху.
-    if (rows.length > MAX_ROWS) {
-      rows.sort((a, b) => rowWeight(b) - rowWeight(a))
-      rows.length = MAX_ROWS
-    }
+    // Списки (страницы, страны, ОС) — самые крупные строки сверху: Clarity
+    // отдаёт их не по порядку. Длинные — обрезаем.
+    rows.sort((a, b) => rowWeight(b) - rowWeight(a))
+    if (rows.length > MAX_ROWS) rows.length = MAX_ROWS
     out[name.slice(0, 60)] = rows
   }
   return out
@@ -201,7 +201,7 @@ export function tokenInfo(token: string): { tail: string; exp?: number } {
 
 /** Похоже на токен выгрузки: три части через точку, без пробелов. */
 export function looksLikeToken(t: string): boolean {
-  return t.length >= 20 && t.length <= 4096 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(t)
+  return t.length >= 20 && t.length <= 4096 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t)
 }
 
 /* ------------------------------------------------------------------ */
@@ -237,22 +237,47 @@ async function quotaUsed(env: Env, now: number): Promise<number> {
   return Number(await env.REFERRALS.get(QUOTA_PREFIX + utcDay(now))) || 0
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 /**
- * Запрос с учётом квоты. `cap` — до скольких запросов за сутки можно дойти
- * этим путём. Счётчик — наш (KV не атомарен, два запроса в одну секунду могут
- * посчитаться за один); 429 от Clarity — окончательный ответ: сутки закрыты.
+ * Запись счётчика — без исключений: KV принимает в один ключ не больше записи
+ * в секунду, и поправка сразу после брони падала бы с 429 — вместе с ответом
+ * админке и отметкой об ошибке.
  */
-async function guardedCall(env: Env, token: string, now: number, cap: number, dims: string[]): Promise<CallResult> {
-  const used = await quotaUsed(env, now)
-  if (used >= cap) return { ok: false, status: 429 }
-  await env.REFERRALS.put(QUOTA_PREFIX + utcDay(now), String(used + 1), { expirationTtl: 2 * 86_400 })
-  const r = await exportCall(token, 1, dims)
-  if (!r.ok && r.status === 429) {
-    await env.REFERRALS.put(QUOTA_PREFIX + utcDay(now), String(DAILY_LIMIT), { expirationTtl: 2 * 86_400 })
-  } else if (!r.ok && (r.status === 401 || r.status === 403)) {
-    // Чужой или неверный токен проекту не засчитывается — возвращаем попытку.
-    await env.REFERRALS.put(QUOTA_PREFIX + utcDay(now), String(used), { expirationTtl: 2 * 86_400 })
+async function setQuota(env: Env, now: number, n: number): Promise<void> {
+  try {
+    await env.REFERRALS.put(QUOTA_PREFIX + utcDay(now), String(n), { expirationTtl: 2 * 86_400 })
+  } catch {
+    /* счётчик — подстраховка; окончательный ответ всё равно даёт Clarity (429) */
   }
+}
+
+/** Забронировать n запросов, если до `cap` хватает. null — этим путём на сегодня всё. */
+async function reserve(env: Env, now: number, n: number, cap: number): Promise<number | null> {
+  const used = await quotaUsed(env, now)
+  if (used + n > cap) return null
+  await setQuota(env, now, used + n)
+  return used
+}
+
+/**
+ * Поправка после ответа Clarity (не раньше чем через секунду после брони —
+ * лимит KV): неверный токен проекту не засчитывается — бронь возвращаем; 429 —
+ * дневные пути на сегодня закрыты, а ночному снимку попробовать можно (окно
+ * Clarity может считаться не по UTC).
+ */
+async function settle(env: Env, now: number, r: CallResult, used: number, n: number): Promise<void> {
+  if (r.ok || (r.status !== 429 && r.status !== 401 && r.status !== 403)) return
+  await sleep(1100)
+  await setQuota(env, now, r.status === 429 ? Math.max(used + n, DAILY_LIMIT - NIGHT_RESERVE) : used)
+}
+
+/** Один запрос с учётом квоты. `cap` — до скольких запросов за сутки можно дойти этим путём. */
+async function guardedCall(env: Env, token: string, now: number, cap: number, dims: string[]): Promise<CallResult> {
+  const used = await reserve(env, now, 1, cap)
+  if (used === null) return { ok: false, status: 429 }
+  const r = await exportCall(token, 1, dims)
+  await settle(env, now, r, used, 1)
   return r
 }
 
@@ -295,17 +320,28 @@ async function usableToken(env: Env): Promise<string | null> {
 export async function clarityNightly(env: Env, now: number): Promise<void> {
   const token = await usableToken(env)
   if (!token) return
-  const day = await guardedCall(env, token, now, DAILY_LIMIT, [])
-  await noteResult(env, day, now)
-  if (!day.ok) return
-  const ended = mskDateStr(mskDayStart(mskDay(now) - 1))
-  const hist = (await readJson<ClarityDay[]>(env, HIST_KEY)) ?? []
-  await Promise.all([
-    env.REFERRALS.put(LIVE_KEY, JSON.stringify({ at: now, days: 1, m: day.m } satisfies Snapshot)),
-    env.REFERRALS.put(HIST_KEY, JSON.stringify(putDay(hist, dayRow(ended, day.m)))),
-  ])
-  const os = await guardedCall(env, token, now, DAILY_LIMIT, ['OS'])
-  if (os.ok) await env.REFERRALS.put(OS_KEY, JSON.stringify({ at: now, days: 1, m: os.m } satisfies Snapshot))
+  // Оба запроса бронируем одной записью: вторая запись в счётчик в ту же
+  // секунду упала бы (лимит KV).
+  const used = await reserve(env, now, 2, DAILY_LIMIT)
+  if (used === null) return
+  const day = await exportCall(token, 1, [])
+  try {
+    if (!day.ok) {
+      await settle(env, now, day, used, 2)
+      return
+    }
+    const ended = mskDateStr(mskDayStart(mskDay(now) - 1))
+    const hist = (await readJson<ClarityDay[]>(env, HIST_KEY)) ?? []
+    await Promise.all([
+      env.REFERRALS.put(LIVE_KEY, JSON.stringify({ at: now, days: 1, m: day.m } satisfies Snapshot)),
+      env.REFERRALS.put(HIST_KEY, JSON.stringify(putDay(hist, dayRow(ended, day.m)))),
+    ])
+    const os = await exportCall(token, 1, ['OS'])
+    if (os.ok) await env.REFERRALS.put(OS_KEY, JSON.stringify({ at: now, days: 1, m: os.m } satisfies Snapshot))
+  } finally {
+    // Отметка об исходе — всегда: иначе после 401 крон стучался бы дальше.
+    await noteResult(env, day, now).catch(() => {})
+  }
 }
 
 /** Почасовой крон: в 06, 12 и 18 МСК — свежие 24 часа. */
@@ -317,7 +353,7 @@ export async function clarityTick(env: Env, now: number): Promise<void> {
 
 async function refreshLive(env: Env, token: string, now: number): Promise<CallResult> {
   const r = await guardedCall(env, token, now, DAILY_LIMIT - NIGHT_RESERVE, [])
-  await noteResult(env, r, now)
+  await noteResult(env, r, now).catch(() => {})
   if (r.ok) await env.REFERRALS.put(LIVE_KEY, JSON.stringify({ at: now, days: 1, m: r.m } satisfies Snapshot))
   return r
 }
@@ -386,9 +422,13 @@ export async function clarityAction(
   if (body.action === 'token') {
     const token = String(body.token ?? '').trim()
     if (!looksLikeToken(token)) return done(false, 'bad_format')
+    const [current, curMeta] = await Promise.all([env.REFERRALS.get(TOKEN_KEY), readJson<Meta>(env, META_KEY)])
     const r = await guardedCall(env, token, now, DAILY_LIMIT - NIGHT_RESERVE, [])
     // Не принят — не храним: иначе крон тратил бы на него запросы.
     if (!r.ok && (r.status === 401 || r.status === 403)) return done(false, 'rejected', r.status)
+    // Проверить сейчас нельзя, а рабочий токен уже есть — его не трогаем:
+    // обрезанный при вставке новый молча заменил бы рабочий.
+    if (!r.ok && current && current !== token && !curMeta?.bad) return done(false, 'kept', r.status)
     const meta: Meta = { ...tokenInfo(token), savedAt: now }
     if (!r.ok) meta.err = { at: now, status: r.status }
     await Promise.all([

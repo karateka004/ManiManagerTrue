@@ -303,12 +303,22 @@ export function syncTelegramChrome(isDark: boolean) {
   const wa = tg.webApp
   if (!wa) return
   const bg = isDark ? '#0E0F0E' : '#F6F6F3'
+  // Каждый цвет — отдельно и фон первым: клиент до 6.9 не принимает цвет шапки
+  // кодом и бросает исключение — фон и полоса от этого страдать не должны.
   try {
-    wa.setHeaderColor(isDark ? bg : '#3CA37B')
     wa.setBackgroundColor(bg)
+  } catch {
+    /* старый клиент */
+  }
+  try {
     if (wa.setBottomBarColor && wa.isVersionAtLeast?.('7.10')) wa.setBottomBarColor(bg)
   } catch {
-    /* older clients */
+    /* старый клиент */
+  }
+  try {
+    wa.setHeaderColor(isDark ? bg : '#3CA37B')
+  } catch {
+    /* старый клиент */
   }
 }
 

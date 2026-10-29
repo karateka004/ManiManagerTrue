@@ -96,15 +96,21 @@ interface Saved {
   s: number
   ids: string[]
   inc: string | null
+  /** Тумблер «бюджет из дохода» на итоге. */
+  b?: boolean
 }
 function readSaved(): Saved | null {
   try {
     const v = JSON.parse(localStorage.getItem(QS_KEY) ?? 'null') as Partial<Saved> | null
     if (!v || typeof v.s !== 'number' || !(v.s >= STEP.welcome && v.s <= STEP.result)) return null
+    // id, которых в сторе нет (отложенная запись не успела до закрытия), — выбрасываем:
+    // иначе они занимали бы места трат и блокировали валюту.
+    const have = new Set(useStore.getState().transactions.map((x) => x.id))
     return {
       s: Math.floor(v.s),
-      ids: Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_EXPENSES) : [],
-      inc: typeof v.inc === 'string' ? v.inc : null,
+      ids: Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === 'string' && have.has(x)).slice(0, MAX_EXPENSES) : [],
+      inc: typeof v.inc === 'string' && have.has(v.inc) ? v.inc : null,
+      b: v.b !== false,
     }
   } catch {
     return null
@@ -140,11 +146,24 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     clarityKeep('onboarding')
   }, [])
   useEffect(() => clarityEvent('onboarding_' + STEP_NAMES[step]), [step])
+  // Бюджет месяца из дохода — включён по умолчанию, выключается тумблером.
+  const [budgetOn, setBudgetOn] = useState(saved?.b ?? true)
   // Место — в localStorage (не в стор: сохранённый стор значит «старый
-  // пользователь»), шаг — в админку.
-  useEffect(() => writeSaved({ s: step, ids, inc: incId }), [step, ids, incId])
-  const progress = useRef({ e: ids.length, i: !!incId })
-  progress.current = { e: ids.length, i: !!incId }
+  // пользователь»), шаг — в админку. С приветствия место не пишем: новичку и
+  // так покажем, а вернувшийся на новое устройство (облако подтянулось) не
+  // должен застревать в быстром старте при каждом запуске.
+  useEffect(() => {
+    if (step > STEP.welcome) writeSaved({ s: step, ids, inc: incId, b: budgetOn })
+  }, [step, ids, incId, budgetOn])
+  // Кнопки соседних шагов стоят в одном месте: двойной тап проскакивал шаг.
+  // Нажатия в первые 450 мс после смены шага не принимаем.
+  const stepAt = useRef(performance.now())
+  const settled = () => performance.now() - stepAt.current > 450
+  const go = (next: number) => {
+    stepAt.current = performance.now()
+    setStep(next)
+  }
+  const progress = useRef({ e: 0, i: false })
   useEffect(() => reportQuickStart({ s: step, ...progress.current }), [step])
 
   const currency = useStore((s) => s.currency)
@@ -166,6 +185,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
     [ids, transactions],
   )
   const incomeTx = useMemo(() => (incId ? transactions.find((x) => x.id === incId) ?? null : null), [incId, transactions])
+  progress.current = { e: expenses.length, i: !!incomeTx }
 
   // Валюта по региону. Подставляется по «Поехали» (к шагу настроек) и при
   // выходе через «×» — так и закрывший быстрый старт сразу получит свою валюту,
@@ -187,8 +207,6 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   const seenPicker = useRef(false)
   if (pickerOpen) seenPicker.current = true
 
-  // Бюджет месяца из дохода — включён по умолчанию, выключается тумблером.
-  const [budgetOn, setBudgetOn] = useState(true)
 
   // Шаг траты: сумма в поле ещё не записана.
   const [expAmount, setExpAmount] = useState('')
@@ -205,14 +223,14 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   const income = incomeTx && (incomeTx.currency ?? currency) === currency ? incomeTx.amount : 0
   // Валюту меняем, пока в быстром старте ничего не записано: иначе первая
   // запись осталась бы в прежней валюте, а итог смешал бы две.
-  const canChangeCurrency = ids.length === 0 && !incId
+  const canChangeCurrency = expenses.length === 0 && !incomeTx
 
   const close = async () => {
     // Защита от случайного выхода: спрашиваем подтверждение.
     if (!(await confirmAction(t('qs.exit_confirm')))) return
     clarityEvent('onboarding_exit')
     clarityTag('onboarding_exit_at', STEP_NAMES[step])
-    reportQuickStart({ s: step, e: ids.length, i: !!incId, x: step })
+    reportQuickStart({ s: step, ...progress.current, x: step })
     hapticSelect()
     applyDetected()
     markCurrencyAsked()
@@ -221,6 +239,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   }
 
   const goSetup = async () => {
+    if (!settled()) return
     hapticTap()
     markCurrencyAsked()
     // Напоминания включены, а писать боту нельзя (открыли по ссылке, Start не
@@ -241,7 +260,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       await Promise.race([answer, new Promise<void>((r) => setTimeout(r, 20_000))])
       asking.current = false
     }
-    setStep(STEP.expense)
+    go(STEP.expense)
   }
 
   // Пока сервер не ответил, второе нажатие не принимаем: при двойном тапе без
@@ -268,8 +287,9 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   // нельзя. Предлагаем бюджет только тем, у кого его нет.
   const hasBudget = useStore((s) => s.monthlyBudget > 0)
   const finish = () => {
+    if (!settled()) return
     clarityEvent('onboarding_done')
-    reportQuickStart({ s: STEP.result, e: ids.length, i: !!incId, d: true })
+    reportQuickStart({ s: STEP.result, ...progress.current, d: true })
     hapticNotify('success')
     if (budgetOn && income > 0 && useStore.getState().monthlyBudget === 0) setMonthlyBudget(Math.round(income))
     clearSaved()
@@ -278,7 +298,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
 
   /** Трата из поля — сразу в стор (первая запись не теряется, даже если закроют приложение). */
   const recordExpense = (): boolean => {
-    if (expDraft <= 0 || ids.length >= MAX_EXPENSES) return false
+    if (expDraft <= 0 || expenses.length >= MAX_EXPENSES) return false
     const id = addTransaction({
       type: 'expense',
       amount: expDraft,
@@ -302,19 +322,21 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
   // «Дальше» записывает и набранное, но не добавленное: раньше кнопка ждала
   // отдельного «Добавить трату», и с суммой в поле человек упирался в серую кнопку.
   const goIncome = () => {
+    if (!settled()) return
     const recorded = recordExpense()
-    if (!recorded && ids.length === 0) return
+    if (!recorded && expenses.length === 0) return
     hapticTap()
-    setStep(STEP.income)
+    go(STEP.income)
   }
   const skipExpense = () => {
+    if (!settled()) return
     hapticSelect()
     clarityEvent('onboarding_skip_expense')
-    setStep(STEP.income)
+    go(STEP.income)
   }
 
   const goResult = () => {
-    if (incomeDraft <= 0) return
+    if (!settled() || incomeDraft <= 0) return
     hapticTap()
     const id = addTransaction({
       type: 'income',
@@ -325,12 +347,13 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       currency,
     })
     setIncId(id)
-    setStep(STEP.result)
+    go(STEP.result)
   }
   const skipIncome = () => {
+    if (!settled()) return
     hapticSelect()
     clarityEvent('onboarding_skip_income')
-    setStep(STEP.result)
+    go(STEP.result)
   }
 
   return (
@@ -351,7 +374,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
       >
         {/* Шапка: прогресс по шагам + закрыть */}
         <div className="flex items-center gap-3 px-5 pb-4 pt-5">
-          <div className="flex flex-1 gap-1.5">
+          <div className="flex flex-1 gap-1.5" role="progressbar" aria-valuemin={0} aria-valuemax={4} aria-valuenow={step} aria-label={t('qs.progress', { n: Math.max(1, step) })}>
             {[1, 2, 3, 4].map((i) => (
               <span
                 key={i}
@@ -374,7 +397,7 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
           {/* Шаги идут вперёд — каждый следующий въезжает справа. */}
           <div key={step} className={step === 0 ? 'tab-enter' : 'tab-in-deep'}>
             {step === STEP.welcome && (
-              <StepWelcome t={t} onStart={() => { hapticTap(); applyDetected(); setStep(STEP.setup) }} />
+              <StepWelcome t={t} onStart={() => { if (!settled()) return; hapticTap(); applyDetected(); go(STEP.setup) }} />
             )}
 
             {step === STEP.setup && (
@@ -402,8 +425,8 @@ export function QuickStart({ onDone }: { onDone: () => void }) {
                 currency={currency}
                 onCurrency={canChangeCurrency ? () => { hapticTap(); setPickerOpen(true) } : undefined}
                 items={expenses}
-                canAdd={expDraft > 0 && ids.length < MAX_EXPENSES}
-                canNext={expDraft > 0 || ids.length > 0}
+                canAdd={expDraft > 0 && expenses.length < MAX_EXPENSES}
+                canNext={expDraft > 0 || expenses.length > 0}
                 onAdd={addExpense}
                 onRemove={removeExpense}
                 onNext={goIncome}
@@ -636,7 +659,7 @@ function StepExpenses({
             currency={currency}
             onCurrency={onCurrency}
             currencyLabel={`${currencyName(currency, lang)} — ${t('cur.change').toLowerCase()}`}
-            autoFocus
+            onEnter={onNext}
           />
           <CategoryChips cats={cats} selected={catId} onSelect={onCat} />
           {/* Ещё трата — записать и остаться на шаге. Одну хватает и «Дальше»:
@@ -728,7 +751,7 @@ function StepIncome({
         currency={currency}
         onCurrency={onCurrency}
         currencyLabel={`${currencyName(currency, lang)} — ${t('cur.change').toLowerCase()}`}
-        autoFocus
+        onEnter={onNext}
       />
 
       <div className="caption mt-5 text-ink-subtle">{t('qs.income_source')}</div>
@@ -769,9 +792,11 @@ function StepResult({
   onBudget: () => void
   onDone: () => void
 }) {
-  const daysTotal = dayjs().daysInMonth()
-  const safeDaily = income > 0 ? income / daysTotal : 0
-  const projected = income - spentToday * daysTotal
+  // Как на Главной (selectDailyAllowance): бюджет делится на оставшиеся дни
+  // месяца, сегодняшний — тоже. Иначе через секунду там была бы другая цифра.
+  const daysLeft = Math.max(1, dayjs().daysInMonth() - dayjs().date() + 1)
+  const safeDaily = income > 0 ? income / daysLeft : 0
+  const projected = income - spentToday * daysLeft
   const positive = projected >= 0
   const hasIncome = income > 0
   const hasSpent = spentToday > 0
@@ -804,7 +829,7 @@ function StepResult({
           <Money value={hasIncome && hasSpent ? Math.abs(projected) : hasIncome ? Math.round(safeDaily) : spentToday} currency={currency} />
         </div>
         <div className="caption mt-1.5 leading-snug text-white/70">
-          {hasIncome && hasSpent ? t('qs.result_hint') : hasIncome ? t('qs.daily_hint') : t('qs.no_income_hint')}
+          {hasIncome && hasSpent ? t('qs.result_hint') : hasIncome ? t('qs.daily_hint', { n: daysLeft }) : t('qs.no_income_hint')}
         </div>
       </div>
 
@@ -865,8 +890,12 @@ function StepResult({
 /* ---------- Общие мелочи ---------- */
 
 /** Крупное поле суммы с символом валюты. */
+/**
+ * Без автофокуса: открытая сразу клавиатура закрывала «Дальше» и «Пропустить» —
+ * тот самый тупик. Ввод — касанием поля, «Готово»/Enter клавиатуры = «Дальше».
+ */
 function AmountField({
-  value, onChange, currency, onCurrency, currencyLabel, autoFocus,
+  value, onChange, currency, onCurrency, currencyLabel, onEnter,
 }: {
   value: string
   onChange: (v: string) => void
@@ -874,7 +903,7 @@ function AmountField({
   onCurrency?: () => void
   /** Для экранного диктора: голый «₸» ничего не говорит. */
   currencyLabel?: string
-  autoFocus?: boolean
+  onEnter?: () => void
 }) {
   const symbol = getCurrency(currency).symbol
   return (
@@ -883,7 +912,14 @@ function AmountField({
         type="number"
         inputMode="decimal"
         min={0}
-        autoFocus={autoFocus}
+        enterKeyHint="next"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) {
+            e.preventDefault()
+            ;(e.target as HTMLInputElement).blur()
+            onEnter()
+          }
+        }}
         placeholder="0"
         value={value}
         onChange={(e) => onChange(e.target.value)}

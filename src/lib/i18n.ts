@@ -1005,8 +1005,8 @@ const DICT: Dict = {
   },
   'qs.income_title': { ru: 'Сколько получаешь в месяц?', en: 'How much do you earn a month?' },
   'qs.income_sub': {
-    ru: 'Посчитаю, сколько можно тратить в день. Хватит примерной суммы — или пропусти и добавь потом.',
-    en: 'I’ll work out how much you can spend a day. A rough number is enough — or skip and add it later.',
+    ru: 'Посчитаю, сколько можно тратить в день. Хватит примерной суммы — или пропусти: бюджет месяца можно задать потом на Главной.',
+    en: 'I’ll work out how much you can spend a day. A rough number is enough — or skip: you can set a monthly budget on Home later.',
   },
   'qs.income_source': { ru: 'Источник', en: 'Source' },
   'qs.next': { ru: 'Дальше', en: 'Next' },
@@ -1028,15 +1028,16 @@ const DICT: Dict = {
   },
   'qs.spent_today': { ru: 'Траты за день', en: 'Spent today' },
   'qs.daily_label': { ru: 'Можно тратить в день', en: 'You can spend a day' },
-  'qs.daily_hint': { ru: 'и к концу месяца остаться в плюсе', en: 'and still be in the black at month end' },
+  'qs.daily_hint': { ru: 'до конца месяца — осталось {n} дн.', en: 'until the end of the month — {n} days left' },
   'qs.daily_advice': {
     ru: 'Записывай траты — и приложение будет следить за этой планкой за тебя.',
     en: 'Log your expenses and the app will watch that line for you.',
   },
   'qs.no_income_hint': {
-    ru: 'Добавь доход кнопкой + — и я посчитаю, сколько можно тратить в день',
-    en: 'Add your income with the + button and I’ll work out your daily limit',
+    ru: 'Задай бюджет месяца на Главной — и я покажу, сколько можно тратить в день',
+    en: 'Set a monthly budget on Home and I’ll show how much you can spend a day',
   },
+  'qs.progress': { ru: 'Шаг {n} из 4', en: 'Step {n} of 4' },
   'qs.done_title': { ru: 'Всё готово', en: 'You’re all set' },
   'qs.done_sub': {
     ru: 'Записывай траты кнопкой + внизу или сообщением боту своими словами: «Ушло 300 на кофе».',

@@ -15,7 +15,7 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Фронт (корень): `npm run dev` (:5173) · `npm run lint` (tsc + `scripts/check-tw-opacity.mjs` + `scripts/test-sync.mjs`) ·
 `npm run build` (`dist/`).
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 105,
-reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26, clarity 52) · `npx wrangler dev --local --port 8787` +
+reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26, clarity 62) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 
 **Деплой:**
@@ -94,7 +94,11 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 из дохода — только если доход есть. Записи сразу в стор (`addTransaction` возвращает id); шаг и id —
 в `koshel:qs` (`QS_KEY`, introKeys): закрыл приложение посреди — `useIntro` показывает снова с того же
 шага; крестик и «Открыть приложение» ключ стирают. Валюту в быстром старте меняют, пока ничего не
-записано. Шаги — `reportQuickStart` → `/qs` (без сумм) → админка «Удержание → Быстрый старт». Планирование (бюджет, лимиты, цели, активы) — `PlanningSheet`.
+записано. Шаги — `reportQuickStart` → `/qs` (без сумм) → админка «Удержание → Быстрый старт».
+Нажатия в первые 450 мс после смены шага не принимаются (кнопки соседних шагов стоят в одном месте —
+двойной тап проскакивал шаг); клавиатура сама не открывается (закрывала «Дальше»/«Пропустить»); место
+пишется с шага настроек, а вернувшийся с операциями не из быстрого старта его не видит; дневная планка
+в итоге — как на Главной (доход / оставшиеся дни месяца). Планирование (бюджет, лимиты, цели, активы) — `PlanningSheet`.
 **Кошель+** (премиум: голосовые, фото чеков, свободный текст — Gemini; покупка за звёзды Telegram —
 следующий шаг): плашка над меню Профиля — у всех приглушена и «Скоро», не нажимается; тестерам
 (`lib/plus.ts`, id Telegram) открывает `PlusSheet` с «Попробовать в боте». Тексты раздела — в
@@ -103,7 +107,8 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 
 **Тема (2.8):** тёмная — основная у всех: `themeMode` по умолчанию `'dark'`, миграция v18 переводит
 «авто» (бывшее умолчание) на тёмную, выбранная светлая остаётся; облачный снимок старой версии проходит
-ту же миграцию при слиянии (cloud.ts → rehydrate). Первый кадр — `<html class="dark">` в index.html
+ту же миграцию при слиянии (cloud.ts → rehydrate). Выбор «Авто» в 2.8 пишется словом `'system'` (старое `'auto'`
+мигрирует в тёмную; незнакомое значение читается как «авто»). Первый кадр — `<html class="dark">` в index.html
 (светлую по выбору снимает `applyInitialAppearance`). Цвета Telegram (`syncTelegramChrome`): фон, шапка
 и нижняя полоса (Bot API 7.10) — ровно фон страницы `#0E0F0E` (у светлой шапка зелёная, фон
 `#F6F6F3`). Настройки → Тема: Тёмная · Светлая · Авто. Новый экран — проверять в обеих темах (снимки +
@@ -126,7 +131,9 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 Telegram. Проект `z50dung9vo` (`CLARITY_ID`, не секрет; `VITE_CLARITY_ID` — для проверочных сборок; тот
 же номер — `CLARITY_PROJECT` в админке и `worker/src/clarity.ts`, кнопка «Записи в Clarity» в карточке
 человека). Режим маскировки проекта — Balanced (`"content":true` в загрузчике www.clarity.ms/tag/<id>),
-отправка — g.clarity.ms. Очередь вызовов — сразу в `main.tsx`, скрипт — в простое (+1 КБ gzip к стартовому чанку,
+отправка — g.clarity.ms. До старта записи `startClarity` убирает из адреса хвост `#tgWebAppData=…`
+(данные входа Telegram: id, имя, подпись на сутки) — Clarity пишет адрес целиком; SDK Telegram хранит их в
+sessionStorage, перезагрузка работает. Очередь вызовов — сразу в `main.tsx`, скрипт — в простое (+1 КБ gzip к стартовому чанку,
 сам Clarity 26 КБ — потом). Человек — `identify` по id Telegram (фильтр «Custom user ID», подпись в
 списке — тот же id). Метки: platform, source, lang, ops, owner, onboarding, onboarding_exit_at.
 События: onboarding_<шаг>/done/exit, bot_write_yes/no, record_added, first_record, tab_<вкладка>,
@@ -141,7 +148,9 @@ assistant_ask. **Скрыто всё:** `data-clarity-mask` на `<body>` (ре�
 (`/admin/clarity`, KV `clarity:token`; наружу — только хвост и срок из JWT; отклонённый 401/403 не
 храним; после 401/403 крон молчит до нового). Лимит — 10 запросов в сутки (UTC): 00:00 МСК — итог
 суток в историю `clarity:hist` + разбивка по ОС (2), 06/12/18 МСК — свежие 24 ч, «Обновить» — из
-остатка, ночным двум всегда хватает; счётчик `clarity:quota:<дата>`, 429 закрывает сутки. Разбор
+остатка, ночным двум всегда хватает; счётчик `clarity:quota:<дата>` (ночь бронирует 2 одной записью:
+KV принимает в один ключ не больше записи в секунду, поправки — через 1,1 с и без исключений); 429 закрывает
+дневные пути, ночь всё равно пробует. Непроверенный новый токен рабочий не заменяет. Разбор
 общий (числа/подписи), незнакомые метрики видны в «Все поля выгрузки». Видео наружу Clarity не отдаёт —
 админка ведёт ссылками. Тест — `test-clarity.mjs`. CSP: `www`/`scripts.clarity.ms`,
 `connect-src *.clarity.ms`. Проверка — подменённый настоящий `clarity.js` в Playwright: распаковать

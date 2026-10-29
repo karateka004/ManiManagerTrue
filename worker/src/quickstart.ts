@@ -62,11 +62,20 @@ export async function trackQuickStart(
   now = Date.now(),
 ): Promise<boolean> {
   const key = `${QS_PREFIX}${userId}`
-  const prev = (await env.REFERRALS.getWithMetadata<QsMeta>(key)).metadata ?? null
-  const next = mergeQs(prev, body, now)
-  if (!next) return false
-  await env.REFERRALS.put(key, '1', { metadata: next, expirationTtl: QS_TTL })
-  return true
+  for (let attempt = 0; ; attempt++) {
+    const prev = (await env.REFERRALS.getWithMetadata<QsMeta>(key)).metadata ?? null
+    const next = mergeQs(prev, body, now)
+    if (!next) return false
+    try {
+      await env.REFERRALS.put(key, '1', { metadata: next, expirationTtl: QS_TTL })
+      return true
+    } catch (e) {
+      // KV: не больше записи в секунду в один ключ. Итог и «дошёл до конца»
+      // приходят почти разом — второй записи ждём, а не теряем финиш.
+      if (attempt >= 1) throw e
+      await new Promise((r) => setTimeout(r, 1100))
+    }
+  }
 }
 
 export interface QsStats {

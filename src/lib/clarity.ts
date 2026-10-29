@@ -94,6 +94,15 @@ function opsBucket(n: number): string {
 export function startClarity() {
   if (started || stopped || !clarityAvailable() || !clarityAllowed()) return
   started = true
+  // Telegram кладёт подписанные данные входа в адрес (#tgWebAppData=…: id, имя,
+  // подпись, действующая сутки), а Clarity пишет адрес страницы целиком. Хвост
+  // убираем до старта записи: Telegram SDK его уже разобрал и хранит в
+  // sessionStorage, перезагрузка без него тоже работает.
+  try {
+    if (location.hash) history.replaceState(history.state, '', location.pathname + location.search)
+  } catch {
+    /* нечего чистить */
+  }
   // Стандартная заглушка Clarity: копит вызовы, пока не загрузился скрипт.
   const w = window
   w.clarity =

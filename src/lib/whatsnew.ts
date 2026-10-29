@@ -40,8 +40,8 @@ export const RELEASES: ReleaseNote[] = [
     items: [
       {
         text: {
-          ru: 'Тёмная тема — теперь основная. Вернуть светлую или «как в Telegram»: Настройки → Тема',
-          en: 'Dark theme is now the default. To switch back to light or “Auto”: Settings → Theme',
+          ru: 'Тёмная тема — теперь основная. Вернуть светлую или «Авто» (как в Telegram): Настройки → Тема',
+          en: 'Dark theme is now the default. To switch back to light or “Auto” (follows Telegram): Settings → Theme',
         },
       },
       {
