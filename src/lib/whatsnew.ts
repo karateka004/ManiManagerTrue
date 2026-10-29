@@ -56,6 +56,12 @@ export const RELEASES: ReleaseNote[] = [
           en: 'Closed the app halfway through the quick start? Next time you’ll pick up where you left off',
         },
       },
+      {
+        text: {
+          ru: 'Нажми на баланс на Главной — сразу откроется запись траты или дохода',
+          en: 'Tap the balance on Home to log an expense or income right away',
+        },
+      },
     ],
   },
   {

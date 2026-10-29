@@ -929,6 +929,7 @@ const DICT: Dict = {
   'cur.title_main': { ru: 'Основная валюта', en: 'Main currency' },
   'cur.title_quick': { ru: 'Валюта для быстрого выбора', en: 'Quick-pick currency' },
   'cur.title_tx': { ru: 'Валюта операции', en: 'Entry currency' },
+  'balance.tap': { ru: 'Записать операцию', en: 'Add an entry' },
   'cur.search': { ru: 'Страна, валюта или код', en: 'Country, currency or code' },
   'cur.popular': { ru: 'Часто выбирают', en: 'Popular' },
   'cur.all': { ru: 'Все валюты', en: 'All currencies' },

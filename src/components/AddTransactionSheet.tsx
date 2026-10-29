@@ -16,6 +16,7 @@ import { hapticTap, hapticSelect, hapticNotify } from '../lib/telegram'
 import { CategoryIcon } from './icons/CategoryIcon'
 import { getCurrency, type Currency } from '../lib/currencies'
 import { CurrencyFlag } from './ui/CurrencyFlag'
+import { CURRENCY_ASKED_KEY } from '../lib/currencyAsked'
 import { BottomSheet, SheetDragZone } from './ui/BottomSheet'
 import { SegTrack } from './ui/SegTrack'
 import { centerOf, replay } from '../lib/fx'
@@ -114,7 +115,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
   // Вложенные шторки — вне листа: иначе они уезжали бы вместе с ним при свайпе.
   // Их состояние здесь, а форма говорит, что и с чем открыть.
   const [editor, setEditor] = useState<{ open: boolean; kind: CategoryKind }>({ open: false, kind: kindProp })
-  const [picker, setPicker] = useState<{ open: boolean; value: Currency | null }>({ open: false, value: null })
+  const [picker, setPicker] = useState<{ open: boolean; value: Currency | null; main?: boolean }>({ open: false, value: null })
   if (open !== wasOpen) {
     setWasOpen(open)
     if (open) {
@@ -130,9 +131,9 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
 
   const openEditor = useCallback((kind: CategoryKind) => setEditor({ open: true, kind }), [])
   const closeEditor = useCallback(() => setEditor((e) => ({ ...e, open: false })), [])
-  const openPicker = useCallback((value: Currency, pick: (code: Currency) => void) => {
+  const openPicker = useCallback((value: Currency, pick: (code: Currency) => void, main?: boolean) => {
     onPick.current = pick
-    setPicker({ open: true, value })
+    setPicker({ open: true, value, main })
   }, [])
   const closePicker = useCallback(() => setPicker((p) => ({ ...p, open: false })), [])
 
@@ -170,7 +171,7 @@ export function AddTransactionSheet({ open, kind: kindProp, onClose, editing }: 
             onClose={closePicker}
             value={picker.value}
             onPick={(code) => onPick.current(code)}
-            title={tr('cur.title_tx')}
+            title={tr(picker.main ? 'cur.title_main' : 'cur.title_tx')}
             z={60}
           />
         </Suspense>
@@ -218,7 +219,8 @@ function AddForm({
   editing: Transaction | null
   onClose: () => void
   openEditor: (kind: CategoryKind) => void
-  openPicker: (value: Currency, pick: (code: Currency) => void) => void
+  /** main — выбор основной валюты (новичок без записей), иначе — валюты операции. */
+  openPicker: (value: Currency, pick: (code: Currency) => void, main?: boolean) => void
 }) {
   // Вид операции — состояние: сегмент в шапке переключает его прямо в открытой
   // шторке. В режиме правки стартует с типа правимой операции.
@@ -247,7 +249,25 @@ function AddForm({
     const s = useStore.getState()
     return editing ? (editing.currency ?? s.currency) : s.lastTxCurrency
   })
-  const [currencyOpen, setCurrencyOpen] = useState(false)
+  // Новичок — ни одной своей записи: выбор валюты здесь и есть выбор основной
+  // валюты. Сохраняем сразу: закрыл шторку, ничего не записав, — на Главной
+  // уже «0 ֏», а не прежний доллар. Строка валют у него сразу раскрыта.
+  const [fresh] = useState(() => {
+    const s = useStore.getState()
+    return !editing && !s.demoMode && s.transactions.length === 0
+  })
+  const setMainCurrency = useStore((s) => s.setCurrency)
+  const pickCurrency = (code: Currency) => {
+    setTxCurrency(code)
+    if (!fresh) return
+    setMainCurrency(code)
+    try {
+      localStorage.setItem(CURRENCY_ASKED_KEY, '1')
+    } catch {
+      /* приватный режим — подсказка на Главной просто спросит ещё раз */
+    }
+  }
+  const [currencyOpen, setCurrencyOpen] = useState(fresh)
   // Попытка сохранить без категории — подсказка над сеткой, пока не выберут.
   const [needCategory, setNeedCategory] = useState(false)
   const amountRef = useRef<HTMLDivElement>(null)
@@ -516,7 +536,7 @@ function AddForm({
               {(quickCurrencies.includes(txCurrency) ? quickCurrencies : [txCurrency, ...quickCurrencies]).map((code) => (
                 <button
                   key={code}
-                  onClick={() => { hapticSelect(); setTxCurrency(code); setCurrencyOpen(false) }}
+                  onClick={() => { hapticSelect(); pickCurrency(code); setCurrencyOpen(false) }}
                   className={`press flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition-colors ${
                     txCurrency === code ? 'bg-ink text-surface-raised' : 'bg-surface-sunken text-ink-muted'
                   }`}
@@ -529,9 +549,9 @@ function AddForm({
                 onClick={() => {
                   hapticSelect()
                   openPicker(txCurrency, (code) => {
-                    setTxCurrency(code)
+                    pickCurrency(code)
                     setCurrencyOpen(false)
-                  })
+                  }, fresh)
                 }}
                 className="press rounded-full bg-surface-sunken px-3 py-1 text-xs font-semibold text-ink-subtle"
               >

@@ -389,8 +389,8 @@ export default function App() {
   useSwipeNav(pagerRef, swipeHost)
 
   const pageProps = useMemo<PageProps>(
-    () => ({ openProfile, openEdit, openSearch, openAssistant, openSettings, openRewards }),
-    [openProfile, openEdit, openSearch, openAssistant, openSettings, openRewards],
+    () => ({ openProfile, openEdit, openAdd, openSearch, openAssistant, openSettings, openRewards }),
+    [openProfile, openEdit, openAdd, openSearch, openAssistant, openSettings, openRewards],
   )
 
   return (
@@ -457,6 +457,7 @@ export default function App() {
 interface PageProps {
   openProfile: () => void
   openEdit: (t: Transaction) => void
+  openAdd: () => void
   openSearch: () => void
   openAssistant: () => void
   openSettings: () => void
@@ -519,6 +520,7 @@ const TabPanel = memo(function TabPanel({
                 <HomePage
                   onOpenProfile={pages.openProfile}
                   onEditTx={pages.openEdit}
+                  onAdd={pages.openAdd}
                   onOpenSearch={pages.openSearch}
                   onOpenAssistant={pages.openAssistant}
                 />

@@ -37,6 +37,8 @@ interface Props {
   onOpenProfile: () => void
   /** Открыть шторку правки операции — сама шторка живёт в App. */
   onEditTx: (t: Transaction) => void
+  /** Новая операция — та же шторка, что у «+» (тап по балансу). */
+  onAdd: () => void
   /** Открыть поиск по всей истории — шторка тоже живёт в App. */
   onOpenSearch: () => void
   /** Открыть ассистента: вопросы про свои деньги. */
@@ -48,7 +50,7 @@ interface Props {
  * и без этого каждое её открытие или закрытие перерисовывало бы весь список
  * категорий. Пропсы приходят стабильными (useCallback в App).
  */
-export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpenSearch, onOpenAssistant }: Props) {
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onAdd, onOpenSearch, onOpenAssistant }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -67,7 +69,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onOpen
       <CurrencyNudgeGate />
       <AccountSwitcher />
       <PeriodSwitcher />
-      <BalanceCard />
+      <BalanceCard onTap={onAdd} />
       <BudgetBlock onOpen={openPlanning} />
       {/* Ниже героя: карточка появляется после первой записи и не должна
           сдвигать только что обновившийся баланс. */}

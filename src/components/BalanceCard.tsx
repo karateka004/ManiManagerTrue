@@ -4,6 +4,8 @@ import { useHeroSkin } from '../lib/useHeroSkin'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../lib/i18n'
 import type { Currency } from '../lib/currencies'
+import { hapticTap } from '../lib/telegram'
+import { clarityEvent } from '../lib/clarity'
 
 /** Подпись баланса под выбранный период (значение и так считается по периоду). */
 export const BALANCE_LABEL: Record<PeriodMode, string> = {
@@ -15,10 +17,16 @@ export const BALANCE_LABEL: Record<PeriodMode, string> = {
   range: 'balance.custom',
 }
 
-export function BalanceCard() {
+/**
+ * Баланс за период. Тап по карточке — новая операция (та же шторка, что у «+»):
+ * новичок, закрывший быстрый старт, первым делом жмёт на баланс, и там его
+ * должна ждать запись с выбором валюты, а не пустое место.
+ */
+export function BalanceCard({ onTap }: { onTap?: () => void }) {
   const byCurrency = useStore(selectTotalsByCurrency)
   const periodMode = useStore((s) => s.period.mode)
   const account = useStore((s) => s.account)
+  const currency = useStore((s) => s.currency)
   const t = useT()
   const skin = useHeroSkin()
 
@@ -32,10 +40,21 @@ export function BalanceCard() {
 
   const allEntries = Object.entries(byCurrency) as [Currency, { income: number; expense: number; balance: number }][]
   // Выбран счёт (валюта) — показываем только его (одновалютный вид). Если по этой
-  // валюте нет операций за период — пустые нули в той же валюте.
+  // валюте нет операций за период — пустые нули в той же валюте. Операций нет
+  // совсем — нули в основной валюте: голый «0» не говорил, в чём считаем.
+  const zero = { income: 0, expense: 0, balance: 0 }
   const entries: [Currency, { income: number; expense: number; balance: number }][] = account
-    ? [[account, byCurrency[account] ?? { income: 0, expense: 0, balance: 0 }]]
-    : allEntries
+    ? [[account, byCurrency[account] ?? zero]]
+    : allEntries.length > 0
+      ? allEntries
+      : [[currency, zero]]
+  const tap = onTap
+    ? () => {
+        hapticTap()
+        clarityEvent('balance_tap')
+        onTap()
+      }
+    : undefined
 
   return (
     <div className="px-4 pb-3">
@@ -44,7 +63,11 @@ export function BalanceCard() {
           свёрнутом Telegram он стоит, и карточка оставалась бы невидимой
           (см. «Грабли» в CLAUDE.md). Появление и так даёт .tab-enter вкладки. */}
       <div
-        className={`hero-surface relative overflow-hidden rounded-4xl px-6 py-5 ${skin}`}
+        className={`hero-surface relative overflow-hidden rounded-4xl px-6 py-5 ${tap ? 'press-soft cursor-pointer' : ''} ${skin}`}
+        role={tap ? 'button' : undefined}
+        tabIndex={tap ? 0 : undefined}
+        onClick={tap}
+        onKeyDown={tap ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap() } } : undefined}
         onPointerMove={skin === 'skin-holo' ? onHoloMove : undefined}
         // Голограмма идёт за пальцем — водить по ней не значит листать экран.
         data-swipe-ignore={skin === 'skin-holo' || undefined}
@@ -56,10 +79,7 @@ export function BalanceCard() {
         <div className="relative">
           <div className="caption text-white/70">{t(BALANCE_LABEL[periodMode])}</div>
 
-          {entries.length === 0 ? (
-            /* Нет транзакций — пустое состояние */
-            <div className="mt-1 text-display-lg tabular text-white">0</div>
-          ) : entries.length === 1 ? (
+          {entries.length === 1 ? (
             /* Одна валюта — классический вид */
             <>
               {/* Цифры-барабаны: добавил операцию или пролистал месяц — сумма
@@ -96,6 +116,9 @@ export function BalanceCard() {
               ))}
             </div>
           )}
+          {/* Подпись действия для экранного диктора — после суммы, а не вместо
+              неё (aria-label заглушил бы сам баланс). */}
+          {tap && <span className="sr-only">{t('balance.tap')}</span>}
         </div>
       </div>
     </div>
