@@ -17,6 +17,12 @@ React 18 + TS 5.6 + Vite 5 + Tailwind 3 (`darkMode: 'class'`) + Zustand 5 (persi
 Воркер (`worker/`): `npm run lint` (типы + сверки списков с приложением + все тесты: entry 105,
 reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 9, storage 10, channel 26, clarity 62) · `npx wrangler dev --local --port 8787` +
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
+Сценарии в браузере — `scripts/e2e/` (Playwright; в зависимостях его нет: `npm i --no-save playwright` +
+`npx playwright install chromium`): `npm run build` → `npx vite preview --port 4180` → `node scripts/e2e/<имя>`
+(`BASE=` — другой адрес): `quickstart` (44 проверки), `quickstart-taps`, `balance` (34), `balance-touch`
+(касания CDP), `dark-audit [dark|light]`, `clarity-privacy` (что уходит в Clarity; загрузчик и clarity.js
+качает в `.cache/`). После деплоя: `node scripts/e2e/pages-compare.mjs` (dist == Pages побайтно) и
+`node --import ./worker/scripts/ts-resolve.mjs scripts/e2e/admin-live.mjs` (живая админка == код).
 
 **Деплой:**
 - Фронт — пуш в `main` → Actions «Деплой приложения» (`deploy-app.yml`, gh-pages встроенным токеном).
@@ -283,7 +289,7 @@ KV принимает в один ключ не больше записи в с�
 - Герой — `.hero-surface`. Шапки шторок — 17 px extrabold + круглая «×».
 
 ## Производительность
-Стартовый JS: index (Home) + react + vendor ≈ 142 КБ gzip (index ≈ 71). Остальные вкладки, шторки, онбординг — `lazyRetry`
+Стартовый JS: index (Home) + react + vendor ≈ 149 КБ gzip (2.8.0: index 78 + react 43 + vendor 29). Остальные вкладки, шторки, онбординг — `lazyRetry`
 (повтор + разовая перезагрузка при устаревших чанках). framer — только `m.*` под
 `<LazyMotion strict>` с асинхронным `domMax`; framer НЕ в `manualChunks`. Стартовый чанк не
 импортирует `whatsnew.ts` (ключи — в `lib/introKeys.ts`). Persist пишет с троттлингом 400 мс и
@@ -329,6 +335,10 @@ KV принимает в один ключ не больше записи в с�
 продолжение после закрытия, шаги в админке); тап по балансу — запись (новичку — с выбором основной
 валюты); Clarity подключён (проект z50dung9vo) и его цифры — во
 вкладке «Clarity» админки (нужен токен Data Export — вставляет владелец в админке).
+На проде (проверено 29.10.2026): `main` = `268225c`, бандл `index-B9SYgcX9.js` (143 файла совпали с Pages),
+воркер выкачен. **Открыто:** токен Clarity Data Export владелец ещё не вставил (Clarity → Settings → Data
+Export → новый токен → админка, вкладка «Clarity»); 2.8 на настоящем телефоне в Telegram не проверена
+(быстрый старт, тап по балансу, цвета Telegram в тёмной); задание `fan_channel` кончается 30.10.2026 21:00 МСК.
 **2.7.2** (23.10.2026): особое задание на неделю — подписка на @koshel_update (299 XP, титул «Преданный
 фанат»), ссылка канала «из приложения» и воронка в админке; аватарки бота и канала, посты 2.7.1 и 2.7 в канале.
 **2.7.1** (23.10.2026): плавность. Скрытые вкладки — `content-visibility`, посещённые остаются

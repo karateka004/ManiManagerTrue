@@ -33,3 +33,7 @@ promo/out/
 vite.config.js
 vite.config.d.ts
 *.tsbuildinfo
+
+# Сценарии в браузере (scripts/e2e): снимки и скачанный Clarity
+scripts/e2e/shots/
+scripts/e2e/.cache/
