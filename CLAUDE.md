@@ -21,7 +21,8 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 `npx playwright install chromium`): `npm run build` → `npx vite preview --port 4180` → `node scripts/e2e/<имя>`
 (`BASE=` — другой адрес): `quickstart` (44 проверки), `quickstart-taps`, `balance` (34), `balance-touch`
 (касания CDP), `dark-audit [dark|light]`, `clarity-privacy` (что уходит в Clarity; загрузчик и clarity.js
-качает в `.cache/`). После деплоя: `node scripts/e2e/pages-compare.mjs` (dist == Pages побайтно) и
+качает в `.cache/`). После деплоя: `node scripts/e2e/pages-compare.mjs` (dist == Pages побайтно; на Windows с `core.autocrlf=true`
+`index.html` и `flags/LICENSE.md` расходятся только концами строк — рабочая копия в CRLF) и
 `node --import ./worker/scripts/ts-resolve.mjs scripts/e2e/admin-live.mjs` (живая админка == код).
 
 **Деплой:**
@@ -146,8 +147,8 @@ App при запуске (`lib/introGate.ts`) — постоянным поль
 **Геймификация:** уровни `lib/levels.ts` (XP = операции×12 + bonusXp), задания `lib/quests.ts`
 (пул 22, борд 3, перезарядка 8 ч; особое задание на время — группа `limited`, `until`, карточка
 `LimitedQuestCard` со светящейся рамкой `.quest-glow` и таймером над бордом, без перезарядки; награда-вещь
-`reward` (`source: 'quest'`) выдаётся в `claimQuest` вместе с XP. Сейчас: `fan_channel` — подписка на
-@koshel_update до 30.10.2026 21:00 МСК, 299 XP + титул «Преданный фанат»), серия `lib/streak.ts`, косметика `lib/rewards.ts` (цена =
+`reward` (`source: 'quest'`) выдаётся в `claimQuest` вместе с XP. Последнее: `fan_channel` — подписка на
+@koshel_update до 30.10.2026 21:00 МСК (закончилось), 299 XP + титул «Преданный фанат»), серия `lib/streak.ts`, косметика `lib/rewards.ts` (цена =
 рарность, обложки `styles/skins.css`, рамки `rewards/FrameRing`). **`QUESTS_TOTAL_XP` продублирован
 в воркере (`XP_ALL_QUESTS`, потолок XP рейтинга)** — меняешь награды, правь обе стороны.
 
@@ -155,7 +156,7 @@ App при запуске (`lib/introGate.ts`) — постоянным поль
 Telegram. Проект `z50dung9vo` (`CLARITY_ID`, не секрет; `VITE_CLARITY_ID` — для проверочных сборок; тот
 же номер — `CLARITY_PROJECT` в админке и `worker/src/clarity.ts`, кнопка «Записи в Clarity» в карточке
 человека). Режим маскировки проекта — Balanced (`"content":true` в загрузчике www.clarity.ms/tag/<id>),
-отправка — g.clarity.ms. До старта записи `startClarity` убирает из адреса хвост `#tgWebAppData=…`
+отправка — `*.clarity.ms` (на 31.10 — t.clarity.ms, раньше g.). До старта записи `startClarity` убирает из адреса хвост `#tgWebAppData=…`
 (данные входа Telegram: id, имя, подпись на сутки) — Clarity пишет адрес целиком; SDK Telegram хранит их в
 sessionStorage, перезагрузка работает. Очередь вызовов — сразу в `main.tsx`, скрипт — в простое (+1 КБ gzip к стартовому чанку,
 сам Clarity 26 КБ — потом). Человек — `identify` по id Telegram (фильтр «Custom user ID», подпись в
@@ -363,15 +364,19 @@ gzip), предзагрузка шрифта, барабаны цифр в по�
 `clarity-privacy` ждёт отправку на g.clarity.ms, а Clarity шлёт на t.clarity.ms (CSP `*.clarity.ms` это
 пропускает, устарел тест); `balance-touch` нестабилен по времени (900 мс ожидания на грани), `quickstart`
 падает в последний день месяца (31 000 печатается «31.000»). Все три — и на сборке 2.8.0.
+На проде (проверено 31.10.2026): `main` = `d5545cf`, бандл `index-CBrprQaY.js` (158 файлов совпали с Pages
+побайтно, `index.html` и `flags/LICENSE.md` — без учёта CRLF), воркер не менялся. **Открыто:** токен Clarity
+Data Export (на 29.10 не вставлен; Clarity → Settings → Data Export → новый токен → админка, вкладка
+«Clarity»); 2.8–2.8.1 на настоящем телефоне в Telegram не проверены (быстрый старт, тап по балансу, цвета
+Telegram в тёмной, шрифт без перескока); задание `fan_channel` закончилось 30.10.2026 21:00 МСК — карточка
+скрылась сама (`until`).
 **2.8.0** (29.10.2026): тёмная тема — основная у всех (миграция v18, первый кадр, цвета Telegram);
 быстрый старт без тупиков (трата раньше дохода, оба шага пропускаются, «Дальше» записывает набранное,
 продолжение после закрытия, шаги в админке); тап по балансу — запись (новичку — с выбором основной
 валюты); Clarity подключён (проект z50dung9vo) и его цифры — во
 вкладке «Clarity» админки (нужен токен Data Export — вставляет владелец в админке).
 На проде (проверено 29.10.2026): `main` = `268225c`, бандл `index-B9SYgcX9.js` (143 файла совпали с Pages),
-воркер выкачен. **Открыто:** токен Clarity Data Export владелец ещё не вставил (Clarity → Settings → Data
-Export → новый токен → админка, вкладка «Clarity»); 2.8 на настоящем телефоне в Telegram не проверена
-(быстрый старт, тап по балансу, цвета Telegram в тёмной); задание `fan_channel` кончается 30.10.2026 21:00 МСК.
+воркер выкачен.
 **2.7.2** (23.10.2026): особое задание на неделю — подписка на @koshel_update (299 XP, титул «Преданный
 фанат»), ссылка канала «из приложения» и воронка в админке; аватарки бота и канала, посты 2.7.1 и 2.7 в канале.
 **2.7.1** (23.10.2026): плавность. Скрытые вкладки — `content-visibility`, посещённые остаются
