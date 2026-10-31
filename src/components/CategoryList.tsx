@@ -182,7 +182,12 @@ const CategoryRow = memo(function CategoryRow({
         type="button"
         onClick={toggle}
         className={`row ${delay >= 0 ? 'rise-in-d' : ''}`}
-        style={delay >= 0 ? ({ '--d': delay } as React.CSSProperties) : undefined}
+        // Задержка — свойством самой строки, а не переменной --d: переменную
+        // наследуют все ~30 узлов строки, и когда каскад снимается, браузер
+        // пересчитывал и заново раскладывал весь список (под CPU ×4 ~220 мс
+        // через 0,8 с после запуска). animation-delay не наследуется и на
+        // раскладку не влияет.
+        style={delay >= 0 ? { animationDelay: `${delay}ms` } : undefined}
         aria-expanded={open}
       >
         <span
@@ -217,13 +222,11 @@ const CategoryRow = memo(function CategoryRow({
           <span className="mt-0.5 block h-[3px] w-full overflow-hidden rounded-full bg-surface-sunken">
             <span
               className={`block h-full rounded-full transition-[width] duration-500 ${delay >= 0 ? 'grow-x-d' : ''}`}
-              style={
-                {
-                  width: `${Math.max(2, Math.min(cat.pct, 100))}%`,
-                  background: cat.color,
-                  '--d': delay + 80,
-                } as React.CSSProperties
-              }
+              style={{
+                width: `${Math.max(2, Math.min(cat.pct, 100))}%`,
+                background: cat.color,
+                ...(delay >= 0 ? { animationDelay: `${delay + 80}ms` } : null),
+              }}
             />
           </span>
         </span>

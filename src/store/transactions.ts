@@ -577,6 +577,39 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (id: number) => void
 }
 
+/**
+ * JSON полей стора по ссылке на значение. Снимки неизменяемы: не изменилось
+ * поле — та же ссылка, и его JSON собирать заново незачем. Главное — список
+ * операций: при смене периода или темы он прежний, а это ~300 КБ строки на
+ * 2–3 тысячах записей (под CPU ×4 ~50 мс на каждую запись стора). WeakMap
+ * отпускает строку вместе со старым массивом.
+ */
+const fieldJson = new WeakMap<object, string>()
+
+function stringifyField(v: unknown): string | undefined {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v)
+  let json = fieldJson.get(v)
+  if (json === undefined) {
+    json = JSON.stringify(v)
+    fieldJson.set(v, json)
+  }
+  return json
+}
+
+/** То же, что JSON.stringify(value), но с JSON полей стора из кэша. */
+function stringifyPersisted(value: StorageValue<unknown>): string {
+  const state = value.state as Record<string, unknown> | null
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return JSON.stringify(value)
+  const parts: string[] = []
+  for (const k of Object.keys(state)) {
+    const json = stringifyField(state[k])
+    // Как JSON.stringify: undefined и функции в объекте пропускаются.
+    if (json !== undefined) parts.push(JSON.stringify(k) + ':' + json)
+  }
+  const rest = JSON.stringify({ ...value, state: undefined }).slice(1, -1)
+  return '{"state":{' + parts.join(',') + '}' + (rest ? ',' + rest : '') + '}'
+}
+
 function writePersist(): void {
   persistTimer = null
   persistIdle = null
@@ -584,7 +617,7 @@ function writePersist(): void {
   persistPending = null
   if (!pending) return
   try {
-    localStorage.setItem(pending.name, JSON.stringify(pending.value))
+    localStorage.setItem(pending.name, stringifyPersisted(pending.value))
   } catch {
     /* приватный режим или кончилось место — данные остаются в памяти */
   }
@@ -631,6 +664,29 @@ function sameState(a: unknown, b: unknown): boolean {
   return true
 }
 
+/**
+ * Поля вида (те же, что VIEW_KEYS облачного синка): период, счёт, шапка
+ * Главной, стиль диаграммы и счётчики действий для заданий (`events` — их
+ * растит каждая смена вкладки и периода). Их смена сама по себе запись на диск
+ * не запускает — она уйдёт со следующей правкой данных или при сворачивании
+ * (flushPersist ниже), а облачный синк перед чтением блоба сбрасывает
+ * отложенное сам. Иначе каждое нажатие на «Неделя / Месяц» и каждая вкладка
+ * переписывали бы в localStorage сотни килобайт операций (~25 мс главного
+ * потока под CPU ×4 только на запись). Цена — при падении приложения (не при
+ * сворачивании и не при закрытии) пропадёт последняя смена периода или +1 к
+ * счётчику задания; награды, монеты и записи пишутся как раньше.
+ */
+const LAZY_KEYS = new Set(['period', 'account', 'events', 'homeHeaderMode', 'homeHeaderGoalId', 'chartStyle'])
+function onlyLazyChanged(a: unknown, b: unknown): boolean {
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  const ka = Object.keys(ra)
+  if (ka.length !== Object.keys(rb).length) return false
+  for (const k of ka) if (!Object.is(ra[k], rb[k]) && !LAZY_KEYS.has(k)) return false
+  return true
+}
+
 const throttledStorage: PersistStorage<unknown> = {
   getItem: (name) => {
     // Ещё не записанное значение свежее того, что лежит на диске.
@@ -644,8 +700,11 @@ const throttledStorage: PersistStorage<unknown> = {
   },
   setItem: (name, value) => {
     if (persistLast && persistLast.version === value.version && sameState(persistLast.state, value.state)) return
+    const lazy = !!persistLast && persistLast.version === value.version && onlyLazyChanged(persistLast.state, value.state)
     persistLast = value
     persistPending = { name, value }
+    // Только поля вида — ждём следующей правки или сворачивания (см. LAZY_KEYS).
+    if (lazy) return
     schedulePersist()
   },
   removeItem: (name: string): void => {
@@ -1209,6 +1268,20 @@ export const useStore = create<State & Actions>()(
     },
   ),
 )
+
+/**
+ * Точка отсчёта для LAZY_KEYS — состояние сразу после загрузки (и после
+ * облачного rehydrate): первая же правка сравнивается с ним по ссылкам полей,
+ * и смена одного периода не переписывает весь стор. Без этого сравнивать было
+ * не с чем, и первая смена периода за запуск всегда писала ~300 КБ.
+ */
+function seedPersistLast() {
+  const o = useStore.persist.getOptions()
+  const all = { ...useStore.getState() }
+  persistLast = { state: o.partialize ? o.partialize(all) : all, version: o.version ?? 0 }
+}
+if (useStore.persist.hasHydrated()) seedPersistLast()
+useStore.persist.onFinishHydration(seedPersistLast)
 
 /* ---------- Период ---------- */
 

@@ -2,7 +2,8 @@
  * Версия приложения и список обновлений («Что нового»).
  *
  * При заметном релизе:
- *   1. подними APP_VERSION (semver);
+ *   1. подними APP_VERSION (semver) — он в lib/introKeys.ts: его читает и
+ *      стартовый чанк, а этот файл с историей обновлений там не нужен;
  *   2. добавь запись в начало RELEASES (двуязычно — ru/en).
  *
  * Логика показа (см. useIntro в components/Intro.tsx):
@@ -13,10 +14,8 @@
  * (WhatsNew в Intro.tsx по s.lang).
  */
 
-export const APP_VERSION = '2.8.0'
-
-/** Ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
-export { ONBOARDED_KEY, VERSION_KEY } from './introKeys'
+/** Версия и ключи localStorage — в introKeys.ts (их читает стартовый чанк). */
+export { APP_VERSION, ONBOARDED_KEY, VERSION_KEY } from './introKeys'
 
 /** Локализованная строка. */
 export interface L10n {
@@ -33,6 +32,31 @@ export interface ReleaseNote {
 
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2.8.1',
+    date: '2026-10-31',
+    title: { ru: 'Кошель открывается быстрее', en: 'Koshel opens faster' },
+    items: [
+      {
+        text: {
+          ru: 'Главная появляется сразу в своём шрифте — текст больше не меняет ширину через мгновение после запуска',
+          en: 'Home appears in its own font right away — text no longer shifts a moment after launch',
+        },
+      },
+      {
+        text: {
+          ru: 'Первые секунды после запуска приложение отвечает на нажатия без задержек: при запуске грузится меньше лишнего',
+          en: 'The app responds to taps right after launch: less unneeded work happens at startup',
+        },
+      },
+      {
+        text: {
+          ru: 'Смена периода и вкладок — плавнее, особенно когда записей много',
+          en: 'Switching periods and tabs is smoother, especially with a long history',
+        },
+      },
+    ],
+  },
   {
     version: '2.8.0',
     date: '2026-10-29',

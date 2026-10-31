@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState, type AnimationEvent, type CSSProperties } from 'react'
 import { formatMoney, type Currency } from '../../lib/format'
 import { MASK } from '../../lib/clarity'
 
@@ -8,9 +8,13 @@ import { MASK } from '../../lib/clarity'
  *
  * Почему не «счётчик» на requestAnimationFrame: в свёрнутом Telegram rAF
  * стоит, и счётчик застрял бы на СТАРОМ числе — показал бы неправду. Здесь
- * каждая цифра стоит на своём месте сразу (это обычный transform ленты), а
- * CSS transition лишь прокручивает к ней. Не отыграл переход — число всё
- * равно верное. Вёрстка — в styles/motion.css (.odo-*).
+ * лента с цифрами появляется только на время смены: её конечное положение —
+ * новая цифра, а CSS-анимация лишь прокручивает к ней от старой. Не отыграла
+ * анимация — число всё равно верное. В покое цифра — просто текст: ленты 0–9
+ * у каждой цифры (14 элементов на цифру) делали карточку баланса самой
+ * тяжёлой частью Главной — 227 элементов из ~520, а их отрисовка и раскладка
+ * шли на каждом запуске ради анимации, которая при запуске не нужна.
+ * Вёрстка — в styles/motion.css (.odo-*).
  *
  * Ключи цифр считаются справа: единицы остаются единицами, когда число
  * становится длиннее («999» → «1 000»), и прокручивается именно та цифра,
@@ -47,12 +51,37 @@ export const Odometer = memo(function Odometer({
 
 const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
+/** «Меньше движения» в системе — цифры встают сразу, без ленты. */
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+
 function Digit({ d, i }: { d: number; i: number }) {
+  // Смена цифры запоминается прямо при отрисовке (так React советует выводить
+  // состояние из пропсов): откуда крутить и номер прокрутки — ключ ленты, чтобы
+  // каждая смена начинала анимацию заново.
+  const [roll, setRoll] = useState({ d, from: d, n: 0, on: false })
+  if (roll.d !== d) setRoll({ d, from: roll.d, n: roll.n + 1, on: !reducedMotion() })
+
+  if (!roll.on) return <span className="odo-d">{d}</span>
+
+  const done = (e: AnimationEvent) => {
+    if (e.target === e.currentTarget) setRoll((r) => (r.d === d ? { ...r, on: false } : r))
+  }
   return (
-    <span className="odo-d" style={{ '--odo-i': i } as React.CSSProperties}>
+    <span className="odo-d" style={{ '--odo-i': i } as CSSProperties}>
       <span className="odo-ph">{d}</span>
       <span className="odo-win">
-        <span className="odo-strip" style={{ transform: `translateY(${-d * 10}%)` }}>
+        <span
+          key={roll.n}
+          className="odo-strip odo-roll"
+          onAnimationEnd={done}
+          style={
+            {
+              transform: `translateY(${-d * 10}%)`,
+              '--odo-from': `${-roll.from * 10}%`,
+              '--odo-to': `${-d * 10}%`,
+            } as CSSProperties
+          }
+        >
           {DIGITS.map((x) => (
             <span key={x}>{x}</span>
           ))}

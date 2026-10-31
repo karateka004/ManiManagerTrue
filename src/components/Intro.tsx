@@ -1,25 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { hapticSelect } from '../lib/telegram'
-import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY } from '../lib/whatsnew'
-import { QS_KEY } from '../lib/introKeys'
-import { useStore } from '../store/transactions'
-
-/**
- * Быстрый старт начат и не закончен: закрыли приложение посреди него (с шага
- * настроек и дальше). Если в сторе есть операции не из быстрого старта —
- * это вернувшийся с облаком, ему быстрый старт снова не показываем.
- */
-function unfinishedQuickStart(): boolean {
-  try {
-    const v = JSON.parse(localStorage.getItem(QS_KEY) ?? 'null') as { s?: unknown; ids?: unknown; inc?: unknown } | null
-    if (!v || typeof v.s !== 'number' || v.s < 1) return false
-    const mine = new Set([...(Array.isArray(v.ids) ? v.ids : []), v.inc].filter((x) => typeof x === 'string'))
-    return useStore.getState().transactions.every((x) => mine.has(x.id))
-  } catch {
-    return false
-  }
-}
+import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY, QS_KEY } from '../lib/introKeys'
 
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
@@ -28,36 +10,15 @@ const QuickStart = lazy(() => import('./onboarding/QuickStart').then((m) => ({ d
 
 type IntroMode = 'onboarding' | 'guide' | null
 
-/** Ключ persist-стора (см. store/transactions.ts) — признак, что приложением уже пользовались. */
-const STORE_KEY = 'finance-mini-app:v1'
-
 /**
- * Решает, показывать ли быстрый старт при загрузке. Список обновлений при
- * запуске больше не всплывает — он живёт отдельным разделом в Профиле.
+ * Быстрый старт. Нужен ли он, решает App при запуске (lib/introGate) и грузит
+ * этот чанк только тогда — поэтому здесь сразу быстрый старт. Заново не
+ * проверяем: пока чанк грузился, стор мог успеть сохраниться, и новичок
+ * выглядел бы «уже пользовавшимся». Список обновлений при запуске не
+ * всплывает — он живёт отдельным разделом в Профиле.
  */
 function useIntro() {
-  const [mode, setMode] = useState<IntroMode>(null)
-
-  useEffect(() => {
-    const onboarded = localStorage.getItem(ONBOARDED_KEY)
-    // Уже пользовался приложением? (есть сохранённый стор) → не новичок.
-    const hasUsedApp = !!localStorage.getItem(STORE_KEY)
-    // Быстрый старт начат и не закончен: приложение закрыли посреди него, а не
-    // крестиком. Стор к этому времени уже сохранён (валюта, первая трата), и
-    // раньше человек навсегда попадал на пустую Главную — теперь продолжает.
-    const unfinished = unfinishedQuickStart()
-
-    // Совсем новый пользователь или незаконченный быстрый старт — показываем.
-    if (!onboarded && (!hasUsedApp || unfinished)) {
-      setMode('onboarding')
-      return
-    }
-
-    // Существующему пользователю changelog при запуске больше НЕ показываем:
-    // список обновлений живёт в Профиле, а о новых говорит счётчик на строке.
-    // Поэтому VERSION_KEY здесь не трогаем — иначе счётчик сразу бы погас.
-    localStorage.setItem(ONBOARDED_KEY, '1')
-  }, [])
+  const [mode, setMode] = useState<IntroMode>('onboarding')
 
   const closeOnboarding = () => {
     hapticSelect()

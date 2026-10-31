@@ -33,6 +33,7 @@ import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
 import { clarityEvent } from './lib/clarity'
+import { introNeeded, markOnboarded } from './lib/introGate'
 
 /**
  * Порядок вкладок в панели — по нему выбирается направление перехода: вкладка
@@ -46,7 +47,10 @@ const ALL_TABS: Tab[] = ['home', 'analytics', 'rewards', 'profile', 'settings']
 /** `swipe` — экран приехал за пальцем и уже стоит на месте: своей анимации нет. */
 type NavDir = 'init' | 'r' | 'l' | 'deep' | 'back' | 'swipe'
 const ENTER_CLASS: Record<NavDir, string> = {
-  init: 'tab-enter',
+  // Первый экран при запуске — без проявления: Telegram уже показал окно, и
+  // анимация с прозрачности 0 только откладывала первую картинку с данными
+  // (на слабом телефоне — до секунды: кадры анимации ждали стартовых задач).
+  init: '',
   r: 'tab-in-r',
   l: 'tab-in-l',
   deep: 'tab-in-deep',
@@ -99,22 +103,26 @@ const AssistantSheet = lazy(() => import('./components/AssistantSheet').then((m)
  */
 function usePrefetchTabs() {
   useEffect(() => {
-    const prefetch = () => {
-      // fire-and-forget; сбой префетча неважен — реальная загрузка идёт через lazyRetry
-      const swallow = () => {}
-      importAnalytics().catch(swallow)
-      importRewards().catch(swallow)
-      importProfile().catch(swallow)
-      importSettings().catch(swallow)
-      importAddSheet().catch(swallow)
+    // По одному чанку в каждую паузу, а не все пять разом: разбор и выполнение
+    // модулей шли одной задачей (~60 мс под CPU ×4), и касание в первые
+    // секунды после запуска ждало её. Шторка записи — первой: «+» нажимают
+    // раньше, чем листают вкладки.
+    // fire-and-forget; сбой префетча неважен — реальная загрузка идёт через lazyRetry
+    const queue = [importAddSheet, importAnalytics, importRewards, importProfile, importSettings]
+    let alive = true
+    let cancel = () => {}
+    const next = () => {
+      const load = queue.shift()
+      if (!load || !alive) return
+      load().catch(() => {}).finally(() => {
+        if (alive) cancel = whenIdle(next)
+      })
     }
-    const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
-    if (ric) {
-      const id = ric(prefetch)
-      return () => (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id)
+    cancel = whenIdle(next)
+    return () => {
+      alive = false
+      cancel()
     }
-    const t = setTimeout(prefetch, 1500)
-    return () => clearTimeout(t)
   }, [])
 }
 
@@ -200,6 +208,12 @@ export default function App() {
   useGrantPersonalGifts()
   useCloudSync()
   usePrefetchTabs()
+  // Быстрый старт — только новичку или тому, кто его не закончил. Остальным его
+  // чанк не грузим вовсе; отметку «пройден» ставим сами.
+  const [intro] = useState(introNeeded)
+  useEffect(() => {
+    if (!intro) markOnboarded()
+  }, [intro])
   // Вкладка и направление, откуда она приехала (класс анимации появления).
   const [nav, setNav] = useState<{ tab: Tab; dir: NavDir }>({ tab: 'home', dir: 'init' })
   const tab = nav.tab
@@ -444,9 +458,11 @@ export default function App() {
         </Suspense>
       )}
 
-      <Suspense fallback={null}>
-        <IntroOverlay />
-      </Suspense>
+      {intro && (
+        <Suspense fallback={null}>
+          <IntroOverlay />
+        </Suspense>
+      )}
 
       <LevelUpWatcher />
       <Toaster />

@@ -312,14 +312,17 @@ button.row:active,
 }
 
 /* ---------- Цифры-барабаны (components/ui/Odometer) ----------
-   Каждая цифра — окно высотой в строку и лента 0–9 внутри. Цифру выставляет
-   transform ленты, переход — обычный CSS transition: конечная цифра стоит на
-   месте сразу, анимация только прокручивает к ней. Невидимый двойник цифры
-   держит ширину и базовую линию, чтобы барабан стоял в строке как текст. */
+   В покое цифра — просто текст. На время смены у неё появляется окно высотой
+   в строку и лента 0–9 внутри: конечная цифра стоит на месте сразу (transform
+   ленты), анимация только прокручивает к ней от старой. Невидимый двойник
+   цифры держит ширину и базовую линию, чтобы барабан стоял в строке как текст. */
 .odo {
   display: inline-block;
   white-space: nowrap;
-  /* Одна маска на всё число (не на каждую цифру): края барабана тают. */
+}
+/* Маска — только пока крутится лента: края барабана тают. В покое маска не
+   нужна, а слой под неё браузер перерисовывал бы при каждой отрисовке числа. */
+.odo:has(.odo-roll) {
   -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
   mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
 }
@@ -341,10 +344,17 @@ button.row:active,
   height: 1000%;
   display: flex;
   flex-direction: column;
-  /* 450 мс и шаг 25 мс на цифру: всё число встаёт не дольше чем за 0,65 с —
-     дольше на экране висело бы неверное значение. */
-  transition: transform 450ms var(--ease-out);
-  transition-delay: calc(var(--odo-i, 0) * 25ms);
+}
+/* 450 мс и шаг 25 мс на цифру: всё число встаёт не дольше чем за 0,65 с —
+   дольше на экране висело бы неверное значение. До своего шага цифра стоит
+   на старом месте (both), после — на новом; без анимации — сразу на новом. */
+.odo-roll {
+  animation: odo-roll 450ms var(--ease-out) both;
+  animation-delay: calc(var(--odo-i, 0) * 25ms);
+}
+@keyframes odo-roll {
+  from { transform: translateY(var(--odo-from)); }
+  to { transform: translateY(var(--odo-to)); }
 }
 .odo-strip > span {
   display: block;
@@ -616,6 +626,7 @@ html.perf-low .tabbar-glass {
     animation: fx-fade 1300ms forwards;
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
-  .odo-strip, .seg-pill, .reveal, .press, .press-soft, .press-icon { transition: none !important; }
+  .odo-roll { animation: none !important; }
+  .seg-pill, .reveal, .press, .press-soft, .press-icon { transition: none !important; }
   .skeleton { animation: none; }
 }
