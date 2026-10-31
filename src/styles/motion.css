@@ -608,6 +608,30 @@ html.perf-low .tabbar-glass {
   100% { opacity: 0; }
 }
 
+/* ---------- Клавиатура шторки операции ----------
+   Касание пустого места сворачивает её: строка сетки 1fr → 0fr, и лист (он по
+   содержимому) плавно садится — видно всю форму. Клавиши уходят вниз и гаснут
+   одним слоем (transform и opacity — на композиторе); раскладка на каждом кадре
+   — только внутри листа, страницу под ним это не трогает. Кривая с быстрым
+   стартом: отклик виден с первого кадра. */
+.keypad-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 300ms var(--ease-out);
+}
+.keypad-fold > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.keypad-fold > div > * {
+  transition: opacity 220ms ease, transform 300ms var(--ease-out);
+}
+.keypad-fold.is-folded { grid-template-rows: 0fr; }
+.keypad-fold.is-folded > div > * {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
 /* ---------- Меньше движения ----------
    Человек попросил систему не двигать интерфейс — гасим всё декоративное.
    Переходы цифр тоже: значение сразу встаёт на место. */
@@ -627,6 +651,6 @@ html.perf-low .tabbar-glass {
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
   .odo-roll { animation: none !important; }
-  .seg-pill, .reveal, .press, .press-soft, .press-icon { transition: none !important; }
+  .seg-pill, .reveal, .press, .press-soft, .press-icon, .keypad-fold, .keypad-fold > div > * { transition: none !important; }
   .skeleton { animation: none; }
 }

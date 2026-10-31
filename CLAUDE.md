@@ -19,7 +19,7 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 Сценарии в браузере — `scripts/e2e/` (Playwright; в зависимостях его нет: `npm i --no-save playwright` +
 `npx playwright install chromium`): `npm run build` → `npx vite preview --port 4180` → `node scripts/e2e/<имя>`
-(`BASE=` — другой адрес): `quickstart` (44 проверки), `quickstart-taps`, `balance` (34), `balance-touch`
+(`BASE=` — другой адрес): `quickstart` (44 проверки), `quickstart-taps`, `balance` (34), `balance-touch`, `keypad`
 (касания CDP), `dark-audit [dark|light]`, `clarity-privacy` (что уходит в Clarity; загрузчик и clarity.js
 качает в `.cache/`). После деплоя: `node scripts/e2e/pages-compare.mjs` (dist == Pages побайтно; на Windows с `core.autocrlf=true`
 `index.html` и `flags/LICENSE.md` расходятся только концами строк — рабочая копия в CRLF) и
@@ -99,7 +99,11 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 его в WAAPI, идёт на композиторе), не `y`; «меньше движения» — `useReducedMotion`. Состояние формы —
 во вложенном компоненте (`AddForm`, `SearchBody`), не у того, кто рисует `BottomSheet`: его
 перерисовка заставляет framer перемерять перетаскиваемый лист. «Записать» — сначала закрыть, запись
-через `afterSheetStarts` (два кадра; свернули — сразу + `flushPersist`). UI-примитивы: `components/ui/` (`Group`/`Row`,
+через `afterSheetStarts` (два кадра; свернули — сразу + `flushPersist`). Клавиатура шторки операции:
+касание пустого места сворачивает её (`.keypad-fold`, сетка 1fr → 0fr — лист садится по содержимому) и
+снимает фокус с заметки; сумма и «Записать» без суммы разворачивают; двойное касание закрывает шторку
+(второе ловится на document в перехвате — лист к тому времени сдвинулся). Не «пустое» — кнопки, поля и
+`data-tap-keep` (клавиши, ленты категорий и чипов). UI-примитивы: `components/ui/` (`Group`/`Row`,
 `ScreenHeader`, `SegTrack`+`useSegPill`, `Odometer`/`AnimatedMoney`, `Money`, `DeltaChip`,
 `Toaster`, `Reveal`). `Odometer`: в покое цифра — текст, лента 0–9 появляется только на время смены
 (CSS-анимация `odo-roll` от старой цифры к новой, базовое положение — новая). Онбординг — `QuickStart`

@@ -1,4 +1,5 @@
-import { lazy, memo, Suspense, useCallback, useState, useMemo, useRef } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useState, useMemo, useRef } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Calendar, Plus, ChevronDown, Delete } from 'lucide-react'
 import {
   useStore,
@@ -208,6 +209,35 @@ function afterSheetStarts(fn: () => void) {
   requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(run, 0)))
 }
 
+/**
+ * Пустое место шторки — всё, что не кнопка, не поле и не лента: промах мимо
+ * клавиши, плитки категории или чипа — не просьба убрать клавиатуру.
+ */
+const TAP_KEEP = 'button, a, input, textarea, select, label, [role="button"], [data-tap-keep]'
+
+/**
+ * Второе касание двойного по пустому месту закрывает шторку. Ловим его на
+ * document в фазе перехвата: после первого касания лист уже садится, и под
+ * тем же пальцем может оказаться «Отмена», сегмент или ручка — их нажатие
+ * не должно сработать вместо закрытия. Возвращает «снять ожидание».
+ */
+function armDoubleTap(x: number, y: number, close: () => void): () => void {
+  const off = () => {
+    clearTimeout(timer)
+    document.removeEventListener('click', onClick, true)
+  }
+  const onClick = (e: MouseEvent) => {
+    off()
+    if (Math.hypot(e.clientX - x, e.clientY - y) > 48) return
+    e.stopPropagation()
+    e.preventDefault()
+    close()
+  }
+  const timer = window.setTimeout(off, 380)
+  document.addEventListener('click', onClick, true)
+  return off
+}
+
 function AddForm({
   kindProp,
   editing,
@@ -268,6 +298,37 @@ function AddForm({
     }
   }
   const [currencyOpen, setCurrencyOpen] = useState(fresh)
+  // Клавиатура суммы. Касание пустого места её сворачивает — лист садится по
+  // содержимому, и видно всю форму; сумма разворачивает обратно. Двойное
+  // касание закрывает шторку. Каждое открытие — снова с клавиатурой (форма
+  // монтируется заново).
+  const [keypadOpen, setKeypadOpen] = useState(true)
+  const keypadRef = useRef<HTMLDivElement>(null)
+  const disarm = useRef<(() => void) | null>(null)
+  // Свёрнутые клавиши не берут фокус и не читаются диктором.
+  useEffect(() => {
+    if (keypadRef.current) keypadRef.current.inert = !keypadOpen
+  }, [keypadOpen])
+  useEffect(() => () => disarm.current?.(), [])
+  const showKeypad = () => {
+    hapticSelect()
+    setKeypadOpen(true)
+  }
+  const onBlankTap = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if ((e.target as Element).closest(TAP_KEEP)) return
+    // Убираем обе клавиатуры сразу: системную (заметка, теги) и свою.
+    const active = document.activeElement
+    if (active instanceof HTMLInputElement && e.currentTarget.contains(active)) active.blur()
+    if (keypadOpen) {
+      hapticSelect()
+      setKeypadOpen(false)
+    }
+    disarm.current?.()
+    disarm.current = armDoubleTap(e.clientX, e.clientY, () => {
+      hapticTap()
+      onClose()
+    })
+  }
   // Попытка сохранить без категории — подсказка над сеткой, пока не выберут.
   const [needCategory, setNeedCategory] = useState(false)
   const amountRef = useRef<HTMLDivElement>(null)
@@ -377,8 +438,11 @@ function AddForm({
     // серой кнопкой: трясётся сумма или сетка категорий.
     if (!canSubmit) {
       hapticNotify('error')
-      if (numeric <= 0) replay(amountRef.current, 'shake')
-      else {
+      if (numeric <= 0) {
+        replay(amountRef.current, 'shake')
+        // Сумму набирают клавиатурой — если её свернули, она возвращается.
+        setKeypadOpen(true)
+      } else {
         // Подсказка появляется (и трясётся при повторной попытке) над
         // категориями — трясти всю сетку из тринадцати плиток было шумно.
         setNeedCategory(true)
@@ -481,7 +545,9 @@ function AddForm({
   const yesterdayKey = dayjs().subtract(1, 'day').format('YYYY-MM-DD')
 
   return (
-    <>
+    // display: contents — раскладка листа та же, а касания пустого места
+    // всплывают сюда.
+    <div className="contents" onClick={onBlankTap}>
       <SheetDragZone className="flex shrink-0 items-center justify-between gap-3 px-4 pb-1 pt-0.5">
         {/* Сегмент нейтральный: красная и зелёная заливки делали переключатель
             самым ярким местом шторки, а вид операции и так виден по знаку суммы. */}
@@ -510,10 +576,21 @@ function AddForm({
         </button>
       </SheetDragZone>
 
-      {/* Сумма — всегда на виду: её набирают клавиатурой снизу. */}
+      {/* Сумма — всегда на виду: её набирают клавиатурой снизу. Клавиатуру
+          свернули — нажатие на сумму возвращает её, как на поле ввода. */}
       <div className="shrink-0 px-6 pb-2 pt-1 text-center">
-        <div ref={amountRef} className="text-display-lg text-ink">
+        <div
+          ref={amountRef}
+          data-tap-keep
+          role={keypadOpen ? undefined : 'button'}
+          tabIndex={keypadOpen ? undefined : 0}
+          onClick={keypadOpen ? undefined : showKeypad}
+          onKeyDown={keypadOpen ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showKeypad() } }}
+          // По ширине текста, а не строки: место слева и справа от суммы — пустое.
+          className={`mx-auto w-fit px-4 text-display-lg text-ink ${keypadOpen ? '' : 'cursor-pointer'}`}
+        >
           <AmountChars value={numeric} currency={txCurrency} sign={kind === 'expense' ? '−' : '+'} />
+          {!keypadOpen && <span className="sr-only">{tr('add.show_keypad')}</span>}
         </div>
         {hasOps && (
           <div className="mt-1 text-sm font-medium tabular text-ink-subtle">{expr} =</div>
@@ -532,7 +609,7 @@ function AddForm({
             <ChevronDown size={11} strokeWidth={2.5} className={`transition-transform duration-300 ${currencyOpen ? 'rotate-180' : ''}`} />
           </button>
           {currencyOpen && (
-            <div className="menu-in flex flex-wrap justify-center gap-1.5" style={{ transformOrigin: 'top center' }}>
+            <div data-tap-keep className="menu-in flex flex-wrap justify-center gap-1.5" style={{ transformOrigin: 'top center' }}>
               {(quickCurrencies.includes(txCurrency) ? quickCurrencies : [txCurrency, ...quickCurrencies]).map((code) => (
                 <button
                   key={code}
@@ -569,7 +646,7 @@ function AddForm({
         {!editing && frequent.length > 0 && (
           <div className="pb-2 pt-1">
             <div className="caption px-6 pb-1.5 text-ink-subtle">{tr('add.frequent')}</div>
-            <div className="no-scrollbar stagger flex gap-2 overflow-x-auto px-6">
+            <div data-tap-keep className="no-scrollbar stagger flex gap-2 overflow-x-auto px-6">
               {frequent.map((f) => {
                 const cat = categories.find((c) => c.id === f.categoryId)
                 if (!cat) return null // категорию удалили — подсказку не показываем
@@ -599,7 +676,7 @@ function AddForm({
         {/* Категории — две строки с прокруткой вбок: обязательное поле должно
             быть видно без прокрутки шторки. Подсказка трясётся, если пытались
             сохранить без категории. */}
-        <div className="pt-1">
+        <div data-tap-keep className="pt-1">
           {needCategory && !categoryId && (
             <div ref={hintRef} className="caption px-6 pb-1 font-semibold text-expense-deep dark:text-expense-soft">
               {tr('add.pick_category')}
@@ -657,7 +734,7 @@ function AddForm({
         </div>
 
         {/* Теги */}
-        <div className="px-6">
+        <div data-tap-keep className="px-6">
           <div className="flex flex-wrap items-center gap-1.5">
             {tags.map((t) => (
               <button
@@ -704,12 +781,18 @@ function AddForm({
         </div>
       </div>
 
-      {/* Низ закреплён: клавиатура и «Записать» всегда под пальцем. */}
+      {/* Низ закреплён: клавиатура и «Записать» всегда под пальцем. Промах
+          между клавишами клавиатуру не сворачивает (data-tap-keep). */}
       <div
+        data-tap-keep
         className="shrink-0 border-t border-hairline bg-surface-raised px-4 pt-2"
         style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 12px)' }}
       >
-        <Keypad onPress={press} />
+        <div ref={keypadRef} className={`keypad-fold ${keypadOpen ? '' : 'is-folded'}`}>
+          <div>
+            <Keypad onPress={press} />
+          </div>
+        </div>
 
         {/* Не disabled: нажатие на неготовую кнопку объясняет, чего не хватает
             (тряска суммы или подсказки про категорию), вместо молчаливой
@@ -737,7 +820,7 @@ function AddForm({
           </button>
         )}
       </div>
-    </>
+    </div>
   )
 }
 

@@ -582,6 +582,7 @@ const DICT: Dict = {
   'add.create': { ru: 'Создать', en: 'Create' },
   'add.save_expense': { ru: 'Записать расход', en: 'Save expense' },
   'add.save_income': { ru: 'Записать доход', en: 'Save income' },
+  'add.show_keypad': { ru: 'Показать клавиатуру', en: 'Show keypad' },
   'add.pick_category': { ru: 'Выбери категорию — и можно сохранять', en: 'Pick a category to save' },
 
   /* Уведомления внизу экрана */
