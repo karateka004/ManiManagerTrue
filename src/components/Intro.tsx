@@ -3,6 +3,9 @@ import { AnimatePresence } from 'framer-motion'
 import { hapticSelect } from '../lib/telegram'
 import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY, QS_KEY } from '../lib/introKeys'
 
+/** Почему показываем обучение: новичок, повторно (так и не начал записывать) или по ссылке. */
+export type TourReason = 'new' | 'again' | 'link'
+
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
 // Обучение новичка — отдельным чанком, нужно только при первом входе.
@@ -17,14 +20,15 @@ type IntroMode = 'onboarding' | 'guide' | null
  * выглядел бы «уже пользовавшимся». Список обновлений при запуске не
  * всплывает — он живёт отдельным разделом в Профиле.
  */
-function useIntro() {
+function useIntro(reason: TourReason) {
   const [mode, setMode] = useState<IntroMode>('onboarding')
 
   const closeOnboarding = () => {
     hapticSelect()
     localStorage.removeItem(QS_KEY)
     localStorage.setItem(ONBOARDED_KEY, '1')
-    localStorage.setItem(VERSION_KEY, APP_VERSION) // новичку changelog не показываем
+    // Новичку changelog не показываем; у остальных счётчик новых версий не трогаем.
+    if (reason === 'new') localStorage.setItem(VERSION_KEY, APP_VERSION)
     // После быстрого старта у человека уже есть данные и первый вывод — гайд
     // сразу следом был бы перегрузом. Он остаётся доступен в Настройках.
     setMode(null)
@@ -40,14 +44,14 @@ function useIntro() {
 /* ------------------------------------------------------------------ */
 
 /** Монтируется в App: показывает быстрый старт новичку (и гайд, если открыт). */
-export function IntroOverlay() {
-  const { mode, closeOnboarding, closeGuide } = useIntro()
+export function IntroOverlay({ reason = 'new' }: { reason?: TourReason }) {
+  const { mode, closeOnboarding, closeGuide } = useIntro(reason)
   return (
     <>
       <AnimatePresence>
         {mode === 'onboarding' && (
           <Suspense fallback={null} key="onb">
-            <Tour onDone={closeOnboarding} />
+            <Tour onDone={closeOnboarding} reason={reason} />
           </Suspense>
         )}
       </AnimatePresence>

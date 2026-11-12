@@ -12,7 +12,7 @@ fs.mkdirSync(OUT, { recursive: true })
 let fails = 0
 const ok = (c, m, extra) => { if (!c) fails++; console.log((c ? 'OK   ' : 'FAIL ') + m + (c || extra === undefined ? '' : '  ' + JSON.stringify(extra))) }
 
-async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844 } = {}) {
+async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844, preset, url = '', wait = 1500 } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, timezoneId: tz })
   const qs = []
   await ctx.route('https://telegram.org/**', (r) => r.fulfill({ contentType: 'application/javascript', body: '' }))
@@ -21,7 +21,11 @@ async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844
     if (r.request().url().endsWith('/qs')) qs.push(JSON.parse(r.request().postData() || '{}'))
     return r.fulfill({ contentType: 'application/json', body: '{"ok":true}' })
   })
-  await ctx.addInitScript(() => {
+  await ctx.addInitScript((preset) => {
+    if (preset && !sessionStorage.getItem('__p')) {
+      for (const [k, v] of Object.entries(preset)) localStorage.setItem(k, v)
+      sessionStorage.setItem('__p', '1')
+    }
     const noop = () => {}
     window.Telegram = {
       WebApp: {
@@ -40,12 +44,12 @@ async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844
         MainButton: { show: noop, hide: noop, enable: noop, disable: noop, onClick: noop, offClick: noop, setParams: noop },
       },
     }
-  })
+  }, preset)
   const page = await ctx.newPage()
   page.errs = []
   page.on('pageerror', (e) => page.errs.push(e.message))
-  await page.goto(BASE)
-  await page.waitForTimeout(1500)
+  await page.goto(BASE + url)
+  await page.waitForTimeout(wait)
   const cdp = await ctx.newCDPSession(page)
   const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
   page.tapAt = async (x, y, after = 450) => { await touch('touchStart', x, y); await page.waitForTimeout(40); await touch('touchEnd'); await page.waitForTimeout(after) }
@@ -160,6 +164,50 @@ const tour = (name) => `[data-tour="${name}"]`
     })
     ok(overlap.cardBottom <= overlap.keypadTop && overlap.cardTop >= 0, '320 px: карточка над клавиатурой и в экране', overlap)
     await page.screenshot({ path: path.join(OUT, 'tour-8-320.png') })
+    await ctx.close()
+  }
+
+  /* 5. Повторное предложение тем, кто заходит, а записей нет. */
+  const DAY = 86_400_000
+  const blob = (dates) => JSON.stringify({ state: { transactions: dates.map((d, i) => ({ id: 'r' + i, type: 'expense', amount: 10, categoryId: 'food', date: new Date(d).toISOString(), note: '', currency: 'RUB' })), currency: 'RUB', themeMode: 'dark' }, version: 18 })
+  const old = { 'koshel:onboarded': '1', 'koshel:lastVersion': '2.9.0', 'koshel:curAsked': '1' }
+  const cases = [
+    ['записей нет совсем', [], true],
+    ['записи есть (позавчера), сегодня нет', [Date.now() - 2 * DAY], false],
+  ]
+  for (const [name, dates, want] of cases) {
+    const { ctx, page, qs } = await newApp(browser, { preset: { ...old, 'finance-mini-app:v1': blob(dates) }, wait: 1000 })
+    ok(!(await card(page).count()), `${name}: сразу при запуске — не мешаем`)
+    await page.waitForTimeout(2600)
+    const shown = /Показать, как тут всё устроено/.test(await cardText(page))
+    ok(shown === want, `${name}: обучение ${want ? 'предложено' : 'не предлагаем'}`)
+    if (want) {
+      await page.tapEl(card(page).getByRole('button', { name: 'Разберусь сам' }), 600)
+      ok(!(await card(page).count()) && qs.length === 0, `${name}: «Разберусь сам» закрывает, в воронку новичков не идёт`)
+      await page.reload(); await page.waitForTimeout(3800)
+      ok(!(await card(page).count()), `${name}: в тот же день второй раз не предлагаем`)
+    }
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    const { ctx, page } = await newApp(browser, { preset: { ...old, 'finance-mini-app:v1': blob([]), 'koshel:tourDone': '1' }, wait: 4000 })
+    ok(!(await card(page).count()), 'прошёл обучение до конца — больше не предлагаем')
+    await ctx.close()
+  }
+  {
+    const { ctx, page } = await newApp(browser, { preset: { ...old, 'finance-mini-app:v1': blob([]), 'koshel:tourAsk': JSON.stringify({ n: 3, d: 0 }) }, wait: 4000 })
+    ok(!(await card(page).count()), 'предлагали уже трижды — хватит')
+    await ctx.close()
+  }
+
+  /* 6. Ссылка для проверки: ?tour=1 — сразу, даже у постоянного пользователя. */
+  {
+    const { ctx, page, qs } = await newApp(browser, { preset: { ...old, 'koshel:tourDone': '1', 'finance-mini-app:v1': blob([Date.now() - 30 * DAY, Date.now()]) }, url: '?tour=1' })
+    ok(/Показать, как тут всё устроено/.test(await cardText(page)), 'ссылка ?tour=1 — обучение сразу')
+    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }))
+    await page.tapEl(page.locator(tour('plus')), 900)
+    ok(/Набери сумму/.test(await cardText(page)) && qs.length === 0, 'по ссылке проходится как обычно и в воронку не идёт')
     await ctx.close()
   }
 

@@ -33,7 +33,7 @@ import { Toaster } from './components/ui/Toaster'
 import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
 import { clarityEvent } from './lib/clarity'
-import { introNeeded, markOnboarded } from './lib/introGate'
+import { introNeeded, markOnboarded, markTourAsked, tourAgainDue, tourForced } from './lib/introGate'
 
 /**
  * Порядок вкладок в панели — по нему выбирается направление перехода: вкладка
@@ -210,10 +210,22 @@ export default function App() {
   usePrefetchTabs()
   // Быстрый старт — только новичку или тому, кто его не закончил. Остальным его
   // чанк не грузим вовсе; отметку «пройден» ставим сами.
-  const [intro] = useState(introNeeded)
+  // Обучение: новичку — сразу; по ссылке (?startapp=tour) — тоже сразу; тем,
+  // кто заходит, а записей нет, — повторно, через пару секунд (облако успеет).
+  const [intro, setIntro] = useState<'new' | 'again' | 'link' | null>(() =>
+    introNeeded() ? 'new' : tourForced() ? 'link' : null,
+  )
   useEffect(() => {
-    if (!intro) markOnboarded()
-  }, [intro])
+    if (intro !== 'new') markOnboarded()
+    if (intro) return
+    const timer = window.setTimeout(() => {
+      if (!tourAgainDue()) return
+      markTourAsked()
+      setIntro('again')
+    }, 2500)
+    return () => clearTimeout(timer)
+    // Решается один раз при запуске.
+  }, [])
   // Вкладка и направление, откуда она приехала (класс анимации появления).
   const [nav, setNav] = useState<{ tab: Tab; dir: NavDir }>({ tab: 'home', dir: 'init' })
   const tab = nav.tab
@@ -460,7 +472,7 @@ export default function App() {
 
       {intro && (
         <Suspense fallback={null}>
-          <IntroOverlay />
+          <IntroOverlay reason={intro} />
         </Suspense>
       )}
 

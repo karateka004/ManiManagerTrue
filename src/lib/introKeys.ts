@@ -16,3 +16,7 @@ export const VERSION_KEY = 'koshel:lastVersion'
  * продолжает с того же шага, а не попадает на пустую Главную навсегда.
  */
 export const QS_KEY = 'koshel:qs'
+/** Обучение пройдено до конца — повторно его не предлагаем. */
+export const TOUR_DONE_KEY = 'koshel:tourDone'
+/** Повторные предложения обучения: сколько раз и в какой день последний раз. */
+export const TOUR_ASK_KEY = 'koshel:tourAsk'

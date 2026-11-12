@@ -19,7 +19,7 @@ reply, analytics 68, reminders 84, answer 136, csv 12, sync 15, media 32, promo 
 `node scripts/test-webhook.mjs` (сквозной прогон без Telegram) · `npx wrangler tail`.
 Сценарии в браузере — `scripts/e2e/` (Playwright; в зависимостях его нет: `npm i --no-save playwright` +
 `npx playwright install chromium`): `npm run build` → `npx vite preview --port 4180` → `node scripts/e2e/<имя>`
-(`BASE=` — другой адрес): `tour` (30 проверок — обучение), `balance` (34), `balance-touch`, `keypad`
+(`BASE=` — другой адрес): `tour` (42 проверки — обучение, повтор, ссылка), `balance` (34), `balance-touch`, `keypad`
 (касания CDP), `dark-audit [dark|light]`, `clarity-privacy` (что уходит в Clarity; загрузчик и clarity.js
 качает в `.cache/`). После деплоя: `node scripts/e2e/pages-compare.mjs` (dist == Pages побайтно; на Windows с `core.autocrlf=true`
 `index.html` и `flags/LICENSE.md` расходятся только концами строк — рабочая копия в CRLF) и
@@ -121,7 +121,11 @@ BalanceCard `balance`, шторка операции `amount`/`keypad`/`categori
 (`koshel:qs` = `{v:2, s, ids}`). Валюта по региону — при ответе на предложение (НЕ при открытии).
 Тексты — в самом Tour (ru/en), не в общем словаре. Шаги → `/qs` с `v: 2` (0 предложили, 1 начали,
 2 открыли запись, 3 записали трату, 4 дошли до конца) → админка «Удержание → Обучение новичка»; анкета
-до 2.9 — отдельной сводкой, пока есть данные в окне.
+до 2.9 — отдельной сводкой, пока есть данные в окне. Повторно (`tourAgainDue` в `lib/introGate.ts`):
+кто заходит, а записей нет совсем, — через 2,5 с после запуска (облако успевает), раз в день, не больше трёх раз
+(`koshel:tourAsk`); прошёл до конца (`koshel:tourDone`) — больше никогда. Проверить самому — ссылка
+`https://t.me/TrueManiManager_Bot?startapp=tour` (в браузере `?tour=1`): обучение сразу, у любого. Повторное и
+по ссылке в воронку `/qs` не идут.
 **Тап по карточке баланса** (`BalanceCard onTap`) — та же шторка записи, что «+»; без операций баланс —
 «0» в основной валюте, не голый ноль. У новичка (ни одной записи, не демо) строка валют в шторке раскрыта
 и выбор валюты = выбор основной: `setCurrency` сразу, без записи (закрыл шторку — на Главной «0 ֏»),

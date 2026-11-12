@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '../../store/transactions'
 import { detectCurrency } from '../../lib/currencyDetect'
 import { reportQuickStart, setReminders } from '../../lib/api'
-import { QS_KEY } from '../../lib/introKeys'
+import { QS_KEY, TOUR_DONE_KEY } from '../../lib/introKeys'
+import type { TourReason } from '../Intro'
 import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
 import { botCanWrite, canRequestBotWrite, hapticNotify, hapticSelect, hapticTap, requestBotWrite, tg } from '../../lib/telegram'
 import { UNMASK, clarityEvent, clarityKeep, clarityTag } from '../../lib/clarity'
@@ -23,7 +24,9 @@ import { UNMASK, clarityEvent, clarityKeep, clarityTag } from '../../lib/clarity
  * свободны. Слой — z 55: над шторкой операции (51), под вложенными (60).
  *
  * Шаги в админку (/qs, `v: 2`): 0 предложили, 1 начали, 2 открыли запись,
- * 3 записали первую трату, 4 дошли до конца. Закрыл приложение посреди —
+ * 3 записали первую трату, 4 дошли до конца. Только у новичков: повторное
+ * предложение (заходит, а записей нет) и обучение по ссылке воронку не трогают.
+ * Прошёл до конца — `TOUR_DONE_KEY`, повторно больше не предлагаем. Закрыл приложение посреди —
  * продолжает с того же места (QS_KEY, как у прежнего быстрого старта).
  */
 
@@ -49,6 +52,8 @@ const TEXT = {
   ru: {
     offerTitle: 'Привет! Я «Кошель»',
     offerText: 'Покажу за полминуты, как тут всё устроено: ты сам запишешь первую трату, а я подскажу, куда нажимать.',
+    againTitle: 'Показать, как тут всё устроено?',
+    againText: 'Полминуты: ты запишешь трату, а я подскажу, куда нажимать. С первой записи вести учёт становится проще.',
     start: 'Пройти обучение',
     decline: 'Разберусь сам',
     plus: 'Нажми «+» — так записывается любая трата или доход.',
@@ -71,6 +76,8 @@ const TEXT = {
   en: {
     offerTitle: 'Hey! I’m Koshel',
     offerText: 'Let me show you around in half a minute: you’ll log your first expense yourself, and I’ll point to where to tap.',
+    againTitle: 'Want a quick tour?',
+    againText: 'Half a minute: you’ll log an expense, and I’ll point to where to tap. Tracking gets easier after the first entry.',
     start: 'Take the tour',
     decline: 'I’ll figure it out',
     plus: 'Tap “+” — that’s how you log any expense or income.',
@@ -148,7 +155,9 @@ const sheetOpen = () => {
 const PAD = 6
 const MAX_HOLES = 2
 
-export function Tour({ onDone }: { onDone: () => void }) {
+export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: TourReason }) {
+  // Воронка в админке — только про новичков.
+  const report = reason === 'new' ? reportQuickStart : () => {}
   const lang: Lang = useStore((s) => s.lang) === 'en' ? 'en' : 'ru'
   const tx = TEXT[lang]
   const [saved] = useState(readSaved)
@@ -167,7 +176,7 @@ export function Tour({ onDone }: { onDone: () => void }) {
 
   // Каждую такую сессию держим в записях Clarity и метим шаги.
   useEffect(() => {
-    clarityTag('onboarding', 'tour')
+    clarityTag('onboarding', reason === 'new' ? 'tour' : 'tour_' + reason)
     clarityKeep('onboarding')
   }, [])
   useEffect(() => clarityEvent('onboarding_' + step), [step])
@@ -181,7 +190,7 @@ export function Tour({ onDone }: { onDone: () => void }) {
     const s = REPORT[step]
     if (s === reported.current) return
     reported.current = s
-    reportQuickStart({ s, e: recorded ? 1 : 0, i: false, v: 2 })
+    report({ s, e: recorded ? 1 : 0, i: false, v: 2 })
   }, [step, recorded])
   // Пока идёт обучение, пустое место шторки клавиатуру не сворачивает.
   useEffect(() => {
@@ -207,7 +216,7 @@ export function Tour({ onDone }: { onDone: () => void }) {
     const s = REPORT[stepRef.current]
     clarityEvent('onboarding_exit')
     clarityTag('onboarding_exit_at', stepRef.current)
-    reportQuickStart({ s, e: recorded ? 1 : 0, i: false, x: s, v: 2 })
+    report({ s, e: recorded ? 1 : 0, i: false, x: s, v: 2 })
     applyRegion()
     clearSaved()
     onDone()
@@ -238,7 +247,12 @@ export function Tour({ onDone }: { onDone: () => void }) {
     }
     hapticNotify('success')
     clarityEvent('onboarding_done')
-    reportQuickStart({ s: REPORT.done, e: recorded ? 1 : 0, i: false, d: true, v: 2 })
+    report({ s: REPORT.done, e: recorded ? 1 : 0, i: false, d: true, v: 2 })
+    try {
+      localStorage.setItem(TOUR_DONE_KEY, '1')
+    } catch {
+      /* приватный режим */
+    }
     clearSaved()
     onDone()
   }
@@ -360,7 +374,7 @@ export function Tour({ onDone }: { onDone: () => void }) {
   const modal = step === 'offer' || step === 'done'
   const shown = ORDER.indexOf(step) // шаги действий: 1…6
   const text: Record<Step, string> = {
-    offer: tx.offerText,
+    offer: reason === 'new' ? tx.offerText : tx.againText,
     plus: tx.plus,
     amount: tx.amount,
     category: tx.category,
@@ -396,7 +410,9 @@ export function Tour({ onDone }: { onDone: () => void }) {
         style={{ pointerEvents: 'auto', bottom: 'calc(var(--safe-bottom, 0px) + 24px)' }}
       >
         {!modal && <div className="caption mb-1.5 text-ink-subtle">{tx.step(shown, ORDER.length - 2)}</div>}
-        {step === 'offer' && <div className="mb-2 text-[22px] font-extrabold leading-tight text-ink">{tx.offerTitle}</div>}
+        {step === 'offer' && (
+          <div className="mb-2 text-[22px] font-extrabold leading-tight text-ink">{reason === 'new' ? tx.offerTitle : tx.againTitle}</div>
+        )}
         {step === 'done' && <div className="mb-2 text-[22px] font-extrabold leading-tight text-ink">{tx.doneTitle}</div>}
         <p className="text-[15px] leading-snug text-ink">{text[step]}</p>
         {step === 'done' && askRemind && reminders && <p className="mt-2 text-[15px] leading-snug text-ink-muted">{tx.remindText}</p>}
