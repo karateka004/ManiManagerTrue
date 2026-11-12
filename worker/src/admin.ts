@@ -1785,15 +1785,24 @@ export const ADMIN_HTML = `<!doctype html>
   /** Быстрый старт по шагам (worker/src/quickstart.ts): где новички останавливаются. */
   function qsBlock(){
     var q=D.qs; if(!q) return '';
+    // С 2.9 новичков встречает обучение с подсветкой (свои шаги); анкета быстрого старта — ниже, пока в окне есть её данные.
+    var tl=['Предложили обучение','Начали','Открыли запись','Записали первую трату','Дошли до конца','Завершили'];
+    var tn=['на предложении («Разберусь сам»)','на «+»','в записи','после записи','в конце'], tx=[];
+    for(var i=0;i<q.exits.length;i++) if(q.exits[i]) tx.push(tn[i]+' <b>'+nf(q.exits[i])+'</b>');
+    var out=sec('Обучение новичка','за '+q.days+' дней')
+      +'<div class="card">'+funnelHtml(q.reached.concat([q.done]),tl,'С версии 2.9 новичков пока не было — замер идёт с неё')
+      +(q.started?'<div class="facts"><span>записали первую трату <b>'+nf(q.expense)+'</b></span></div>':'')
+      +(tx.length?'<div class="foot-note">'+IC.info+'<span>Пропустили и не вернулись: '+tx.join(', ')+'.</span></div>':'')
+      +'</div><p class="note cap">Шаг считается, когда его открыли. Кто закрыл приложение на середине, при следующем входе продолжает с того же места.'+(q.since?' Замер — с '+esc(dlong(q.since))+'.':'')+'</p>';
+    var o=q.old; if(!o || !o.started) return out;
     var labels=['Открыли быстрый старт','Настройки','Первая трата','Доход','Итог','Дошли до конца'];
-    var steps=q.reached.concat([q.done]);
     var names=['на приветствии','на настройках','на трате','на доходе','на итоге'], ex=[];
-    for(var i=0;i<q.exits.length;i++) if(q.exits[i]) ex.push(names[i]+' <b>'+nf(q.exits[i])+'</b>');
-    return sec('Быстрый старт','за '+q.days+' дней')
-      +'<div class="card">'+funnelHtml(steps,labels,'С версии 2.8 новичков пока не было — замер идёт с неё')
-      +(q.started?'<div class="facts"><span>записали трату <b>'+nf(q.expense)+'</b></span><span>пропустили трату <b>'+nf(q.skippedExpense)+'</b></span><span>ввели доход <b>'+nf(q.income)+'</b></span><span>пропустили доход <b>'+nf(q.skippedIncome)+'</b></span></div>':'')
+    for(var j=0;j<o.exits.length;j++) if(o.exits[j]) ex.push(names[j]+' <b>'+nf(o.exits[j])+'</b>');
+    return out+sec('Быстрый старт до 2.9','анкета · за '+o.days+' дней')
+      +'<div class="card">'+funnelHtml(o.reached.concat([o.done]),labels,'')
+      +'<div class="facts"><span>записали трату <b>'+nf(o.expense)+'</b></span><span>пропустили трату <b>'+nf(o.skippedExpense)+'</b></span><span>ввели доход <b>'+nf(o.income)+'</b></span><span>пропустили доход <b>'+nf(o.skippedIncome)+'</b></span></div>'
       +(ex.length?'<div class="foot-note">'+IC.info+'<span>Закрыли крестиком и не вернулись: '+ex.join(', ')+'.</span></div>':'')
-      +'</div><p class="note cap">Шаг считается, когда его открыли. Кто закрыл приложение на середине, при следующем входе продолжает с того же шага.'+(q.since?' Замер — с '+esc(dlong(q.since))+'.':'')+'</p>';
+      +'</div>';
   }
 
   /* ---------- После отрисовки ---------- */

@@ -6,7 +6,7 @@
  */
 
 /** Версия (semver). Поднимай при заметном релизе вместе с записью в RELEASES (lib/whatsnew.ts). */
-export const APP_VERSION = '2.8.1'
+export const APP_VERSION = '2.9.0'
 
 export const ONBOARDED_KEY = 'koshel:onboarded'
 export const VERSION_KEY = 'koshel:lastVersion'

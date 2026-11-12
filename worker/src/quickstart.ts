@@ -6,6 +6,10 @@
  * Приложение шлёт /qs при каждом шаге. Храним `qs:<id>` — всё в метаданных
  * (админка собирает одним list, не читая значений), со сроком 180 дней.
  * Кто бросил на середине и вернулся, продолжает с того же шага — запись та же.
+ *
+ * С 2.9 вместо анкеты — обучение с подсветкой (`v: 2`), шаги другие:
+ * 0 предложили, 1 начали, 2 открыли запись, 3 записали трату, 4 дошли до конца.
+ * Сводка считается отдельно по каждому виду (`aggregateQs(..., v)`).
  */
 import type { Env } from './env'
 
@@ -30,6 +34,8 @@ export interface QsMeta {
   d?: 1
   /** Закрыл крестиком на этом шаге (последний раз). */
   x?: number
+  /** 2 — обучение (2.9+); нет — анкета быстрого старта. */
+  v?: 2
 }
 
 const step = (v: unknown): number | null =>
@@ -38,13 +44,17 @@ const step = (v: unknown): number | null =>
 /** Новый шаг поверх прошлого: дальше не откатываемся, отметки не снимаем. */
 export function mergeQs(
   prev: QsMeta | null,
-  body: { s?: unknown; e?: unknown; i?: unknown; d?: unknown; x?: unknown },
+  body: { s?: unknown; e?: unknown; i?: unknown; d?: unknown; x?: unknown; v?: unknown },
   now: number,
 ): QsMeta | null {
   const s = step(body.s)
   if (s === null) return null
   const e = typeof body.e === 'number' && Number.isInteger(body.e) ? Math.min(3, Math.max(0, body.e)) : 0
+  // Анкета и обучение — разные шаги: сменился вид — считаем заново.
+  const v2 = body.v === 2
+  if (prev && (prev.v === 2) !== v2) prev = null
   const next: QsMeta = { t: prev?.t ?? now, u: now, s: Math.max(prev?.s ?? 0, s) }
+  if (v2) next.v = 2
   const ex = Math.max(prev?.e ?? 0, e)
   if (ex > 0) next.e = ex
   if (prev?.i || body.i === true) next.i = 1
@@ -58,7 +68,7 @@ export function mergeQs(
 export async function trackQuickStart(
   env: Env,
   userId: number | string,
-  body: { s?: unknown; e?: unknown; i?: unknown; d?: unknown; x?: unknown },
+  body: { s?: unknown; e?: unknown; i?: unknown; d?: unknown; x?: unknown; v?: unknown },
   now = Date.now(),
 ): Promise<boolean> {
   const key = `${QS_PREFIX}${userId}`
@@ -96,8 +106,8 @@ export interface QsStats {
   exits: number[]
 }
 
-/** Сводка за `days` дней по первому заходу в быстрый старт. */
-export function aggregateQs(rows: QsMeta[], now: number, days: number): QsStats {
+/** Сводка за `days` дней по первому заходу: `v` 1 — анкета, 2 — обучение. */
+export function aggregateQs(rows: QsMeta[], now: number, days: number, v: 1 | 2 = 1): QsStats {
   const from = now - days * 86_400_000
   const out: QsStats = {
     days,
@@ -113,6 +123,7 @@ export function aggregateQs(rows: QsMeta[], now: number, days: number): QsStats 
   }
   for (const r of rows) {
     if (typeof r?.t !== 'number') continue
+    if ((r.v === 2 ? 2 : 1) !== v) continue
     if (out.since === null || r.t < out.since) out.since = r.t
     if (r.t < from) continue
     out.started++
@@ -127,7 +138,7 @@ export function aggregateQs(rows: QsMeta[], now: number, days: number): QsStats 
   return out
 }
 
-export async function quickStartStats(env: Env, now = Date.now(), days = 30): Promise<QsStats> {
+export async function quickStartStats(env: Env, now = Date.now(), days = 30): Promise<QsStats & { old: QsStats }> {
   const rows: QsMeta[] = []
   let cursor: string | undefined
   do {
@@ -135,5 +146,5 @@ export async function quickStartStats(env: Env, now = Date.now(), days = 30): Pr
     for (const k of page.keys) if (k.metadata) rows.push(k.metadata)
     cursor = page.list_complete ? undefined : page.cursor
   } while (cursor)
-  return aggregateQs(rows, now, days)
+  return { ...aggregateQs(rows, now, days, 2), old: aggregateQs(rows, now, days, 1) }
 }

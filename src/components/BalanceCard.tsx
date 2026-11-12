@@ -65,6 +65,7 @@ export function BalanceCard({ onTap }: { onTap?: () => void }) {
       <div
         className={`hero-surface relative overflow-hidden rounded-4xl px-6 py-5 ${tap ? 'press-soft cursor-pointer' : ''} ${skin}`}
         role={tap ? 'button' : undefined}
+        data-tour="balance"
         tabIndex={tap ? 0 : undefined}
         onClick={tap}
         onKeyDown={tap ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap() } } : undefined}

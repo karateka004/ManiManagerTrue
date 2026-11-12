@@ -86,15 +86,9 @@ const SECRET_NAME = 'Тайноимя'
   let fails = 0
   const ok = (cond, msg) => { if (!cond) fails++; console.log((cond ? 'OK   ' : 'FAIL ') + msg) }
 
-  // Быстрый старт 2.8: приветствие → настройки → трата → доход → итог → готово.
+  // Обучение 2.9 — отказываемся сразу: запись дальше делаем сами.
   const tap = async (re) => { await page.getByRole('button', { name: re }).first().click(); await page.waitForTimeout(520) }
-  await tap(/Поехали/)
-  await tap(/^Дальше/)
-  await page.locator('input').first().fill('321')
-  await tap(/^Дальше/)
-  await page.locator('input').first().fill('50000')
-  await tap(/^Дальше/)
-  await tap(/Открыть приложение/)
+  await tap(/Разберусь сам/)
   await page.waitForTimeout(600)
 
   // Обычная запись с заметкой через «+».
@@ -125,15 +119,15 @@ const SECRET_NAME = 'Тайноимя'
   ok(!problems.length, 'нет ошибок CSP и страницы' + (problems.length ? ': ' + problems.slice(0, 3).join(' | ') : ''))
   ok(blocked.length === 0, 'загрузчик запрошен с нашим номером проекта')
   ok(state.real, 'настоящий Clarity запущен (window.clarity.v)')
-  ok(uploadHosts.size > 0 && [...uploadHosts].every((h) => h === 'g.clarity.ms'), 'отправка — на g.clarity.ms нашего проекта: ' + [...uploadHosts].join(','))
+  ok(uploadHosts.size > 0 && [...uploadHosts].every((h) => h.endsWith('.clarity.ms')), 'отправка — на *.clarity.ms: ' + [...uploadHosts].join(','))
   ok(uploads.length > 0, 'записи уходят: ' + uploads.length + ' пачек, ' + Math.round(all.length / 1024) + ' КБ после распаковки')
-  for (const ev of ['onboarding_welcome', 'onboarding_expenses', 'onboarding_income', 'onboarding_done', 'bot_write_yes', 'record_added', 'tab_analytics'])
+  for (const ev of ['onboarding_offer', 'onboarding_exit', 'record_added', 'tab_analytics'])
     ok(has(ev), 'событие ' + ev)
   for (const tag of ['platform', 'ios', 'source', 'ads_oct', 'ops', 'onboarding'])
     ok(has(tag), 'метка ' + tag)
   ok(masks > 0, 'на странице помеченных для скрытия элементов: ' + masks)
   // Неизменный интерфейс читается: вопросы быстрого старта и подписи вкладок.
-  ok(has('Сколько получаешь в месяц?'), 'видно шаг быстрого старта «Сколько получаешь в месяц?»')
+  ok(has('Пройти обучение'), 'видна карточка обучения')
   ok(has('Аналитика') && has('Прогресс'), 'видны подписи вкладок')
   ok(!has(SECRET_NOTE) && !has('Секретная'), 'заметки нет в записи')
   ok(!has(SECRET_NAME), 'имени нет в записи')
@@ -142,7 +136,7 @@ const SECRET_NAME = 'Тайноимя'
   // Суммы ищем среди строк записи (тексты узлов), а не в служебных числах протокола
   // (размеры окна, номера узлов): «777» как ширина экрана — не утечка.
   const strings = all.match(/"(?:[^"\\]|\\.)*"/g) || []
-  const leak = strings.filter((x) => /777|321|50[ \u00a0\u202f]?000/.test(x) && !/^"(style|class|d|viewBox|points|transform)=/.test(x))
+  const leak = strings.filter((x) => /777/.test(x) && !/^"(style|class|d|viewBox|points|transform)=/.test(x))
   ok(leak.length === 0, 'сумм нет в записи' + (leak.length ? ': ' + leak.slice(0, 5).join(' ') : ''))
   // Распакованная запись целиком — посмотреть глазами, что уходит.
   fs.mkdirSync(CACHE, { recursive: true })

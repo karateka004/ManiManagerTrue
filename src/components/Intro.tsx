@@ -5,8 +5,8 @@ import { APP_VERSION, ONBOARDED_KEY, VERSION_KEY, QS_KEY } from '../lib/introKey
 
 // Полный гайд — отдельным чанком (общий с кнопкой в Настройках).
 const GuideSheet = lazy(() => import('./GuideSheet').then((m) => ({ default: m.GuideSheet })))
-// Быстрый старт новичка — отдельным чанком, нужен только при первом входе.
-const QuickStart = lazy(() => import('./onboarding/QuickStart').then((m) => ({ default: m.QuickStart })))
+// Обучение новичка — отдельным чанком, нужно только при первом входе.
+const Tour = lazy(() => import('./onboarding/Tour').then((m) => ({ default: m.Tour })))
 
 type IntroMode = 'onboarding' | 'guide' | null
 
@@ -47,7 +47,7 @@ export function IntroOverlay() {
       <AnimatePresence>
         {mode === 'onboarding' && (
           <Suspense fallback={null} key="onb">
-            <QuickStart onDone={closeOnboarding} />
+            <Tour onDone={closeOnboarding} />
           </Suspense>
         )}
       </AnimatePresence>

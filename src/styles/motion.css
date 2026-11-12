@@ -632,6 +632,35 @@ html.perf-low .tabbar-glass {
   transform: translateY(24px);
 }
 
+/* ---------- Обучение новичка ----------
+   Кольцо вокруг подсвеченного места: позицию ставит Tour каждый кадр
+   (transform), пульсирует отдельный слой — всё на композиторе. */
+.tour-ring {
+  position: fixed;
+  left: 0;
+  top: 0;
+  border-radius: 18px;
+  box-shadow: 0 0 0 2px rgb(var(--brand-400)), 0 0 22px rgb(var(--brand-400) / 0.45);
+  pointer-events: none;
+  will-change: transform;
+}
+.tour-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px rgb(var(--brand-400));
+  animation: tour-pulse 1600ms var(--ease-out) infinite;
+}
+@keyframes tour-pulse {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(1.12); opacity: 0; }
+}
+.tour-dim { animation: tour-dim-in 260ms ease both; }
+@keyframes tour-dim-in {
+  from { opacity: 0; }
+}
+
 /* ---------- Меньше движения ----------
    Человек попросил систему не двигать интерфейс — гасим всё декоративное.
    Переходы цифр тоже: значение сразу встаёт на место. */
@@ -650,7 +679,7 @@ html.perf-low .tabbar-glass {
     animation: fx-fade 1300ms forwards;
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
-  .odo-roll { animation: none !important; }
+  .odo-roll, .tour-ring::after, .tour-dim { animation: none !important; }
   .seg-pill, .reveal, .press, .press-soft, .press-icon, .keypad-fold, .keypad-fold > div > * { transition: none !important; }
   .skeleton { animation: none; }
 }

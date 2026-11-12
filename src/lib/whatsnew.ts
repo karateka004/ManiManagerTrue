@@ -33,6 +33,19 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.9.0',
+    date: '2026-11-12',
+    title: { ru: 'Обучение для новичков', en: 'A hands-on tour for newcomers' },
+    items: [
+      {
+        text: {
+          ru: 'Новичков встречает обучение: подсветка показывает, куда нажать, и первая трата записывается по-настоящему — за полминуты',
+          en: 'Newcomers get a hands-on tour: a spotlight shows where to tap, and the first expense is logged for real — in half a minute',
+        },
+      },
+    ],
+  },
+  {
     version: '2.8.1',
     date: '2026-10-31',
     title: { ru: 'Кошель открывается быстрее', en: 'Koshel opens faster' },

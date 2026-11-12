@@ -73,6 +73,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
                     onChange(item.id)
                   }}
                   aria-current={active ? 'page' : undefined}
+                  data-tour={`tab-${item.id}`}
                   className={`press-soft relative flex min-w-0 flex-1 flex-col items-center gap-0.5 py-1 transition-colors duration-300 ${
                     active ? 'text-brand-600 dark:text-brand-300' : 'text-ink-subtle'
                   }`}
@@ -95,6 +96,7 @@ export function TabBar({ value, onChange, onAdd }: Props) {
             onAdd()
           }}
           aria-label={t('nav.add')}
+          data-tour="plus"
           className="fab-plus press pointer-events-auto flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-fab"
         >
           <Plus size={26} strokeWidth={2.75} />

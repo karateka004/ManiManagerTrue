@@ -315,7 +315,8 @@ function AddForm({
     setKeypadOpen(true)
   }
   const onBlankTap = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if ((e.target as Element).closest(TAP_KEEP)) return
+    // Во время обучения новичка клавиатура нужна на месте.
+    if ((e.target as Element).closest(TAP_KEEP) || document.body.hasAttribute('data-touring')) return
     // Убираем обе клавиатуры сразу: системную (заметка, теги) и свою.
     const active = document.activeElement
     if (active instanceof HTMLInputElement && e.currentTarget.contains(active)) active.blur()
@@ -578,7 +579,7 @@ function AddForm({
 
       {/* Сумма — всегда на виду: её набирают клавиатурой снизу. Клавиатуру
           свернули — нажатие на сумму возвращает её, как на поле ввода. */}
-      <div className="shrink-0 px-6 pb-2 pt-1 text-center">
+      <div data-tour="amount" data-value={numeric} className="shrink-0 px-6 pb-2 pt-1 text-center">
         <div
           ref={amountRef}
           data-tap-keep
@@ -676,7 +677,7 @@ function AddForm({
         {/* Категории — две строки с прокруткой вбок: обязательное поле должно
             быть видно без прокрутки шторки. Подсказка трясётся, если пытались
             сохранить без категории. */}
-        <div data-tap-keep className="pt-1">
+        <div data-tap-keep data-tour="categories" data-value={categoryId} className="pt-1">
           {needCategory && !categoryId && (
             <div ref={hintRef} className="caption px-6 pb-1 font-semibold text-expense-deep dark:text-expense-soft">
               {tr('add.pick_category')}
@@ -788,7 +789,7 @@ function AddForm({
         className="shrink-0 border-t border-hairline bg-surface-raised px-4 pt-2"
         style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 12px)' }}
       >
-        <div ref={keypadRef} className={`keypad-fold ${keypadOpen ? '' : 'is-folded'}`}>
+        <div ref={keypadRef} data-tour="keypad" className={`keypad-fold ${keypadOpen ? '' : 'is-folded'}`}>
           <div>
             <Keypad onPress={press} />
           </div>
@@ -799,6 +800,7 @@ function AddForm({
             серой кнопки. */}
         <button
           ref={saveRef}
+          data-tour="save"
           onClick={submit}
           aria-disabled={!canSubmit}
           className={`press-soft w-full rounded-full bg-brand-500 py-3.5 text-base font-bold text-white transition-opacity duration-200 ${

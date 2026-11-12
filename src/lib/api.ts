@@ -399,7 +399,8 @@ export async function setReminders(enabled: boolean): Promise<boolean> {
  * сколько трат записал, ввёл ли доход, закрыл ли крестиком. Без сумм. Не
  * дошло — не страшно: следующий шаг пришлёт то же самое и больше.
  */
-export function reportQuickStart(p: { s: number; e: number; i: boolean; d?: boolean; x?: number }): void {
+/** Шаги обучения новичка (`v: 2`; без `v` — анкета быстрого старта до 2.9). */
+export function reportQuickStart(p: { s: number; e: number; i: boolean; d?: boolean; x?: number; v?: 2 }): void {
   if (!isBackendConfigured() || !tg.initData) return
   post('/qs', { initData: tg.initData, ...p }).catch(() => {})
 }

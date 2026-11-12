@@ -1,4 +1,4 @@
-// Тап по балансу (vite preview :4180): новичок закрыл быстрый старт крестиком →
+// Тап по балансу (vite preview :4180): новичок отказался от обучения («Разберусь сам») →
 // баланс с валютой → тап → шторка записи с выбором валюты → выбрал драм и закрыл
 // → основная валюта AMD, на Главной «0 ֏» → тап → доход и расход в драмах.
 // Плюс: у человека с записями выбор валюты в шторке основную не трогает.
@@ -64,24 +64,24 @@ const keys = async (page, digits) => {
   for (const [tz, sym, code] of [['Asia/Yerevan', '֏', 'AMD'], ['UTC', '$', 'USD']]) {
     const { ctx, page } = await newApp(browser, { tz })
     await page.waitForTimeout(800)
-    await page.getByRole('button', { name: /Закрыть|Close/ }).first().click()
+    await page.getByRole('button', { name: 'Разберусь сам' }).first().click()
     await page.waitForTimeout(900)
     await settle(page)
     const h = (await hero(page).textContent()) ?? ''
     const st = await store(page)
-    ok(h.includes(sym) && (st?.state.currency ?? 'USD') === code, `${tz}: после крестика баланс «0 ${sym}»`, { h, c: st?.state.currency })
+    ok(h.includes(sym) && (st?.state.currency ?? 'USD') === code, `${tz}: после «Разберусь сам» баланс «0 ${sym}»`, { h, c: st?.state.currency })
     ok(page.errs.length === 0, 'ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 1. Новичок (Москва): крестик → «0 ₽» → тап → драм поиском → закрыл → «0 ֏» → доход и расход. */
+  /* 1. Новичок (Москва): «Разберусь сам» → «0 ₽» → тап → драм поиском → закрыл → «0 ֏» → доход и расход. */
   {
     const { ctx, page } = await newApp(browser, { tz: 'Europe/Moscow' })
     await page.waitForTimeout(800)
-    await page.getByRole('button', { name: /Закрыть|Close/ }).first().click()
+    await page.getByRole('button', { name: 'Разберусь сам' }).first().click()
     await page.waitForTimeout(900)
     let st = await store(page)
-    ok((st?.state.transactions.length ?? 0) === 0, 'крестик: записей нет')
+    ok((st?.state.transactions.length ?? 0) === 0, 'отказ от обучения: записей нет')
     const before = (await hero(page).textContent()) ?? ''
     ok(/0/.test(before) && before.includes('₽'), 'баланс не голый «0»: с валютой (регион — ₽)', before)
     ok(await page.getByRole('button', { name: /Баланс за месяц.*Записать операцию/ }).count() === 1, 'карточка баланса — кнопка: диктор читает баланс и «Записать операцию»')
@@ -159,12 +159,12 @@ const keys = async (page, digits) => {
   {
     const { ctx, page } = await newApp(browser, { tz: 'Europe/Berlin' })
     await page.waitForTimeout(800)
-    await page.getByRole('button', { name: /Закрыть|Close/ }).first().click()
+    await page.getByRole('button', { name: 'Разберусь сам' }).first().click()
     await page.waitForTimeout(900)
     await page.getByRole('button', { name: 'Добавить операцию' }).first().click()
     await page.waitForTimeout(700)
     ok(await sheet(page).getByRole('button', { name: 'Другая валюта' }).isVisible(), '«+»: новичку выбор валюты раскрыт')
-    // Регион — евро (уже основная после крестика); жмём доллар — другой чип.
+    // Регион — евро (уже основная после отказа от обучения); жмём доллар — другой чип.
     await sheet(page).getByRole('button', { name: /USD/ }).first().click()
     await page.waitForTimeout(300)
     await sheet(page).getByRole('button', { name: 'Отмена' }).click()

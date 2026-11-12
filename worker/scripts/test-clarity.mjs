@@ -270,6 +270,15 @@ check('готово, трата, доход', st.done === 2 && st.expense === 2 
 check('пропустили трату и доход', st.skippedExpense === 1 && st.skippedIncome === 1, st)
 check('закрыли и не вернулись', JSON.stringify(st.exits) === '[0,1,0,1,0]', st.exits)
 
+// Обучение (2.9, v: 2) — свои шаги и своя сводка; анкета в неё не попадает.
+let tv = mergeQs(null, { s: 1, v: 2 }, T0)
+check('обучение: помечено v2', tv.v === 2 && tv.s === 1, tv)
+tv = mergeQs({ t: T0 - 1000, u: T0 - 1000, s: 3, e: 1 }, { s: 1, v: 2 }, T0)
+check('обучение после анкеты — считается заново', tv.s === 1 && tv.t === T0 && !tv.e && tv.v === 2, tv)
+const tour = aggregateQs([...rows, { t: T0, u: T0, s: 3, e: 1, v: 2 }, { t: T0, u: T0, s: 0, x: 0, v: 2 }], T0 + 3600_000, 30, 2)
+check('сводка обучения — только v2', tour.started === 2 && JSON.stringify(tour.reached) === '[2,1,1,1,0]' && tour.expense === 1 && tour.exits[0] === 1, tour)
+check('сводка анкеты — без обучения', aggregateQs([...rows, { t: T0, u: T0, s: 3, v: 2 }], T0 + 3600_000, 30).started === 5)
+
 const qkv = new FakeKV()
 await trackQuickStart({ REFERRALS: qkv }, 77, { s: 2, e: 1 }, T0)
 await trackQuickStart({ REFERRALS: qkv }, 77, { s: 1 }, T0 + 1)
@@ -281,4 +290,4 @@ if (failed) {
   console.log(`test-clarity: ${failed} из ${total} упали`)
   process.exit(1)
 }
-console.log(`test-clarity: ${total} проверок — разбор выгрузки, токен, квота, ночной снимок, быстрый старт по шагам`)
+console.log(`test-clarity: ${total} проверок — разбор выгрузки, токен, квота, ночной снимок, быстрый старт и обучение по шагам`)
