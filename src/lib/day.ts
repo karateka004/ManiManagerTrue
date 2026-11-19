@@ -47,7 +47,8 @@ export function daysBetween(fromKey: number, key: number): number {
 
 
 /**
- * Дата операции («ГГГГ-ММ-ДД») как ЛОКАЛЬНАЯ полночь.
+ * День операции как ЛОКАЛЬНАЯ полночь. Момент времени (`…T…Z`, как хранятся
+ * операции) — по местным часам; голая дата («ГГГГ-ММ-ДД») — полночь этого дня.
  *
  * Так делать обязательно, и вот почему. `Date.parse('2026-08-01')` по
  * спецификации разбирает дату БЕЗ времени как полночь UTC. Границы периодов
@@ -72,10 +73,19 @@ export function parseDay(iso: string): number {
   let v = dayCache.get(iso)
   if (v !== undefined) return v
   if (dayCache.size > 20000) dayCache.clear()
-  const y = +iso.slice(0, 4)
-  const m = +iso.slice(5, 7)
-  const d = +iso.slice(8, 10)
-  v = !y || !m || !d ? NaN : +new Date(y, m - 1, d)
+  if (iso.length > 10 && iso[10] === 'T') {
+    // Момент времени — так операции и хранятся (toISOString, то есть UTC). День —
+    // по местным часам устройства, а не первые десять знаков: те — дата по
+    // Гринвичу, и трата в 00:30 первого числа в Берлине уезжала в прошлый
+    // месяц, а вечерняя в Нью-Йорке — на завтра.
+    const at = Date.parse(iso)
+    v = Number.isFinite(at) ? localDayKey(at) : NaN
+  } else {
+    const y = +iso.slice(0, 4)
+    const m = +iso.slice(5, 7)
+    const d = +iso.slice(8, 10)
+    v = !y || !m || !d ? NaN : +new Date(y, m - 1, d)
+  }
   dayCache.set(iso, v)
   return v
 }

@@ -33,6 +33,19 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.9.1',
+    date: '2026-11-19',
+    title: { ru: 'Траты ночью — в свой день', en: 'Late-night entries land on the right day' },
+    items: [
+      {
+        text: {
+          ru: 'Запись, сделанная после полуночи или поздно вечером, теперь попадает в свой день и месяц — раньше она могла уехать во вчера или в завтра',
+          en: 'Entries made after midnight or late in the evening now land on their own day and month — before, they could slip into the previous or next day',
+        },
+      },
+    ],
+  },
+  {
     version: '2.9.0',
     date: '2026-11-12',
     title: { ru: 'Обучение для новичков', en: 'A hands-on tour for newcomers' },
