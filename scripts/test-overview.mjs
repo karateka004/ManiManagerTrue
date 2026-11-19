@@ -281,6 +281,9 @@ const find = (o, kind) => o.insights.find((i) => i.kind === kind)
   const o5 = overview(full, { recurringKeys: keys, upcoming })
   check('ритм недели без аренды — дни ровные', o5.weekday.length === 7 && o5.weekday.every((v) => Math.round(v) === 1000), o5.weekday.map(Math.round))
   check('самый дорогой день — не день аренды', !o5.insights.some((i) => i.kind === 'peak_day'), kinds(o5))
+  // Разовая покупка в понедельник 16-го — ритм её тоже не видит.
+  const o6 = overview([...full, tx('2026-11-16', 'expense', 30000, 'clothes', 'Пальто')], { recurringKeys: keys, upcoming })
+  check('ритм недели без разовой покупки — понедельник не дороже', o6.weekday.length === 7 && o6.weekday.every((v) => Math.round(v) === 1000), o6.weekday.map(Math.round))
 }
 
 /* ---------- 11б. Название платежа — как его пишет человек ---------- */

@@ -352,14 +352,17 @@ export function buildOverview(input: OverviewInput): Overview {
   const deltaPct = prevSpent && prevSpent > 0 ? ((base - prevSpent) / prevSpent) * 100 : null
 
   /* ---------- Ритм недели ----------
-     Без регулярных платежей: аренда, списанная в четверг, делала четверг
-     «самым дорогим днём» на весь месяц — это не привычка, а дата договора. */
+     Без регулярных платежей и без разовых крупных покупок: аренда, списанная
+     в четверг, делала четверг «самым дорогим днём» на весь месяц, а зимняя
+     куртка — понедельник. Это дата договора и случай, а не привычка. */
   const habit = trackDaily ? daily.map((v, i) => v - fixedDaily[i]) : []
+  const oneOff = trackDaily ? oneOffDaily(current, recurringKeys, habit, startKey, daysPassed) : []
+  const steady = trackDaily ? habit.map((v, i) => v - oneOff[i]) : []
   let spentDays = 0
-  if (trackDaily) for (let i = trackFrom; i < daysPassed; i++) if (habit[i] > 0) spentDays += 1
+  if (trackDaily) for (let i = trackFrom; i < daysPassed; i++) if (steady[i] > 0) spentDays += 1
   const weekday =
     trackDaily && daysTracked >= MIN_DAYS_FOR_WEEKDAY && spentDays >= MIN_SPENT_DAYS_FOR_WEEKDAY
-      ? weekdayAverages(habit, startKey, trackFrom, daysPassed)
+      ? weekdayAverages(steady, startKey, trackFrom, daysPassed)
       : []
 
   /* ---------- Прогноз до конца периода ----------
@@ -372,7 +375,8 @@ export function buildOverview(input: OverviewInput): Overview {
   const forecast =
     trackDaily && daysTracked >= MIN_DAYS_FOR_FORECAST && daysPassed < daysTotal
       ? buildForecast({
-          pace: habitPace(current, recurringKeys, habit, startKey, daysPassed, daysTracked),
+          // Темп — по тем же «ровным» тратам: без регулярных и разовых.
+          pace: daysTracked > 0 ? sumRange(steady, 0, daysPassed) / daysTracked : 0,
           weekday,
           habit,
           fixed: fixedDaily,
@@ -528,34 +532,27 @@ function weekdayAverages(daily: number[], startKey: number, from: number, daysPa
 }
 
 /**
- * Темп «гибких» трат в день — без регулярных платежей и без разовых крупных
- * покупок. Аренда пятого числа, размазанная по месяцу, делала его вдвое
- * дороже (к шестому числу темп — 9 000 в день вместо 3 500), а зимняя куртка
- * объявляла, что куртки будут покупаться каждую неделю. Разовой считаем
- * покупку, которая одна — больше четверти гибких трат; у новичка (меньше
- * шести трат) — ничего не выкидываем, судить не по чему.
+ * Разовые крупные покупки по дням прожитой части периода — то, что не задаёт
+ * ни темп прогноза, ни ритм недели. Аренда пятого числа, размазанная по месяцу,
+ * делала его вдвое дороже (к шестому числу темп — 9 000 в день вместо 3 500),
+ * а зимняя куртка объявляла, что куртки будут покупаться каждую неделю.
+ * Разовой считаем покупку (не регулярный платёж), которая одна — больше
+ * четверти гибких трат; у новичка (меньше шести трат) — ничего: судить не по чему.
  */
-function habitPace(
-  current: Transaction[],
-  recurringKeys: ReadonlySet<string>,
-  habit: number[],
-  startKey: number,
-  daysPassed: number,
-  daysTracked: number,
-): number {
-  if (daysTracked <= 0) return 0
+function oneOffDaily(current: Transaction[], recurringKeys: ReadonlySet<string>, habit: number[], startKey: number, daysPassed: number): number[] {
+  const out = new Array<number>(habit.length).fill(0)
   const toDate = sumRange(habit, 0, daysPassed)
   let count = 0
-  const big: number[] = []
+  const big: { i: number; amount: number }[] = []
   for (const t of current) {
     if (t.type !== 'expense' || recurringKeys.has(recurringKey(t.categoryId, t.amount))) continue
     const i = daysBetween(startKey, txDay(t))
     if (i < 0 || i >= daysPassed) continue
     count += 1
-    if (t.amount >= toDate * ONE_OFF_PACE_SHARE) big.push(t.amount)
+    if (t.amount >= toDate * ONE_OFF_PACE_SHARE) big.push({ i, amount: t.amount })
   }
-  const oneOffs = count >= 6 ? big.reduce((a, b) => a + b, 0) : 0
-  return Math.max(0, toDate - oneOffs) / daysTracked
+  if (count >= 6) for (const b of big) out[b.i] += b.amount
+  return out
 }
 
 /**
