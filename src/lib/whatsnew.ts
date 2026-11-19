@@ -33,6 +33,25 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.11.1',
+    date: '2026-11-19',
+    title: { ru: 'Календарь с суммами', en: 'Calendar with amounts' },
+    items: [
+      {
+        text: {
+          ru: 'В календаре снова видно суммы прямо в клетках, а сверху — переключатель: траты, доходы, оба сразу или итог дня',
+          en: 'The calendar shows amounts right in the cells again, with a switch on top: spending, income, both or the day’s net',
+        },
+      },
+      {
+        text: {
+          ru: 'Динамика понятнее: доход и расход — парными столбиками, со шкалой и подписями недель вроде «7 сен»',
+          en: 'Clearer trends: income and spending as paired bars, with a scale and week labels like “Sep 7”',
+        },
+      },
+    ],
+  },
+  {
     version: '2.11.0',
     date: '2026-11-19',
     title: { ru: 'Новая аналитика', en: 'All-new analytics' },

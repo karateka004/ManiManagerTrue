@@ -56,15 +56,18 @@ export function GlassSeg<T extends string>({
   options,
   onChange,
   label,
+  full,
 }: {
   value: T
   options: { id: T; label: string }[]
   onChange: (v: T) => void
   label?: string
+  /** Во всю ширину карточки (переключатель внутри виджета, а не в шапке). */
+  full?: boolean
 }) {
   const { trackRef, pillRef } = useSegPill<HTMLDivElement>(value)
   return (
-    <div ref={trackRef} className="an-seg shrink-0" role="group" aria-label={label} data-swipe-ignore>
+    <div ref={trackRef} className={`an-seg ${full ? 'w-full' : 'shrink-0'}`} role="group" aria-label={label} data-swipe-ignore>
       <span ref={pillRef} className="seg-pill" aria-hidden />
       {options.map((o) => (
         <button

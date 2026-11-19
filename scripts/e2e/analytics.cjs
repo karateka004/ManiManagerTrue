@@ -229,12 +229,38 @@ async function scrub(page, area, from = 0.2, to = 0.6) {
     ok(Number(amount) > 0, 'шторка дня → запись открывается на правку', amount)
     await closeSheet(page)
 
-    // Динамика: недели, палец по столбикам.
+    // Календарь: режимы как раньше — суммы прямо в клетках.
+    const calSeg = panel(page).getByRole('group', { name: 'Календарь' })
+    await calSeg.scrollIntoViewIfNeeded()
+    const cellText = () =>
+      page.evaluate(() => [...document.querySelectorAll('.tab-panel:not([data-off]) button[aria-label*="−"]:not([disabled])')].map((b) => b.textContent.trim()))
+    const spentCells = await cellText()
+    ok(spentCells.length > 0 && spentCells.every((t) => /^\d{1,2}\d+/.test(t.replace(/\s/g, ''))), 'календарь «Траты»: в клетках сумма дня', spentCells.slice(0, 4))
+    await calSeg.getByRole('button', { name: 'Оба', exact: true }).click()
+    await page.waitForTimeout(400)
+    const both = await page.evaluate(() =>
+      [...document.querySelectorAll('.tab-panel:not([data-off]) button[aria-label*="+"]:not([disabled])')].map((b) => b.textContent.trim()),
+    )
+    // Дни с доходом: строка «+…», а если в тот же день были и траты — ещё «−…».
+    ok(both.length > 0 && both.every((t) => /\+\d/.test(t)) && both.some((t) => /−\d/.test(t)), 'календарь «Оба»: доход и трата двумя строками', both.slice(0, 3))
+    await calSeg.getByRole('button', { name: 'Итог', exact: true }).click()
+    await page.waitForTimeout(400)
+    const netCells = await cellText()
+    ok(netCells.some((t) => /[+−]\d/.test(t)), 'календарь «Итог»: итог дня со знаком', netCells.slice(0, 3))
+    await calSeg.getByRole('button', { name: 'Траты', exact: true }).click()
+    await page.waitForTimeout(300)
+
+    // Динамика: недели, палец по столбикам, подписи «7 сен» (а не «709»).
     const trendSeg = panel(page).locator('[role=group]').filter({ hasText: 'Недели' }).first()
     await trendSeg.scrollIntoViewIfNeeded()
     await trendSeg.getByRole('button', { name: 'Недели', exact: true }).click()
     await page.waitForTimeout(700)
     const trendArea = panel(page).locator('[data-swipe-ignore][style*="pan-y"]').nth(1)
+    const weekLabels = await page.evaluate((el) => {
+      const box = el.parentElement.parentElement
+      return [...box.querySelectorAll('span.whitespace-nowrap')].map((s) => s.textContent.trim()).filter(Boolean)
+    }, await trendArea.elementHandle())
+    ok(weekLabels.length >= 4 && weekLabels.every((t) => /^\d{1,2} [а-я]{3}$/.test(t)), 'динамика по неделям: подписи «7 сен»', weekLabels)
     const s2 = await scrub(page, trendArea, 0.3, 0.9)
     ok(s2.on && /−/.test(s2.tip), 'динамика: палец по столбикам — пузырь с расходом', s2)
     await trendSeg.getByRole('button', { name: 'Месяцы', exact: true }).click()
