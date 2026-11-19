@@ -34,6 +34,7 @@ import { LevelUpWatcher } from './components/LevelUp'
 import type { CategoryKind } from './store/categories'
 import { clarityEvent } from './lib/clarity'
 import { introNeeded, markOnboarded, markTourAsked, tourAgainDue, tourForced } from './lib/introGate'
+import { QS_KEY, TOUR_EVENT } from './lib/introKeys'
 
 /**
  * Порядок вкладок в панели — по нему выбирается направление перехода: вкладка
@@ -215,16 +216,59 @@ export default function App() {
   const [intro, setIntro] = useState<'new' | 'again' | 'link' | null>(() =>
     introNeeded() ? 'new' : tourForced() ? 'link' : null,
   )
+  // Новый ключ — заново смонтировать обучение (Настройки → «Пройти обучение»).
+  const [introKey, setIntroKey] = useState(0)
   useEffect(() => {
     if (intro !== 'new') markOnboarded()
-    if (intro) return
-    const timer = window.setTimeout(() => {
+    // Чанк обучения — сразу, параллельно с Intro (раньше грузился цепочкой).
+    if (intro) {
+      void import('./components/onboarding/Tour')
+      return
+    }
+    // Повторное предложение — не поверх начатого: открыта шторка или человек
+    // только что нажимал (набирает сумму) — ждём, пока отпустит. Записал за
+    // это время — предлагать уже нечего (tourAgainDue). Не дольше минуты.
+    let lastInput = 0
+    const mark = () => {
+      lastInput = Date.now()
+    }
+    const opts = { capture: true, passive: true } as const
+    addEventListener('pointerdown', mark, opts)
+    addEventListener('keydown', mark, opts)
+    const t0 = Date.now()
+    let timer = 0
+    const tryOffer = () => {
       if (!tourAgainDue()) return
+      if (document.querySelector('[aria-modal="true"]') || Date.now() - lastInput < 3000) {
+        if (Date.now() - t0 < 60_000) timer = window.setTimeout(tryOffer, 2000)
+        return
+      }
+      void import('./components/onboarding/Tour')
       markTourAsked()
       setIntro('again')
-    }, 2500)
-    return () => clearTimeout(timer)
+    }
+    timer = window.setTimeout(tryOffer, 2500)
+    return () => {
+      clearTimeout(timer)
+      removeEventListener('pointerdown', mark, opts)
+      removeEventListener('keydown', mark, opts)
+    }
     // Решается один раз при запуске.
+  }, [])
+  // Пройти обучение заново — из Настроек (событие, чтобы Настройки не тянули App).
+  useEffect(() => {
+    const again = () => {
+      void import('./components/onboarding/Tour')
+      try {
+        localStorage.removeItem(QS_KEY)
+      } catch {
+        /* приватный режим */
+      }
+      setIntro('link')
+      setIntroKey((k) => k + 1)
+    }
+    addEventListener(TOUR_EVENT, again)
+    return () => removeEventListener(TOUR_EVENT, again)
   }, [])
   // Вкладка и направление, откуда она приехала (класс анимации появления).
   const [nav, setNav] = useState<{ tab: Tab; dir: NavDir }>({ tab: 'home', dir: 'init' })
@@ -481,7 +525,7 @@ export default function App() {
 
       {intro && (
         <Suspense fallback={null}>
-          <IntroOverlay reason={intro} />
+          <IntroOverlay key={introKey} reason={intro} />
         </Suspense>
       )}
 

@@ -167,6 +167,7 @@ function Header({
         <button
           onClick={() => { hapticSelect(); onOpenAssistant() }}
           aria-label={t('ai.open')}
+          data-tour="assistant"
           className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink-muted shadow-soft dark:shadow-soft-dark"
         >
           <MessageCircle size={18} strokeWidth={2.4} />

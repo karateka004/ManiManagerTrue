@@ -23,8 +23,9 @@ type IntroMode = 'onboarding' | 'guide' | null
 function useIntro(reason: TourReason) {
   const [mode, setMode] = useState<IntroMode>('onboarding')
 
+  // Вибрацию даёт само обучение (выход — касание, итог — «успех»): вторая
+  // следом сливалась в двойную.
   const closeOnboarding = () => {
-    hapticSelect()
     localStorage.removeItem(QS_KEY)
     localStorage.setItem(ONBOARDED_KEY, '1')
     // Новичку changelog не показываем; у остальных счётчик новых версий не трогаем.

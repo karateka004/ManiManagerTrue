@@ -32,6 +32,8 @@ export function Toaster() {
     >
       <div
         key={toast.id}
+        // Обучение новичка обходит тост карточкой — находит его по этой метке.
+        data-toast
         // Уходящий тост нажатий уже не ловит: при «меньше движения» шторка
         // появляется мгновенно, и палец на клавише попал бы в «Отменить».
         className={`flex w-full max-w-md items-center gap-3 rounded-2xl bg-ink py-2.5 pl-3.5 pr-2 text-surface-raised shadow-fab dark:bg-[rgb(52_54_50)] dark:text-ink ${

@@ -231,6 +231,8 @@ export function attachSwipe(root: HTMLElement, host: () => SwipeHost): () => voi
     if (!target || !root.contains(target)) return
     if (t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return
     if (document.querySelector('[aria-modal="true"]')) return
+    // Идёт обучение новичка: шаг — это переход по вкладке нажатием, свайп его обошёл бы.
+    if (document.body.hasAttribute('data-touring')) return
     const active = document.activeElement
     if (
       active instanceof HTMLInputElement ||

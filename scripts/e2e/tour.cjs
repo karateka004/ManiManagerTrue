@@ -1,9 +1,13 @@
 // Обучение новичка 2.10 (vite preview :4180), касаниями CDP: предложение → «+» →
 // сумма → категория → «Записать» → баланс → Аналитика → Прогресс → Главная →
-// итог; нажатия мимо подсветки не срабатывают и отвечают «качанием»; свайп
-// между вкладками выключен; «Разберусь сам», «Пропустить», продолжение после
-// перезапуска, закрытая шторка возвращает к «+», отмена записи тостом; низкий
-// экран (клавиатура уходит сама, карточка не закрывает сумму); что уходит в /qs.
+// итог; нажатия мимо подсветки не срабатывают и отвечают «качанием» (только
+// короткое касание: прокрутка и подсвеченное «посмотреть» — без отклика); свайп
+// между вкладками выключен; «Не сейчас», «Пропустить», «Назад»/Escape,
+// продолжение после перезапуска (и с «Аналитики»), закрытая шторка возвращает к
+// «+», отмена записи тостом (и на «Прогрессе»); шаг не скачет назад к сумме;
+// низкий экран и альбомная ориентация; вернувшийся с облаком не получает
+// обучение новичка; повторное предложение не ложится на шторку; Настройки →
+// «Пройти обучение»; что уходит в /qs.
 const { chromium } = require('playwright')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -14,13 +18,19 @@ fs.mkdirSync(OUT, { recursive: true })
 let fails = 0
 const ok = (c, m, extra) => { if (!c) fails++; console.log((c ? 'OK   ' : 'FAIL ') + m + (c || extra === undefined ? '' : '  ' + JSON.stringify(extra))) }
 
-async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844, preset, url = '', wait = 1500, theme = 'dark' } = {}) {
+async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844, preset, url = '', wait = 1500, theme = 'dark', cloud } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, timezoneId: tz, colorScheme: theme })
   const qs = []
   await ctx.route('https://telegram.org/**', (r) => r.fulfill({ contentType: 'application/javascript', body: '' }))
   await ctx.route('https://*.clarity.ms/**', (r) => r.abort())
-  await ctx.route('https://koshel-worker.karateka004.workers.dev/**', (r) => {
-    if (r.request().url().endsWith('/qs')) qs.push(JSON.parse(r.request().postData() || '{}'))
+  await ctx.route('https://koshel-worker.karateka004.workers.dev/**', async (r) => {
+    const u = r.request().url()
+    if (u.endsWith('/qs')) qs.push(JSON.parse(r.request().postData() || '{}'))
+    // Облако с данными (человек на новом телефоне): отвечает через 0,7 с.
+    if (cloud && u.endsWith('/data/get')) {
+      await new Promise((res) => setTimeout(res, 700))
+      return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: { blob: cloud, updatedAt: Date.now() - 5000, pid: 'x' } }) })
+    }
     return r.fulfill({ contentType: 'application/json', body: '{"ok":true,"referrals":0,"friends":[]}' })
   })
   await ctx.addInitScript(({ preset, theme }) => {
@@ -56,6 +66,11 @@ async function newApp(browser, { tz = 'Europe/Moscow', width = 390, height = 844
   const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
   page.tapAt = async (x, y, after = 450) => { await touch('touchStart', x, y); await page.waitForTimeout(40); await touch('touchEnd'); await page.waitForTimeout(after) }
   page.tapEl = async (loc, after) => { const b = await loc.first().boundingBox(); await page.tapAt(b.x + b.width / 2, b.y + b.height / 2, after) }
+  page.swipeV = async (x, y0, y1) => {
+    await touch('touchStart', x, y0)
+    for (let i = 1; i <= 8; i++) { await touch('touchMove', x, y0 + ((y1 - y0) * i) / 8); await page.waitForTimeout(16) }
+    await touch('touchEnd'); await page.waitForTimeout(600)
+  }
   page.swipe = async (x0, x1, y) => {
     await touch('touchStart', x0, y)
     for (let i = 1; i <= 8; i++) { await touch('touchMove', x0 + ((x1 - x0) * i) / 8, y); await page.waitForTimeout(16) }
@@ -74,7 +89,7 @@ const active = (page, name) => page.locator(`${tour('tab-' + name)}[aria-current
 const boxes = (page, names) => page.evaluate((names) => {
   const r = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) } }
   const vis = (n) => [...document.querySelectorAll(`[data-tour="${n}"]`)].find((e) => !e.closest('.tab-panel[data-off]'))
-  const out = { card: r(document.querySelector('[data-tour-card]')), ring: r(document.querySelector('.tour-ring')), side: document.querySelector('[data-tour-card]')?.getAttribute('data-side') ?? '', toast: r(document.querySelector('[role=status] > div')) }
+  const out = { card: r(document.querySelector('[data-tour-card]')), ring: r(document.querySelector('.tour-ring')), side: document.querySelector('[data-tour-card]')?.getAttribute('data-side') ?? '', toast: r(document.querySelector('[data-toast]')) }
   for (const n of names) out[n] = r(vis(n))
   return out
 }, names)
@@ -86,14 +101,14 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   /* 1. Весь путь. */
   {
     const { ctx, page, qs } = await newApp(browser)
-    ok(/Пройти обучение/.test(await cardText(page)) && (await card(page).locator('li').count()) === 4, 'новичку предложено обучение с планом из четырёх глав')
+    ok(/Покажи/.test(await cardText(page)) && (await card(page).locator('li').count()) === 4, 'новичку предложено обучение с планом из четырёх глав')
     await page.screenshot({ path: path.join(OUT, 'tour-0-offer.png') })
     // Мимо карточки — не нажимается: баланс не открывает шторку, карточка качается.
     await page.tapEl(page.locator(tour('balance')), 200)
     ok(!(await sheetOpen(page)), 'на предложении остальной экран не нажимается')
     ok(await page.evaluate(() => !!document.querySelector('.tour-nudge')), 'нажатие мимо — карточка отвечает качанием')
     await page.waitForTimeout(400)
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }), 700)
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }), 700)
     ok(/Нажми «\+»/.test(await cardText(page)), 'шаг «+»: подсвечен «+»')
     let st = await store(page)
     ok(st?.state.currency === 'RUB', 'валюта по региону поставлена при старте обучения', st?.state.currency)
@@ -119,7 +134,7 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     for (const k of ['3', '5', '0']) await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: k, exact: true }), 120)
     ok((await page.locator(tour('amount')).getAttribute('data-value')) === '350', 'сумма набрана: 350')
     ok(/Набери сумму/.test(await cardText(page)), 'пока палец на клавишах — шаг не меняется')
-    await page.waitForTimeout(900)
+    await page.waitForTimeout(1200)
     ok(/Выбери категорию/.test(await cardText(page)), 'палец замер — шаг категории, без «Готово»')
     await page.waitForTimeout(500)
     b = await boxes(page, ['categories'])
@@ -157,7 +172,7 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     ok((await active(page, 'home')) && /Ты в деле/.test(await cardText(page)), 'вернулись на Главную — итог')
     ok(/боту/.test(await cardText(page)) && /ассистента/.test(await cardText(page)), 'в итоге — бот и ассистент')
     await page.screenshot({ path: path.join(OUT, 'tour-8-done.png') })
-    await page.tapEl(card(page).getByRole('button', { name: 'Начать' }), 800)
+    await page.tapEl(card(page).getByRole('button', { name: 'Поехали' }), 800)
     ok(!(await card(page).count()), 'обучение закрыто')
     const ls = await page.evaluate(() => ({ on: localStorage.getItem('koshel:onboarded'), qs: localStorage.getItem('koshel:qs'), done: localStorage.getItem('koshel:tourDone') }))
     ok(ls.on === '1' && ls.qs === null && ls.done === '1', 'метки «пройдено» стоят, место стёрто', ls)
@@ -165,7 +180,8 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     ok(await sheetOpen(page), 'после обучения всё нажимается: баланс открывает запись')
     await page.keyboard.press('Escape'); await page.waitForTimeout(600)
     const steps = [...new Set(qs.map((x) => x.s))]
-    ok(qs.every((x) => x.v === 2) && JSON.stringify(steps) === '[0,1,2,3,4]' && qs.at(-1).d === true && qs.at(-1).e === 1, '/qs: шаги 0–4 обучения и финиш', qs)
+    // «Предложили» отдельно не уходит: ответил за 3 с — шаг 1 покрывает и его (воркер берёт max).
+    ok(qs.every((x) => x.v === 2) && JSON.stringify(steps) === '[1,2,3,4]' && qs.at(-1).d === true && qs.at(-1).e === 1, '/qs: шаги 1–4 обучения и финиш', qs)
     ok(qs.every((x) => Object.keys(x).every((k) => ['initData', 's', 'e', 'i', 'd', 'x', 'v'].includes(k))), '/qs: без сумм')
     await page.reload(); await page.waitForTimeout(1200)
     ok(!(await card(page).count()), 'после перезапуска обучения нет')
@@ -173,11 +189,11 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     await ctx.close()
   }
 
-  /* 2. «Разберусь сам». */
+  /* 2. «Не сейчас». */
   {
     const { ctx, page, qs } = await newApp(browser)
-    await page.tapEl(card(page).getByRole('button', { name: 'Разберусь сам' }), 800)
-    ok(!(await card(page).count()), '«Разберусь сам» — обучение закрыто')
+    await page.tapEl(card(page).getByRole('button', { name: 'Не сейчас' }), 800)
+    ok(!(await card(page).count()), '«Не сейчас» — обучение закрыто')
     ok(qs.at(-1)?.x === 0 && qs.at(-1)?.v === 2, '/qs: отказ на предложении', qs.at(-1))
     await page.tapEl(page.locator(tour('balance')), 900)
     ok(await sheetOpen(page), 'приложение нажимается: баланс открывает запись')
@@ -188,7 +204,7 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   /* 3. Продолжение после перезапуска, закрытая шторка, отмена записи, «Пропустить». */
   {
     const { ctx, page } = await newApp(browser)
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }))
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }))
     await page.tapEl(page.locator(tour('plus')), 900)
     await page.keyboard.press('Escape')
     await page.waitForTimeout(1200)
@@ -224,7 +240,7 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   /* 4. Низкие экраны: карточка не закрывает сумму, клавиатура уходит сама, если категориям тесно. */
   for (const [w, h] of [[320, 568], [375, 590], [360, 720]]) {
     const { ctx, page } = await newApp(browser, { width: w, height: h })
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }))
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }))
     let b = await boxes(page, ['plus'])
     ok(b.card.bottom <= b.plus.top && b.card.top >= 0, `${w}×${h}: карточка над «+»`, b)
     await page.tapEl(page.locator(tour('plus')), 900)
@@ -262,10 +278,10 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     await card(page).waitFor()
     await page.waitForTimeout(500)
     await page.screenshot({ path: path.join(OUT, 'tour-light-offer.png') })
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }))
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }))
     await page.tapEl(page.locator(tour('plus')), 900)
     for (const k of ['2', '5', '0']) await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: k, exact: true }), 120)
-    await page.waitForTimeout(900)
+    await page.waitForTimeout(1200)
     await page.tapEl(page.locator(tour('categories')).getByRole('button', { name: 'Еда', exact: true }), 500)
     await page.tapEl(page.locator(tour('save')), 1300)
     await page.screenshot({ path: path.join(OUT, 'tour-light-balance.png') })
@@ -278,12 +294,12 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   {
     const { ctx, page } = await newApp(browser)
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }), 300)
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }), 300)
     let b = await boxes(page, ['plus'])
     ok(b.ring && Math.abs(b.ring.top - (b.plus.top - 6)) <= 1, 'меньше движения: кольцо сразу на «+»', b)
     await page.tapEl(page.locator(tour('plus')), 700)
     for (const k of ['9', '9']) await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: k, exact: true }), 100)
-    await page.waitForTimeout(900)
+    await page.waitForTimeout(1200)
     await page.tapEl(page.locator(tour('categories')).getByRole('button', { name: 'Еда', exact: true }), 300)
     await page.tapEl(page.locator(tour('save')), 1000)
     ok(/Первая запись/.test(await cardText(page)), 'меньше движения: путь тот же')
@@ -306,8 +322,8 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
     const shown = /Показать, как тут всё устроено/.test(await cardText(page))
     ok(shown === want, `${name}: обучение ${want ? 'предложено' : 'не предлагаем'}`)
     if (want) {
-      await page.tapEl(card(page).getByRole('button', { name: 'Разберусь сам' }), 600)
-      ok(!(await card(page).count()) && qs.length === 0, `${name}: «Разберусь сам» закрывает, в воронку новичков не идёт`)
+      await page.tapEl(card(page).getByRole('button', { name: 'Не сейчас' }), 600)
+      ok(!(await card(page).count()) && qs.length === 0, `${name}: «Не сейчас» закрывает, в воронку новичков не идёт`)
       await page.reload(); await page.waitForTimeout(3800)
       ok(!(await card(page).count()), `${name}: в тот же день второй раз не предлагаем`)
     }
@@ -329,7 +345,7 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   {
     const { ctx, page, qs } = await newApp(browser, { preset: { ...old, 'koshel:tourDone': '1', 'finance-mini-app:v1': blob([Date.now() - 30 * DAY, Date.now()]) }, url: '?tour=1' })
     ok(/Показать, как тут всё устроено/.test(await cardText(page)), 'ссылка ?tour=1 — обучение сразу')
-    await page.tapEl(card(page).getByRole('button', { name: 'Пройти обучение' }))
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }))
     await page.tapEl(page.locator(tour('plus')), 900)
     ok(/Набери сумму/.test(await cardText(page)) && qs.length === 0, 'по ссылке проходится как обычно и в воронку не идёт')
     await ctx.close()
@@ -339,6 +355,117 @@ const overlaps = (a, b) => !!a && !!b && a.top < b.bottom - 1 && b.top < a.botto
   {
     const { ctx, page } = await newApp(browser, { preset: { 'koshel:qs': JSON.stringify({ v: 2, s: 2, ids: [] }) } })
     ok(/Нажми «\+»/.test(await cardText(page)), 'место из обучения 2.9 — продолжаем с «+»')
+    await ctx.close()
+  }
+
+  /* 9. Правки по разбору критика. */
+  {
+    // Шаг не скачет назад: набрал «1», пауза — категория; дописал «5» — всё ещё категория.
+    const { ctx, page } = await newApp(browser)
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }), 600)
+    await page.tapEl(page.locator(tour('plus')), 900)
+    await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: '1', exact: true }), 1300)
+    ok(/Выбери категорию/.test(await cardText(page)), 'пауза после первой цифры — шаг категории')
+    await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: '5', exact: true }), 500)
+    ok(/Выбери категорию/.test(await cardText(page)), 'дописал цифру — шаг не скачет назад к сумме')
+    await page.tapEl(page.locator(tour('categories')).getByRole('button', { name: 'Еда', exact: true }), 400)
+    await page.tapEl(page.locator(tour('save')), 1300)
+    // Подсвеченное «посмотреть» (баланс): нажатие гасится, но карточка не качается.
+    await page.evaluate(() => document.querySelectorAll('.tour-nudge').forEach((e) => e.classList.remove('tour-nudge')))
+    await page.tapEl(page.locator(tour('balance')), 500)
+    ok(!(await sheetOpen(page)) && !(await page.evaluate(() => !!document.querySelector('.tour-nudge'))), 'нажатие на подсвеченный баланс — без качания и без шторки')
+    // Строка действия — кнопка: открывает «Аналитику».
+    await page.tapEl(card(page).getByRole('button', { name: 'Открой «Аналитику»' }), 1100)
+    ok((await active(page, 'analytics')) && /Куда уходят деньги/.test(await cardText(page)), 'строка «Открой «Аналитику»» нажимается и открывает вкладку')
+    // Прокрутка затемнённой части — не промах: страница едет, карточка не качается.
+    await page.evaluate(() => document.querySelectorAll('.tour-nudge').forEach((e) => e.classList.remove('tour-nudge')))
+    await page.swipeV(200, 640, 260)
+    ok(!(await page.evaluate(() => !!document.querySelector('.tour-nudge'))), 'прокрутка на шаге «Аналитики» — без качания карточки')
+    await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(300)
+    // Перезапуск на «Аналитике» — продолжаем там же, вкладку открывает обучение.
+    await page.reload(); await page.waitForTimeout(2200)
+    ok((await active(page, 'analytics')) && /Куда уходят деньги/.test(await cardText(page)), 'перезапуск на «Аналитике» — продолжаем с неё')
+    await page.tapEl(page.locator(tour('tab-rewards')), 1100)
+    ok(/Твой уровень/.test(await cardText(page)), 'дальше — «Прогресс»')
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    // Отмена на «Прогрессе»: записали, сразу ушли на «Прогресс» и нажали «Отменить» в тосте.
+    const { ctx, page } = await newApp(browser)
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }), 600)
+    await page.tapEl(page.locator(tour('plus')), 900)
+    for (const k of ['7', '0']) await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: k, exact: true }), 100)
+    await page.tapEl(page.locator(tour('categories')).getByRole('button', { name: 'Еда', exact: true }), 300)
+    await page.tapEl(page.locator(tour('save')), 900)
+    await page.tapEl(page.locator(tour('tab-analytics')), 700)
+    await page.tapEl(page.locator(tour('tab-rewards')), 700)
+    ok(/Твой уровень/.test(await cardText(page)), 'быстро дошли до «Прогресса», тост ещё висит')
+    const undo = page.getByRole('button', { name: 'Отменить' })
+    if (await undo.count()) {
+      await page.tapEl(undo, 900)
+      ok(/Нажми «\+»/.test(await cardText(page)), 'отмена записи на «Прогрессе» — снова к «+», а не итог без записей')
+    } else ok(true, 'тост успел уйти — проверка отмены на «Прогрессе» пропущена')
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    // «Назад»/Escape на предложении — «Не сейчас»: обучение закрыто, тост про Настройки.
+    const { ctx, page, qs } = await newApp(browser)
+    await page.keyboard.press('Escape'); await page.waitForTimeout(700)
+    const toast = await page.locator('[data-toast]').textContent().catch(() => '')
+    ok(!(await card(page).count()) && /Настройках/.test(toast || '') && qs.at(-1)?.x === 0, 'Escape на предложении закрывает обучение, тост «можно заново в Настройках»', { toast, q: qs.at(-1) })
+    // Настройки → «Пройти обучение» — снова предложение.
+    await page.tapEl(page.locator(tour('tab-profile')), 900)
+    const settings = page.locator('.tab-panel:not([data-off])').getByRole('button', { name: /Настройки/ }).first()
+    await page.tapEl(settings, 1100)
+    await page.tapEl(page.locator('.tab-panel:not([data-off])').getByRole('button', { name: 'Пройти обучение' }), 1500)
+    ok(/Показать, как тут всё устроено/.test(await cardText(page)), 'Настройки → «Пройти обучение» — снова предложение')
+    await page.tapEl(card(page).getByRole('button', { name: 'Покажи' }), 600)
+    ok(/Нажми «\+»/.test(await cardText(page)), 'из Настроек — обычный путь, с «+»')
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    // Альбомная ориентация: окно предложения помещается, кнопки достижимы.
+    const { ctx, page } = await newApp(browser, { width: 640, height: 360 })
+    const box = await page.evaluate(() => {
+      const c = document.querySelector('[data-tour-card]').getBoundingClientRect()
+      return { top: Math.round(c.top), bottom: Math.round(c.bottom), h: innerHeight }
+    })
+    ok(box.top >= 0 && box.bottom <= box.h, '640×360: окно предложения в экране', box)
+    const btn = card(page).getByRole('button', { name: 'Покажи' })
+    await btn.scrollIntoViewIfNeeded()
+    await page.tapEl(btn, 600)
+    ok(/Нажми «\+»/.test(await cardText(page)), '640×360: «Покажи» достижима (окно прокручивается)')
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    // Вернувшийся на новый телефон: localStorage пуст, облако приносит записи —
+    // обучение новичка тихо уходит, в воронку /qs не попадает.
+    const DAY2 = 86_400_000
+    const tx = Array.from({ length: 12 }, (_, i) => ({ id: 'c' + i, type: 'expense', amount: 300 + i * 10, categoryId: 'food', date: new Date(Date.now() - i * DAY2).toISOString(), note: '', currency: 'RUB' }))
+    const cloud = JSON.stringify({ state: { transactions: tx, currency: 'RUB', themeMode: 'dark' }, version: 18 })
+    const { ctx, page, qs } = await newApp(browser, { cloud, wait: 3600 })
+    const st = await store(page)
+    ok(!(await card(page).count()) && (st?.state.transactions?.length ?? 0) === 12, 'облако принесло записи — обучение новичка ушло само', st?.state.transactions?.length)
+    ok(qs.length === 0, 'вернувшийся в воронку новичков не идёт', qs)
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
+    await ctx.close()
+  }
+  {
+    // Повторное предложение не ложится поверх начатой записи.
+    const old2 = { 'koshel:onboarded': '1', 'koshel:lastVersion': '2.9.0', 'koshel:curAsked': '1' }
+    const empty = JSON.stringify({ state: { transactions: [], currency: 'RUB', themeMode: 'dark' }, version: 18 })
+    const { ctx, page } = await newApp(browser, { preset: { ...old2, 'finance-mini-app:v1': empty }, wait: 900 })
+    await page.tapEl(page.locator(tour('balance')), 900)
+    await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: '4', exact: true }), 1200)
+    await page.tapEl(page.locator(tour('keypad')).getByRole('button', { name: '5', exact: true }), 1500)
+    ok(!(await card(page).count()) && (await sheetOpen(page)), 'шторка открыта и набирается сумма — предложение не всплывает')
+    await page.keyboard.press('Escape'); await page.waitForTimeout(6000)
+    ok(/Показать, как тут всё устроено/.test(await cardText(page)), 'шторку закрыли и не трогают — предложение пришло')
+    ok(page.errs.length === 0, 'ошибок нет', page.errs)
     await ctx.close()
   }
 

@@ -20,3 +20,5 @@ export const QS_KEY = 'koshel:qs'
 export const TOUR_DONE_KEY = 'koshel:tourDone'
 /** Повторные предложения обучения: сколько раз и в какой день последний раз. */
 export const TOUR_ASK_KEY = 'koshel:tourAsk'
+/** Событие окна: пройти обучение заново (Настройки → App). */
+export const TOUR_EVENT = 'koshel:tour'

@@ -67,6 +67,12 @@ export const RELEASES: ReleaseNote[] = [
           en: '“Ask Koshel”: ready-made questions for the assistant about your numbers — one tap and the answer is on its way',
         },
       },
+      {
+        text: {
+          ru: 'Обучение для новичков можно пройти заново — в Настройках. А само оно стало спокойнее: не дёргается от прокрутки, понимает «Назад» и помещается на любом экране',
+          en: 'You can retake the newcomer tour in Settings. The tour itself is calmer too: scrolling no longer jolts it, “Back” works, and it fits any screen',
+        },
+      },
     ],
   },
   {

@@ -205,6 +205,7 @@ const DICT: Dict = {
     en: 'Delete all operations? This cannot be undone.',
   },
   'settings.guide': { ru: 'Гайд по приложению', en: 'App guide' },
+  'settings.tour': { ru: 'Пройти обучение', en: 'Take the tour' },
   'settings.guide_hint': { ru: 'Все функции и как ими пользоваться', en: 'All features and how to use them' },
   /* Ассистент: вопросы про свои деньги прямо в приложении */
   'ai.title': { ru: 'Ассистент', en: 'Assistant' },

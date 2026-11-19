@@ -635,8 +635,11 @@ html.perf-low .tabbar-glass {
 /* ---------- Обучение новичка ----------
    Кольцо вокруг того, что нажать: позицию и размер ставит Tour, только когда
    они меняются (transform — на композиторе). Пульс — отдельный слой, scale на
-   --px/--py: расходится на ~9 px при любом размере кольца. Вспышка (::before)
-   — ответ на нажатие мимо подсветки. */
+   --px/--py: расходится на ~9 px при любом размере кольца; три раза на каждую
+   новую цель (класс .tour-pulse ставит Tour), не бесконечно: идущая анимация
+   заставляла браузер пересчитывать стили на каждом чтении рамок. Вспышка
+   (::before) — ответ на нажатие мимо подсветки; при «меньше движения» вместо
+   неё кольцо на миг ярче (.tour-lit). */
 .tour-ring {
   position: fixed;
   left: 0;
@@ -655,7 +658,8 @@ html.perf-low .tabbar-glass {
   box-shadow: 0 0 0 2px rgb(var(--brand-400));
   opacity: 0;
 }
-.tour-ring::after { animation: tour-pulse 1700ms var(--ease-out) infinite; }
+.tour-ring.tour-pulse::after { animation: tour-pulse 1700ms var(--ease-out) 3; }
+.tour-ring.tour-lit { box-shadow: 0 0 0 3px rgb(var(--brand-300)), 0 0 30px rgb(var(--brand-300) / 0.65); }
 @keyframes tour-pulse {
   0% { transform: scale(1); opacity: 0.85; }
   100% { transform: scale(var(--px, 1.1), var(--py, 1.1)); opacity: 0; }
@@ -693,6 +697,21 @@ html.perf-low .tabbar-glass {
   box-shadow: 0 0 0 1px var(--hairline), 0 18px 48px rgb(0 0 0 / 0.38);
   animation: tour-card-in 380ms var(--ease-out) both;
 }
+/* Окна (предложение, итог) на низком экране не должны уходить за край: в
+   альбомной ориентации кнопки оказывались за экраном, а выйти было нечем. */
+.tour-card[data-modal] {
+  max-height: calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 24px);
+  max-height: calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tour-plan > li + li { margin-top: 10px; }
+@media (max-height: 600px) {
+  .tour-card[data-modal] { padding: 16px; }
+  .tour-plan { margin-top: 10px; }
+  .tour-plan > li + li { margin-top: 6px; }
+  .tour-plan-icon { width: 28px; height: 28px; }
+}
 @keyframes tour-card-in {
   from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
 }
@@ -717,16 +736,12 @@ html.perf-low .tabbar-glass {
   45% { transform: translate3d(5px, 0, 0); }
   70% { transform: translate3d(-2px, 0, 0); }
 }
-.tour-bob { animation: tour-bob 1400ms var(--ease-in-out) infinite; }
-@keyframes tour-bob {
-  50% { transform: translate3d(0, 3px, 0); }
-}
 .tour-check { animation: tour-check 560ms var(--ease-spring) 120ms both; }
 @keyframes tour-check {
   from { transform: scale(0.3); opacity: 0; }
 }
-html.anim-paused .tour-ring::after, html.anim-paused .tour-bob { animation-play-state: paused; }
-html.perf-low .tour-ring::after, html.perf-low .tour-bob { animation: none; }
+html.anim-paused .tour-ring::after { animation-play-state: paused; }
+html.perf-low .tour-ring::after { animation: none; }
 
 /* ---------- Меньше движения ----------
    Человек попросил систему не двигать интерфейс — гасим всё декоративное.
@@ -746,7 +761,7 @@ html.perf-low .tour-ring::after, html.perf-low .tour-bob { animation: none; }
     animation: fx-fade 1300ms forwards;
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
-  .odo-roll, .tour-ring::after, .tour-ring::before, .tour-dim, .tour-out, .tour-card, .tour-swap, .tour-nudge, .tour-bob, .tour-check { animation: none !important; }
+  .odo-roll, .tour-ring::after, .tour-ring::before, .tour-dim, .tour-out, .tour-card, .tour-swap, .tour-nudge, .tour-check { animation: none !important; }
   .seg-pill, .reveal, .press, .press-soft, .press-icon, .keypad-fold, .keypad-fold > div > * { transition: none !important; }
   .skeleton { animation: none; }
 }

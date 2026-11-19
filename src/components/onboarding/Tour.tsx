@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react'
-import { ArrowDown, Bell, Check, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, X, type LucideProps } from 'lucide-react'
+import { ArrowDown, Bell, Check, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, type LucideProps } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { detectCurrency } from '../../lib/currencyDetect'
 import { reportQuickStart, setReminders } from '../../lib/api'
 import { QS_KEY, TOUR_DONE_KEY } from '../../lib/introKeys'
 import type { TourReason } from '../Intro'
 import { CURRENCY_ASKED_KEY } from '../../lib/currencyAsked'
-import { botCanWrite, canRequestBotWrite, hapticNotify, hapticTap, requestBotWrite, tg } from '../../lib/telegram'
+import { botCanWrite, canRequestBotWrite, hapticNotify, hapticTap, requestBotWrite, syncTelegramChrome, tg } from '../../lib/telegram'
+import { useBackButton } from '../../lib/useBackButton'
+import { showToast } from '../../lib/toast'
 import { UNMASK, clarityEvent, clarityKeep, clarityTag } from '../../lib/clarity'
 import { burst, prefersReducedMotion, replay } from '../../lib/fx'
 import { isLowEnd } from '../../lib/perf'
@@ -36,9 +38,20 @@ import { XP_PER_TRANSACTION } from '../../lib/levels'
  * палец замер (`data-value`), категория выбрана, операция в сторе, вкладка
  * открыта. Нажатия мимо подсветки гасим на document в фазе перехвата и
  * отвечаем на них: карточка качнётся, кольцо вспыхнет. Свободны карточка, тост
- * и шторки поверх шторки операции (валюта, новая категория). Свайп между
- * вкладками выключен: на карточке `aria-modal` (его проверяет движок свайпа).
+ * и шторки поверх шторки операции (валюта, новая категория). Отклик на нажатие
+ * мимо — только на короткое касание без сдвига (прокрутка — не промах) и не на
+ * то, что подсвечено «посмотреть». Свайп между вкладками выключен по
+ * `body[data-touring]` (его проверяет движок свайпа); `aria-modal` — только у
+ * предложения и итога: на шагах нужное действие — вне карточки, и экранный
+ * диктор не должен запирать фокус в ней. «Назад» Telegram и Escape: на
+ * предложении — «Не сейчас», на итоге — «Поехали», на шагах — выход.
  * Слой — z 55: над шторкой операции (51), под вложенными (60) и тостом (90).
+ *
+ * Цикл кадров засыпает, когда ~15 кадров ничего не менялось: чтение рамок при
+ * любой идущей CSS-анимации заставляет браузер пересчитывать стили каждый кадр
+ * (на «Прогрессе» — и раскладку). Будят его ввод, прокрутка, смена размера,
+ * начало анимаций и переходов, смена шага и стора; страховка — проверка раз в
+ * 400 мс. Пульс кольца — три раза на каждую новую цель, не бесконечно.
  *
  * Шаги в админку (/qs, `v: 2`): 0 предложили, 1 начали, 2 открыли запись,
  * 3 записали первую трату, 4 дошли до конца. Только у новичков: повторное
@@ -98,22 +111,27 @@ const STEPS: Record<Step, StepDef> = {
   balance: { spots: [{ names: ['balance'] }, { names: ['tab-analytics'], tap: at('tab-analytics') }], ring: 'tab-analytics', card: 0, chapter: 1 },
   analytics: { spots: [{ names: ['spent'] }, { names: ['tab-rewards'], tap: at('tab-rewards') }], ring: 'tab-rewards', card: 0, chapter: 2 },
   rewards: { spots: [{ names: ['level'] }, { names: ['tab-home'], tap: at('tab-home') }], ring: 'tab-home', card: 0, chapter: 3 },
-  done: { spots: [], card: 'modal', chapter: 4 },
+  // Итог: подсвечена кнопка ассистента в шапке Главной (есть только в Telegram).
+  done: { spots: tg.isInTelegram ? [{ names: ['assistant'] }] : [], card: 'modal', chapter: 4 },
 }
 const CHAPTERS = 4
+/** Куда ведёт строка действия карточки (её можно и нажать — это та же вкладка). */
+const NEXT_TAB: Partial<Record<Step, string>> = { balance: 'tab-analytics', analytics: 'tab-rewards', rewards: 'tab-home' }
 
 type Lang = 'ru' | 'en'
 const TEXT = {
   ru: {
     offerTitle: 'Привет! Я Кошель',
-    offerText: 'За минуту покажу главное. Ты сам запишешь первую трату, а я подскажу, куда нажимать.',
+    offerText: 'За минуту покажу главное: ты запишешь первую трату, а я подскажу, куда нажимать.',
     againTitle: 'Показать, как тут всё устроено?',
-    againText: 'Минута — и ты запишешь первую трату, а я подскажу, куда нажимать. С первой записи учёт идёт легче.',
+    againText: 'Минута — и ты запишешь первую трату, а я подскажу, куда нажимать.',
     plan: ['Запишешь первую трату', 'Поймёшь, как считается баланс', 'Увидишь, куда уходят деньги', 'Узнаешь про уровни и задания'],
-    start: 'Пройти обучение',
-    decline: 'Разберусь сам',
+    start: 'Покажи',
+    decline: 'Не сейчас',
     skip: 'Пропустить',
     skipLabel: 'Пропустить обучение',
+    again: 'Обучение можно пройти заново в Настройках',
+    chapter: 'Глава {n} из {all}',
     plusTitle: 'Нажми «+»',
     plusText: 'Так записывается любая трата или доход.',
     amountTitle: 'Набери сумму',
@@ -123,35 +141,38 @@ const TEXT = {
     saveTitle: 'Нажми «Записать расход»',
     saveText: 'Заметка и дата — по желанию.',
     balanceTitle: 'Первая запись!',
-    balanceExpense: 'Баланс уже её учёл. Доходы — тоже через «+»: сверху переключатель «Доход».',
-    balanceIncome: 'Баланс уже её учёл. Траты — тоже через «+»: сверху переключатель «Расход».',
+    balanceExpense: 'Баланс — это доходы минус расходы за месяц. Пока доходов нет, он в минусе. Зарплату запишешь так же: «+» → «Доход».',
+    balanceWithIncome: 'Баланс — это доходы минус расходы за месяц, и трата уже в нём. Доход записывается так же: «+» → «Доход».',
+    balanceIncome: 'Баланс — это доходы минус расходы за месяц. Траты записываются так же: «+» → «Расход».',
     toAnalytics: 'Открой «Аналитику»',
     analyticsTitle: 'Куда уходят деньги',
-    analyticsText: 'Итог месяца, а ниже — подсказки, категории, календарь и динамика. Чем больше записей, тем точнее прогноз и умнее подсказки.',
+    analyticsText: 'Сколько ушло за месяц, а ниже — категории и календарь. Чем больше записей, тем точнее прогноз.',
     toRewards: 'Загляни в «Прогресс»',
     rewardsTitle: 'Твой уровень',
-    rewardsText: 'За каждую запись — опыт и новые уровни. Задания дают бонус и монеты на обложки и рамки.',
+    rewardsText: 'За каждую запись — опыт и новые уровни. За задания — ещё и монеты: на них покупают обложки и рамки.',
     toHome: 'Вернись на «Главную»',
     doneTitle: 'Ты в деле!',
     doneText: 'Записывай траты сразу, как они случились, — так картина будет честной.',
     tipBot: 'Можно и сообщением боту: «Ушло 300 на кофе» — запишет сам.',
     tipAsk: 'Спроси ассистента: «Сколько ушло на кафе?» — кнопка вверху Главной.',
-    tipEdit: 'Ошибся — открой запись в списке на Главной и поправь.',
+    tipEdit: 'Ошибка в записи? Открой её в списке на Главной и поправь.',
     remindText: 'Напомню вечером, если за день не было ни одной записи.',
     remindOn: 'Напоминать вечером',
     remindOff: 'Не нужно',
-    finish: 'Начать',
+    finish: 'Поехали',
   },
   en: {
     offerTitle: 'Hey! I’m Koshel',
-    offerText: 'Let me show you the essentials in a minute. You’ll log your first expense yourself, and I’ll point to where to tap.',
+    offerText: 'Let me show you the essentials in a minute: you’ll log your first expense, and I’ll point to where to tap.',
     againTitle: 'Want a quick tour?',
-    againText: 'One minute: you’ll log an expense, and I’ll point to where to tap. Tracking gets easier after the first entry.',
+    againText: 'One minute: you’ll log an expense, and I’ll point to where to tap.',
     plan: ['Log your first expense', 'See how the balance works', 'See where your money goes', 'Learn about levels and quests'],
-    start: 'Take the tour',
-    decline: 'I’ll figure it out',
+    start: 'Show me',
+    decline: 'Not now',
     skip: 'Skip',
     skipLabel: 'Skip the tour',
+    again: 'You can take the tour again in Settings',
+    chapter: 'Chapter {n} of {all}',
     plusTitle: 'Tap “+”',
     plusText: 'That’s how you log any expense or income.',
     amountTitle: 'Type an amount',
@@ -161,20 +182,21 @@ const TEXT = {
     saveTitle: 'Tap “Save expense”',
     saveText: 'A note and a date are optional.',
     balanceTitle: 'First entry!',
-    balanceExpense: 'The balance already counts it. Income goes through “+” too — switch to “Income” at the top.',
-    balanceIncome: 'The balance already counts it. Expenses go through “+” too — switch to “Expense” at the top.',
+    balanceExpense: 'Balance is income minus expenses for the month. With no income yet, it’s in the red. Log your salary the same way: “+” → “Income”.',
+    balanceWithIncome: 'Balance is income minus expenses for the month, and this expense is already in it. Income goes the same way: “+” → “Income”.',
+    balanceIncome: 'Balance is income minus expenses for the month. Expenses go the same way: “+” → “Expense”.',
     toAnalytics: 'Open “Analytics”',
     analyticsTitle: 'Where the money goes',
-    analyticsText: 'Your month at a glance, and below — insights, categories, the calendar and trends. The more you log, the sharper the forecast and tips.',
+    analyticsText: 'What you spent this month, and below — categories and the calendar. The more you log, the sharper the forecast.',
     toRewards: 'Check out “Progress”',
     rewardsTitle: 'Your level',
-    rewardsText: 'Every entry earns XP and new levels. Quests give bonuses and coins for covers and frames.',
+    rewardsText: 'Every entry earns XP and new levels. Quests also give coins — spend them on covers and frames.',
     toHome: 'Back to “Home”',
     doneTitle: 'You’re all set!',
     doneText: 'Log expenses as they happen — that keeps the picture honest.',
     tipBot: 'Or just message the bot: “Spent 300 on coffee” — it logs it for you.',
     tipAsk: 'Ask the assistant: “How much went on cafes?” — the button at the top of Home.',
-    tipEdit: 'Made a mistake? Open the entry in the list on Home and fix it.',
+    tipEdit: 'Spotted a mistake? Open the entry in the list on Home and fix it.',
     remindText: 'I’ll remind you in the evening if a day has no entries.',
     remindOn: 'Remind me in the evening',
     remindOff: 'No thanks',
@@ -204,9 +226,10 @@ function readSaved(): { step: Step; id: string | null } {
     const id = typeof ids[0] === 'string' && have.has(ids[0]) ? ids[0] : null
     let step = name
     // Шторка после перезапуска закрыта — с «+». Запись есть — с баланса:
-    // приложение открывается на Главной, там и продолжим.
+    // приложение открывается на Главной, там и продолжим. Дошёл до «Аналитики»
+    // или «Прогресса» — с того же шага: вкладку Tour откроет сам.
     if (IN_SHEET.has(step)) step = 'plus'
-    if (id && step !== 'done') step = 'balance'
+    if (id && step !== 'done' && step !== 'analytics' && step !== 'rewards') step = 'balance'
     if (!id && step !== 'offer') step = 'plus'
     return { step, id }
   } catch {
@@ -298,8 +321,8 @@ const MAX_HOLES = 2
 const DUR = 460
 /** Пружина карточки: постоянная времени, мс. */
 const CARD_TAU = 80
-/** Палец замер на сумме — значит, набрал; пора к категории. */
-const SETTLE = 800
+/** Палец замер на сумме — значит, набрал; пора к категории. Назад к сумме — только если стёр её. */
+const SETTLE = 1000
 /** Зазор между карточкой и целью (под хвостик). */
 const GAP = 16
 const EDGE = 10
@@ -335,7 +358,7 @@ function ringRect(name: string, vw: number): Box | null {
 
 /** Тост «Записано · Отменить» — карточка его не закрывает. */
 function toastRect(): Box | null {
-  const t = document.querySelector('[role="status"] > div')
+  const t = document.querySelector('[data-toast]')
   if (!t) return null
   const b = t.getBoundingClientRect()
   return b.height > 0 ? { x: b.left, y: b.top, w: b.width, h: b.height, r: 0 } : null
@@ -390,11 +413,18 @@ function animate(a: Anim, key: string, target: Box | null, now: number, dur: num
     a.t0 = now
     a.had = !!target
   }
+  // Цели нет (ушла вместе со страницей, на новом шаге выреза нет) — вырез
+  // закрывается сразу: сжимаясь, он высвечивал случайный кусок новой страницы.
+  if (!target) {
+    a.cur = null
+    return null
+  }
   const p = dur > 0 ? ease(Math.min(1, (now - a.t0) / dur)) : 1
-  if (target) a.cur = p >= 1 ? target : mix(a.from ?? dot(target), target, p)
-  else a.cur = !a.from || p >= 1 ? null : mix(a.from, dot(a.from), p)
+  a.cur = p >= 1 ? target : mix(a.from ?? dot(target), target, p)
   return a.cur
 }
+/** Перетекание ещё идёт. */
+const moving = (a: Anim, now: number, dur: number) => !!a.cur && dur > 0 && now - a.t0 < dur
 
 type Side = '' | 'up' | 'down'
 /**
@@ -487,9 +517,12 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     }
   }
 
+  // Будильник цикла кадров (ставит цикл, см. ниже).
+  const wakeRef = useRef<() => void>(NOOP)
   const go = (next: Step) => {
     if (stepRef.current === next) return
     stepRef.current = next
+    wakeRef.current()
     // Баланс — на Главной: записали с другой вкладки — возвращаемся туда;
     // пролистали вниз — поднимаем к карточке.
     if (next === 'balance') {
@@ -517,8 +550,18 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   useEffect(() => {
     const s = REPORT[step]
     if (s === reported.current) return
-    reported.current = s
-    report({ s, e: recorded ? 1 : 0, i: false, v: 2 })
+    const send = () => {
+      reported.current = s
+      report({ s, e: recorded ? 1 : 0, i: false, v: 2 })
+    }
+    // Предложение — не сразу: вернувшемуся на новый телефон облако приносит
+    // записи через секунду-другую, и он не новичок (тихо уходим, см. ниже).
+    // Ответил раньше — следующий шаг покроет и «предложили» (воркер берёт max).
+    if (step !== 'offer') return send()
+    const id = window.setTimeout(() => {
+      if (!leavingRef.current && stepRef.current === 'offer') send()
+    }, 3000)
+    return () => clearTimeout(id)
   }, [step, recorded])
   // Пока идёт обучение, пустое место шторки клавиатуру не сворачивает.
   useEffect(() => {
@@ -541,11 +584,23 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           setRecorded(fresh.id)
           go('balance')
         }
-      } else if ((cur === 'balance' || cur === 'analytics') && recordedRef.current && !s.transactions.some((x) => x.id === recordedRef.current)) {
+      } else if (
+        (cur === 'balance' || cur === 'analytics' || cur === 'rewards' || cur === 'done') &&
+        recordedRef.current &&
+        !s.transactions.some((x) => x.id === recordedRef.current)
+      ) {
         recordedRef.current = null
         setRecorded(null)
         go('plus')
+      } else if (cur === 'offer' && reason !== 'link' && s.transactions.length > 0) {
+        // Облако принесло записи: это не новичок, а человек на новом телефоне
+        // (или с очищенным кэшем). Учебная «первая запись» легла бы в его
+        // настоящие данные — тихо уходим, без отчёта и тоста.
+        clarityEvent('onboarding_returning')
+        clearSaved()
+        leave()
       }
+      wakeRef.current()
     })
   }, [])
 
@@ -573,12 +628,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const exit = () => {
     if (leavingRef.current) return
     const s = REPORT[stepRef.current]
+    hapticTap()
     clarityEvent('onboarding_exit')
     clarityTag('onboarding_exit_at', stepRef.current)
     report({ s, e: recordedRef.current ? 1 : 0, i: false, x: s, v: 2 })
     applyRegion()
     clearSaved()
     leave()
+    // Выход без подтверждения — зато вернуться можно (Настройки → «Пройти обучение»).
+    showToast({ text: tx.again })
   }
   const start = () => {
     hapticTap()
@@ -591,12 +649,17 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const reminders = useStore((s) => s.remindersEnabled)
   const [askRemind] = useState(() => tg.isInTelegram && !botCanWrite() && canRequestBotWrite())
   const busy = useRef(false)
+  const [waiting, setWaiting] = useState(false)
   const finish = async (remind: boolean) => {
     if (busy.current || leavingRef.current) return
     busy.current = true
     if (askRemind) {
       if (remind) {
-        const granted = await Promise.race([requestBotWrite(), new Promise<boolean>((r) => setTimeout(() => r(false), 20_000))])
+        // Окно Telegram «разрешить боту писать»: пока ждём — кнопка занята;
+        // не ответил за 8 с (окно не пришло) — идём дальше без напоминаний.
+        setWaiting(true)
+        const granted = await Promise.race([requestBotWrite(), new Promise<boolean>((r) => setTimeout(() => r(false), 8_000))])
+        setWaiting(false)
         clarityEvent(granted ? 'bot_write_yes' : 'bot_write_no')
         if (granted) void setReminders(true)
         else useStore.getState().setRemindersEnabled(false)
@@ -617,6 +680,47 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     leave()
   }
 
+  // «Назад» Telegram и Escape — общая стопка: на предложении это «Не сейчас»,
+  // на итоге — «Поехали», на шагах — выход (шторка операции поверх ловит своё).
+  useBackButton(!leaving, () => (stepRef.current === 'done' ? void finish(false) : exit()), STEPS[step].card === 'modal')
+
+  // Шапка и нижняя полоса Telegram — под затемнение: в светлой теме зелёная
+  // шапка над тёмным экраном выглядела оторванной. Уходим — как было.
+  useEffect(() => {
+    const wa = tg.webApp
+    if (!wa) return
+    const dark = document.documentElement.classList.contains('dark')
+    const head = dark ? '#050505' : '#163B2C'
+    const bg = dark ? '#050505' : '#595957'
+    try {
+      wa.setHeaderColor(head)
+    } catch {
+      /* старый клиент */
+    }
+    try {
+      if (wa.setBottomBarColor && wa.isVersionAtLeast?.('7.10')) wa.setBottomBarColor(bg)
+    } catch {
+      /* старый клиент */
+    }
+    return () => syncTelegramChrome(document.documentElement.classList.contains('dark'))
+  }, [])
+
+  // Продолжение с «Аналитики» или «Прогресса»: приложение открылось на Главной —
+  // открываем нужную вкладку сами (панель вкладок могла ещё не встать).
+  useEffect(() => {
+    const name = stepRef.current === 'analytics' ? 'tab-analytics' : stepRef.current === 'rewards' ? 'tab-rewards' : ''
+    if (!name) return
+    let tries = 0
+    const id = window.setInterval(() => {
+      if (isCurrent(name) || ++tries > 20) clearInterval(id)
+      else if (find(name)) press(name)
+    }, 150)
+    return () => clearInterval(id)
+  }, [])
+
+  // Найденные цели держат узлы DOM — после ухода не держим.
+  useEffect(() => () => found.clear(), [])
+
   const maskRefs = useRef<(SVGRectElement | null)[]>([])
   const ringRef = useRef<HTMLDivElement>(null)
   const posRef = useRef<HTMLDivElement>(null)
@@ -626,12 +730,16 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const safeRef = useRef<HTMLDivElement>(null)
   // Высота карточки — из ResizeObserver: читать её каждый кадр незачем.
   const cardH = useRef(0)
+  const cardW = useRef(0)
   useLayoutEffect(() => {
     const card = cardRef.current
     if (!card) return
     cardH.current = card.offsetHeight
+    cardW.current = card.offsetWidth
     const ro = new ResizeObserver(() => {
       cardH.current = card.offsetHeight
+      cardW.current = card.offsetWidth
+      wakeRef.current()
     })
     ro.observe(card)
     return () => ro.disconnect()
@@ -659,6 +767,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     let lastAmount = -1
     let amountAt = 0
     let folded = false
+    // Кадр что-то записал или чего-то ждёт — значит, не спим.
+    let busy = false
+    let pulsedFor = ''
     // Безопасная зона (вырез, «чёлка», полоска жестов) — по невидимой рамке из CSS-переменных.
     const safe = { top: 0, bottom: 0 }
     const readSafe = () => {
@@ -684,6 +795,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             goneAt = 0
             go('plus')
           }
+          busy = true
           return
         }
         goneAt = 0
@@ -694,8 +806,11 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           amountAt = now
         }
         // Сумма есть и палец замер — к категории; выбрана — к «Записать».
-        // Стёр сумму — снова к клавишам: шаг идёт за формой в обе стороны.
-        const next: Step = amount <= 0 ? 'amount' : cat ? 'save' : now - amountAt >= SETTLE ? 'category' : 'amount'
+        // К клавишам — только если сумму стёрли до нуля: дописал цифру после
+        // паузы — остаёмся на категории (раньше шаг скакал туда-обратно).
+        const next: Step = amount <= 0 ? 'amount' : cat ? 'save' : cur !== 'amount' || now - amountAt >= SETTLE ? 'category' : 'amount'
+        // Ждём паузу после цифры — цикл не засыпает, иначе шаг опоздает.
+        if (next === 'amount' && amount > 0) busy = true
         if (next === 'category' && !folded) {
           folded = true
           foldKeypadIfCramped()
@@ -709,12 +824,17 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     }
 
     let raf = 0
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick)
+    let idle = 0
+    let sleeping = false
+    /** Один кадр: шаг, рамки, запись. Возвращает «что-то ещё идёт». */
+    const frame = (now: number): boolean => {
+      busy = false
       const dt = Math.min(50, Math.max(0, now - last))
       last = now
-      if (leavingRef.current) return
+      if (leavingRef.current) return false
+      const stepBefore = stepRef.current
       progress(now)
+      if (stepRef.current !== stepBefore) busy = true
       const def = STEPS[stepRef.current]
       const vw = innerWidth
       const vh = innerHeight
@@ -730,6 +850,10 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         shown.push(animate(holes[i], s ? s.names.join('+') : '', live[i] ?? null, now, dur))
       }
       const ringNow = animate(ring, def.ring ?? '', ringLive, now, dur)
+      if (ringNow && def.ring && pulsedFor !== def.ring) {
+        pulsedFor = def.ring
+        if (!reduce) replay(ringRef.current, 'tour-pulse')
+      }
 
       const keep = live.filter((b): b is Box => !!b)
       if (toast) keep.push(toast)
@@ -748,8 +872,17 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         scrolledStep = cur
         scrollToMakeRoom(anchor, safe.top)
       }
-      cardY = Number.isNaN(cardY) || reduce ? place.y : cardY + (place.y - cardY) * (1 - Math.exp(-dt / CARD_TAU))
+      // Больше трети экрана — переносим сразу (содержимое и так меняется
+      // с проявлением): пролетая 600 px, карточка на полпути висела посреди
+      // выезжающей шторки.
+      cardY =
+        Number.isNaN(cardY) || reduce || Math.abs(place.y - cardY) > vh / 3
+          ? place.y
+          : cardY + (place.y - cardY) * (1 - Math.exp(-dt / CARD_TAU))
       if (Math.abs(cardY - place.y) < 0.3) cardY = place.y
+      else busy = true
+      for (let i = 0; i < MAX_HOLES; i++) if (moving(holes[i], now, dur)) busy = true
+      if (moving(ring, now, dur)) busy = true
 
       // Запись — только если что-то сдвинулось.
       for (let i = 0; i < MAX_HOLES; i++) {
@@ -759,6 +892,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         const sig = b && b.w > 0.5 && b.h > 0.5 ? `${b.x.toFixed(1)} ${b.y.toFixed(1)} ${b.w.toFixed(1)} ${b.h.toFixed(1)} ${b.r.toFixed(1)}` : ''
         if (sig === wrote[i]) continue
         wrote[i] = sig
+        busy = true
         if (!b || !sig) {
           node.setAttribute('width', '0')
           node.setAttribute('height', '0')
@@ -776,6 +910,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         const sig = ringNow && ringNow.w > 1 && ringNow.h > 1 ? `${ringNow.x.toFixed(1)} ${ringNow.y.toFixed(1)} ${ringNow.w.toFixed(1)} ${ringNow.h.toFixed(1)} ${ringNow.r.toFixed(1)}` : ''
         if (sig !== wroteRing) {
           wroteRing = sig
+          busy = true
           if (!ringNow || !sig) rn.style.display = 'none'
           else {
             rn.style.display = ''
@@ -794,6 +929,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         const sig = cardY.toFixed(1)
         if (sig !== wroteCard) {
           wroteCard = sig
+          busy = true
           pos.style.transform = `translate3d(0, ${sig}px, 0)`
         }
       }
@@ -805,7 +941,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       }
       const tail = tailRef.current
       if (tail && anchor && place.side) {
-        const w = Math.min(vw - 32, 384)
+        const w = cardW.current || Math.min(vw - 32, 384)
         const x = Math.min(Math.max(anchor.x + anchor.w / 2 - (vw - w) / 2, 28), w - 28)
         const sig = x.toFixed(1)
         if (sig !== wroteTail) {
@@ -813,10 +949,45 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           tail.style.transform = `translateX(${(x - 8).toFixed(1)}px) rotate(45deg)`
         }
       }
+      return busy
     }
+    const tick = (now: number) => {
+      if (frame(now)) idle = 0
+      else idle += 1
+      // ~15 спокойных кадров — засыпаем до ввода, прокрутки или анимации.
+      if (idle >= 15 || leavingRef.current) {
+        sleeping = true
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    const wake = () => {
+      idle = 0
+      if (!sleeping || leavingRef.current) return
+      sleeping = false
+      last = performance.now()
+      raf = requestAnimationFrame(tick)
+    }
+    wakeRef.current = wake
+    // Будильники: ввод, прокрутка (и внутри шторки), размер, начало анимаций
+    // и переходов (шторка выезжает, тост, вкладка). Страховка — раз в 400 мс:
+    // один кадр без ожидания; что-то сдвинулось — просыпаемся.
+    const opts = { capture: true, passive: true } as const
+    const wakeOn = ['pointerdown', 'pointerup', 'keydown', 'input', 'transitionrun', 'animationstart'] as const
+    for (const type of wakeOn) document.addEventListener(type, wake, opts)
+    addEventListener('scroll', wake, opts)
+    addEventListener('resize', wake)
+    const poll = window.setInterval(() => {
+      if (sleeping && !leavingRef.current && frame(performance.now())) wake()
+    }, 400)
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
+      clearInterval(poll)
+      wakeRef.current = NOOP
+      for (const type of wakeOn) document.removeEventListener(type, wake, opts)
+      removeEventListener('scroll', wake, opts)
+      removeEventListener('resize', wake)
       removeEventListener('resize', readSafe)
     }
   }, [])
@@ -827,6 +998,14 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   useEffect(() => {
     if (leaving) return
     let nudgedAt = 0
+    // Касание мимо: где и когда началось. Отвечаем на отпускание — если палец
+    // почти не сдвинулся: прокрутка затемнённой части — не промах (раньше
+    // карточка качалась на каждую попытку пролистать «Аналитику»).
+    let down: { id: number; x: number; y: number; t: number; look: boolean } | null = null
+    // Подсвечено «посмотреть» (баланс, «Потрачено», уровень): нажатие гасим, но
+    // не ругаемся — человек делает ровно то, что просили.
+    const lookOnly = (target: EventTarget | null) =>
+      target instanceof Element && STEPS[stepRef.current].spots.some((s) => !s.tap && s.names.some((n) => !!target.closest(at(n))))
     const allowed = (target: EventTarget | null) => {
       if (free.current) return true
       if (!(target instanceof Element)) return false
@@ -841,17 +1020,42 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       e.stopPropagation()
       e.preventDefault()
       if (e.type !== 'pointerdown') return
+      const p = e as PointerEvent
+      down = { id: p.pointerId, x: p.clientX, y: p.clientY, t: performance.now(), look: lookOnly(e.target) }
+    }
+    const nudge = () => {
       const now = performance.now()
       if (now - nudgedAt < 450) return
       nudgedAt = now
       hapticTap()
+      if (prefersReducedMotion()) {
+        // Без движения: кольцо на миг ярче.
+        const ring = ringRef.current
+        ring?.classList.add('tour-lit')
+        window.setTimeout(() => ring?.classList.remove('tour-lit'), 420)
+        return
+      }
       replay(shellRef.current, 'tour-nudge')
       replay(ringRef.current, 'tour-flash')
     }
+    const up = (e: PointerEvent) => {
+      const d = down
+      down = null
+      if (!d || d.id !== e.pointerId || d.look) return
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || performance.now() - d.t > 700) return
+      nudge()
+    }
+    const cancel = () => {
+      down = null
+    }
     const types = ['click', 'pointerdown', 'mousedown'] as const
     for (const type of types) document.addEventListener(type, guard, true)
+    document.addEventListener('pointerup', up, true)
+    document.addEventListener('pointercancel', cancel, true)
     return () => {
       for (const type of types) document.removeEventListener(type, guard, true)
+      document.removeEventListener('pointerup', up, true)
+      document.removeEventListener('pointercancel', cancel, true)
     }
   }, [leaving])
 
@@ -866,6 +1070,13 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const def = STEPS[step]
   const modal = def.card === 'modal'
   const recordedType = recorded ? useStore.getState().transactions.find((x) => x.id === recorded)?.type : undefined
+  // «Пока доходов нет, он в минусе» — только если их в этом месяце и правда нет.
+  const incomeThisMonth = (() => {
+    const now = new Date()
+    return useStore
+      .getState()
+      .transactions.some((x) => x.type === 'income' && new Date(x.date).getMonth() === now.getMonth() && new Date(x.date).getFullYear() === now.getFullYear())
+  })()
   const compact: Partial<Record<Step, readonly [string, string]>> = {
     plus: [tx.plusTitle, tx.plusText],
     amount: [tx.amountTitle, tx.amountText],
@@ -873,11 +1084,12 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     save: [tx.saveTitle, tx.saveText],
   }
   const info: Partial<Record<Step, readonly [string, string, string]>> = {
-    balance: [tx.balanceTitle, recordedType === 'income' ? tx.balanceIncome : tx.balanceExpense, tx.toAnalytics],
+    balance: [tx.balanceTitle, recordedType === 'income' ? tx.balanceIncome : incomeThisMonth ? tx.balanceWithIncome : tx.balanceExpense, tx.toAnalytics],
     analytics: [tx.analyticsTitle, tx.analyticsText, tx.toRewards],
     rewards: [tx.rewardsTitle, tx.rewardsText, tx.toHome],
   }
-  const tips: Tip[] = [...(tg.isInTelegram ? ([[Send, tx.tipBot], [MessageCircle, tx.tipAsk]] as Tip[]) : []), [Pencil, tx.tipEdit]]
+  // Не больше двух советов: итог и так последний экран перед работой.
+  const tips: Tip[] = tg.isInTelegram ? [[Send, tx.tipBot], [MessageCircle, tx.tipAsk]] : [[Pencil, tx.tipEdit]]
   if (askRemind && reminders) tips.push([Bell, tx.remindText])
   const short = compact[step]
   const long = info[step]
@@ -903,8 +1115,10 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           <div
             ref={cardRef}
             data-tour-card
+            data-modal={modal ? '' : undefined}
             role="dialog"
-            aria-modal="true"
+            aria-modal={modal ? 'true' : undefined}
+            aria-labelledby="tour-title"
             aria-live="polite"
             {...UNMASK}
             className={`tour-card rounded-3xl bg-surface-raised ${modal ? 'p-5' : 'px-4 pb-3.5 pt-3'}`}
@@ -914,37 +1128,40 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             {/* Полоска глав — вне сменяемого содержимого: заливка переходит плавно. */}
             {!modal && (
               <>
-                <div className="relative mb-2.5 mr-8 flex gap-1" aria-hidden>
+                <div className="relative mb-2.5 mr-[92px] flex gap-1" aria-hidden>
                   {Array.from({ length: CHAPTERS }, (_, i) => (
                     <span
                       key={i}
-                      className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-brand-500' : 'bg-ink-subtle/20'}`}
+                      className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-brand-500' : 'bg-ink-subtle/[.35]'}`}
                     />
                   ))}
                 </div>
-                {/* Пропустить — крестик в углу: строка заголовка остаётся целиком тексту. */}
+                <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
+                {/* «Пропустить» словом, а не крестиком: «×» в приложении закрывает
+                    один слой, а здесь уходит всё обучение. Цель касания — 44 px. */}
                 <button
                   type="button"
                   onClick={exit}
                   aria-label={tx.skipLabel}
-                  title={tx.skip}
-                  className="press-icon absolute right-1.5 top-1.5 z-[1] flex h-8 w-8 items-center justify-center rounded-full text-ink-subtle"
+                  className="press-soft absolute right-1 top-0 z-[1] flex h-11 items-center rounded-full px-3 text-[13px] font-semibold text-ink-muted"
                 >
-                  <X size={17} strokeWidth={2.4} />
+                  {tx.skip}
                 </button>
               </>
             )}
             <div key={step} className="tour-swap relative">
               {step === 'offer' && (
                 <>
-                  <div className="text-[22px] font-extrabold leading-tight text-ink">{reason === 'new' ? tx.offerTitle : tx.againTitle}</div>
+                  <div id="tour-title" className="text-[22px] font-extrabold leading-tight text-ink">
+                    {reason === 'new' ? tx.offerTitle : tx.againTitle}
+                  </div>
                   <p className="mt-1.5 text-[15px] leading-snug text-ink-muted">{reason === 'new' ? tx.offerText : tx.againText}</p>
-                  <ol className="stagger mt-4 space-y-2.5">
+                  <ol className="tour-plan stagger mt-4">
                     {tx.plan.map((label, i) => {
                       const Icon = PLAN_ICONS[i]
                       return (
                         <li key={label} className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
+                          <span className="tour-plan-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
                             <Icon size={17} strokeWidth={2.4} />
                           </span>
                           <span className="text-[15px] font-semibold leading-snug text-ink">{label}</span>
@@ -956,7 +1173,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                     <button type="button" onClick={start} className="press-soft w-full rounded-full bg-brand-500 py-3.5 text-base font-bold text-white">
                       {tx.start}
                     </button>
-                    <button type="button" onClick={exit} className="press-soft w-full rounded-full py-2.5 text-sm font-semibold text-ink-subtle">
+                    <button type="button" onClick={exit} className="press-soft w-full rounded-full py-3 text-sm font-semibold text-ink-muted">
                       {tx.decline}
                     </button>
                   </div>
@@ -965,29 +1182,41 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
 
               {short && (
                 <>
-                  <div className="text-[17px] font-extrabold leading-tight text-ink">{short[0]}</div>
+                  <div id="tour-title" className="text-[17px] font-extrabold leading-tight text-ink">
+                    {short[0]}
+                  </div>
                   <p className="mt-0.5 text-[14px] leading-snug text-ink-muted">{short[1]}</p>
                 </>
               )}
 
               {long && (
                 <>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[17px] font-extrabold leading-tight text-ink">
+                  <div id="tour-title" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[17px] font-extrabold leading-tight text-ink">
                     {long[0]}
+                    {/* Опыт — нейтральной плашкой: зелёный здесь уже у кольца,
+                        полоски глав и действия, четвёртый акцент — лишний. */}
                     {step === 'balance' && (
-                      <span className="rounded-full bg-brand-500/[.14] px-2 py-0.5 text-[12px] font-extrabold text-brand-600 dark:text-brand-300">
-                        +{XP_PER_TRANSACTION} XP
-                      </span>
+                      <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[12px] font-extrabold text-ink-muted">+{XP_PER_TRANSACTION} XP</span>
                     )}
                   </div>
                   <p className="mt-1 text-[14px] leading-snug text-ink-muted">{long[1]}</p>
-                  {/* Что нажать дальше — кольцо уже на этой вкладке. */}
-                  <div className="mt-2.5 flex items-center gap-2 text-[14px] font-bold text-brand-600 dark:text-brand-300">
-                    <span className="tour-bob flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/[.14]">
+                  {/* Что нажать дальше — кольцо уже на этой вкладке. Строка выглядит
+                      как ссылка — пусть и работает как она: открывает ту же вкладку. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tab = NEXT_TAB[step]
+                      if (!tab) return
+                      hapticTap()
+                      press(tab)
+                    }}
+                    className="press-soft -mx-1 mt-1.5 flex min-h-[40px] items-center gap-2 rounded-full px-1 text-left text-[14px] font-bold text-brand-700 dark:text-brand-300"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/[.14]">
                       <ArrowDown size={14} strokeWidth={2.6} />
                     </span>
                     {long[2]}
-                  </div>
+                  </button>
                 </>
               )}
 
@@ -997,7 +1226,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                     <span ref={badgeRef} className="tour-check flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
                       <Check size={22} strokeWidth={3} />
                     </span>
-                    <div className="text-[22px] font-extrabold leading-tight text-ink">{tx.doneTitle}</div>
+                    <div id="tour-title" className="text-[22px] font-extrabold leading-tight text-ink">
+                      {tx.doneTitle}
+                    </div>
                   </div>
                   <p className="mt-2.5 text-[15px] leading-snug text-ink-muted">{tx.doneText}</p>
                   <ul className="stagger mt-3.5 space-y-2.5">
@@ -1013,10 +1244,22 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                   <div className="mt-5 flex flex-col gap-1.5">
                     {askRemind && reminders ? (
                       <>
-                        <button type="button" onClick={() => void finish(true)} className="press-soft w-full rounded-full bg-brand-500 py-3.5 text-base font-bold text-white">
+                        <button
+                          type="button"
+                          onClick={() => void finish(true)}
+                          disabled={waiting}
+                          aria-busy={waiting || undefined}
+                          className="press-soft flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3.5 text-base font-bold text-white disabled:opacity-80"
+                        >
+                          {waiting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
                           {tx.remindOn}
                         </button>
-                        <button type="button" onClick={() => void finish(false)} className="press-soft w-full rounded-full py-2.5 text-sm font-semibold text-ink-subtle">
+                        <button
+                          type="button"
+                          onClick={() => void finish(false)}
+                          disabled={waiting}
+                          className="press-soft w-full rounded-full py-3 text-sm font-semibold text-ink-muted"
+                        >
                           {tx.remindOff}
                         </button>
                       </>

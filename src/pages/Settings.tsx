@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Plus, BookOpen, ChevronDown, Check, Target } from 'lucide-react'
+import { Plus, BookOpen, ChevronDown, Check, Compass, Target } from 'lucide-react'
+import { TOUR_EVENT } from '../lib/introKeys'
 import {
   useStore,
   selectCategoriesByKind,
@@ -194,6 +195,13 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           title={t('settings.guide')}
           chevron
           onClick={() => { hapticTap(); setGuideOpen(true) }}
+        />
+        {/* Обучение заново: после «Пропустить» тост обещает, что оно здесь. */}
+        <Row
+          icon={<Compass size={18} strokeWidth={2} />}
+          title={t('settings.tour')}
+          chevron
+          onClick={() => { hapticTap(); dispatchEvent(new Event(TOUR_EVENT)) }}
         />
       </Group>
 
