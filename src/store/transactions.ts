@@ -20,7 +20,7 @@ import { demoTransactions } from '../lib/demo'
 import type { Lang } from '../lib/i18n'
 import { tg } from '../lib/telegram'
 import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
-import { buildOverview, buildRecurring, type Overview, type Recurring } from '../lib/overview'
+import { buildRecurring, type Recurring } from '../lib/recurring'
 import { buildMonthlySummary, previousMonthBounds, type MonthlySummary } from '../lib/monthly'
 import { dedupeKey } from '../lib/csvImport'
 
@@ -111,7 +111,7 @@ export interface Period {
   rangeEnd?: string
 }
 
-interface State {
+export interface State {
   transactions: Transaction[]
   /** Активный период просмотра */
   period: Period
@@ -383,7 +383,7 @@ const bumpEvent = (events: Record<string, number>, key: string): Record<string, 
 
 const todayISO = () => dayjs().format('YYYY-MM-DD')
 
-const UNIT: Record<Exclude<PeriodMode, 'all' | 'range'>, dayjs.ManipulateType> = {
+export const UNIT: Record<Exclude<PeriodMode, 'all' | 'range'>, dayjs.ManipulateType> = {
   day: 'day',
   week: 'week',
   month: 'month',
@@ -1404,7 +1404,7 @@ function sameResult(a: unknown, b: unknown): boolean {
   return true
 }
 
-function memo1<R>(fn: (s: State) => R, deps?: (s: State) => readonly unknown[]): (s: State) => R {
+export function memo1<R>(fn: (s: State) => R, deps?: (s: State) => readonly unknown[]): (s: State) => R {
   let lastState: State | undefined
   let lastDeps: readonly unknown[] | undefined
   let last: R
@@ -1438,7 +1438,7 @@ function memo1<R>(fn: (s: State) => R, deps?: (s: State) => readonly unknown[]):
  * параметров у нас перечислимы и их немного (вид операции, id категории,
  * гранулярность), так что расти ему некуда.
  */
-function memo2<P, R>(
+export function memo2<P, R>(
   fn: (s: State, p: P) => R,
   deps?: (s: State, p: P) => readonly unknown[],
 ): (s: State, p: P) => R {
@@ -1521,7 +1521,7 @@ export function selectBalance(s: State): number {
 }
 
 /** Валюта операции с фолбэком на глобальную (для старых записей без currency). */
-const txCurrency = (t: Transaction, s: State): Currency => t.currency ?? s.currency
+export const txCurrency = (t: Transaction, s: State): Currency => t.currency ?? s.currency
 
 /**
  * Список доступных «счетов» = валюты, встречающиеся в данных (для переключателя
@@ -1556,26 +1556,6 @@ export const selectAccountTransactions: (s: State) => Transaction[] = memo1(
 export function selectAnalyticsCurrency(s: State): Currency {
   return s.account ?? s.currency
 }
-
-function sumIncomeExpense(txs: Transaction[]): { income: number; expense: number } {
-  return txs.reduce(
-    (acc, t) => {
-      if (t.type === 'income') acc.income += t.amount
-      else acc.expense += t.amount
-      return acc
-    },
-    { income: 0, expense: 0 },
-  )
-}
-
-export const selectTotals: (s: State) => { income: number; expense: number } = memo1((s) =>
-  sumIncomeExpense(selectPeriodTransactions(s)),
-)
-
-/** Итоги периода по выбранному счёту (для диаграммы Аналитики). */
-export const selectAccountTotals: (s: State) => { income: number; expense: number } = memo1((s) =>
-  sumIncomeExpense(selectAccountTransactions(s)),
-)
 
 /** Общий баланс за всё время (доходы − расходы) — для целей с синхронизацией. */
 export const selectNetBalance: (s: State) => number = memo1((s) =>
@@ -1991,181 +1971,8 @@ export const selectBudgetMonthKept: (s: State) => number = memo1(
   (s) => [s.transactions, s.monthlyBudget],
 )
 
-/**
- * Расходы по дням периода, по возрастанию даты.
- *
- * Ключ — метка дня (число), а НЕ подпись «ДД.ММ»: раньше сортировка шла по
- * строке, и на периоде, пересекающем границу месяца, порядок ломался —
- * «01.08» вставало перед «29.07». А `DailyBars` берёт последние 14 записей
- * по порядку массива, то есть показывал не те дни.
- */
-function dailyExpense(txs: Transaction[]): { day: string; amount: number }[] {
-  const map = new Map<number, number>()
-  for (const t of txs) {
-    if (t.type !== 'expense') continue
-    const key = parseDay(t.date)
-    if (!Number.isFinite(key)) continue
-    map.set(key, (map.get(key) ?? 0) + t.amount)
-  }
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return [...map.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([key, amount]) => {
-      const d = new Date(key)
-      return { day: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`, amount }
-    })
-}
-
-export const selectDailyExpense: (s: State) => { day: string; amount: number }[] = memo1((s) =>
-  dailyExpense(selectPeriodTransactions(s)),
-)
-
-/** Расходы по дням для выбранного счёта (Аналитика). */
-export const selectDailyExpenseAccount: (s: State) => { day: string; amount: number }[] = memo1((s) =>
-  dailyExpense(selectAccountTransactions(s)),
-)
-
-/* ---------- Тренды (экран Графики) ---------- */
-
-export type TrendGranularity = 'day' | 'week' | 'month' | 'year'
-
-export interface TrendBucket {
-  label: string
-  income: number
-  expense: number
-}
-
-const TREND_COUNT: Record<TrendGranularity, number> = { day: 14, week: 12, month: 12, year: 5 }
-/** Меньше корзин на графике не оставляем, даже если данных совсем немного. */
-const TREND_MIN_BUCKETS = 4
-
-function trendLabel(d: Dayjs, g: TrendGranularity): string {
-  switch (g) {
-    case 'day':
-      return d.format('D.MM')
-    case 'week':
-      return d.startOf('week').format('D.MM')
-    case 'month':
-      return d.format('MMM')
-    case 'year':
-      return d.format('YYYY')
-  }
-}
-
-/** Параметр — гранулярность (строка), чтобы memo2 кэшировал по ключу. */
-export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = memo2((s, g) => {
-  const n = TREND_COUNT[g]
-  const unit: dayjs.ManipulateType = g
-  const now = dayjs()
-  const buckets = Array.from({ length: n }, (_, i) => {
-    const d = now.subtract(n - 1 - i, unit)
-    const start = d.startOf(unit)
-    return { start: +start, end: +start.add(1, unit), label: trendLabel(d, g), income: 0, expense: 0 }
-  })
-  // Счёт = валюта. Складывать разные валюты нечем (курсов в приложении нет),
-  // поэтому без выбранного счёта считаем основную валюту — ту же, в которой
-  // подписан график (selectAnalyticsCurrency).
-  const cur = s.account ?? s.currency
-  for (const t of activeTransactions(s)) {
-    if (txCurrency(t, s) !== cur) continue
-    const x = parseDay(t.date)
-    const b = buckets.find((bk) => x >= bk.start && x < bk.end)
-    if (!b) continue
-    if (t.type === 'income') b.income += t.amount
-    else b.expense += t.amount
-  }
-  // Пустое прошлое не рисуем: у нового пользователя из двенадцати месяцев
-  // одиннадцать были бы нулевыми, и график выглядел бы поломанным. Оставляем
-  // минимум четыре корзины, чтобы не схлопнуть его в один столбик.
-  const firstActive = buckets.findIndex((b) => b.income > 0 || b.expense > 0)
-  const visible = firstActive > 0 ? buckets.slice(Math.min(firstActive, buckets.length - TREND_MIN_BUCKETS)) : buckets
-
-  return visible.map(({ label, income, expense }) => ({ label, income, expense }))
-})
-
-/* ---------- Обзор (первый сегмент Аналитики) ---------- */
-
-/** Сколько прошлых периодов берём для «обычной нормы» категории. */
-const OVERVIEW_LOOKBACK = 3
 /** Глубина истории для поиска регулярных платежей. */
 const OVERVIEW_HISTORY_DAYS = 400
-
-/**
- * Границы предыдущих периодов такой же длины, свежайший первым.
- * Для «за всё время» предыдущего периода не существует — сравнивать не с чем.
- */
-function previousWindows(p: Period, n: number): { start: number; end: number }[] {
-  if (p.mode === 'all') return []
-  const out: { start: number; end: number }[] = []
-
-  if (p.mode === 'range') {
-    // Произвольный диапазон сдвигаем на собственную длину.
-    const { start, end } = periodBounds(p)
-    const len = +end - +start
-    for (let i = 1; i <= n; i++) out.push({ start: +start - len * i, end: +end - len * i })
-    return out
-  }
-
-  const unit = UNIT[p.mode]
-  for (let i = 1; i <= n; i++) {
-    const anchor = dayjs(p.anchor).subtract(i, unit).format('YYYY-MM-DD')
-    const { start, end } = periodBounds({ ...p, anchor })
-    out.push({ start: +start, end: +end })
-  }
-  return out
-}
-
-/**
- * Всё, что нужно вкладке «Обзор», одним объектом.
- *
- * Один селектор, а не десяток: экран показывает срез целиком, а каждая
- * отдельная подписка — это ещё один шанс разбудить дерево. Считает он больше
- * остальных, поэтому deps перечислены честно: без изменения данных, периода,
- * счёта или лимита тело не выполняется вовсе.
- */
-export const selectOverview: (s: State) => Overview = memo1(
-  (s) => {
-    const { start, end } = periodBounds(s.period)
-    // Одна валюта, как и везде: текущий период уже отфильтрован
-    // selectAccountTransactions, и прошлые окна должны считаться так же —
-    // иначе сравнение «стало/было» складывало бы разные валюты.
-    const cur = s.account ?? s.currency
-    const inAccount = (t: Transaction) => txCurrency(t, s) === cur
-    const all = activeTransactions(s)
-
-    const windows = previousWindows(s.period, OVERVIEW_LOOKBACK)
-    const previous: Transaction[][] = windows.map(() => [])
-
-    // Один проход по истории на все окна сразу: операций может быть тысячи.
-    for (const t of all) {
-      if (!inAccount(t)) continue
-      const x = parseDay(t.date)
-      if (!Number.isFinite(x)) continue
-      for (let i = 0; i < windows.length; i++) {
-        if (x >= windows[i].start && x < windows[i].end) {
-          previous[i].push(t)
-          break
-        }
-      }
-    }
-
-    return buildOverview({
-      current: selectAccountTransactions(s),
-      previous,
-      categories: selectAllCategories(s),
-      currency: selectAnalyticsCurrency(s),
-      startKey: localDayKey(+start),
-      endKey: localDayKey(+end),
-      now: Date.now(),
-      budget: s.monthlyBudget,
-      // Лимит месячный — на неделе или годе полоса врала бы.
-      budgetApplies: s.period.mode === 'month',
-      // «За всё время» — окно 1970…2100, реальных границ у него нет.
-      openEnded: s.period.mode === 'all',
-    })
-  },
-  (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
-)
 
 /**
  * Постоянные траты — то, что списывается каждый месяц одинаковой суммой.
@@ -2222,51 +2029,6 @@ export const selectMonthlySummary: (s: State) => MonthlySummary | null = memo1(
     })
   },
   (s) => [activeTransactions(s), s.customCategories, s.account, s.currency],
-)
-
-/* ---------- Помесячный след категории ---------- */
-
-/** Сколько месяцев показываем в карточке категории. */
-const CATEGORY_MONTHS = 6
-
-export interface CategoryMonth {
-  /** Короткая подпись месяца («авг.»). */
-  label: string
-  amount: number
-  /** Начало месяца — ключом для React и для сортировки. */
-  start: number
-}
-
-/**
- * Расходы категории по месяцам — «а как было раньше».
- *
- * Не зависит от выбранного периода: смысл именно в том, чтобы увидеть след
- * категории за полгода, каким бы месяцем ни листали Аналитику. Счёт при этом
- * учитывается — иначе в мультивалютном профиле сложились бы разные валюты.
- */
-export const selectCategoryMonths: (s: State, categoryId: string) => CategoryMonth[] = memo2(
-  (s, categoryId) => {
-    const now = dayjs().startOf('month')
-    const buckets = Array.from({ length: CATEGORY_MONTHS }, (_, i) => {
-      const d = now.subtract(CATEGORY_MONTHS - 1 - i, 'month')
-      return { start: +d, end: +d.add(1, 'month'), label: d.format('MMM'), amount: 0 }
-    })
-    const cur = s.account ?? s.currency
-    for (const t of activeTransactions(s)) {
-      if (t.type !== 'expense' || t.categoryId !== categoryId) continue
-      if (txCurrency(t, s) !== cur) continue
-      const x = parseDay(t.date)
-      if (!Number.isFinite(x)) continue
-      for (const b of buckets) {
-        if (x >= b.start && x < b.end) {
-          b.amount += t.amount
-          break
-        }
-      }
-    }
-    return buckets.map(({ label, amount, start }) => ({ label, amount, start }))
-  },
-  (s, categoryId) => [activeTransactions(s), s.account, s.currency, categoryId],
 )
 
 export { getCategory }

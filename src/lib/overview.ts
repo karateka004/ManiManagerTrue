@@ -1,13 +1,18 @@
 /**
- * Расчёты вкладки «Обзор» Аналитики.
+ * Расчёты вкладки «Аналитика»: показатели, подсказки, регулярные платежи.
  *
  * Модуль чистый: ничего не знает про стор и про React. На вход — уже отобранные
- * операции и границы окон, на выход — готовые числа и список наблюдений. Так
- * весь расчёт видно целиком в одном файле и его можно проверять отдельно.
+ * операции и границы окон, на выход — готовые числа и список подсказок. Так
+ * весь расчёт видно целиком в одном файле и его можно проверять отдельно
+ * (scripts/test-overview.mjs).
  *
  * Про «день» — везде localDayKey (локальная полночь), та же трактовка, что у
  * остальной аналитики; см. [[lib/day]]. Вторую здесь заводить нельзя, иначе
- * суммы в «Обзоре» разойдутся с кольцом «Расходов» на границе суток.
+ * суммы в «Обзоре» разойдутся с календарём на границе суток.
+ *
+ * Про сравнения (2.11). Неполный период сравнивается с прошлым К ТОМУ ЖЕ ДНЮ:
+ * 19 ноября — с 1–19 октября, а не со всем октябрём. Иначе середина любого
+ * месяца выглядела экономией («−46% к прошлому»), а начало — чудом.
  *
  * Про стоимость: считается один раз на изменение данных (селектор в сторе
  * держит deps), но проходов по истории здесь несколько, поэтому внутри циклов
@@ -17,7 +22,8 @@
 import type { Transaction } from '../store/transactions'
 import type { Category } from '../store/categories'
 import type { Currency } from './currencies'
-import { DAY_MS, daysBetween, localDayKey, nextDayKey, parseDay } from './day'
+import { daysBetween, localDayKey, nextDayKey, parseDay } from './day'
+import { recurringKey } from './recurring'
 
 /** Период длиннее — не строим разбивку по дням и прогноз (режим «за всё время»). */
 const MAX_DAILY_DAYS = 400
@@ -30,64 +36,16 @@ const MIN_DAYS_FOR_WEEKDAY = 14
  * операции за месяц рисуют «ритм» из одного столбика до потолка.
  */
 const MIN_SPENT_DAYS_FOR_WEEKDAY = 7
-/** Сколько категорий показываем в разбивке; остальные сворачиваются в «Прочее». */
-const TOP_CATEGORIES = 7
-/** Сколько самых дорогих операций показываем. */
+/** Сколько самых дорогих покупок показываем. */
 const TOP_BIGGEST = 3
-/** Больше карточек наблюдений не показываем — экран перестаёт читаться. */
-const MAX_INSIGHTS = 4
+/** Подсказок всего — больше экран не читается даже под «Ещё». */
+const MAX_INSIGHTS = 8
 /** Доля одной покупки в расходах периода, после которой о ней стоит сказать. */
 const ONE_OFF_SHARE = 25
 /** Меньше — это просто выходные, а не заслуга. */
 const NO_SPEND_MIN_DAYS = 3
-
-/* ---------- Регулярные платежи ---------- */
-
-/** Столько раз подряд — уже не совпадение. */
-const RECUR_MIN_TIMES = 3
-/** Сколько промежутков вправе выбиваться из месячного ритма. */
-const RECUR_MAX_OUTLIERS = 1
-/** Разрыв между списаниями, дней: «раз в месяц» с запасом на плавающую дату. */
-const RECUR_MIN_GAP = 25
-const RECUR_MAX_GAP = 36
-/**
- * Запас сверх обычного промежутка. Если списания нет дольше — платёж, видимо,
- * закончился (отписались, съехали), и в панели ему не место. Считаем от самого
- * промежутка, а не фиксированным числом дней: у платежа раз в месяц и у платежа
- * раз в пять недель терпение должно быть разным.
- */
-const RECUR_GRACE_DAYS = 12
-/** Глубина поиска регулярных платежей. */
-const RECUR_WINDOW_DAYS = 400
-/** Больше строк в панели постоянных трат не показываем. */
-const MAX_RECURRING = 6
-
-/** Повторяющийся платёж: одинаковая сумма в одной категории примерно раз в месяц. */
-export interface Recurring {
-  id: string
-  categoryId: string
-  name: string
-  color: string
-  icon: string
-  /**
-   * Как назвать строку. Самая частая заметка группы, иначе название категории:
-   * «Аренда» и «Бензин» узнаются, а две строки «Машина» подряд читаются как
-   * дубликат, хотя это разные платежи.
-   */
-  title: string
-  amount: number
-  currency: Currency
-  /** Сколько раз уже списывалось. */
-  times: number
-  /**
-   * Когда списание ожидается. Вперёд НЕ прокручиваем: если дата уже прошла,
-   * значит очередной платёж просто ещё не записан — на этом и держится
-   * подсказка «пора записать».
-   */
-  nextDay: number
-  /** Срок подошёл, а записи нет. */
-  due: boolean
-}
+/** Покупка больше такой доли гибких трат — разовая: темп прогноза она не задаёт. */
+const ONE_OFF_PACE_SHARE = 0.25
 
 export interface CatDelta {
   categoryId: string
@@ -95,28 +53,59 @@ export interface CatDelta {
   color: string
   icon: string
   amount: number
-  /** Сумма той же категории за прошлый период. */
+  /** С чем сравниваем: прошлый период целиком или к тому же дню (неполный). */
   prev: number
-  /** Изменение к прошлому периоду в процентах; null — сравнивать не с чем. */
+  /** Изменение в процентах; null — сравнивать не с чем. */
   deltaPct: number | null
-  /** Доля от расходов периода. */
+  /** Доля от расходов (доходов) периода. */
   pct: number
 }
 
-export type Insight =
-  /** Категория съела заметно больше, чем обычно за такой же период. */
-  | { id: string; kind: 'spike'; categoryId: string; name: string; color: string; icon: string; amount: number; pct: number }
-  /** Одна покупка забрала заметную долю всего месяца. */
-  | { id: string; kind: 'one_off'; name: string; color: string; amount: number; share: number }
-  /** Категория, которой в прошлые периоды не было вовсе. */
-  | { id: string; kind: 'new_cat'; categoryId: string; name: string; color: string; icon: string; amount: number }
-  /** Несколько дней подряд без единой траты. */
-  | { id: string; kind: 'no_spend'; days: number }
-  /** Самый дорогой день недели против самого дешёвого. */
-  | { id: string; kind: 'weekday'; day: number; avg: number; minDay: number; minAvg: number }
-  /** Прогноз против лимита или против прошлого периода. */
-  | { id: string; kind: 'budget'; over: boolean; rest: number }
-  | { id: string; kind: 'pace'; over: boolean; diff: number }
+interface InsightBase {
+  id: string
+  /** Вес: выше — важнее, сверху списка. */
+  score: number
+}
+interface CatRef {
+  categoryId: string
+  name: string
+  color: string
+  icon: string
+}
+
+export type Insight = InsightBase &
+  (
+    /** Прогноз против месячного лимита; perDayLeft — сколько можно в день, чтобы уложиться. */
+    | { kind: 'budget'; over: boolean; projected: number; budget: number; rest: number; perDayLeft: number; daysLeft: number }
+    /** Расходы обогнали доходы периода. */
+    | { kind: 'overspend'; diff: number }
+    /** К концу периода выйдет заметно больше (меньше), чем в прошлый раз. */
+    | { kind: 'pace'; over: boolean; diff: number; prev: number }
+    /** Категория заметно дороже обычного к этому дню. */
+    | ({ kind: 'spike'; amount: number; usual: number; pct: number } & CatRef)
+    /** Категория заметно дешевле обычного — повод себя похвалить. */
+    | ({ kind: 'drop'; amount: number; usual: number; pct: number } & CatRef)
+    /** Категория дорожает несколько завершённых периодов подряд. */
+    | ({ kind: 'trend'; values: number[] } & CatRef)
+    /** Одна покупка забрала заметную долю периода. */
+    | { kind: 'one_off'; categoryId: string; name: string; color: string; amount: number; share: number }
+    /** Категория, которой в прошлые периоды не было вовсе. */
+    | ({ kind: 'new_cat'; amount: number } & CatRef)
+    /** В выходные день обходится заметно дороже будней. */
+    | { kind: 'weekend'; ratio: number; weekend: number; weekday: number }
+    /** Самый дорогой день недели против самого дешёвого. */
+    | { kind: 'weekday'; day: number; avg: number; minDay: number; minAvg: number }
+    /** Мелочь складывается: много покупок до limit. */
+    | { kind: 'small'; count: number; total: number; limit: number; share: number }
+    /** Доля дохода, которая осталась. */
+    | { kind: 'savings'; rate: number; saved: number; prevRate: number | null }
+    /** Доходы в прошлые периоды записывались, а в этом их нет. */
+    | { kind: 'no_income' }
+    /** Несколько дней подряд без единой траты. */
+    | { kind: 'no_spend'; days: number }
+    /** Самый дорогой день периода. */
+    | { kind: 'peak_day'; key: number; amount: number; times: number }
+  )
 
 export interface Overview {
   currency: Currency
@@ -125,15 +114,29 @@ export interface Overview {
   endKey: number
   spent: number
   income: number
-  /** Расходы за прошлый период; null — сравнивать не с чем. */
+  /** Период закончился (прошлый месяц) — сравнения идут по полным периодам. */
+  complete: boolean
+  /** С чем сравниваем расходы: прошлый период к тому же дню (или целиком). */
   prevSpent: number | null
+  /** Прошлый период целиком — для подписи «в октябре всего…». */
+  prevSpentFull: number | null
   /** Изменение к прошлому периоду в процентах; null — сравнивать не с чем. */
   deltaPct: number | null
+  /** Доход прошлого периода целиком. */
+  prevIncome: number | null
   /** Расходы по каждому дню периода. Пусто для слишком длинных периодов. */
   daily: number[]
+  /** Доходы по каждому дню периода (та же длина, что daily). */
+  dailyIncome: number[]
   daysTotal: number
   /** Сколько дней периода уже прожито. Равно daysTotal для прошедших периодов. */
   daysPassed: number
+  /**
+   * Сколько из прожитых дней человек уже вёл учёт: начал записывать 15-го —
+   * дни с 1-го по 14-е не «без трат», а «ещё не записывал». По ним — средний
+   * день, дни без трат, темп прогноза и ритм недели.
+   */
+  daysTracked: number
   /** Прогноз на оставшиеся дни. Пусто, если период кончился или данных мало. */
   forecast: number[]
   /**
@@ -143,8 +146,17 @@ export interface Overview {
   spentToDate: number
   /** Средние расходы в день по прожитой части периода. */
   perDay: number
+  /** Обычный расход в день — медиана прошлых периодов; null — истории нет. */
+  usualPerDay: number | null
   /** Расходы к концу периода: прожитое плюс прогноз. */
   projected: number
+  /** Сколько покупок (трат) и средний чек; у прошлого периода — к тому же дню. */
+  expenseCount: number
+  avgCheck: number
+  prevAvgCheck: number | null
+  /** Прожитые дни без единой траты и такие дни подряд до сегодня. */
+  noSpendDays: number
+  noSpendStreak: number
   /**
    * В периоде смешаны валюты, а счёт не выбран — суммы складывать нельзя и
    * итог в шапке бессмысленен. Экран должен об этом сказать.
@@ -154,9 +166,11 @@ export interface Overview {
   budget: number
   /** Средние расходы по дням недели, пн…вс. Пусто для коротких периодов. */
   weekday: number[]
+  /** Все категории расходов, по убыванию, с изменением к прошлому. */
   categories: CatDelta[]
-  /** Сумма категорий за пределами топа — строка «Прочее» в потоке денег. */
-  categoriesRest: number
+  /** Категории доходов, по убыванию. */
+  incomeCategories: CatDelta[]
+  /** Крупные покупки — без регулярных платежей (аренда — не покупка). */
   biggest: Transaction[]
   insights: Insight[]
 }
@@ -166,6 +180,8 @@ export interface OverviewInput {
   current: Transaction[]
   /** Операции предыдущих периодов той же длины, свежайший первым. */
   previous: Transaction[][]
+  /** Границы предыдущих периодов (локальные полуночи), в том же порядке. */
+  previousBounds?: { start: number; end: number }[]
   categories: Category[]
   currency: Currency
   /** Границы текущего периода в локальных полуночах. */
@@ -182,16 +198,74 @@ export interface OverviewInput {
    * данных, см. buildOverview.
    */
   openEnded?: boolean
+  /** Ключи регулярных платежей (recurringKey): они не «разовые покупки». */
+  recurringKeys?: ReadonlySet<string>
+  /**
+   * Регулярные платежи, которых ждём: сумма и день (локальная полночь,
+   * Recurring.nextDay). День уже прошёл — платёж просрочен, ждём завтра.
+   * Прогноз кладёт их в свой день, а не размазывает по месяцу.
+   */
+  upcoming?: { amount: number; day: number }[]
+  /** Первый день учёта: локальная полночь самой ранней записи в этой валюте. */
+  firstDay?: number
 }
 
 /** День операции как локальная полночь. */
 const txDay = (t: Transaction) => parseDay(t.date)
 
-const sumExpense = (txs: Transaction[]) =>
-  txs.reduce((acc, t) => (t.type === 'expense' ? acc + t.amount : acc), 0)
+const median = (xs: number[]): number => {
+  if (!xs.length) return 0
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** Срез прошлого периода: целиком и к тому же дню, что прожит в текущем. */
+interface Window {
+  spent: number
+  spentToDate: number
+  income: number
+  count: number
+  countToDate: number
+  days: number
+  cats: Map<string, number>
+  catsToDate: Map<string, number>
+}
+
+function sliceWindow(txs: Transaction[], bounds: { start: number; end: number } | undefined, daysPassed: number): Window {
+  const w: Window = { spent: 0, spentToDate: 0, income: 0, count: 0, countToDate: 0, days: 0, cats: new Map(), catsToDate: new Map() }
+  const start = bounds?.start
+  let first = Infinity
+  let last = -Infinity
+  for (const t of txs) {
+    const d = txDay(t)
+    if (Number.isFinite(d)) {
+      if (d < first) first = d
+      if (d > last) last = d
+    }
+    if (t.type === 'income') {
+      w.income += t.amount
+      continue
+    }
+    w.spent += t.amount
+    w.count += 1
+    w.cats.set(t.categoryId, (w.cats.get(t.categoryId) ?? 0) + t.amount)
+    // Без начала окна «к тому же дню» не посчитать — считаем окно целиком.
+    const early = start === undefined || daysBetween(start, d) < daysPassed
+    if (early) {
+      w.spentToDate += t.amount
+      w.countToDate += 1
+      w.catsToDate.set(t.categoryId, (w.catsToDate.get(t.categoryId) ?? 0) + t.amount)
+    }
+  }
+  // Длина окна — по его границам; без них (проверки) — по самим данным.
+  w.days = bounds ? Math.max(1, daysBetween(bounds.start, bounds.end)) : first === Infinity ? 0 : daysBetween(first, last) + 1
+  return w
+}
 
 export function buildOverview(input: OverviewInput): Overview {
   const { current, previous, categories, currency, now, budget, budgetApplies, openEnded } = input
+  const recurringKeys = input.recurringKeys ?? new Set<string>()
 
   /* ---------- Окно периода ----------
      «За всё время» — это границы 1970…2100, а не дни, в которые человек жил.
@@ -216,9 +290,6 @@ export function buildOverview(input: OverviewInput): Overview {
     endKey = nextDayKey(last === -Infinity ? todayKey : Math.max(last, todayKey))
   }
 
-  const spent = sumExpense(current)
-  const income = current.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc), 0)
-
   // Складывать евро с рублями нельзя. Счёт не выбран и валют больше одной —
   // предупреждаем, вместо того чтобы молча показать сумму-бессмыслицу.
   let mixedCurrency = false
@@ -229,61 +300,123 @@ export function buildOverview(input: OverviewInput): Overview {
     }
   }
 
-  /* ---------- Сравнение с прошлым периодом ---------- */
-  const prevSpent = previous.length ? sumExpense(previous[0]) : null
-  const deltaPct = prevSpent && prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null
-
   /* ---------- Разбивка по дням ---------- */
   const daysTotal = Math.max(1, daysBetween(startKey, endKey))
   const trackDaily = daysTotal <= MAX_DAILY_DAYS
   const daily = trackDaily ? new Array<number>(daysTotal).fill(0) : []
+  const dailyIncome = trackDaily ? new Array<number>(daysTotal).fill(0) : []
+  // Регулярные платежи по дням: аренда пятого числа — не привычка тратить, и
+  // ни темп, ни ритм недели она задавать не должна.
+  const fixedDaily = trackDaily ? new Array<number>(daysTotal).fill(0) : []
 
-  if (trackDaily) {
-    for (const t of current) {
-      if (t.type !== 'expense') continue
-      const i = daysBetween(startKey, txDay(t))
-      if (i >= 0 && i < daysTotal) daily[i] += t.amount
+  let spent = 0
+  let income = 0
+  let expenseCount = 0
+  for (const t of current) {
+    if (t.type === 'income') income += t.amount
+    else {
+      spent += t.amount
+      expenseCount += 1
+    }
+    if (!trackDaily) continue
+    const i = daysBetween(startKey, txDay(t))
+    if (i >= 0 && i < daysTotal) {
+      if (t.type === 'income') dailyIncome[i] += t.amount
+      else {
+        daily[i] += t.amount
+        if (recurringKeys.has(recurringKey(t.categoryId, t.amount))) fixedDaily[i] += t.amount
+      }
     }
   }
 
   const todayKey = localDayKey(now)
   const daysPassed =
     todayKey >= endKey ? daysTotal : todayKey < startKey ? 0 : Math.min(daysTotal, daysBetween(startKey, todayKey) + 1)
+  const complete = daysPassed >= daysTotal
+  // С какого дня периода идёт учёт (индекс) и сколько таких дней уже прожито.
+  const trackFrom =
+    input.firstDay !== undefined && Number.isFinite(input.firstDay) && input.firstDay > startKey
+      ? Math.min(daysPassed, daysBetween(startKey, input.firstDay))
+      : 0
+  const daysTracked = daysPassed - trackFrom
 
-  /* ---------- Ритм недели ---------- */
+  /* ---------- Прошлые периоды: целиком и к тому же дню ---------- */
+  const windows = previous.map((txs, i) => sliceWindow(txs, input.previousBounds?.[i], daysPassed))
+  const filled = windows.filter((w) => w.spent > 0 || w.income > 0)
+  const prev0 = windows.length ? windows[0] : null
+
+  const spentToDate = trackDaily ? sumRange(daily, 0, daysPassed) : spent
+  const prevSpent = prev0 ? (complete ? prev0.spent : prev0.spentToDate) : null
+  const prevSpentFull = prev0 ? prev0.spent : null
+  const base = complete ? spent : spentToDate
+  const deltaPct = prevSpent && prevSpent > 0 ? ((base - prevSpent) / prevSpent) * 100 : null
+
+  /* ---------- Ритм недели ----------
+     Без регулярных платежей: аренда, списанная в четверг, делала четверг
+     «самым дорогим днём» на весь месяц — это не привычка, а дата договора. */
+  const habit = trackDaily ? daily.map((v, i) => v - fixedDaily[i]) : []
   let spentDays = 0
-  if (trackDaily) for (let i = 0; i < daysPassed; i++) if (daily[i] > 0) spentDays += 1
+  if (trackDaily) for (let i = trackFrom; i < daysPassed; i++) if (habit[i] > 0) spentDays += 1
   const weekday =
-    trackDaily && daysPassed >= MIN_DAYS_FOR_WEEKDAY && spentDays >= MIN_SPENT_DAYS_FOR_WEEKDAY
-      ? weekdayAverages(daily, startKey, daysPassed)
+    trackDaily && daysTracked >= MIN_DAYS_FOR_WEEKDAY && spentDays >= MIN_SPENT_DAYS_FOR_WEEKDAY
+      ? weekdayAverages(habit, startKey, trackFrom, daysPassed)
       : []
 
   /* ---------- Прогноз до конца периода ----------
      Темп считаем ТОЛЬКО по прожитым дням. Иначе записанная вперёд аренда
      задирает средний расход в день, а потом ещё раз добавляется прогнозом
      на тот же день — месяц «выходил» вдвое дороже, чем на самом деле. */
-  const spentToDate = trackDaily ? sumRange(daily, 0, daysPassed) : spent
-  const perDay = daysPassed > 0 ? spentToDate / daysPassed : 0
+  const perDay = daysTracked > 0 ? spentToDate / daysTracked : 0
+  // Прогноз — когда учёт идёт хотя бы три дня: по одной записи новичка
+  // «к концу месяца выйдет 553 ₽» — не прогноз, а шум.
   const forecast =
-    trackDaily && daysPassed >= MIN_DAYS_FOR_FORECAST && daysPassed < daysTotal
-      ? buildForecast(perDay, weekday, daily, startKey, daysPassed, daysTotal)
+    trackDaily && daysTracked >= MIN_DAYS_FOR_FORECAST && daysPassed < daysTotal
+      ? buildForecast({
+          pace: habitPace(current, recurringKeys, habit, startKey, daysPassed, daysTracked),
+          weekday,
+          habit,
+          fixed: fixedDaily,
+          upcoming: input.upcoming ?? [],
+          startKey,
+          todayKey,
+          daysPassed,
+          daysTotal,
+        })
       : []
   const projected = spentToDate + forecast.reduce((a, b) => a + b, 0)
+  // Обычный день — к тому же дню прошлых периодов: аренда пятого числа в
+  // неполном месяце делит на 19 дней, а в полном — на 31, и «средний день»
+  // в середине месяца всегда выходил бы дороже обычного.
+  const usualPerDay = filled.length
+    ? median(filled.filter((w) => w.days > 0).map((w) => (complete || daysPassed <= 0 ? w.spent / w.days : w.spentToDate / Math.min(daysPassed, w.days)))) || null
+    : null
 
-  /* ---------- Категории с дельтами ---------- */
+  /* ---------- Дни без трат ---------- */
+  let noSpendDays = 0
+  let noSpendStreak = 0
+  if (trackDaily) {
+    for (let i = trackFrom; i < daysPassed; i++) if (daily[i] === 0) noSpendDays += 1
+    for (let i = daysPassed - 1; i >= trackFrom && daily[i] === 0; i--) noSpendStreak += 1
+  }
+
+  /* ---------- Категории с изменениями ---------- */
   const byId = new Map(categories.map((c) => [c.id, c]))
-  const cur = totalsByCategory(current)
-  const prev = previous.length ? totalsByCategory(previous[0]) : new Map<string, number>()
-
-  const cats: CatDelta[] = [...cur.entries()]
+  const ref = (categoryId: string): CatRef => {
+    const c = byId.get(categoryId)
+    return { categoryId, name: c?.name ?? categoryId, color: c?.color ?? '#8A968F', icon: c?.icon ?? 'other' }
+  }
+  const curCats = new Map<string, number>()
+  const curInc = new Map<string, number>()
+  for (const t of current) {
+    const m = t.type === 'income' ? curInc : curCats
+    m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + t.amount)
+  }
+  const prevCats = prev0 ? (complete ? prev0.cats : prev0.catsToDate) : null
+  const cats: CatDelta[] = [...curCats.entries()]
     .map(([categoryId, amount]) => {
-      const c = byId.get(categoryId)
-      const was = prev.get(categoryId) ?? 0
+      const was = prevCats?.get(categoryId) ?? 0
       return {
-        categoryId,
-        name: c?.name ?? categoryId,
-        color: c?.color ?? '#8A968F',
-        icon: c?.icon ?? 'other',
+        ...ref(categoryId),
         amount,
         prev: was,
         deltaPct: was > 0 ? ((amount - was) / was) * 100 : null,
@@ -291,25 +424,44 @@ export function buildOverview(input: OverviewInput): Overview {
       }
     })
     .sort((a, b) => b.amount - a.amount)
-
-  const biggest = current
-    .filter((t) => t.type === 'expense')
+  const incomeCats: CatDelta[] = [...curInc.entries()]
+    .map(([categoryId, amount]) => ({ ...ref(categoryId), amount, prev: 0, deltaPct: null, pct: income > 0 ? (amount / income) * 100 : 0 }))
     .sort((a, b) => b.amount - a.amount)
-    .slice(0, TOP_BIGGEST)
+
+  // Крупные покупки — без регулярных платежей: аренда каждый месяц сверху
+  // списка ничего не сообщает, а «зимняя куртка» — сообщает.
+  const purchases = current.filter((t) => t.type === 'expense' && !recurringKeys.has(recurringKey(t.categoryId, t.amount)))
+  const biggest = purchases.sort((a, b) => b.amount - a.amount).slice(0, TOP_BIGGEST)
+
+  const avgCheck = expenseCount > 0 ? spent / expenseCount : 0
+  const prevCount = prev0 ? (complete ? prev0.count : prev0.countToDate) : 0
+  const prevAvgCheck = prev0 && prevCount > 0 && prevSpent !== null ? prevSpent / prevCount : null
 
   const insights = buildInsights({
     cats,
     biggest: biggest[0] ?? null,
     daily,
+    habit,
+    trackFrom,
+    startKey,
     daysPassed,
-    previous,
-    byId,
+    daysTotal,
+    complete,
+    windows,
     spent,
+    spentToDate,
+    perDay,
+    income,
+    expenseCount,
     weekday,
     forecast,
     projected,
-    prevSpent,
+    prevSpentFull,
+    current,
+    recurringKeys,
+    noSpendStreak,
     budget: budgetApplies ? budget : 0,
+    ref,
   })
 
   return {
@@ -317,21 +469,32 @@ export function buildOverview(input: OverviewInput): Overview {
     startKey,
     endKey,
     spent,
+    income,
+    complete,
     spentToDate,
     perDay,
-    income,
+    usualPerDay,
     mixedCurrency,
     prevSpent,
+    prevSpentFull,
     deltaPct,
+    prevIncome: prev0 ? prev0.income : null,
     daily,
+    dailyIncome,
     daysTotal,
     daysPassed,
+    daysTracked,
     forecast,
     projected,
+    expenseCount,
+    avgCheck,
+    prevAvgCheck,
+    noSpendDays,
+    noSpendStreak,
     budget: budgetApplies ? budget : 0,
     weekday,
-    categories: cats.slice(0, TOP_CATEGORIES),
-    categoriesRest: cats.slice(TOP_CATEGORIES).reduce((a, c) => a + c.amount, 0),
+    categories: cats,
+    incomeCategories: incomeCats,
     biggest,
     insights,
   }
@@ -345,25 +508,17 @@ const sumRange = (a: number[], from: number, to: number) => {
   return sum
 }
 
-function totalsByCategory(txs: Transaction[]): Map<string, number> {
-  const map = new Map<string, number>()
-  for (const t of txs) {
-    if (t.type !== 'expense') continue
-    map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount)
-  }
-  return map
-}
-
 /**
  * Средние расходы по дням недели за прожитую часть периода. Делим на число
  * ВСТРЕТИВШИХСЯ дней недели, а не на семь: в неполном месяце понедельников
  * может быть на один больше, чем воскресений.
  */
-function weekdayAverages(daily: number[], startKey: number, daysPassed: number): number[] {
+function weekdayAverages(daily: number[], startKey: number, from: number, daysPassed: number): number[] {
   const sum = new Array<number>(7).fill(0)
   const count = new Array<number>(7).fill(0)
   const cursor = new Date(startKey)
-  for (let i = 0; i < daysPassed; i++) {
+  cursor.setDate(cursor.getDate() + from)
+  for (let i = from; i < daysPassed; i++) {
     const w = (cursor.getDay() + 6) % 7
     sum[w] += daily[i]
     count[w] += 1
@@ -373,276 +528,379 @@ function weekdayAverages(daily: number[], startKey: number, daysPassed: number):
 }
 
 /**
- * Прогноз на оставшиеся дни. Не ровный средний темп, а средний темп, разложенный
- * по дням недели: суббота у большинства дороже понедельника, и ровная линия
- * читалась бы как «данных нет».
+ * Темп «гибких» трат в день — без регулярных платежей и без разовых крупных
+ * покупок. Аренда пятого числа, размазанная по месяцу, делала его вдвое
+ * дороже (к шестому числу темп — 9 000 в день вместо 3 500), а зимняя куртка
+ * объявляла, что куртки будут покупаться каждую неделю. Разовой считаем
+ * покупку, которая одна — больше четверти гибких трат; у новичка (меньше
+ * шести трат) — ничего не выкидываем, судить не по чему.
  */
-function buildForecast(
-  avgDaily: number,
-  weekday: number[],
-  daily: number[],
+function habitPace(
+  current: Transaction[],
+  recurringKeys: ReadonlySet<string>,
+  habit: number[],
   startKey: number,
   daysPassed: number,
-  daysTotal: number,
-): number[] {
+  daysTracked: number,
+): number {
+  if (daysTracked <= 0) return 0
+  const toDate = sumRange(habit, 0, daysPassed)
+  let count = 0
+  const big: number[] = []
+  for (const t of current) {
+    if (t.type !== 'expense' || recurringKeys.has(recurringKey(t.categoryId, t.amount))) continue
+    const i = daysBetween(startKey, txDay(t))
+    if (i < 0 || i >= daysPassed) continue
+    count += 1
+    if (t.amount >= toDate * ONE_OFF_PACE_SHARE) big.push(t.amount)
+  }
+  const oneOffs = count >= 6 ? big.reduce((a, b) => a + b, 0) : 0
+  return Math.max(0, toDate - oneOffs) / daysTracked
+}
+
+/**
+ * Прогноз на оставшиеся дни: гибкий темп, разложенный по дням недели (суббота
+ * у большинства дороже понедельника, а ровная линия читалась бы как «данных
+ * нет»), плюс регулярные платежи — в свой день: связь двенадцатого, фитнес
+ * двадцать второго. То, что уже записано наперёд, — факт, а не оценка.
+ */
+function buildForecast(x: {
+  pace: number
+  weekday: number[]
+  habit: number[]
+  fixed: number[]
+  upcoming: { amount: number; day: number }[]
+  startKey: number
+  todayKey: number
+  daysPassed: number
+  daysTotal: number
+}): number[] {
   // Коэффициенты дня недели со средним 1. Без данных о ритме — ровный темп.
   let factor = new Array<number>(7).fill(1)
-  const mean = weekday.length ? weekday.reduce((a, b) => a + b, 0) / 7 : 0
+  const mean = x.weekday.length ? x.weekday.reduce((a, b) => a + b, 0) / 7 : 0
   if (mean > 0) {
     // Обрезаем края: один разовый выброс не должен растягивать прогноз втрое.
-    factor = weekday.map((v) => Math.min(2, Math.max(0.4, v / mean)))
+    factor = x.weekday.map((v) => Math.min(2, Math.max(0.4, v / mean)))
+  }
+
+  // Ожидаемые платежи — по дням, каждый месяц до конца периода (в годе их
+  // одиннадцать, а не один); просроченный (срок прошёл, записи нет) — завтра.
+  const expected = new Array<number>(x.daysTotal - x.daysPassed).fill(0)
+  const endKey = shiftDay(x.startKey, x.daysTotal)
+  for (const u of x.upcoming) {
+    const dom = new Date(u.day).getDate()
+    let day = u.day
+    if (day <= x.todayKey) {
+      expected[0] += u.amount
+      while (day <= x.todayKey) day = nextMonthDay(day, dom)
+    }
+    for (; day < endKey; day = nextMonthDay(day, dom)) {
+      const i = daysBetween(x.startKey, day)
+      if (i >= x.daysPassed && i < x.daysTotal) expected[i - x.daysPassed] += u.amount
+    }
   }
 
   const out: number[] = []
-  const cursor = new Date(startKey)
-  cursor.setDate(cursor.getDate() + daysPassed)
-  for (let i = daysPassed; i < daysTotal; i++) {
-    // На день с уже записанной операцией прогноз не может быть НИЖЕ известной
-    // суммы: аренда, отмеченная вперёд, — это не оценка, а факт.
-    out.push(Math.max(daily[i] ?? 0, avgDaily * factor[(cursor.getDay() + 6) % 7]))
+  const cursor = new Date(x.startKey)
+  cursor.setDate(cursor.getDate() + x.daysPassed)
+  for (let i = x.daysPassed; i < x.daysTotal; i++) {
+    const usual = x.pace * factor[(cursor.getDay() + 6) % 7]
+    // Записанное наперёд не может оказаться НИЖЕ прогноза: это уже факт.
+    out.push(Math.max(x.habit[i] ?? 0, usual) + (x.fixed[i] ?? 0) + expected[i - x.daysPassed])
     cursor.setDate(cursor.getDate() + 1)
   }
   return out
 }
 
-/**
- * Все регулярные платежи: одна и та же сумма в одной категории, три и больше
- * раз, с промежутком около месяца, и последний раз — недавно.
- *
- * Совпадение суммы требуется ТОЧНОЕ. «Примерно столько же» ловило бы обычные
- * продукты, а подписка, аренда и связь списывают ровно одну и ту же цифру —
- * именно это и делает их узнаваемыми в ручных записях, без банка.
- *
- * Отсортированы по сумме убыв.: сверху то, что стоит дороже всего.
- */
-export function buildRecurring(
-  history: Transaction[],
-  now: number,
-  byId: Map<string, Category>,
-  fallbackCurrency: Currency,
-): Recurring[] {
-  const since = now - RECUR_WINDOW_DAYS * DAY_MS
-  const groups = new Map<string, { days: number[]; notes: Map<string, number>; currency: Currency }>()
+/** То же число через месяц; в коротком месяце — его последний день (31 → 30). */
+function nextMonthDay(key: number, dom: number): number {
+  const d = new Date(key)
+  d.setDate(1)
+  d.setMonth(d.getMonth() + 1)
+  d.setDate(Math.min(dom, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()))
+  d.setHours(0, 0, 0, 0)
+  return +d
+}
 
-  for (const t of history) {
-    if (t.type !== 'expense') continue
-    const at = parseDay(t.date)
-    if (!Number.isFinite(at) || at < since) continue
-    const key = t.categoryId + '|' + Math.round(t.amount * 100)
-    let g = groups.get(key)
-    if (!g) {
-      g = { days: [], notes: new Map(), currency: t.currency ?? fallbackCurrency }
-      groups.set(key, g)
-    }
-    g.days.push(at)
-    const note = t.note?.trim()
-    if (note) g.notes.set(note, (g.notes.get(note) ?? 0) + 1)
-  }
+/** День через n дней — через Date: в сутки перевода часов не 24 часа. */
+function shiftDay(key: number, n: number): number {
+  const d = new Date(key)
+  d.setDate(d.getDate() + n)
+  d.setHours(0, 0, 0, 0)
+  return +d
+}
 
-  const todayKey = localDayKey(now)
-  const out: Recurring[] = []
-
-  for (const [key, group] of groups) {
-    const rawDays = group.days
-    if (rawDays.length < RECUR_MIN_TIMES) continue
-    const days = [...new Set(rawDays)].sort((a, b) => a - b)
-    if (days.length < RECUR_MIN_TIMES) continue
-    const last = days[days.length - 1]
-
-    // Один промежуток может выпасть из месячного ритма — люди записывают
-    // задним числом и с опозданием. Требовать идеального ряда нельзя: тогда
-    // запись платежа, просроченного на полтора месяца, ломала бы группу и
-    // платёж исчезал бы из панели сразу после того, как его внесли.
-    let inRange = 0
-    let outliers = 0
-    let total = 0
-    for (let i = 1; i < days.length; i++) {
-      const step = daysBetween(days[i - 1], days[i])
-      if (step < RECUR_MIN_GAP || step > RECUR_MAX_GAP) {
-        outliers += 1
-        continue
-      }
-      inRange += 1
-      total += step
-    }
-    if (inRange < RECUR_MIN_TIMES - 1 || outliers > RECUR_MAX_OUTLIERS) continue
-
-    const gap = Math.round(total / inRange)
-    if (daysBetween(last, todayKey) > gap + RECUR_GRACE_DAYS) continue
-
-    const sep = key.lastIndexOf('|')
-    const categoryId = key.slice(0, sep)
-    const c = byId.get(categoryId)
-
-    const next = new Date(last)
-    next.setDate(next.getDate() + gap)
-
-    // Самая частая заметка группы; при равенстве — первая встреченная.
-    let title = ''
-    let best = 0
-    for (const [note, count] of group.notes) {
-      if (count > best) {
-        best = count
-        title = note
-      }
-    }
-
-    out.push({
-      id: key,
-      categoryId,
-      title,
-      name: c?.name ?? categoryId,
-      color: c?.color ?? '#8A968F',
-      icon: c?.icon ?? 'other',
-      amount: Number(key.slice(sep + 1)) / 100,
-      currency: group.currency,
-      times: days.length,
-      nextDay: +next,
-      due: +next <= todayKey,
-    })
-  }
-
-  return out.sort((a, b) => b.amount - a.amount).slice(0, MAX_RECURRING)
+/** Круглая граница «мелочи»: 1, 2, 5 × 10ⁿ — «до 500 ₽», а не «до 437 ₽». */
+function niceLimit(v: number): number {
+  if (v <= 0) return 0
+  const p = Math.pow(10, Math.floor(Math.log10(v)))
+  const m = v / p
+  return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p
 }
 
 interface InsightInput {
   cats: CatDelta[]
-  /** Самая крупная операция периода — для правила «одна покупка». */
+  /** Самая крупная покупка периода (без регулярных платежей). */
   biggest: Transaction | null
-  /** Расходы по дням прожитой части периода — для «дней без трат». */
+  /** Расходы по дням периода и где начало. */
   daily: number[]
+  /** То же без регулярных платежей. */
+  habit: number[]
+  /** С какого дня периода (индекс) идёт учёт. */
+  trackFrom: number
+  startKey: number
   daysPassed: number
-  previous: Transaction[][]
-  byId: Map<string, Category>
+  daysTotal: number
+  complete: boolean
+  windows: Window[]
   spent: number
+  spentToDate: number
+  perDay: number
+  income: number
+  /** Сколько трат в периоде: «одна покупка — 100%» у новичка ничего не значит. */
+  expenseCount: number
   weekday: number[]
   forecast: number[]
   projected: number
-  prevSpent: number | null
+  prevSpentFull: number | null
+  current: Transaction[]
+  recurringKeys: ReadonlySet<string>
+  noSpendStreak: number
   budget: number
+  ref: (categoryId: string) => CatRef
 }
 
+/**
+ * Подсказки. Каждое правило отвечает «на что обратить внимание» и получает вес;
+ * сверху — то, что требует действия (лимит, перерасход), ниже — наблюдения и
+ * поводы похвалить. Об одной категории говорим один раз — самым важным.
+ */
 function buildInsights(x: InsightInput): Insight[] {
   const out: Insight[] = []
+  const filled = x.windows.filter((w) => w.spent > 0)
+  const base = x.complete ? x.spent : x.spentToDate
+  const usualOf = (categoryId: string) =>
+    median(filled.map((w) => (x.complete ? w.cats : w.catsToDate).get(categoryId) ?? 0))
 
-  /* 1. Категория вышла за свою обычную норму. Сравниваем со средним по
-        предыдущим периодам, а не с одним прошлым: один аномальный месяц не
-        должен объявлять нормой сам себя. Нужно минимум два периода истории. */
-  const windows = x.previous.filter((w) => w.length > 0)
-  if (windows.length >= 2) {
-    const totals = windows.map(totalsByCategory)
-    let top: { cat: CatDelta; avg: number } | null = null
-    for (const cat of x.cats.slice(0, 3)) {
-      const avg = totals.reduce((a, m) => a + (m.get(cat.categoryId) ?? 0), 0) / totals.length
-      if (avg <= 0 || cat.amount < avg * 1.4) continue
-      // Превышение должно быть заметным на фоне всех расходов, а не «на 3 евро».
-      if (cat.amount - avg < x.spent * 0.05) continue
-      if (!top || cat.amount - avg > top.cat.amount - top.avg) top = { cat, avg }
+  /* 1. Куда придём к концу периода: к лимиту, если он задан. И сколько тогда
+        можно в день, чтобы уложиться, — это и есть совет, а не упрёк. */
+  const daysLeft = x.daysTotal - x.daysPassed
+  if (x.budget > 0 && x.forecast.length > 0) {
+    const over = x.projected > x.budget
+    out.push({
+      id: 'budget',
+      kind: 'budget',
+      score: over ? 96 : 30,
+      over,
+      projected: x.projected,
+      budget: x.budget,
+      rest: Math.abs(x.budget - x.projected),
+      perDayLeft: Math.max(0, x.budget - x.spentToDate) / Math.max(1, daysLeft),
+      daysLeft,
+    })
+  } else if (x.forecast.length > 0 && x.prevSpentFull && x.prevSpentFull > 0) {
+    const diff = x.projected - x.prevSpentFull
+    // Разница меньше десятой — это шум, говорить не о чем.
+    if (Math.abs(diff) > x.prevSpentFull * 0.1) {
+      out.push({ id: 'pace', kind: 'pace', score: diff > 0 ? 58 : 34, over: diff > 0, diff: Math.abs(diff), prev: x.prevSpentFull })
     }
-    if (top) {
+  }
+
+  /* 2. Расходы обогнали доходы. В идущем периоде — только если доход уже
+        пришёл в обычном объёме: иначе зарплата 25-го просто ещё впереди. */
+  const prevIncome = x.windows[0]?.income ?? 0
+  const incomeIn = x.complete || (prevIncome > 0 && x.income >= prevIncome * 0.9)
+  if (x.income > 0 && x.spent > x.income && incomeIn) {
+    out.push({ id: 'overspend', kind: 'overspend', score: 86, diff: x.spent - x.income })
+  } else if (x.income > 0 && incomeIn) {
+    /* 3. Сколько дохода осталось — повод похвалить, если откладывается заметная доля. */
+    const rate = ((x.income - x.spent) / x.income) * 100
+    const p = x.windows[0]
+    const prevRate = p && p.income > 0 ? ((p.income - p.spent) / p.income) * 100 : null
+    if (rate >= 10) {
       out.push({
-        id: 'spike:' + top.cat.categoryId,
-        kind: 'spike',
-        categoryId: top.cat.categoryId,
-        name: top.cat.name,
-        color: top.cat.color,
-        icon: top.cat.icon,
-        amount: top.cat.amount,
-        pct: ((top.cat.amount - top.avg) / top.avg) * 100,
+        id: 'savings',
+        kind: 'savings',
+        score: 36 + (prevRate !== null && rate - prevRate >= 5 ? 8 : 0),
+        rate,
+        saved: x.income - x.spent,
+        prevRate,
       })
     }
   }
 
-  /* 2. Одна покупка забрала заметную долю месяца. Полезно рядом со скачком
-        категории: объясняет, что месяц испортил не образ жизни, а один чек. */
-  if (x.biggest && x.spent > 0) {
+  /* 4. Доходы раньше записывались, а сейчас их нет: остаток врёт. */
+  if (!x.complete && x.income === 0 && x.daysPassed >= 10 && x.windows.some((w) => w.income > 0) && x.spentToDate > 0) {
+    out.push({ id: 'no_income', kind: 'no_income', score: 44 })
+  }
+
+  /* 5. Категория вышла за свою норму (медиана прошлых периодов к тому же
+        дню). Нужно минимум два периода истории: один аномальный месяц не
+        должен объявлять нормой сам себя. И обратное — заметно меньше обычного. */
+  if (filled.length >= 2) {
+    // Не больше двух всплесков и одного падения — самых крупных в деньгах.
+    const spikes: { cat: CatDelta; usual: number; excess: number }[] = []
+    for (const cat of x.cats.slice(0, 6)) {
+      const usual = usualOf(cat.categoryId)
+      // Изменение должно быть заметным на фоне всех расходов, а не «на 3 евро».
+      if (usual > 0 && cat.amount >= usual * 1.4 && cat.amount - usual >= base * 0.05) {
+        spikes.push({ cat, usual, excess: cat.amount - usual })
+      }
+    }
+    for (const { cat, usual } of spikes.sort((a, b) => b.excess - a.excess).slice(0, 2)) {
+      const pct = ((cat.amount - usual) / usual) * 100
+      out.push({ id: 'spike:' + cat.categoryId, kind: 'spike', score: 70 + Math.min(15, pct / 20), ...x.ref(cat.categoryId), amount: cat.amount, usual, pct })
+    }
+    let drop: { categoryId: string; usual: number; amount: number } | null = null
+    for (const [categoryId] of filled[0].cats) {
+      const usual = usualOf(categoryId)
+      const amount = x.cats.find((c) => c.categoryId === categoryId)?.amount ?? 0
+      if (usual <= 0 || amount > usual * 0.6 || usual - amount < base * 0.05) continue
+      if (!drop || usual - amount > drop.usual - drop.amount) drop = { categoryId, usual, amount }
+    }
+    if (drop) {
+      const pct = ((drop.usual - drop.amount) / drop.usual) * 100
+      out.push({ id: 'drop:' + drop.categoryId, kind: 'drop', score: 32, ...x.ref(drop.categoryId), amount: drop.amount, usual: drop.usual, pct })
+    }
+  }
+
+  /* 6. Категория дорожает три завершённых периода подряд — тренд, а не всплеск. */
+  if (x.windows.length >= 3 && x.windows.every((w) => w.spent > 0)) {
+    const [w0, w1, w2] = x.windows
+    let best: { categoryId: string; values: number[]; growth: number } | null = null
+    for (const [categoryId, a0] of w0.cats) {
+      const a1 = w1.cats.get(categoryId) ?? 0
+      const a2 = w2.cats.get(categoryId) ?? 0
+      if (a2 <= 0 || a1 < a2 * 1.1 || a0 < a1 * 1.1 || a0 < w0.spent * 0.05) continue
+      const growth = a0 / a2
+      if (!best || growth > best.growth) best = { categoryId, values: [a2, a1, a0], growth }
+    }
+    if (best) out.push({ id: 'trend:' + best.categoryId, kind: 'trend', score: 50, ...x.ref(best.categoryId), values: best.values })
+  }
+
+  /* 7. Одна покупка забрала заметную долю периода. Регулярные платежи — не
+        покупки: аренда и так каждый месяц самая крупная. */
+  if (x.biggest && x.spent > 0 && x.expenseCount >= 6) {
     const share = (x.biggest.amount / x.spent) * 100
     if (share >= ONE_OFF_SHARE) {
-      const c = x.byId.get(x.biggest.categoryId)
+      const c = x.ref(x.biggest.categoryId)
       out.push({
         id: 'one_off:' + x.biggest.id,
         kind: 'one_off',
-        name: x.biggest.note?.trim() || c?.name || x.biggest.categoryId,
-        color: c?.color ?? '#8A968F',
+        score: 54,
+        categoryId: c.categoryId,
+        name: x.biggest.note?.trim() || c.name,
+        color: c.color,
         amount: x.biggest.amount,
         share,
       })
     }
   }
 
-  /* 3. Самый дорогой день недели против самого дешёвого.
-        Дешёвым считаем самый дешёвый ИЗ НЕПУСТЫХ: в неполном месяце какой-то
-        день недели легко оказывается нулевым, и сравнение «78 € против 0 €»
-        ничего не сообщает. Если непустых дней меньше четырёх — ритма ещё нет. */
-  if (x.weekday.length === 7) {
-    let hi = 0
-    let lo = -1
-    let filled = 0
-    for (let i = 0; i < 7; i++) {
-      if (x.weekday[i] > x.weekday[hi]) hi = i
-      if (x.weekday[i] > 0) {
-        filled += 1
-        if (lo < 0 || x.weekday[i] < x.weekday[lo]) lo = i
-      }
-    }
-    if (filled >= 4 && lo >= 0 && hi !== lo && x.weekday[hi] >= x.weekday[lo] * 1.5) {
-      out.push({ id: 'weekday', kind: 'weekday', day: hi, avg: x.weekday[hi], minDay: lo, minAvg: x.weekday[lo] })
-    }
-  }
-
-  /* 4. Куда придём к концу периода: к лимиту, если он задан, иначе к прошлому. */
-  if (x.forecast.length > 0) {
-    if (x.budget > 0) {
-      out.push({ id: 'budget', kind: 'budget', over: x.projected > x.budget, rest: Math.abs(x.budget - x.projected) })
-    } else if (x.prevSpent && x.prevSpent > 0) {
-      const diff = x.projected - x.prevSpent
-      // Разница меньше десятой — это шум, говорить не о чем.
-      if (Math.abs(diff) > x.prevSpent * 0.1) {
-        out.push({ id: 'pace', kind: 'pace', over: diff > 0, diff: Math.abs(diff) })
-      }
-    }
-  }
-
-  /* 5. Категория, которой раньше не было вовсе. Часто это разовая история
+  /* 8. Категория, которой раньше не было вовсе. Часто это разовая история
         (переезд, лечение), и человеку полезно увидеть её отдельной строкой. */
-  if (windows.length >= 2) {
-    const totals = windows.map(totalsByCategory)
-    // Если про эту категорию уже сказано (скачок или разовая покупка) —
-    // второй карточкой повторяться незачем.
-    const told = new Set<string>()
-    for (const i of out) {
-      if (i.kind === 'spike') told.add(i.categoryId)
-      if (i.kind === 'one_off' && x.biggest) told.add(x.biggest.categoryId)
-    }
+  if (filled.length >= 2) {
     for (const cat of x.cats.slice(0, 3)) {
-      if (told.has(cat.categoryId)) continue
-      if (totals.some((m) => (m.get(cat.categoryId) ?? 0) > 0)) continue
+      if (filled.some((w) => (w.cats.get(cat.categoryId) ?? 0) > 0)) continue
       if (cat.amount < x.spent * 0.08) continue
-      out.push({
-        id: 'new_cat:' + cat.categoryId,
-        kind: 'new_cat',
-        categoryId: cat.categoryId,
-        name: cat.name,
-        color: cat.color,
-        icon: cat.icon,
-        amount: cat.amount,
-      })
+      out.push({ id: 'new_cat:' + cat.categoryId, kind: 'new_cat', score: 25, ...x.ref(cat.categoryId), amount: cat.amount })
       break
     }
   }
 
-  /* 6. Дни подряд без трат — единственное наблюдение, которым приятно
-        похвастаться. Считаем от последнего прожитого дня назад. */
-  // Без разбивки по дням (слишком длинное окно) считать нечего: чтение пустого
-  // массива давало бы «столько дней без трат, сколько длится период».
-  if (x.daily.length > 0) {
-    let free = 0
-    for (let i = Math.min(x.daysPassed, x.daily.length) - 1; i >= 0; i--) {
-      if (x.daily[i] > 0) break
-      free += 1
+  /* 9. Выходные против будней: обычный (медианный) день, а не сумма — суббот
+        меньше, и одна крупная покупка во вторник не должна переворачивать вывод. */
+  if (x.habit.length > 0) {
+    const we: number[] = []
+    const wd: number[] = []
+    const cursor = new Date(x.startKey)
+    cursor.setDate(cursor.getDate() + x.trackFrom)
+    for (let i = x.trackFrom; i < Math.min(x.daysPassed, x.habit.length); i++) {
+      const dow = cursor.getDay()
+      ;(dow === 0 || dow === 6 ? we : wd).push(x.habit[i])
+      cursor.setDate(cursor.getDate() + 1)
     }
-    if (free >= NO_SPEND_MIN_DAYS) out.push({ id: 'no_spend', kind: 'no_spend', days: free })
+    const weDay = median(we)
+    const wdDay = median(wd)
+    if (we.length >= 4 && wd.length >= 8 && wdDay > 0 && weDay >= wdDay * 1.6) {
+      out.push({ id: 'weekend', kind: 'weekend', score: 40 + Math.min(10, (weDay / wdDay - 1.6) * 10), ratio: weDay / wdDay, weekend: weDay, weekday: wdDay })
+    }
   }
 
-  return out.slice(0, MAX_INSIGHTS)
+  /* 10. Самый дорогой день недели против самого дешёвого — если про выходные
+         уже не сказано. Дешёвым считаем самый дешёвый ИЗ НЕПУСТЫХ: в неполном
+         месяце какой-то день недели легко оказывается нулевым. */
+  if (x.weekday.length === 7 && !out.some((i) => i.kind === 'weekend')) {
+    let hi = 0
+    let lo = -1
+    let filledDays = 0
+    for (let i = 0; i < 7; i++) {
+      if (x.weekday[i] > x.weekday[hi]) hi = i
+      if (x.weekday[i] > 0) {
+        filledDays += 1
+        if (lo < 0 || x.weekday[i] < x.weekday[lo]) lo = i
+      }
+    }
+    if (filledDays >= 4 && lo >= 0 && hi !== lo && x.weekday[hi] >= x.weekday[lo] * 1.5) {
+      out.push({ id: 'weekday', kind: 'weekday', score: 20, day: hi, avg: x.weekday[hi], minDay: lo, minAvg: x.weekday[lo] })
+    }
+  }
+
+  /* 11. Мелочь складывается: кофе и шоколадки по отдельности не видны, а
+         вместе — как одна крупная покупка. Граница — круглая и от своего
+         среднего дня, а не одна на всех: 300 ₽ и 3 € — разная «мелочь». */
+  if (x.perDay > 0) {
+    const limit = niceLimit(x.perDay * 0.15)
+    let count = 0
+    let total = 0
+    for (const t of x.current) {
+      if (t.type !== 'expense' || t.amount > limit) continue
+      if (x.recurringKeys.has(recurringKey(t.categoryId, t.amount))) continue
+      count += 1
+      total += t.amount
+    }
+    const share = x.spent > 0 ? (total / x.spent) * 100 : 0
+    if (limit > 0 && count >= 10 && share >= 3) out.push({ id: 'small', kind: 'small', score: 34 + Math.min(8, share / 2), count, total, limit, share })
+  }
+
+  /* 12. Самый дорогой день периода — если он заметно выше обычного дня и это
+         не та же разовая покупка, о которой уже сказано. */
+  if (x.daily.length > 0 && x.daysPassed >= 7) {
+    let peak = -1
+    const nonZero: number[] = []
+    for (let i = 0; i < Math.min(x.daysPassed, x.daily.length); i++) {
+      if (x.daily[i] <= 0) continue
+      nonZero.push(x.daily[i])
+      if (peak < 0 || x.daily[i] > x.daily[peak]) peak = i
+    }
+    const usualDay = median(nonZero)
+    if (peak >= 0 && usualDay > 0) {
+      const amount = x.daily[peak]
+      const times = amount / usualDay
+      const key = shiftDay(x.startKey, peak)
+      const sameAsOneOff = x.biggest && parseDay(x.biggest.date) === key && out.some((i) => i.kind === 'one_off')
+      // День аренды — самый дорогой каждый месяц, и это не новость.
+      const mostlyFixed = x.habit[peak] < amount * 0.5
+      if (times >= 3 && amount >= x.spentToDate * 0.1 && !sameAsOneOff && !mostlyFixed) {
+        out.push({ id: 'peak_day', kind: 'peak_day', score: 26, key, amount, times })
+      }
+    }
+  }
+
+  /* 13. Дни подряд без трат — единственное наблюдение, которым приятно
+         похвастаться. Считаем от последнего прожитого дня назад. */
+  if (x.noSpendStreak >= NO_SPEND_MIN_DAYS) out.push({ id: 'no_spend', kind: 'no_spend', score: 28, days: x.noSpendStreak })
+
+  // Сверху — важное; об одной категории — один раз.
+  out.sort((a, b) => b.score - a.score)
+  const told = new Set<string>()
+  const result: Insight[] = []
+  for (const i of out) {
+    const cat = 'categoryId' in i ? i.categoryId : null
+    if (cat && told.has(cat)) continue
+    if (cat) told.add(cat)
+    result.push(i)
+    if (result.length >= MAX_INSIGHTS) break
+  }
+  return result
 }

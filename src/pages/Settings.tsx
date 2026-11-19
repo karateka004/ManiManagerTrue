@@ -70,8 +70,6 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [clarityOn, setClarityOn] = useState(clarityAllowed)
   const setRemindersEnabled = useStore((s) => s.setRemindersEnabled)
   const count = useStore((s) => s.transactions.length)
-  const chartStyle = useStore((s) => s.chartStyle)
-  const setChartStyle = useStore((s) => s.setChartStyle)
   const themeMode = useStore((s) => s.themeMode)
   const setThemeMode = useStore((s) => s.setThemeMode)
   const budgets = useStore((s) => s.budgets)
@@ -262,16 +260,6 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
         </div>
         <p className="caption mt-2 px-1 leading-snug text-ink-subtle">{t('settings.quick_cur_hint')}</p>
       </section>
-
-      <Segment
-        title={t('settings.chart_style')}
-        options={[
-          { id: 'compact', label: t('settings.chart_compact') },
-          { id: 'icons', label: t('settings.chart_icons') },
-        ]}
-        value={chartStyle}
-        onChange={(id) => { hapticSelect(); setChartStyle(id) }}
-      />
 
       {/* Шапка Главной: дата или цель, и какая цель */}
       <Segment

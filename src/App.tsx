@@ -249,6 +249,12 @@ export default function App() {
     setEditing(null)
     setSheet({ open: true, kind: 'expense' })
   }, [])
+  // Та же шторка сразу на «Доходе» — из подсказки Аналитики «Доходов пока нет».
+  const openAddIncome = useCallback(() => {
+    setSheetMounted(true)
+    setEditing(null)
+    setSheet({ open: true, kind: 'income' })
+  }, [])
 
   const openEdit = useCallback((t: Transaction) => {
     setSheetMounted(true)
@@ -268,7 +274,10 @@ export default function App() {
   // Ассистент: вопросы про свои деньги. Монтируем так же — по первому открытию.
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantMounted, setAssistantMounted] = useState(false)
-  const openAssistant = useCallback(() => {
+  // Вопрос, с которым открыли (готовые вопросы Аналитики), — задаётся сразу.
+  const [assistantQ, setAssistantQ] = useState<string | null>(null)
+  const openAssistant = useCallback((q?: string) => {
+    setAssistantQ(typeof q === 'string' ? q : null)
     setAssistantMounted(true)
     setAssistantOpen(true)
   }, [])
@@ -415,8 +424,8 @@ export default function App() {
   useSwipeNav(pagerRef, swipeHost)
 
   const pageProps = useMemo<PageProps>(
-    () => ({ openProfile, openEdit, openAdd, openSearch, openAssistant, openSettings, openRewards }),
-    [openProfile, openEdit, openAdd, openSearch, openAssistant, openSettings, openRewards],
+    () => ({ openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards }),
+    [openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards],
   )
 
   return (
@@ -460,7 +469,7 @@ export default function App() {
 
       {assistantMounted && (
         <Suspense fallback={null}>
-          <AssistantSheet open={assistantOpen} onClose={closeAssistant} />
+          <AssistantSheet open={assistantOpen} onClose={closeAssistant} initialQuestion={assistantQ} />
         </Suspense>
       )}
 
@@ -486,8 +495,9 @@ interface PageProps {
   openProfile: () => void
   openEdit: (t: Transaction) => void
   openAdd: () => void
+  openAddIncome: () => void
   openSearch: () => void
-  openAssistant: () => void
+  openAssistant: (q?: string) => void
   openSettings: () => void
   openRewards: () => void
 }
@@ -553,7 +563,14 @@ const TabPanel = memo(function TabPanel({
                   onOpenAssistant={pages.openAssistant}
                 />
               )}
-              {tab === 'analytics' && <AnalyticsPage onEditTx={pages.openEdit} />}
+              {tab === 'analytics' && (
+                <AnalyticsPage
+                  onEditTx={pages.openEdit}
+                  onAdd={pages.openAdd}
+                  onAddIncome={pages.openAddIncome}
+                  onAsk={pages.openAssistant}
+                />
+              )}
               {tab === 'rewards' && <RewardsPage />}
               {tab === 'profile' && <ProfilePage onOpenSettings={pages.openSettings} onOpenRewards={pages.openRewards} />}
               {tab === 'settings' && <SettingsPage onBack={pages.openProfile} />}

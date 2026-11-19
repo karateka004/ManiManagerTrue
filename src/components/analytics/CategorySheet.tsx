@@ -2,14 +2,8 @@ import { useMemo } from 'react'
 import { DeltaChip } from '../ui/DeltaChip'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CategoryIcon } from '../icons/CategoryIcon'
-import {
-  useStore,
-  selectAllCategories,
-  selectCategoryMonths,
-  selectOverview,
-  selectTransactionsByCategory,
-  type Transaction,
-} from '../../store/transactions'
+import { useStore, selectAllCategories, selectTransactionsByCategory, type Transaction } from '../../store/transactions'
+import { selectCategoryMonths, selectOverview } from '../../store/analytics'
 import { formatMoney, dayjs } from '../../lib/format'
 import { useCatName, useT } from '../../lib/i18n'
 import { hapticTap } from '../../lib/telegram'

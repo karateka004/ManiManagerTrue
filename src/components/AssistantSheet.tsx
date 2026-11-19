@@ -25,6 +25,8 @@ import { MASK, clarityEvent } from '../lib/clarity'
 interface Props {
   open: boolean
   onClose: () => void
+  /** Вопрос, с которым открыли (готовые вопросы Аналитики) — задаётся сразу. */
+  initialQuestion?: string | null
 }
 
 interface Msg {
@@ -87,7 +89,7 @@ const ERROR_KEY: Record<AskError, string> = {
  * Ответ — карточка: заголовок, суть, разделы строк «параметр — значение» и
  * совет. Числа в ней воркер сверил с итогами человека.
  */
-export function AssistantSheet({ open, onClose }: Props) {
+export function AssistantSheet({ open, onClose, initialQuestion }: Props) {
   const t = useT()
   const lang = useStore((s) => s.lang)
   const [messages, setMessages] = useState<Msg[]>([])
@@ -97,12 +99,14 @@ export function AssistantSheet({ open, onClose }: Props) {
   const nextId = useRef(1)
 
   // Каждое открытие — чистый лист: вопрос про деньги задают про «сейчас».
+  // Открыли с готовым вопросом — задаём его сразу, без истории прошлого раза.
   useEffect(() => {
     if (!open) return
     setMessages([])
     setDraft('')
     setBusy(false)
-  }, [open])
+    if (initialQuestion) void ask(initialQuestion, [])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Новое сообщение всегда должно быть видно.
   useEffect(() => {
@@ -110,14 +114,14 @@ export function AssistantSheet({ open, onClose }: Props) {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, busy])
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, fresh?: AskTurn[]) => {
     const text = question.trim()
-    if (!text || busy) return
+    if (!text || (busy && !fresh)) return
     hapticSelect()
     clarityEvent('assistant_ask')
     setDraft('')
     setBusy(true)
-    const history = historyOf(messages)
+    const history = fresh ?? historyOf(messages)
     setMessages((prev) => [...prev, { id: nextId.current++, from: 'me', text }])
 
     const res = await askAssistant(text, history, lang === 'en' ? 'en' : 'ru')

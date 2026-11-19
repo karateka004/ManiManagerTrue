@@ -33,6 +33,43 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.11.0',
+    date: '2026-11-19',
+    title: { ru: 'Новая аналитика', en: 'All-new analytics' },
+    items: [
+      {
+        text: {
+          ru: 'Аналитика — одна лента стеклянных виджетов вместо пяти вкладок: сколько потрачено и прогноз до конца месяца, показатели, подсказки, категории, календарь и динамика',
+          en: 'Analytics is now one feed of glass widgets instead of five tabs: what you spent and the month-end forecast, key numbers, insights, categories, the calendar and trends',
+        },
+      },
+      {
+        text: {
+          ru: 'Подсказки стали умнее: сравнивают с тем же днём прошлого месяца, узнают аренду и подписки и сразу предлагают действие — открыть категорию, поставить лимит, записать доход',
+          en: 'Smarter insights: they compare with the same day last month, recognise rent and subscriptions, and offer a next step — open the category, set a limit, log income',
+        },
+      },
+      {
+        text: {
+          ru: 'Прогноз честнее: аренда и подписки встают в свой день, а разовая крупная покупка не раздувает темп трат',
+          en: 'A fairer forecast: rent and subscriptions land on their own day, and a one-off big purchase no longer inflates your pace',
+        },
+      },
+      {
+        text: {
+          ru: 'Календарь — тепловая карта трат: нажми на день, чтобы увидеть и поправить его записи. А по графикам можно вести пальцем, как в статистике Telegram',
+          en: 'The calendar is a spending heat map: tap a day to see and edit its entries. And you can run your finger along the charts, just like Telegram stats',
+        },
+      },
+      {
+        text: {
+          ru: '«Спроси Кошель»: готовые вопросы ассистенту по твоим цифрам — одно нажатие, и ответ уже пишется',
+          en: '“Ask Koshel”: ready-made questions for the assistant about your numbers — one tap and the answer is on its way',
+        },
+      },
+    ],
+  },
+  {
     version: '2.10.0',
     date: '2026-11-19',
     title: { ru: 'Обучение — обо всём главном', en: 'A tour of everything that matters' },

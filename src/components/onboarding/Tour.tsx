@@ -24,7 +24,7 @@ import { XP_PER_TRANSACTION } from '../../lib/levels'
  * вкладкам и есть «дальше»); свои кнопки — только у предложения и итога.
  *
  * Как устроено. Цели помечены в разметке `data-tour="…"` (TabBar, BalanceCard,
- * AddTransactionSheet, AnalyticsTabs, Overview, Rewards). Каждый кадр читаем их
+ * AddTransactionSheet, герой Аналитики, Rewards). Каждый кадр читаем их
  * рамки и двигаем вырезы затемнения (SVG-маска), кольцо и карточку. Смена цели
  * — перетекание за ~0,45 с: вырез и кольцо едут к новой цели и догоняют её,
  * если она сама в движении (шторка выезжает); карточка идёт за местом пружиной.
@@ -96,7 +96,7 @@ const STEPS: Record<Step, StepDef> = {
   category: { spots: [SHEET], ring: 'categories', card: 'top', chapter: 0 },
   save: { spots: [SHEET], ring: 'save', card: 'top', chapter: 0 },
   balance: { spots: [{ names: ['balance'] }, { names: ['tab-analytics'], tap: at('tab-analytics') }], ring: 'tab-analytics', card: 0, chapter: 1 },
-  analytics: { spots: [{ names: ['analytics-tabs', 'spent'], r: 30 }, { names: ['tab-rewards'], tap: at('tab-rewards') }], ring: 'tab-rewards', card: 0, chapter: 2 },
+  analytics: { spots: [{ names: ['spent'] }, { names: ['tab-rewards'], tap: at('tab-rewards') }], ring: 'tab-rewards', card: 0, chapter: 2 },
   rewards: { spots: [{ names: ['level'] }, { names: ['tab-home'], tap: at('tab-home') }], ring: 'tab-home', card: 0, chapter: 3 },
   done: { spots: [], card: 'modal', chapter: 4 },
 }
@@ -127,7 +127,7 @@ const TEXT = {
     balanceIncome: 'Баланс уже её учёл. Траты — тоже через «+»: сверху переключатель «Расход».',
     toAnalytics: 'Открой «Аналитику»',
     analyticsTitle: 'Куда уходят деньги',
-    analyticsText: 'Сколько потрачено и прогноз до конца месяца. Выше — категории, динамика и календарь.',
+    analyticsText: 'Итог месяца, а ниже — подсказки, категории, календарь и динамика. Чем больше записей, тем точнее прогноз и умнее подсказки.',
     toRewards: 'Загляни в «Прогресс»',
     rewardsTitle: 'Твой уровень',
     rewardsText: 'За каждую запись — опыт и новые уровни. Задания дают бонус и монеты на обложки и рамки.',
@@ -165,7 +165,7 @@ const TEXT = {
     balanceIncome: 'The balance already counts it. Expenses go through “+” too — switch to “Expense” at the top.',
     toAnalytics: 'Open “Analytics”',
     analyticsTitle: 'Where the money goes',
-    analyticsText: 'What you’ve spent and the forecast to the month’s end. Above — categories, trends and a calendar.',
+    analyticsText: 'Your month at a glance, and below — insights, categories, the calendar and trends. The more you log, the sharper the forecast and tips.',
     toRewards: 'Check out “Progress”',
     rewardsTitle: 'Your level',
     rewardsText: 'Every entry earns XP and new levels. Quests give bonuses and coins for covers and frames.',

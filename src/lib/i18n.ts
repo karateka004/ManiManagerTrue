@@ -121,9 +121,6 @@ const DICT: Dict = {
   },
   'settings.hide': { ru: 'Скрыть', en: 'Hide' },
   'settings.language': { ru: 'Язык', en: 'Language' },
-  'settings.chart_style': { ru: 'Стиль графика', en: 'Chart style' },
-  'settings.chart_compact': { ru: 'Компактный', en: 'Compact' },
-  'settings.chart_icons': { ru: 'С иконками', en: 'With icons' },
   'settings.notifications': { ru: 'Уведомления', en: 'Notifications' },
   'settings.reminders': { ru: 'Напоминания записывать траты', en: 'Reminders to log expenses' },
   'settings.reminders_hint': {
@@ -475,42 +472,11 @@ const DICT: Dict = {
   'common.apply': { ru: 'Применить', en: 'Apply' },
 
   /* Аналитика */
-  'analytics.subtitle': { ru: 'Куда уходят деньги', en: 'Where the money goes' },
-  'analytics.by_days': { ru: 'По дням', en: 'By days' },
-  'analytics.dynamics': { ru: 'Динамика', en: 'Trends' },
 
   /* Обзор — первый сегмент Аналитики */
-  'ov.tab': { ru: 'Обзор', en: 'Overview' },
   'cat.half_year': { ru: 'Полгода', en: 'Last six months' },
   'cat.in_period': { ru: 'Операции периода', en: 'Entries in this period' },
   'cat.empty': { ru: 'В этом периоде операций нет', en: 'No entries in this period' },
-  'ov.spent': { ru: 'Потрачено', en: 'Spent' },
-  'ov.prev_was': { ru: 'В прошлый раз — {amount}', en: 'Last time — {amount}' },
-  'ov.forecast_to': { ru: 'Выйдет к {date}', en: 'On track for {date}' },
-  'ov.limit': { ru: 'Лимит — {amount}', en: 'Limit — {amount}' },
-  'ov.per_day': { ru: 'В среднем {amount} в день', en: '{amount} a day on average' },
-  'ov.mixed': { ru: 'Валюты смешаны — выбери счёт', en: 'Currencies are mixed — pick an account' },
-  'ov.days_left': { ru: 'ещё {n} дн.', en: '{n} days left' },
-  'ov.insights': { ru: 'Что заметно', en: 'What stands out' },
-  'ov.where': { ru: 'Поток денег', en: 'Money flow' },
-  'ov.flow_income': { ru: 'Доход за период', en: 'Income for the period' },
-  'ov.flow_spent': { ru: 'Потрачено', en: 'Spent' },
-  'ov.flow_rest_left': { ru: 'Осталось', en: 'Left' },
-  'ov.flow_rest': { ru: 'Прочее', en: 'Other' },
-  'ov.rhythm': { ru: 'Ритм недели', en: 'Weekly rhythm' },
-  'ov.biggest': { ru: 'Крупнейшие траты', en: 'Biggest expenses' },
-  'ov.as_usual': { ru: 'как обычно', en: 'as usual' },
-  'ov.empty': { ru: 'За этот период пусто', en: 'Nothing in this period' },
-  'ov.empty_hint': {
-    ru: 'Запиши первую операцию — и здесь появятся сравнения, прогноз и наблюдения',
-    en: 'Add your first entry and comparisons, a forecast and observations will appear here',
-  },
-  'ov.i.spike.title': { ru: '{name} забрала {amount}', en: '{name} took {amount}' },
-  'ov.i.spike.text': {
-    ru: 'На {pct}% больше, чем обычно за такой же период',
-    en: '{pct}% more than usual for the same period',
-  },
-  'ov.recurring': { ru: 'Постоянные траты', en: 'Recurring payments' },
   'due.title': { ru: 'Пора записать', en: 'Time to record' },
   'recap.title': { ru: 'Итоги: {month}', en: 'Recap: {month}' },
   'recap.top': { ru: 'Больше всего', en: 'Biggest category' },
@@ -518,57 +484,8 @@ const DICT: Dict = {
   'recap.free_days': { ru: 'Дней без трат', en: 'Days without spending' },
   'recap.count': { ru: 'Операций', en: 'Entries' },
   'due.record': { ru: 'Записать', en: 'Record' },
-  'ov.recurring_next': { ru: 'следующий раз ~{date}', en: 'next around {date}' },
-  'ov.recurring_due': { ru: 'срок подошёл — не записано', en: 'due now — not recorded' },
-  'ov.recurring_year': { ru: 'Столько уходит за год', en: 'That is a year' },
-  'ov.i.one_off.title': { ru: '{name} — {amount} за раз', en: '{name} — {amount} in one go' },
-  'ov.i.one_off.text': {
-    ru: 'Одна покупка забрала {share}% всех расходов периода',
-    en: 'A single purchase took {share}% of everything you spent',
-  },
-  'ov.i.new_cat.title': { ru: 'Новая статья: {name}', en: 'New line: {name}' },
-  'ov.i.new_cat.text': {
-    ru: 'Раньше этой категории в расходах не было. Уже {amount}',
-    en: 'This category never appeared before. Already {amount}',
-  },
-  'ov.i.no_spend.title': { ru: '{days} {word} подряд без трат', en: '{days} days in a row without spending' },
-  'ov.i.no_spend.text': { ru: 'Так держать: из таких дней и растёт остаток', en: 'Keep it up — this is how the balance grows' },
-  'ov.i.weekday.title': { ru: '{day} — самый дорогой день', en: '{day} is your priciest day' },
-  'ov.i.weekday.text': {
-    ru: 'В среднем {avg} против {minAvg} {minDay}',
-    en: '{avg} on average versus {minAvg} {minDay}',
-  },
-  'ov.i.budget_ok.title': { ru: 'Уложитесь в лимит', en: 'You will stay under the limit' },
-  'ov.i.budget_ok.text': {
-    ru: 'Если держать текущий темп, в конце останется {rest}',
-    en: 'Keep this pace and {rest} will be left at the end',
-  },
-  'ov.i.budget_over.title': { ru: 'Лимит будет превышен', en: 'The limit will be exceeded' },
-  'ov.i.budget_over.text': {
-    ru: 'Если держать текущий темп, выйдешь за него на {rest}',
-    en: 'Keep this pace and you will go over by {rest}',
-  },
-  'ov.i.pace_up.title': { ru: 'Темп выше обычного', en: 'Spending faster than usual' },
-  'ov.i.pace_up.text': {
-    ru: 'По этому темпу выйдет на {diff} больше, чем в прошлый раз',
-    en: 'At this pace you will spend {diff} more than last time',
-  },
-  'ov.i.pace_down.title': { ru: 'Темп ниже обычного', en: 'Spending slower than usual' },
-  'ov.i.pace_down.text': {
-    ru: 'По этому темпу выйдет на {diff} меньше, чем в прошлый раз',
-    en: 'At this pace you will spend {diff} less than last time',
-  },
-  'analytics.max_per_day': { ru: 'Максимум за день:', en: 'Max per day:' },
 
   /* Графики */
-  'charts.subtitle': { ru: 'Динамика', en: 'Dynamics' },
-  'charts.gran_day': { ru: 'Дни', en: 'Days' },
-  'charts.gran_week': { ru: 'Недели', en: 'Weeks' },
-  'charts.gran_month': { ru: 'Месяцы', en: 'Months' },
-  'charts.gran_year': { ru: 'Годы', en: 'Years' },
-  'charts.series_both': { ru: 'Вместе', en: 'Both' },
-  'charts.avg_expense': { ru: 'Средний расход за период:', en: 'Average expense per period:' },
-  'charts.no_data': { ru: 'Нет данных за период', en: 'No data for this period' },
 
   /* Добавление операции */
   'add.frequent': { ru: 'Повторить', en: 'Repeat' },
@@ -616,19 +533,9 @@ const DICT: Dict = {
     ru: 'Удалить категорию «{name}»? Операции в ней останутся.',
     en: 'Delete category “{name}”? Its operations will remain.',
   },
-  'cat.of_limit': { ru: 'из лимита', en: 'of limit' },
   'cat.limit_line': { ru: 'лимит {limit} · {pct}%', en: 'limit {limit} · {pct}%' },
 
   /* Календарь */
-  'cal.tab': { ru: 'Календарь', en: 'Calendar' },
-  'cal.net': { ru: 'Чистый итог', en: 'Net' },
-  'cal.prev_month': { ru: 'Предыдущий месяц', en: 'Previous month' },
-  'cal.next_month': { ru: 'Следующий месяц', en: 'Next month' },
-  'cal.income_month': { ru: 'Доходы за месяц', en: 'Income this month' },
-  'cal.expense_month': { ru: 'Расходы за месяц', en: 'Expenses this month' },
-  'cal.net_month': { ru: 'Чистый итог за месяц', en: 'Net this month' },
-  'cal.both': { ru: 'Оба', en: 'Both' },
-  'cal.both_month': { ru: 'Доходы и расходы за месяц', en: 'Income & expenses this month' },
 
   /* Подпись баланса по периоду */
   'balance.day': { ru: 'Баланс за день', en: 'Daily balance' },
@@ -673,7 +580,6 @@ const DICT: Dict = {
   'level.max_short': { ru: 'макс.', en: 'max' },
 
   /* Прочее */
-  'chart.no_data': { ru: 'Нет данных', en: 'No data' },
   'share.text': {
     ru: 'Веду финансы в «Кошель» — попробуй, удобно',
     en: 'I track my finances with Koshel — give it a try',
