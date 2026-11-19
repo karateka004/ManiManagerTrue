@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react'
-import { ArrowDown, Bell, Check, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, type LucideProps } from 'lucide-react'
+import { ArrowDown, Bell, Calculator, Check, LayoutGrid, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, type LucideProps } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { detectCurrency } from '../../lib/currencyDetect'
 import { reportQuickStart, setReminders } from '../../lib/api'
@@ -206,7 +206,28 @@ const TEXT = {
   },
 } as const
 
+/**
+ * Оформление — как родной Telegram: предложение и итог — лист снизу (большая
+ * иконка, заголовок по центру, список в сгруппированной плашке с цветными
+ * квадратами, как в настройках Telegram, кнопка во всю ширину), подсказки на
+ * шагах — тёмный пузырь с хвостиком, как подсказки Telegram, в обеих темах.
+ * У каждой главы свой цвет: тот же квадрат — в плане на предложении и в
+ * подсказках этой главы.
+ */
 const PLAN_ICONS: ComponentType<LucideProps>[] = [Plus, Wallet, PieChart, Rocket]
+const CHAPTER_COLOR = ['rgb(var(--brand-500))', '#3E8EF7', '#F2994A', '#9A6BF2']
+/** Синий Telegram — у совета «напиши боту». */
+const TG_BLUE = '#2AABEE'
+const BELL_RED = '#F05A55'
+const STEP_ICON: Partial<Record<Step, ComponentType<LucideProps>>> = {
+  plus: Plus,
+  amount: Calculator,
+  category: LayoutGrid,
+  save: Check,
+  balance: Wallet,
+  analytics: PieChart,
+  rewards: Rocket,
+}
 
 /* ------------------------------------------------------------------ */
 /* Место в QS_KEY: шаг (номер в ORDER) и id записанной в обучении траты. */
@@ -318,7 +339,7 @@ function rectOf(name: string): Box | null {
   return { x: b.left, y: top, w: b.width, h: bottom - top, r: radiusOf(e, name, bottom - top) }
 }
 
-const PAD = 6
+const PAD = 4
 const MAX_HOLES = 2
 /** Перетекание выреза и кольца к новой цели, мс. */
 const DUR = 460
@@ -463,7 +484,6 @@ function placeCard(
   vh: number,
   safe: { top: number; bottom: number },
   stick: Side,
-  bar: number,
 ): { y: number; side: Side } {
   const top = safe.top + EDGE
   const bottom = vh - safe.bottom - EDGE
@@ -473,10 +493,11 @@ function placeCard(
     const hole = keep[0]
     return { y: hole ? Math.max(safe.top + 4, hole.y - 2 - h) : top, side: '' }
   }
-  if (mode === 'modal' || !anchor) {
-    // Окно — над панелью вкладок, если влезает: из-под него выглядывали «+»
-    // и подписи вкладок. Не влезает — как раньше, у низа экрана.
-    let y = bar > 0 && bar - 12 - h >= top ? bar - 12 - h : bottom - h - 6
+  // Окно — лист снизу во всю ширину, как в Telegram: закрывает панель вкладок
+  // (из-под карточки выглядывали «+» и подписи), отступ снизу — в самом листе.
+  if (mode === 'modal') return { y: Math.max(safe.top + 8, vh - h), side: '' }
+  if (!anchor) {
+    let y = bottom - h - 6
     for (const k of keep) if (k.y < y + h + 12 && k.y + k.h > y) y = Math.min(y, k.y - 12 - h)
     return { y: Math.max(top, y), side: '' }
   }
@@ -515,7 +536,7 @@ function scrollToMakeRoom(anchor: Box, safeTop: number) {
 /* ------------------------------------------------------------------ */
 
 const NOOP = () => {}
-type Tip = [ComponentType<LucideProps>, string]
+type Tip = [ComponentType<LucideProps>, string, string]
 
 export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: TourReason }) {
   // Воронка в админке — только про новичков.
@@ -825,8 +846,6 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     let stickStep: Step | '' = ''
     let stepAt = 0
     let scrolledStep: Step | '' = ''
-    let modalFor = ''
-    let modalY = 0
     let wroteHide = false
     let cardY = NaN
     let last = performance.now()
@@ -942,15 +961,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         stepAt = now
         stick = ''
       }
-      // Верх панели вкладок — окна (предложение, итог) встают над ней.
-      const bar = def.card === 'modal' ? Math.min(rectOf('plus')?.y ?? Infinity, rectOf('tab-home')?.y ?? Infinity) : Infinity
-      const place = placeCard(def.card, anchor, keep, cardH.current, vh, safe, stick, Number.isFinite(bar) ? bar : 0)
-      // Окно на шаге только поднимается: ушёл тост — итог не уезжает вниз на 140 px.
-      if (def.card === 'modal') {
-        if (modalFor === cur + vh && place.y > modalY) place.y = modalY
-        modalFor = cur + vh
-        modalY = place.y
-      }
+      const place = placeCard(def.card, anchor, keep, cardH.current, vh, safe, stick)
       if (place.side) stick = place.side
       else if (anchor && scrolledStep !== cur && now - stepAt > DUR) {
         // Негде встать у цели — один раз подкручиваем страницу (низкий экран).
@@ -1188,10 +1199,16 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     rewards: [tx.rewardsTitle, tx.rewardsText, tx.toHome],
   }
   // Не больше двух советов: итог и так последний экран перед работой.
-  const tips: Tip[] = tg.isInTelegram ? [[Send, tx.tipBot], [MessageCircle, tx.tipAsk]] : [[Pencil, tx.tipEdit]]
-  if (askRemind && reminders) tips.push([Bell, tx.remindText])
+  const tips: Tip[] = tg.isInTelegram
+    ? [
+        [Send, TG_BLUE, tx.tipBot],
+        [MessageCircle, CHAPTER_COLOR[3], tx.tipAsk],
+      ]
+    : [[Pencil, CHAPTER_COLOR[2], tx.tipEdit]]
+  if (askRemind && reminders) tips.push([Bell, BELL_RED, tx.remindText])
   const short = compact[step]
   const long = info[step]
+  const StepIcon = STEP_ICON[step]
 
   return (
     <div className={`fixed inset-0 z-[55] ${leaving ? 'tour-out' : ''}`} style={{ pointerEvents: 'none' }} data-swipe-ignore>
@@ -1209,7 +1226,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       </svg>
       <div ref={ringRef} className="tour-ring" style={{ display: 'none' }} />
 
-      <div ref={posRef} className="tour-pos">
+      <div ref={posRef} className="tour-pos" data-modal={modal ? '' : undefined}>
         <div ref={shellRef}>
           <div
             ref={cardRef}
@@ -1219,133 +1236,141 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             aria-modal={modal ? 'true' : undefined}
             aria-labelledby="tour-title"
             {...UNMASK}
-            className={`tour-card rounded-3xl bg-surface-raised ${modal ? 'p-5' : 'px-4 pb-3.5 pt-3'}`}
+            className={`tour-card ${modal ? 'tour-sheet' : 'tour-tip'}`}
             style={{ pointerEvents: leaving ? 'none' : 'auto' }}
           >
             <span ref={tailRef} className="tour-tail" aria-hidden />
-            {/* Полоска глав — вне сменяемого содержимого: заливка переходит плавно. */}
+            {/* Главы — полосками, как у историй Telegram; «Пропустить» — на той же линии.
+                Кнопка высотой 44 px (цель касания), но строку не раздувает: поля −20 px. */}
             {!modal && (
-              <>
-                {/* Полоска и «Пропустить» — одним рядом, по одной линии. Кнопка
-                    высотой 44 px (цель касания), но строку не раздувает: поля −20 px. */}
-                <div className="relative z-[1] mb-2.5 flex items-center gap-3">
-                  <div className="flex flex-1 gap-1" aria-hidden>
-                    {Array.from({ length: CHAPTERS }, (_, i) => (
-                      <span
-                        key={i}
-                        className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-brand-500' : 'bg-ink-subtle/[.35]'}`}
-                      />
-                    ))}
-                  </div>
-                  <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
-                  {/* «Пропустить» словом, а не крестиком: «×» в приложении закрывает
-                      один слой, а здесь уходит всё обучение. */}
-                  <button
-                    type="button"
-                    onClick={exit}
-                    aria-label={tx.skipLabel}
-                    className="press-soft -my-5 -mr-2 flex h-11 shrink-0 items-center rounded-full px-2.5 text-[13px] font-semibold text-ink-muted"
-                  >
-                    {tx.skip}
-                  </button>
+              <div className="relative z-[1] mb-3 flex items-center gap-3">
+                <div className="flex flex-1 gap-1" aria-hidden>
+                  {Array.from({ length: CHAPTERS }, (_, i) => (
+                    <span
+                      key={i}
+                      className={`h-[3px] flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-white' : 'bg-white/[.22]'}`}
+                    />
+                  ))}
                 </div>
-              </>
+                <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
+                {/* «Пропустить» словом, а не крестиком: «×» в приложении закрывает
+                    один слой, а здесь уходит всё обучение. */}
+                <button
+                  type="button"
+                  onClick={exit}
+                  aria-label={tx.skipLabel}
+                  className="press-soft -my-5 -mr-2 flex h-11 shrink-0 items-center rounded-full px-2.5 text-[13px] font-semibold text-white/[.6]"
+                >
+                  {tx.skip}
+                </button>
+              </div>
             )}
             {/* Объявляется только сменяемое содержимое: на всём окне диктор на каждом
                 шаге заново читал полоску глав и «Пропустить обучение». */}
             <div key={step} className="tour-swap relative" aria-live="polite">
               {step === 'offer' && (
                 <>
-                  <div id="tour-title" className="text-[22px] font-extrabold leading-tight text-ink">
+                  <div className="tour-hero mx-auto flex items-center justify-center rounded-full text-white" aria-hidden>
+                    <Wallet size={34} strokeWidth={2.2} />
+                  </div>
+                  <div id="tour-title" className="tour-sheet-title mt-4 text-center font-extrabold leading-tight text-ink">
                     {reason === 'new' ? tx.offerTitle : tx.againTitle}
                   </div>
-                  <p className="mt-1.5 text-[15px] leading-snug text-ink-muted">{reason === 'new' ? tx.offerText : tx.againText}</p>
-                  <ol className="tour-plan stagger mt-4">
+                  <p className="mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">
+                    {reason === 'new' ? tx.offerText : tx.againText}
+                  </p>
+                  <ol className="tour-list stagger mt-5">
                     {tx.plan.map((label, i) => {
                       const Icon = PLAN_ICONS[i]
                       return (
-                        <li key={label} className="flex items-center gap-3">
-                          <span className="tour-plan-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
+                        <li key={label} className="flex items-center gap-3 pl-3.5">
+                          <span className="tour-ico" style={{ background: CHAPTER_COLOR[i] }} aria-hidden>
                             <Icon size={17} strokeWidth={2.4} />
                           </span>
-                          <span className="text-[15px] font-semibold leading-snug text-ink">{label}</span>
+                          <span className="tour-row min-w-0 flex-1 pr-3.5 text-[15px] font-semibold leading-snug text-ink">{label}</span>
                         </li>
                       )
                     })}
                   </ol>
-                  <div className="mt-5 flex flex-col gap-1.5">
-                    <button type="button" onClick={start} className="press-soft w-full rounded-full bg-brand-500 py-3.5 text-base font-bold text-white">
+                  <div className="mt-5 flex flex-col gap-1">
+                    <button type="button" onClick={start} className="tour-main press-soft">
                       {tx.start}
                     </button>
-                    <button type="button" onClick={exit} className="press-soft w-full rounded-full py-3 text-sm font-semibold text-ink-muted">
+                    <button type="button" onClick={exit} className="press-soft h-11 w-full rounded-[14px] text-[15px] font-semibold text-brand-600 dark:text-brand-300">
                       {tx.decline}
                     </button>
                   </div>
                 </>
               )}
 
-              {short && (
-                <>
-                  <div id="tour-title" className="text-[17px] font-extrabold leading-tight text-ink">
-                    {short[0]}
-                  </div>
-                  <p className="mt-0.5 text-[14px] leading-snug text-ink-muted">{short[1]}</p>
-                </>
-              )}
-
-              {long && (
-                <>
-                  <div id="tour-title" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[17px] font-extrabold leading-tight text-ink">
-                    {long[0]}
-                    {/* Опыт — нейтральной плашкой: зелёный здесь уже у кольца,
-                        полоски глав и действия, четвёртый акцент — лишний. */}
-                    {step === 'balance' && (
-                      <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-[12px] font-extrabold text-ink-muted">+{XP_PER_TRANSACTION} XP</span>
+              {(short || long) && (
+                <div className="flex gap-3">
+                  {StepIcon && (
+                    <span className="tour-ico tour-ico-lg mt-0.5" style={{ background: CHAPTER_COLOR[Math.max(0, def.chapter)] }} aria-hidden>
+                      <StepIcon size={19} strokeWidth={2.4} />
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    {short && (
+                      <>
+                        <div id="tour-title" className="text-[16px] font-extrabold leading-tight text-white">
+                          {short[0]}
+                        </div>
+                        <p className="mt-1 text-[14px] leading-snug text-white/[.72]">{short[1]}</p>
+                      </>
+                    )}
+                    {long && (
+                      <>
+                        <div id="tour-title" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[16px] font-extrabold leading-tight text-white">
+                          {long[0]}
+                          {step === 'balance' && (
+                            <span className="rounded-full bg-white/[.12] px-2 py-0.5 text-[12px] font-extrabold text-white">+{XP_PER_TRANSACTION} XP</span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[14px] leading-snug text-white/[.72]">{long[1]}</p>
+                        {/* Что нажать дальше — кольцо уже на этой вкладке. Строка выглядит
+                            как ссылка — пусть и работает как она: открывает ту же вкладку. */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const tab = NEXT_TAB[step]
+                            if (!tab) return
+                            hapticTap()
+                            press(tab)
+                          }}
+                          className="press-soft -mx-1 mt-1.5 flex min-h-[40px] items-center gap-2 rounded-full px-1 text-left text-[14px] font-bold text-brand-300"
+                        >
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-400/[.2]">
+                            <ArrowDown size={14} strokeWidth={2.6} />
+                          </span>
+                          {long[2]}
+                        </button>
+                      </>
                     )}
                   </div>
-                  <p className="mt-1 text-[14px] leading-snug text-ink-muted">{long[1]}</p>
-                  {/* Что нажать дальше — кольцо уже на этой вкладке. Строка выглядит
-                      как ссылка — пусть и работает как она: открывает ту же вкладку. */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const tab = NEXT_TAB[step]
-                      if (!tab) return
-                      hapticTap()
-                      press(tab)
-                    }}
-                    className="press-soft -mx-1 mt-1.5 flex min-h-[40px] items-center gap-2 rounded-full px-1 text-left text-[14px] font-bold text-brand-700 dark:text-brand-300"
-                  >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/[.14]">
-                      <ArrowDown size={14} strokeWidth={2.6} />
-                    </span>
-                    {long[2]}
-                  </button>
-                </>
+                </div>
               )}
 
               {step === 'done' && (
                 <>
-                  <div className="flex items-center gap-3">
-                    <span ref={badgeRef} className="tour-check flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
-                      <Check size={22} strokeWidth={3} />
-                    </span>
-                    <div id="tour-title" className="text-[22px] font-extrabold leading-tight text-ink">
-                      {tx.doneTitle}
-                    </div>
+                  <span ref={badgeRef} className="tour-check tour-hero tour-hero-done mx-auto flex items-center justify-center rounded-full text-white" aria-hidden>
+                    <Check size={36} strokeWidth={3} />
+                  </span>
+                  <div id="tour-title" className="tour-sheet-title mt-4 text-center font-extrabold leading-tight text-ink">
+                    {tx.doneTitle}
                   </div>
-                  <p className="mt-2.5 text-[15px] leading-snug text-ink-muted">{tx.doneText}</p>
-                  <ul className="stagger mt-3.5 space-y-2.5">
-                    {tips.map(([Icon, text]) => (
-                      <li key={text} className="flex items-center gap-3">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
-                          <Icon size={15} strokeWidth={2.4} />
+                  <p className="mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">{tx.doneText}</p>
+                  <ul className="tour-list stagger mt-5">
+                    {tips.map(([Icon, color, text]) => (
+                      <li key={text} className="flex items-center gap-3 pl-3.5">
+                        <span className="tour-ico" style={{ background: color }} aria-hidden>
+                          <Icon size={16} strokeWidth={2.4} />
                         </span>
-                        <span className="text-[14px] leading-snug text-ink">{text}</span>
+                        <span className="tour-row min-w-0 flex-1 pr-3.5 text-[14px] leading-snug text-ink">{text}</span>
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-5 flex flex-col gap-1.5">
+                  <div className="mt-5 flex flex-col gap-1">
                     {askRemind && reminders ? (
                       <>
                         <button
@@ -1353,7 +1378,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                           onClick={() => void finish(true)}
                           disabled={waiting}
                           aria-busy={waiting || undefined}
-                          className="press-soft flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 py-3.5 text-base font-bold text-white disabled:opacity-80"
+                          className="tour-main press-soft disabled:opacity-80"
                         >
                           {waiting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
                           {tx.remindOn}
@@ -1362,13 +1387,13 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                           type="button"
                           onClick={() => void finish(false)}
                           disabled={waiting}
-                          className="press-soft w-full rounded-full py-3 text-sm font-semibold text-ink-muted"
+                          className="press-soft h-11 w-full rounded-[14px] text-[15px] font-semibold text-brand-600 dark:text-brand-300"
                         >
                           {tx.remindOff}
                         </button>
                       </>
                     ) : (
-                      <button type="button" onClick={() => void finish(false)} className="press-soft w-full rounded-full bg-brand-500 py-3.5 text-base font-bold text-white">
+                      <button type="button" onClick={() => void finish(false)} className="tour-main press-soft">
                         {tx.finish}
                       </button>
                     )}

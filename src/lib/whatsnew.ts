@@ -33,6 +33,19 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.11.3',
+    date: '2026-11-20',
+    title: { ru: 'Обучение в стиле Telegram', en: 'A Telegram-style tour' },
+    items: [
+      {
+        text: {
+          ru: 'Знакомство с Кошелем выглядит как родной Telegram: приветствие и итог — листом снизу, подсказки на шагах — тёмными пузырями, у каждой главы свой цвет',
+          en: 'The intro tour now looks native to Telegram: the welcome and the wrap-up slide up as sheets, step hints are dark bubbles, and each chapter has its own color',
+        },
+      },
+    ],
+  },
+  {
     version: '2.11.2',
     date: '2026-11-19',
     title: { ru: 'Аналитика точнее', en: 'Sharper analytics' },

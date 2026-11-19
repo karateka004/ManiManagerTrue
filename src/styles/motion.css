@@ -681,7 +681,11 @@ html.perf-low .tabbar-glass {
 /* Карточка: место по вертикали — transform на обёртке (.tour-pos, его ведёт
    Tour пружиной), появление и отклики — на вложенных слоях, чтобы анимация не
    перебивала положение. Хвостик смотрит на цель: сторону задаёт data-side,
-   сдвиг по горизонтали — Tour. */
+   сдвиг по горизонтали — Tour.
+   Вид — как родной Telegram. На шагах — тёмный пузырь (.tour-tip) в обеих
+   темах, как подсказки Telegram. Предложение и итог — лист снизу (.tour-sheet)
+   во всю ширину: большая иконка, заголовок по центру, сгруппированный список с
+   цветными квадратами (.tour-list, .tour-ico), кнопка во всю ширину (.tour-main). */
 .tour-pos {
   position: absolute;
   left: 0;
@@ -690,30 +694,94 @@ html.perf-low .tabbar-glass {
   padding: 0 16px;
   will-change: transform;
 }
+.tour-pos[data-modal] { padding: 0; }
 .tour-card {
   position: relative;
   margin: 0 auto;
-  max-width: 24rem;
-  box-shadow: 0 0 0 1px var(--hairline), 0 18px 48px rgb(0 0 0 / 0.38);
   animation: tour-card-in 380ms var(--ease-out) both;
-}
-/* Окна (предложение, итог) на низком экране не должны уходить за край: в
-   альбомной ориентации кнопки оказывались за экраном, а выйти было нечем. */
-.tour-card[data-modal] {
-  max-height: calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 24px);
-  max-height: calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 24px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.tour-plan > li + li { margin-top: 10px; }
-@media (max-height: 600px) {
-  .tour-card[data-modal] { padding: 16px; }
-  .tour-plan { margin-top: 10px; }
-  .tour-plan > li + li { margin-top: 6px; }
-  .tour-plan-icon { width: 28px; height: 28px; }
 }
 @keyframes tour-card-in {
   from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
+}
+.tour-tip {
+  max-width: 24rem;
+  padding: 12px 14px 14px;
+  border-radius: 18px;
+  background: #26272a;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 44px rgb(0 0 0 / 0.5);
+}
+/* Лист: смена вида (подсказка → итог) сама перезапускает анимацию — другое имя. */
+.tour-sheet {
+  max-width: 32rem;
+  padding: 26px 16px calc(14px + var(--safe-bottom, 0px));
+  border-radius: 26px 26px 0 0;
+  background: rgb(var(--c-surface-raised));
+  box-shadow: 0 0 0 1px var(--hairline), 0 -12px 48px rgb(0 0 0 / 0.42);
+  animation: tour-sheet-in 460ms var(--ease-out) both;
+  /* На низком экране и в альбомной лист не уходит за край — прокручивается. */
+  max-height: calc(100vh - var(--safe-top, 0px) - 8px);
+  max-height: calc(100dvh - var(--safe-top, 0px) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@keyframes tour-sheet-in {
+  from { transform: translate3d(0, 100%, 0); }
+}
+/* Светлая — как у Telegram: серый лист, белая плашка списка. */
+html:not(.dark) .tour-sheet { background: rgb(var(--c-surface)); }
+.tour-sheet-title { font-size: 24px; }
+.tour-hero {
+  width: 76px;
+  height: 76px;
+  background: radial-gradient(120% 120% at 28% 18%, rgb(var(--brand-300)), rgb(var(--brand-500)) 48%, rgb(var(--brand-700)));
+  box-shadow: 0 0 0 8px rgb(var(--brand-500) / 0.13), 0 12px 32px rgb(var(--brand-500) / 0.42);
+}
+.tour-list {
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgb(var(--c-surface-sunken) / 0.7);
+}
+html:not(.dark) .tour-list { background: rgb(var(--c-surface-raised)); box-shadow: 0 0 0 1px var(--hairline); }
+.tour-row { padding-top: 12px; padding-bottom: 12px; }
+/* Разделитель — от текста, а не от края: как в списках Telegram. */
+.tour-list > li + li > .tour-row { box-shadow: inset 0 1px 0 var(--hairline); }
+.tour-ico {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #fff;
+}
+.tour-ico-lg { width: 36px; height: 36px; border-radius: 11px; }
+.tour-main {
+  display: flex;
+  width: 100%;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  background: rgb(var(--brand-500));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+@media (max-height: 640px) {
+  .tour-sheet { padding-top: 18px; }
+  .tour-hero { width: 56px; height: 56px; }
+  .tour-hero svg { width: 26px; height: 26px; }
+  .tour-sheet-title { font-size: 20px; margin-top: 10px; }
+  .tour-row { padding-top: 8px; padding-bottom: 8px; }
+  .tour-sheet .tour-list { margin-top: 12px; }
+}
+/* Альбомная: большая иконка уступает место кнопкам — без неё лист влезает целиком. */
+@media (max-height: 460px) {
+  .tour-sheet .tour-hero { display: none; }
+  .tour-sheet-title { margin-top: 0; }
 }
 .tour-tail {
   position: absolute;
@@ -724,8 +792,8 @@ html.perf-low .tabbar-glass {
   background: inherit;
   display: none;
 }
-.tour-card[data-side='up'] .tour-tail { display: block; top: -7px; }
-.tour-card[data-side='down'] .tour-tail { display: block; bottom: -7px; }
+.tour-tip[data-side='up'] .tour-tail { display: block; top: -7px; box-shadow: -1px -1px 0 rgb(255 255 255 / 0.08); }
+.tour-tip[data-side='down'] .tour-tail { display: block; bottom: -7px; box-shadow: 1px 1px 0 rgb(255 255 255 / 0.08); }
 .tour-swap { animation: tour-swap 280ms var(--ease-out) both; }
 @keyframes tour-swap {
   from { opacity: 0; transform: translate3d(0, 6px, 0); }
@@ -761,7 +829,7 @@ html.perf-low .tour-ring::after { animation: none; }
     animation: fx-fade 1300ms forwards;
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
-  .odo-roll, .tour-ring::after, .tour-ring::before, .tour-dim, .tour-out, .tour-card, .tour-swap, .tour-nudge, .tour-check { animation: none !important; }
+  .odo-roll, .tour-ring::after, .tour-ring::before, .tour-dim, .tour-out, .tour-card, .tour-sheet, .tour-swap, .tour-nudge, .tour-check { animation: none !important; }
   .seg-pill, .reveal, .press, .press-soft, .press-icon, .keypad-fold, .keypad-fold > div > * { transition: none !important; }
   .skeleton { animation: none; }
 }
