@@ -141,6 +141,7 @@ const TEXT = {
     saveTitle: 'Нажми «Записать расход»',
     saveText: 'Заметка и дата — по желанию.',
     balanceTitle: 'Первая запись!',
+    balanceTitleMore: 'Записано!',
     balanceExpense: 'Баланс — это доходы минус расходы за месяц. Пока доходов нет, он в минусе. Зарплату запишешь так же: «+» → «Доход».',
     balanceWithIncome: 'Баланс — это доходы минус расходы за месяц, и трата уже в нём. Доход записывается так же: «+» → «Доход».',
     balanceIncome: 'Баланс — это доходы минус расходы за месяц. Траты записываются так же: «+» → «Расход».',
@@ -182,6 +183,7 @@ const TEXT = {
     saveTitle: 'Tap “Save expense”',
     saveText: 'A note and a date are optional.',
     balanceTitle: 'First entry!',
+    balanceTitleMore: 'Saved!',
     balanceExpense: 'Balance is income minus expenses for the month. With no income yet, it’s in the red. Log your salary the same way: “+” → “Income”.',
     balanceWithIncome: 'Balance is income minus expenses for the month, and this expense is already in it. Income goes the same way: “+” → “Income”.',
     balanceIncome: 'Balance is income minus expenses for the month. Expenses go the same way: “+” → “Expense”.',
@@ -282,6 +284,7 @@ function find(name: string): HTMLElement | null {
   return null
 }
 const isCurrent = (name: string) => find(name)?.getAttribute('aria-current') === 'page'
+const TABS = ['tab-home', 'tab-analytics', 'tab-rewards', 'tab-profile']
 
 /** Цели внутри прокрутки — видимая часть обрезается её рамкой. */
 const CLIP: Record<string, string> = { categories: 'form' }
@@ -350,9 +353,16 @@ function spotRect(s: Spot, vw: number, vh: number): Box | null {
 function ringRect(name: string, vw: number): Box | null {
   const r = rectOf(name)
   if (!r) return null
-  const x = Math.max(3, r.x - PAD)
-  const w = Math.min(vw - 3, r.x + r.w + PAD) - x
-  const h = r.h + PAD * 2
+  // Отступ от краёв экрана — как у остальных колец (лента категорий во всю ширину).
+  const x = Math.max(EDGE, r.x - PAD)
+  const w = Math.min(vw - EDGE, r.x + r.w + PAD) - x
+  let bottom = r.y + r.h + PAD
+  // Кольцо клавиш не заходит на «Записать» под ними.
+  if (name === 'keypad') {
+    const save = rectOf('save')
+    if (save) bottom = Math.min(bottom, save.y - 2)
+  }
+  const h = bottom - (r.y - PAD)
   return { x, y: r.y - PAD, w, h, r: Math.min(Math.max(14, r.r + PAD), w / 2, h / 2) }
 }
 
@@ -364,11 +374,16 @@ function toastRect(): Box | null {
   return b.height > 0 ? { x: b.left, y: b.top, w: b.width, h: b.height, r: 0 } : null
 }
 
-/** Шторка операции на экране (выезжает, открыта или ещё уходит). */
+/**
+ * Шторка операции на экране (выезжает, открыта или ещё уходит) — по её верху
+ * (сумме), а не по «Записать»: в альбомной ориентации кнопка ниже края экрана,
+ * и шторка «не открывалась» — карточка так и просила нажать «+». И шаг
+ * меняется, как только лист показался, а не когда въехал целиком.
+ */
 function sheetShown(): boolean {
-  const s = find('save')
-  if (!s) return false
-  const b = s.getBoundingClientRect()
+  const a = find('amount')
+  if (!a) return false
+  const b = a.getBoundingClientRect()
   return b.height > 0 && b.top < innerHeight - 8
 }
 
@@ -390,12 +405,14 @@ function foldKeypadIfCramped() {
 /* Перетекание: от того, что на экране сейчас, к живой рамке цели. */
 interface Anim {
   key: string
+  /** Где цель: вкладка и «в шторке ли» — сменились, значит, другая страница. */
+  kind: string
   from: Box | null
   cur: Box | null
   t0: number
   had: boolean
 }
-const newAnim = (): Anim => ({ key: '', from: null, cur: null, t0: 0, had: false })
+const newAnim = (): Anim => ({ key: '', kind: '', from: null, cur: null, t0: 0, had: false })
 const ease = (t: number) => 1 - Math.pow(1 - t, 4)
 const dot = (b: Box): Box => ({ x: b.x + b.w / 2, y: b.y + b.h / 2, w: 0, h: 0, r: 0 })
 const mix = (a: Box, b: Box, p: number): Box => ({
@@ -405,11 +422,15 @@ const mix = (a: Box, b: Box, p: number): Box => ({
   h: a.h + (b.h - a.h) * p,
   r: a.r + (b.r - a.r) * p,
 })
-function animate(a: Anim, key: string, target: Box | null, now: number, dur: number): Box | null {
+function animate(a: Anim, key: string, target: Box | null, now: number, dur: number, kind = '', entry?: Box): Box | null {
   if (key !== a.key || !!target !== a.had) {
     // Новая цель, или та же появилась позже (вкладка догрузилась) / ушла с экрана.
+    // Цель на другой странице (вкладка, шторка) — от старой не тянемся: вырез
+    // проезжал по чужому экрану и высвечивал случайный кусок. Растёт из
+    // середины новой цели, у шторки — снизу, вместе с листом.
+    a.from = kind !== a.kind ? (entry ?? null) : a.cur
     a.key = key
-    a.from = a.cur
+    a.kind = kind
     a.t0 = now
     a.had = !!target
   }
@@ -442,15 +463,20 @@ function placeCard(
   vh: number,
   safe: { top: number; bottom: number },
   stick: Side,
+  bar: number,
 ): { y: number; side: Side } {
   const top = safe.top + EDGE
   const bottom = vh - safe.bottom - EDGE
   if (mode === 'top') {
+    // Вплотную к вырезу: шапка шторки (вид операции) — под карточкой целиком,
+    // а не торчит из-под неё половиной кнопок.
     const hole = keep[0]
-    return { y: hole ? Math.max(safe.top + 4, Math.min(top, hole.y - 8 - h)) : top, side: '' }
+    return { y: hole ? Math.max(safe.top + 4, hole.y - 2 - h) : top, side: '' }
   }
   if (mode === 'modal' || !anchor) {
-    let y = bottom - h - 6
+    // Окно — над панелью вкладок, если влезает: из-под него выглядывали «+»
+    // и подписи вкладок. Не влезает — как раньше, у низа экрана.
+    let y = bar > 0 && bar - 12 - h >= top ? bar - 12 - h : bottom - h - 6
     for (const k of keep) if (k.y < y + h + 12 && k.y + k.h > y) y = Math.min(y, k.y - 12 - h)
     return { y: Math.max(top, y), side: '' }
   }
@@ -501,6 +527,8 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const [recorded, setRecorded] = useState<string | null>(saved.id)
   const [leaving, setLeaving] = useState(false)
   const stepRef = useRef(step)
+  // Вкладка, которую продолжение должно открыть само (см. ниже); '' — открыта.
+  const resumeRef = useRef(saved.step === 'analytics' ? 'tab-analytics' : saved.step === 'rewards' ? 'tab-rewards' : '')
   const recordedRef = useRef(recorded)
   const leavingRef = useRef(false)
   // Своё нажатие (вернуть на Главную) защита пропускает.
@@ -532,6 +560,10 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         if (!b || b.y < 0 || b.y + b.h > innerHeight - 90) window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
       }
     }
+    // Итог — на Главной с самого верха: её прокручивали под карточку баланса,
+    // и кнопка ассистента, о которой говорит совет, оставалась за краем.
+    // Кадром позже: вкладка сначала восстанавливает свою прокрутку.
+    if (next === 'done') requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' }))
     setStep(next)
   }
 
@@ -557,10 +589,16 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     // Предложение — не сразу: вернувшемуся на новый телефон облако приносит
     // записи через секунду-другую, и он не новичок (тихо уходим, см. ниже).
     // Ответил раньше — следующий шаг покроет и «предложили» (воркер берёт max).
-    if (step !== 'offer') return send()
-    const id = window.setTimeout(() => {
-      if (!leavingRef.current && stepRef.current === 'offer') send()
-    }, 3000)
+    // Итог — тоже с задержкой: «Поехали» сразу шлёт отчёт с отметкой «дошёл»,
+    // и два почти одновременных отчёта могли разминуться в KV — последним ложился
+    // тот, что без отметки.
+    if (step !== 'offer' && step !== 'done') return send()
+    const id = window.setTimeout(
+      () => {
+        if (!leavingRef.current && stepRef.current === step) send()
+      },
+      step === 'offer' ? 3000 : 1500,
+    )
     return () => clearTimeout(id)
   }, [step, recorded])
   // Пока идёт обучение, пустое место шторки клавиатуру не сворачивает.
@@ -592,12 +630,20 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         recordedRef.current = null
         setRecorded(null)
         go('plus')
-      } else if (cur === 'offer' && reason !== 'link' && s.transactions.length > 0) {
+      } else if (
+        reason !== 'link' &&
+        !recordedRef.current &&
+        ((cur === 'offer' && s.transactions.length > 0) ||
+          (cur === 'plus' && s.transactions.length > prev.transactions.length) ||
+          (IN_SHEET.has(cur) && s.transactions.length > prev.transactions.length + 1))
+      ) {
         // Облако принесло записи: это не новичок, а человек на новом телефоне
-        // (или с очищенным кэшем). Учебная «первая запись» легла бы в его
-        // настоящие данные — тихо уходим, без отчёта и тоста.
+        // (или с очищенным кэшем) — даже если «Покажи» он успел нажать. Учебная
+        // «первая запись» легла бы в его настоящие данные — тихо уходим, без
+        // отчёта и тоста; открытую шторку операции закрываем (её «Назад»).
         clarityEvent('onboarding_returning')
         clearSaved()
+        if (sheetShown()) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
         leave()
       }
       wakeRef.current()
@@ -607,10 +653,18 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   // Валюта по региону — при ответе на предложение, НЕ при открытии: запись в
   // стор при открытии сохранила бы его, и ушедший с первого экрана в следующий
   // раз считался бы старым пользователем.
+  // Валюту, которую человек уже выбирал (метка CURRENCY_ASKED_KEY), не трогаем:
+  // повторное обучение или по ссылке меняло выбранный им USD на «местную».
   const applyRegion = () => {
     const s = useStore.getState()
+    let asked = false
+    try {
+      asked = localStorage.getItem(CURRENCY_ASKED_KEY) === '1'
+    } catch {
+      /* приватный режим */
+    }
     const d = detectCurrency()
-    if (s.transactions.length === 0 && s.currency === 'USD' && d.currency !== 'USD') s.setCurrency(d.currency)
+    if (!asked && s.transactions.length === 0 && s.currency === 'USD' && d.currency !== 'USD') s.setCurrency(d.currency)
     try {
       localStorage.setItem(CURRENCY_ASKED_KEY, '1')
     } catch {
@@ -641,6 +695,10 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const start = () => {
     hapticTap()
     applyRegion()
+    // В демо учебная запись пряталась под чужими данными, а баланс показывал
+    // демо-доход при тексте «пока доходов нет».
+    const st = useStore.getState()
+    if (st.demoMode) st.setDemoMode(false)
     go('plus')
   }
 
@@ -650,10 +708,11 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const [askRemind] = useState(() => tg.isInTelegram && !botCanWrite() && canRequestBotWrite())
   const busy = useRef(false)
   const [waiting, setWaiting] = useState(false)
-  const finish = async (remind: boolean) => {
+  /** remind: null — ушли «Назад»: напоминания не трогаем (это не «Не нужно»). */
+  const finish = async (remind: boolean | null) => {
     if (busy.current || leavingRef.current) return
     busy.current = true
-    if (askRemind) {
+    if (askRemind && remind !== null) {
       if (remind) {
         // Окно Telegram «разрешить боту писать»: пока ждём — кнопка занята;
         // не ответил за 8 с (окно не пришло) — идём дальше без напоминаний.
@@ -682,7 +741,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
 
   // «Назад» Telegram и Escape — общая стопка: на предложении это «Не сейчас»,
   // на итоге — «Поехали», на шагах — выход (шторка операции поверх ловит своё).
-  useBackButton(!leaving, () => (stepRef.current === 'done' ? void finish(false) : exit()), STEPS[step].card === 'modal')
+  useBackButton(!leaving, () => (stepRef.current === 'done' ? void finish(null) : exit()), STEPS[step].card === 'modal')
 
   // Шапка и нижняя полоса Telegram — под затемнение: в светлой теме зелёная
   // шапка над тёмным экраном выглядела оторванной. Уходим — как было.
@@ -706,14 +765,19 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   }, [])
 
   // Продолжение с «Аналитики» или «Прогресса»: приложение открылось на Главной —
-  // открываем нужную вкладку сами (панель вкладок могла ещё не встать).
+  // открываем нужную вкладку сами (панель вкладок могла ещё не встать). Пока не
+  // открыли, шаги не двигаются: на «Прогрессе» открытая Главная засчитывалась
+  // как «вернулся на Главную» — и сразу показывался итог.
   useEffect(() => {
-    const name = stepRef.current === 'analytics' ? 'tab-analytics' : stepRef.current === 'rewards' ? 'tab-rewards' : ''
+    const name = resumeRef.current
     if (!name) return
     let tries = 0
     const id = window.setInterval(() => {
-      if (isCurrent(name) || ++tries > 20) clearInterval(id)
-      else if (find(name)) press(name)
+      if (isCurrent(name) || ++tries > 20) {
+        clearInterval(id)
+        resumeRef.current = ''
+        wakeRef.current()
+      } else if (find(name)) press(name)
     }, 150)
     return () => clearInterval(id)
   }, [])
@@ -761,6 +825,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     let stickStep: Step | '' = ''
     let stepAt = 0
     let scrolledStep: Step | '' = ''
+    let modalFor = ''
+    let modalY = 0
+    let wroteHide = false
     let cardY = NaN
     let last = performance.now()
     let goneAt = 0
@@ -818,6 +885,10 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         go(next)
         return
       }
+      if (resumeRef.current) {
+        busy = true
+        return
+      }
       if (cur === 'balance' && isCurrent('tab-analytics')) go('analytics')
       else if (cur === 'analytics' && isCurrent('tab-rewards')) go('rewards')
       else if (cur === 'rewards' && isCurrent('tab-home')) go('done')
@@ -843,13 +914,20 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       const live = def.spots.map((s) => spotRect(s, vw, vh))
       const ringLive = def.ring ? ringRect(def.ring, vw) : null
       const toast = toastRect()
+      const inSheet = IN_SHEET.has(stepRef.current)
+      // Страница целей: открытая вкладка (+ шторка). Сменилась — вырез и кольцо
+      // не тянутся со старой, а вырастают на новой (animate).
+      const page = (TABS.find(isCurrent) ?? '') + (inSheet ? '|sheet' : '')
 
       const shown: (Box | null)[] = []
       for (let i = 0; i < MAX_HOLES; i++) {
         const s = def.spots[i]
-        shown.push(animate(holes[i], s ? s.names.join('+') : '', live[i] ?? null, now, dur))
+        const target = live[i] ?? null
+        // Шторка — снизу, вместе с листом; остальное — из середины цели.
+        const entry = target ? (s?.bleed ? { x: -30, y: vh, w: vw + 60, h: 0, r: 24 } : dot(target)) : undefined
+        shown.push(animate(holes[i], s ? s.names.join('+') : '', target, now, dur, page, entry))
       }
-      const ringNow = animate(ring, def.ring ?? '', ringLive, now, dur)
+      const ringNow = animate(ring, def.ring ?? '', ringLive, now, dur, page, ringLive ? dot(ringLive) : undefined)
       if (ringNow && def.ring && pulsedFor !== def.ring) {
         pulsedFor = def.ring
         if (!reduce) replay(ringRef.current, 'tour-pulse')
@@ -864,7 +942,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         stepAt = now
         stick = ''
       }
-      const place = placeCard(def.card, anchor, keep, cardH.current, vh, safe, stick)
+      // Верх панели вкладок — окна (предложение, итог) встают над ней.
+      const bar = def.card === 'modal' ? Math.min(rectOf('plus')?.y ?? Infinity, rectOf('tab-home')?.y ?? Infinity) : Infinity
+      const place = placeCard(def.card, anchor, keep, cardH.current, vh, safe, stick, Number.isFinite(bar) ? bar : 0)
+      // Окно на шаге только поднимается: ушёл тост — итог не уезжает вниз на 140 px.
+      if (def.card === 'modal') {
+        if (modalFor === cur + vh && place.y > modalY) place.y = modalY
+        modalFor = cur + vh
+        modalY = place.y
+      }
       if (place.side) stick = place.side
       else if (anchor && scrolledStep !== cur && now - stepAt > DUR) {
         // Негде встать у цели — один раз подкручиваем страницу (низкий экран).
@@ -932,6 +1018,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           busy = true
           pos.style.transform = `translate3d(0, ${sig}px, 0)`
         }
+        // Карточка баланса — когда шторка ушла: поверх уезжающего листа она
+        // выглядела как часть шторки.
+        const hide = cur === 'balance' && sheetShown()
+        if (hide !== wroteHide) {
+          wroteHide = hide
+          busy = true
+          pos.style.opacity = hide ? '0' : ''
+        }
+        if (hide) busy = true
       }
       const cardEl = cardRef.current
       if (cardEl && place.side !== wroteSide) {
@@ -977,9 +1072,11 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     for (const type of wakeOn) document.addEventListener(type, wake, opts)
     addEventListener('scroll', wake, opts)
     addEventListener('resize', wake)
+    // Раз в секунду, а не чаще: чтение рамок при идущих CSS-анимациях страницы
+    // (Аналитика, Прогресс) — пересчёт стилей, и опрос каждые 400 мс стоил втрое.
     const poll = window.setInterval(() => {
       if (sleeping && !leavingRef.current && frame(performance.now())) wake()
-    }, 400)
+    }, 1000)
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
@@ -1070,6 +1167,8 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const def = STEPS[step]
   const modal = def.card === 'modal'
   const recordedType = recorded ? useStore.getState().transactions.find((x) => x.id === recorded)?.type : undefined
+  // «Первая запись!» — только если она и правда первая (повтор из Настроек — нет).
+  const firstEver = useStore.getState().transactions.length <= 1
   // «Пока доходов нет, он в минусе» — только если их в этом месяце и правда нет.
   const incomeThisMonth = (() => {
     const now = new Date()
@@ -1084,7 +1183,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     save: [tx.saveTitle, tx.saveText],
   }
   const info: Partial<Record<Step, readonly [string, string, string]>> = {
-    balance: [tx.balanceTitle, recordedType === 'income' ? tx.balanceIncome : incomeThisMonth ? tx.balanceWithIncome : tx.balanceExpense, tx.toAnalytics],
+    balance: [firstEver ? tx.balanceTitle : tx.balanceTitleMore, recordedType === 'income' ? tx.balanceIncome : incomeThisMonth ? tx.balanceWithIncome : tx.balanceExpense, tx.toAnalytics],
     analytics: [tx.analyticsTitle, tx.analyticsText, tx.toRewards],
     rewards: [tx.rewardsTitle, tx.rewardsText, tx.toHome],
   }
@@ -1119,7 +1218,6 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             role="dialog"
             aria-modal={modal ? 'true' : undefined}
             aria-labelledby="tour-title"
-            aria-live="polite"
             {...UNMASK}
             className={`tour-card rounded-3xl bg-surface-raised ${modal ? 'p-5' : 'px-4 pb-3.5 pt-3'}`}
             style={{ pointerEvents: leaving ? 'none' : 'auto' }}
@@ -1128,28 +1226,34 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             {/* Полоска глав — вне сменяемого содержимого: заливка переходит плавно. */}
             {!modal && (
               <>
-                <div className="relative mb-2.5 mr-[92px] flex gap-1" aria-hidden>
-                  {Array.from({ length: CHAPTERS }, (_, i) => (
-                    <span
-                      key={i}
-                      className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-brand-500' : 'bg-ink-subtle/[.35]'}`}
-                    />
-                  ))}
+                {/* Полоска и «Пропустить» — одним рядом, по одной линии. Кнопка
+                    высотой 44 px (цель касания), но строку не раздувает: поля −20 px. */}
+                <div className="relative z-[1] mb-2.5 flex items-center gap-3">
+                  <div className="flex flex-1 gap-1" aria-hidden>
+                    {Array.from({ length: CHAPTERS }, (_, i) => (
+                      <span
+                        key={i}
+                        className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-brand-500' : 'bg-ink-subtle/[.35]'}`}
+                      />
+                    ))}
+                  </div>
+                  <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
+                  {/* «Пропустить» словом, а не крестиком: «×» в приложении закрывает
+                      один слой, а здесь уходит всё обучение. */}
+                  <button
+                    type="button"
+                    onClick={exit}
+                    aria-label={tx.skipLabel}
+                    className="press-soft -my-5 -mr-2 flex h-11 shrink-0 items-center rounded-full px-2.5 text-[13px] font-semibold text-ink-muted"
+                  >
+                    {tx.skip}
+                  </button>
                 </div>
-                <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
-                {/* «Пропустить» словом, а не крестиком: «×» в приложении закрывает
-                    один слой, а здесь уходит всё обучение. Цель касания — 44 px. */}
-                <button
-                  type="button"
-                  onClick={exit}
-                  aria-label={tx.skipLabel}
-                  className="press-soft absolute right-1 top-0 z-[1] flex h-11 items-center rounded-full px-3 text-[13px] font-semibold text-ink-muted"
-                >
-                  {tx.skip}
-                </button>
               </>
             )}
-            <div key={step} className="tour-swap relative">
+            {/* Объявляется только сменяемое содержимое: на всём окне диктор на каждом
+                шаге заново читал полоску глав и «Пропустить обучение». */}
+            <div key={step} className="tour-swap relative" aria-live="polite">
               {step === 'offer' && (
                 <>
                   <div id="tour-title" className="text-[22px] font-extrabold leading-tight text-ink">

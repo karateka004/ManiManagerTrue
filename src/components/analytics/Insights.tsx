@@ -122,6 +122,14 @@ function Row({
             : t('i.when.range')
   const pct = (v: number) => Math.round(v)
   const times = (v: number) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10).toLocaleString(lang === 'en' ? 'en' : 'ru')
+  // «в 3 раза», «в 12 раз», «в 2,5 раза»: дробное — всегда «раза».
+  const timesWord = (v: number) => {
+    const n = v >= 10 ? Math.round(v) : Math.round(v * 10) / 10
+    if (!Number.isInteger(n)) return t('i.times_few')
+    const d = n % 10
+    const dd = n % 100
+    return d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? t('i.times_few') : t('i.times_many')
+  }
 
   let color = ''
   let title = ''
@@ -180,7 +188,7 @@ function Row({
       break
     case 'one_off':
       color = i.color
-      title = t('i.one_off.t', { name: i.name, amount: money(i.amount) })
+      title = t('i.one_off.t', { name: i.note || catName(i.categoryId, i.name), amount: money(i.amount) })
       text = t('i.one_off.x', { share: pct(i.share) })
       toCategory(i.categoryId)
       break
@@ -192,7 +200,7 @@ function Row({
       break
     case 'weekend':
       title = t('i.weekend.t')
-      text = t('i.weekend.x', { weekend: money(i.weekend), weekday: money(i.weekday), ratio: times(i.ratio) })
+      text = t('i.weekend.x', { weekend: money(i.weekend), weekday: money(i.weekday), ratio: times(i.ratio), word: timesWord(i.ratio) })
       break
     case 'weekday':
       title = t('i.weekday.t', { day: weekdaysFull(lang)[i.day] })
@@ -220,7 +228,7 @@ function Row({
     case 'peak_day':
       color = BAD
       title = t('i.peak.t', { date: dayjs(i.key).format(lang === 'en' ? 'MMMM D' : 'D MMMM') })
-      text = t('i.peak.x', { amount: money(i.amount), times: times(i.times) })
+      text = t('i.peak.x', { amount: money(i.amount), times: times(i.times), word: timesWord(i.times) })
       break
   }
 

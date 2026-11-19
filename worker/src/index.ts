@@ -327,7 +327,7 @@ function tooMany(env: Env, origin: string | null): Response {
  */
 async function readInitData(req: Request): Promise<string> {
   if (req.method === 'POST') {
-    const body = (await req.json().catch(() => ({}))) as { initData?: string }
+    const body = (await readBody(req)) as { initData?: string }
     return typeof body.initData === 'string' ? body.initData : ''
   }
   return new URL(req.url).searchParams.get('initData') ?? ''
@@ -474,7 +474,7 @@ export default {
 }
 
 async function handleFeedback(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string }
+  const body = (await readBody(req)) as { initData?: string; text?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   // Анти-спам в ЛС владельцу: не более 5 отзывов в час на пользователя.
@@ -492,7 +492,7 @@ async function handleFeedback(req: Request, env: Env, origin: string | null): Pr
 }
 
 async function handleReferral(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; ref?: string }
+  const body = (await readBody(req)) as { initData?: string; ref?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'ref', user.id, 10, 60)) return tooMany(env, origin)
@@ -573,7 +573,7 @@ async function readLeaderboard(env: Env): Promise<Record<string, LeaderEntry>> {
 
 /** Закрепить статистику участника (вызывается клиентом при заходе в профиль). */
 async function handleProfile(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as {
+  const body = (await readBody(req)) as {
     initData?: string
     xp?: number
     level?: number
@@ -892,7 +892,7 @@ function blobStreakBest(blob: string): number {
 
 /** Отдать сохранённые данные пользователя (или null, если их ещё нет). */
 async function handleDataGet(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string }
+  const body = (await readBody(req)) as { initData?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
 
@@ -910,7 +910,7 @@ async function handleDataGet(req: Request, env: Env, origin: string | null): Pro
 
 /** Сохранить данные пользователя. Не затираем более свежие данные более старыми. */
 async function handleDataPut(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as {
+  const body = (await readBody(req)) as {
     initData?: string
     blob?: string
     updatedAt?: number
@@ -1093,7 +1093,7 @@ async function handleAdminWebhook(req: Request, env: Env, origin: string | null)
  * поэтому чужие числа сюда попасть не могут.
  */
 async function handleAsk(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; text?: string; history?: unknown; lang?: unknown }
+  const body = (await readBody(req)) as { initData?: string; text?: string; history?: unknown; lang?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'ask', user.id, 20, 60)) return tooMany(env, origin)
@@ -1109,7 +1109,7 @@ async function handleAsk(req: Request, env: Env, origin: string | null): Promise
 
 /** Отдать приложению операции, записанные через бота и ещё не забранные. */
 async function handleInboxGet(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string }
+  const body = (await readBody(req)) as { initData?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'inbox', user.id, 60, 60)) return tooMany(env, origin)
@@ -1124,7 +1124,7 @@ async function handleInboxGet(req: Request, env: Env, origin: string | null): Pr
  * боту ровно в ту секунду, пока приложение сливало входящие.
  */
 async function handleInboxAck(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; ids?: unknown }
+  const body = (await readBody(req)) as { initData?: string; ids?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'inbox', user.id, 60, 60)) return tooMany(env, origin)
@@ -1166,7 +1166,7 @@ function safeFilename(raw: unknown): string {
  * же чат. Проверяем подпись initData, размер и имя файла — этого достаточно.
  */
 async function handleExport(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; csv?: string; filename?: string; caption?: string }
+  const body = (await readBody(req)) as { initData?: string; csv?: string; filename?: string; caption?: string }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'exp', user.id, 5, 3600)) return tooMany(env, origin)
@@ -1214,7 +1214,7 @@ async function handleExport(req: Request, env: Env, origin: string | null): Prom
  * приложений 2.2.
  */
 async function handleReminders(req: Request, env: Env, origin: string | null, readOnly = false): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; enabled?: unknown }
+  const body = (await readBody(req)) as { initData?: string; enabled?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'rem', user.id, 10, 60)) return tooMany(env, origin)
@@ -1231,11 +1231,20 @@ async function handleReminders(req: Request, env: Env, origin: string | null, re
 }
 
 /**
+ * Тело запроса — объект или пустой объект. `null`, число или строка в JSON
+ * (мусорный запрос) раньше доходили до `body.initData` и роняли обработчик в 500.
+ */
+async function readBody(req: Request): Promise<Record<string, unknown>> {
+  const v: unknown = await req.json().catch(() => null)
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+}
+
+/**
  * Шаг быстрого старта (см. quickstart.ts): номер шага, сколько трат записал,
  * ввёл ли доход, закрыл ли крестиком. Сумм нет.
  */
 async function handleQuickStart(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as {
+  const body = (await readBody(req)) as {
     initData?: string
     s?: unknown
     e?: unknown
@@ -1261,7 +1270,7 @@ const CHANNEL_USERNAME = '@Svyat_research'
  * особого задания (см. trackFan), `link` — ссылка канала «из приложения».
  */
 async function handleCheckSub(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; fan?: unknown }
+  const body = (await readBody(req)) as { initData?: string; fan?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'sub', user.id, 20, 60)) return tooMany(env, origin)
@@ -1312,7 +1321,7 @@ const GIFT_MESSAGES: Record<string, string> = {
  * Дедуп в KV (`giftmsg:<id>:<rewardId>`, бессрочно) — каждый подарок поздравляем один раз.
  */
 async function handleGiftNotify(req: Request, env: Env, origin: string | null): Promise<Response> {
-  const body = (await req.json().catch(() => ({}))) as { initData?: string; rewards?: unknown }
+  const body = (await readBody(req)) as { initData?: string; rewards?: unknown }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
   if (await isRateLimited(env, 'gift', user.id, 5, 60)) return tooMany(env, origin)
@@ -1441,7 +1450,7 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
   const denied = await adminGate(req, env, origin, 'admin', 60)
   if (denied) return denied
 
-  const body = (await req.json().catch(() => ({}))) as { backfill?: boolean; fresh?: boolean }
+  const body = (await readBody(req)) as { backfill?: boolean; fresh?: boolean }
 
   // Дозаполнение карточек — до сбора, чтобы результат был виден в этом же ответе.
   let backfill: { scanned: number; filled: number; done: boolean } | null = null
@@ -1474,7 +1483,7 @@ async function handleAdminStats(req: Request, env: Env, origin: string | null): 
 async function handleAdminClarity(req: Request, env: Env, origin: string | null): Promise<Response> {
   const denied = await adminGate(req, env, origin, 'aclarity', 10)
   if (denied) return denied
-  const body = (await req.json().catch(() => ({}))) as { action?: unknown; token?: unknown }
+  const body = (await readBody(req)) as { action?: unknown; token?: unknown }
   return json(await clarityAction(env, body), { status: 200, headers: { 'Cache-Control': 'no-store' } }, env, origin)
 }
 
@@ -1486,7 +1495,7 @@ async function handleAdminPerson(req: Request, env: Env, origin: string | null):
   const denied = await adminGate(req, env, origin, 'aperson', 60)
   if (denied) return denied
 
-  const body = (await req.json().catch(() => ({}))) as { id?: unknown }
+  const body = (await readBody(req)) as { id?: unknown }
   const id = String(body.id ?? '')
   if (!/^\d{1,20}$/.test(id)) return json({ ok: false, error: 'bad_id' }, { status: 400 }, env, origin)
 

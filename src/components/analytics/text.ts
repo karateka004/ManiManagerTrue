@@ -26,6 +26,8 @@ const RU = {
   'hero.days_left': 'ещё {n} {days}',
   'hero.forecast_tip': 'прогноз',
   'hero.mixed': 'В периоде разные валюты — выбери счёт выше',
+  'hero.ahead': 'Из них записано наперёд — {amount}',
+  'hero.cmp.range_to': 'К этому дню в прошлый такой же период — {amount}',
   'hero.no_income': 'нет',
 
   'kpi.day': 'Средний день',
@@ -98,6 +100,8 @@ const RU = {
   'empty.title': 'Здесь пока пусто',
   'empty.text': 'Запиши первую трату — и здесь появятся итог, подсказки, категории и календарь.',
   'empty.add': 'Записать трату',
+  'empty.period_title': 'За этот период записей нет',
+  'empty.period_text': 'Выбери другой период выше — или запиши трату, и она появится здесь.',
 
   'a.more': 'Подробнее',
   'a.limit': 'Поставить лимит',
@@ -134,9 +138,9 @@ const RU = {
   'i.new_cat.t': 'Новая категория: «{name}»',
   'i.new_cat.x': '{amount} — раньше на неё не тратил.',
   'i.weekend.t': 'Выходные обходятся дороже',
-  'i.weekend.x': 'Обычный выходной — {weekend}, будний день — {weekday}: в {ratio} раза больше.',
+  'i.weekend.x': 'Обычный выходной — {weekend}, будний день — {weekday}: в {ratio} {word} больше.',
   'i.weekday.t': '{day} — самый дорогой день',
-  'i.weekday.x': 'В среднем {avg} против {minAvg} в {minDay}.',
+  'i.weekday.x': 'В среднем {avg} против {minAvg} {minDay}.',
   'i.small.t': 'Мелочь складывается',
   'i.small.x': '{count} покупок до {limit} — вместе {total}, это {share}% всех трат.',
   'i.savings.t': 'Отложено {rate}% дохода',
@@ -147,7 +151,9 @@ const RU = {
   'i.no_spend.t': '{days} {word} подряд без трат',
   'i.no_spend.x': 'Из таких дней и растёт остаток.',
   'i.peak.t': 'Самый дорогой день — {date}',
-  'i.peak.x': '{amount} — в {times} раза больше обычного дня.',
+  'i.peak.x': '{amount} — в {times} {word} больше обычного дня.',
+  'i.times_few': 'раза',
+  'i.times_many': 'раз',
 } as const
 
 type Key = keyof typeof RU
@@ -173,6 +179,8 @@ const EN: Record<Key, string> = {
   'hero.days_left': '{n} {days} left',
   'hero.forecast_tip': 'forecast',
   'hero.mixed': 'Several currencies here — pick an account above',
+  'hero.ahead': 'Logged in advance: {amount}',
+  'hero.cmp.range_to': 'By this day in the previous period: {amount}',
   'hero.no_income': 'none',
 
   'kpi.day': 'Average day',
@@ -245,6 +253,8 @@ const EN: Record<Key, string> = {
   'empty.title': 'Nothing here yet',
   'empty.text': 'Log your first expense — totals, insights, categories and the calendar will show up here.',
   'empty.add': 'Log an expense',
+  'empty.period_title': 'No records for this period',
+  'empty.period_text': 'Pick another period above — or log an expense and it will show up here.',
 
   'a.more': 'Details',
   'a.limit': 'Set a limit',
@@ -283,7 +293,7 @@ const EN: Record<Key, string> = {
   'i.weekend.t': 'Weekends cost more',
   'i.weekend.x': 'A typical weekend day is {weekend}, a weekday {weekday}: {ratio}× more.',
   'i.weekday.t': '{day} is your priciest day',
-  'i.weekday.x': '{avg} on average vs {minAvg} on {minDay}.',
+  'i.weekday.x': '{avg} on average vs {minAvg} {minDay}.',
   'i.small.t': 'Small things add up',
   'i.small.x': '{count} purchases under {limit} — {total} in total, {share}% of all spending.',
   'i.savings.t': '{rate}% of income saved',
@@ -295,6 +305,8 @@ const EN: Record<Key, string> = {
   'i.no_spend.x': 'This is how the balance grows.',
   'i.peak.t': 'Priciest day: {date}',
   'i.peak.x': '{amount} — {times}× a typical day.',
+  'i.times_few': '',
+  'i.times_many': '',
 }
 
 export type AnT = (key: Key, vars?: Record<string, string | number>) => string

@@ -97,11 +97,19 @@ export function AssistantSheet({ open, onClose, initialQuestion }: Props) {
   const [busy, setBusy] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const nextId = useRef(1)
+  /**
+   * Поколение разговора: растёт с каждым открытием. Ответ на вопрос прошлого
+   * открытия, пришедший позже, — чужой: в новую ленту его не кладём и «думает…»
+   * нового вопроса не снимаем. Раньше «Спроси Кошель» → закрыть → второй вопрос
+   * давал под вторым вопросом ответ на первый.
+   */
+  const generation = useRef(0)
 
   // Каждое открытие — чистый лист: вопрос про деньги задают про «сейчас».
   // Открыли с готовым вопросом — задаём его сразу, без истории прошлого раза.
   useEffect(() => {
     if (!open) return
+    generation.current += 1
     setMessages([])
     setDraft('')
     setBusy(false)
@@ -122,9 +130,11 @@ export function AssistantSheet({ open, onClose, initialQuestion }: Props) {
     setDraft('')
     setBusy(true)
     const history = fresh ?? historyOf(messages)
+    const gen = generation.current
     setMessages((prev) => [...prev, { id: nextId.current++, from: 'me', text }])
 
     const res = await askAssistant(text, history, lang === 'en' ? 'en' : 'ru')
+    if (gen !== generation.current) return
     setBusy(false)
     if (res.ok) hapticNotify('success')
     setMessages((prev) => [

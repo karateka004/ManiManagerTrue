@@ -23,6 +23,7 @@ import { DAY_MS, localDayKey, parseDay, prevDayKey } from '../lib/day'
 import { buildRecurring, type Recurring } from '../lib/recurring'
 import { buildMonthlySummary, previousMonthBounds, type MonthlySummary } from '../lib/monthly'
 import { dedupeKey } from '../lib/csvImport'
+import { setFormatLocale } from '../lib/format'
 
 /** Язык по умолчанию: из Telegram (ru → русский, иначе английский). */
 function initialLang(): Lang {
@@ -1000,7 +1001,12 @@ export const useStore = create<State & Actions>()(
 
       setDemoMode: (on) => set({ demoMode: on }),
       setRemindersEnabled: (on) => set({ remindersEnabled: on }),
-      setLang: (lang) => set({ lang }),
+      // Локаль дат — до перерисовки: эффект useFormatLocale срабатывал уже после
+      // неё, и только что открытые виджеты успевали показать «декабрь 5».
+      setLang: (lang) => {
+        setFormatLocale(lang)
+        set({ lang })
+      },
 
       setMonthlyBudget: (amount) =>
         set((s) => ({
@@ -1996,7 +2002,8 @@ export const selectRecurring: (s: State) => Recurring[] = memo1(
     const byId = new Map(selectAllCategories(s).map((c) => [c.id, c]))
     return buildRecurring(history, Date.now(), byId, selectAnalyticsCurrency(s))
   },
-  (s) => [activeTransactions(s), s.account, s.currency, s.customCategories],
+  // «Пора записать» меняется со сменой дня, а не только данных.
+  (s) => [activeTransactions(s), s.account, s.currency, s.customCategories, localDayKey(Date.now())],
 )
 
 /**

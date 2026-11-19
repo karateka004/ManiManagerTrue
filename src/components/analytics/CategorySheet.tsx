@@ -46,8 +46,10 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
 
   const cat = useMemo(() => categories.find((c) => c.id === categoryId), [categories, categoryId])
   const color = cat?.color ?? '#8A968F'
-  const inPeriod = o.categories.find((c) => c.categoryId === categoryId)
-  const amount = inPeriod?.amount ?? rows.reduce((a, x) => a + (x.type === 'expense' ? x.amount : 0), 0)
+  // Категория дохода («Зарплата») — из доходов периода: раньше карточка искала
+  // её только среди расходов и показывала «0 ₽» над списком с авансом.
+  const inPeriod = o.categories.find((c) => c.categoryId === categoryId) ?? o.incomeCategories.find((c) => c.categoryId === categoryId)
+  const amount = inPeriod?.amount ?? rows.reduce((a, x) => a + x.amount, 0)
   const delta = inPeriod?.deltaPct === null || inPeriod === undefined ? null : Math.round(inPeriod.deltaPct)
   const max = Math.max(...months.map((m) => m.amount), 1)
 
@@ -68,7 +70,9 @@ function Body({ categoryId, onClose, onEditTx }: { categoryId: string; onClose: 
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[17px] font-bold text-ink">{catName(categoryId, cat?.name ?? categoryId)}</div>
-          <div className="tabular text-[13px] text-ink-subtle">{formatMoney(amount, o.currency)}</div>
+          <div className="tabular text-[13px] text-ink-subtle" {...MASK}>
+            {formatMoney(amount, o.currency)}
+          </div>
         </div>
         {delta !== null && delta !== 0 && (
           <DeltaChip delta={delta} />

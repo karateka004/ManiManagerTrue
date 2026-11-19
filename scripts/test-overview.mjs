@@ -54,8 +54,19 @@ function months(list, now = NOW) {
     endKey: end,
   }
 }
+/** Первый день учёта — как у стора: самая ранняя запись. */
+const firstDayOf = (list) => Math.min(...list.map((t) => +new Date(new Date(t.date).setHours(0, 0, 0, 0))))
 const overview = (list, extra = {}) =>
-  buildOverview({ ...months(list, extra.now ?? NOW), categories: DEFAULT_CATEGORIES, currency: 'RUB', now: NOW, budget: 0, budgetApplies: true, ...extra })
+  buildOverview({
+    ...months(list, extra.now ?? NOW),
+    categories: DEFAULT_CATEGORIES,
+    currency: 'RUB',
+    now: NOW,
+    budget: 0,
+    budgetApplies: true,
+    firstDay: firstDayOf(list),
+    ...extra,
+  })
 const kinds = (o) => o.insights.map((i) => i.kind)
 const find = (o, kind) => o.insights.find((i) => i.kind === kind)
 
@@ -119,7 +130,7 @@ const find = (o, kind) => o.insights.find((i) => i.kind === kind)
   const o = overview(list, { recurringKeys: keys })
   check('крупные покупки — без аренды', o.biggest[0]?.note === 'Куртка' && !o.biggest.some((t) => t.categoryId === 'home'), o.biggest.map((t) => t.note))
   const one = find(o, 'one_off')
-  check('разовая покупка — куртка, а не аренда', one && one.name === 'Куртка', one)
+  check('разовая покупка — куртка, а не аренда', one && one.note === 'Куртка' && one.categoryId === 'clothes', one)
 }
 
 /* ---------- 4. Лимит: сколько можно в день, чтобы уложиться ---------- */
@@ -237,7 +248,7 @@ const find = (o, kind) => o.insights.find((i) => i.kind === kind)
 /* ---------- 10. Новичок: одна запись — ничего не падает и не выдумывается ---------- */
 {
   const o = overview([tx('2026-11-19 14:00', 'expense', 350, 'food')])
-  check('новичок: одна трата — итог 350, без сравнений', o.spent === 350 && o.prevSpent === 0 && o.deltaPct === null, [o.spent, o.prevSpent, o.deltaPct])
+  check('новичок: одна трата — итог 350, без сравнений', o.spent === 350 && o.prevSpent === null && o.deltaPct === null, [o.spent, o.prevSpent, o.deltaPct])
   check('новичок: подсказок без истории нет', o.insights.length === 0, kinds(o))
   check('новичок: календарные массивы на весь месяц', o.daily.length === 30 && o.dailyIncome.length === 30, o.daily.length)
 }
@@ -331,6 +342,96 @@ const find = (o, kind) => o.insights.find((i) => i.kind === kind)
   // Прожито 59 дней: 59 000 еды + 2 аренды. Впереди 306 дней еды и 10 аренд (март…декабрь).
   const want = 59000 + 2 * 38000 + 306 * 1000 + 10 * 38000
   check('год: аренда в прогнозе каждый месяц (10 раз до конца года)', Math.abs(o.projected - want) < 1, [Math.round(o.projected), want])
+}
+
+/* ---------- 13. Учёт начался посреди прошлого месяца — с ним не сравниваем ---------- */
+{
+  const pad = (d) => String(d).padStart(2, '0')
+  const daily = (from, to, amount = 1000, cat = 'food') => {
+    const out = []
+    for (let x = new Date(from); x <= new Date(to); x.setDate(x.getDate() + 1)) out.push(tx(`${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`, 'expense', amount, cat))
+    return out
+  }
+  // Начал 15 октября, тратит ровно 1000 в день. Раньше: «↗ 280%, обычно 263 ₽».
+  const a = overview(daily('2026-10-15', '2026-11-19'))
+  check('второй месяц: с неполным октябрём не сравниваем', a.prevSpent === null && a.deltaPct === null && a.prevSpentFull === null, [a.prevSpent, a.deltaPct])
+  check('второй месяц: «обычного дня» нет — истории полной нет', a.usualPerDay === null, a.usualPerDay)
+  check('второй месяц: без «период выходит дороже» и процентов у категорий', !a.insights.some((i) => i.kind === 'pace') && a.categories.every((c) => c.deltaPct === null), kinds(a))
+  // Начал 20 сентября: октябрь полный, сентябрь — нет. Всплеска «Еды» нет.
+  const b = overview(daily('2026-09-20', '2026-11-19', 500))
+  check('третий месяц: обычный день — по полному октябрю (500)', Math.round(b.usualPerDay) === 500, b.usualPerDay)
+  check('третий месяц: без ложного всплеска от пустого сентября', !b.insights.some((i) => i.kind === 'spike'), kinds(b))
+  // Начал 20 августа и тратит всё больше — август учтён частично, тренда нет.
+  const c = overview([...daily('2026-08-20', '2026-08-31', 1000), ...daily('2026-09-01', '2026-09-30', 1000), ...daily('2026-10-01', '2026-11-19', 1150)])
+  check('август учтён частично — «дорожает третий месяц» не говорим', !c.insights.some((i) => i.kind === 'trend'), kinds(c))
+  // Начал второго октября — это почти целый месяц, сравниваем.
+  const d = overview(daily('2026-10-02', '2026-11-19'))
+  check('начал 2-го: месяц считается целым, сравнение есть', d.prevSpent === 18000 && d.deltaPct !== null, [d.prevSpent, d.deltaPct])
+}
+
+/* ---------- 14. Аренду подняли: новая цена — тот же платёж ---------- */
+{
+  const now10 = +new Date(2026, 10, 10, 15, 0)
+  const list = ['2026-08-05', '2026-09-05', '2026-10-05'].map((d) => tx(d, 'expense', 30000, 'home', 'Аренда'))
+  list.push(tx('2026-11-05', 'expense', 32000, 'home', 'Аренда'))
+  for (let d = 1; d <= 10; d++) list.push(tx(`2026-11-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+  for (const m of ['08', '09', '10']) for (let d = 1; d <= 28; d++) list.push(tx(`2026-${m}-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+  const rec = buildRecurring(list, now10, byId, 'RUB')
+  const rent = rec.find((r) => r.categoryId === 'home')
+  check('подорожавшая аренда: 32 000, следующий раз 5 декабря, не «пора записать»', rent && rent.amount === 32000 && !rent.due && new Date(rent.nextDay).getMonth() === 11, rent)
+  const keys = new Set(rec.flatMap((r) => r.keys))
+  const o = overview(list, { now: now10, recurringKeys: keys, upcoming: rec.map((r) => ({ amount: r.amount, day: r.nextDay })) })
+  // 32 000 + 30 × 1000 = 62 000, без второй аренды «завтра».
+  check('подорожавшая аренда: в прогнозе один раз (≈62 000)', Math.abs(o.projected - 62000) < 1, Math.round(o.projected))
+  check('подорожавшая аренда — не «разовая покупка»', !o.insights.some((i) => i.kind === 'one_off'), kinds(o))
+  // Другая сумма в той же категории задолго до срока — это не новая цена.
+  const early = buildRecurring([...list.slice(0, 3), tx('2026-10-20', 'expense', 29000, 'home', 'Ремонт')], +new Date(2026, 10, 3), byId, 'RUB')
+  check('трата в категории задолго до срока — не новая цена', early[0]?.amount === 30000 && early[0].keys.length === 1, early[0])
+}
+
+/* ---------- 15. «В день можно до…» — за вычетом аренды впереди ---------- */
+{
+  const list = []
+  for (let d = 1; d <= 19; d++) list.push(tx(`2026-11-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+  const o = overview(list, { budget: 62000, upcoming: [{ amount: 30000, day: key(2026, 11, 25) }] })
+  const b = find(o, 'budget')
+  check('лимит: в день можно (62 000 − 19 000 − 30 000) / 11', b && Math.round(b.perDayLeft) === Math.round(13000 / 11), b)
+  // То же, если аренда уже записана наперёд 25-м.
+  const o2 = overview([...list, tx('2026-11-25', 'expense', 30000, 'home', 'Аренда')], { budget: 62000 })
+  const b2 = find(o2, 'budget')
+  check('лимит: записанное наперёд тоже вычитается', b2 && Math.round(b2.perDayLeft) === Math.round(13000 / 11), b2)
+}
+
+/* ---------- 16. Записано наперёд: сравнения — по сегодня ---------- */
+{
+  const list = []
+  for (const m of ['08', '09', '10']) {
+    for (let d = 1; d <= 28; d++) list.push(tx(`2026-${m}-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+    list.push(tx(`2026-${m}-25`, 'expense', 30000, 'home', 'Аренда'))
+  }
+  for (let d = 1; d <= 19; d++) list.push(tx(`2026-11-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+  list.push(tx('2026-11-25', 'expense', 30000, 'home', 'Аренда'))
+  const o = overview(list)
+  check('наперёд: потрачено 49 000, по сегодня 19 000, к октябрю ≈', o.spent === 49000 && o.spentToDate === 19000 && o.deltaPct === 0, [o.spent, o.spentToDate, o.deltaPct])
+  const home = o.categories.find((c) => c.categoryId === 'home')
+  check('наперёд: аренда 25-го — не всплеск и без процента к «0 к этому дню»', home && home.deltaPct === null && !o.insights.some((i) => i.kind === 'spike'), [home, kinds(o)])
+}
+
+/* ---------- 17. «За всё время» с записью наперёд — без прогноза ---------- */
+{
+  const list = [tx('2026-11-01', 'expense', 1000, 'food'), tx('2026-11-10', 'expense', 1000, 'food'), tx('2026-11-19', 'expense', 1000, 'food'), tx('2027-01-05', 'expense', 30000, 'home')]
+  const o = buildOverview({ current: list, previous: [], categories: DEFAULT_CATEGORIES, currency: 'RUB', startKey: 0, endKey: key(2100, 1, 1), now: NOW, budget: 0, budgetApplies: false, openEnded: true })
+  check('всё время: запись в январе не даёт «к 5 января ≈»', o.forecast.length === 0, o.forecast.length)
+}
+
+/* ---------- 18. Дни без трат: сегодняшний — ещё не день без трат ---------- */
+{
+  const list = []
+  for (let d = 1; d <= 17; d++) list.push(tx(`2026-11-${String(d).padStart(2, '0')}`, 'expense', 1000, 'food'))
+  const o = overview(list)
+  check('без трат 18-го, сегодня (19-е) ещё идёт: 1 день из 18, подряд 1', o.noSpendDays === 1 && o.noSpendStreak === 1 && o.noSpendOf === 18, [o.noSpendDays, o.noSpendStreak, o.noSpendOf])
+  const inc = overview([tx('2026-10-01', 'income', 50000, 'salary'), tx('2026-11-01', 'income', 50000, 'salary')])
+  check('одни доходы — без «N дней подряд без трат»', !inc.insights.some((i) => i.kind === 'no_spend'), kinds(inc))
 }
 
 console.log(`test-overview: ${passed} проверок${failed ? `, упало ${failed}` : ''} — сравнения к тому же дню, регулярные платежи, подсказки`)

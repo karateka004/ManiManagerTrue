@@ -275,6 +275,8 @@ let tv = mergeQs(null, { s: 1, v: 2 }, T0)
 check('обучение: помечено v2', tv.v === 2 && tv.s === 1, tv)
 tv = mergeQs({ t: T0 - 1000, u: T0 - 1000, s: 3, e: 1 }, { s: 1, v: 2 }, T0)
 check('обучение после анкеты — считается заново', tv.s === 1 && tv.t === T0 && !tv.e && tv.v === 2, tv)
+const kept = { t: T0, u: T0, s: 3, e: 1, v: 2 }
+check('отчёт старого клиента поверх обучения его не обнуляет', mergeQs(kept, { s: 0 }, T0 + 1) === kept)
 const tour = aggregateQs([...rows, { t: T0, u: T0, s: 3, e: 1, v: 2 }, { t: T0, u: T0, s: 0, x: 0, v: 2 }], T0 + 3600_000, 30, 2)
 check('сводка обучения — только v2', tour.started === 2 && JSON.stringify(tour.reached) === '[2,1,1,1,0]' && tour.expense === 1 && tour.exits[0] === 1, tour)
 check('сводка анкеты — без обучения', aggregateQs([...rows, { t: T0, u: T0, s: 3, v: 2 }], T0 + 3600_000, 30).started === 5)

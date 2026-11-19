@@ -21,7 +21,6 @@ import {
   type Transaction,
 } from './transactions'
 import { buildOverview, type Overview } from '../lib/overview'
-import { recurringKey } from '../lib/recurring'
 import { localDayKey, parseDay } from '../lib/day'
 
 /* ---------- Тренды (виджет «Динамика» Аналитики) ---------- */
@@ -32,6 +31,11 @@ export interface TrendBucket {
   label: string
   income: number
   expense: number
+  /**
+   * Учёт начался посреди корзины (пришёл 15 октября): её сумма — не «месяц»,
+   * а полмесяца. Рисуем, но в «В среднем» не берём — занижала бы его.
+   */
+  partial: boolean
   /** Границы корзины (локальные полуночи) — для подписи в подсказке графика. */
   start: number
   end: number
@@ -54,36 +58,52 @@ function trendLabel(d: Dayjs, g: TrendGranularity): string {
   }
 }
 
-/** Параметр — гранулярность (строка), чтобы memo2 кэшировал по ключу. */
-export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = memo2((s, g) => {
-  const n = TREND_COUNT[g]
-  const unit: dayjs.ManipulateType = g
-  const now = dayjs()
-  const buckets = Array.from({ length: n }, (_, i) => {
-    const d = now.subtract(n - 1 - i, unit)
-    const start = d.startOf(unit)
-    return { start: +start, end: +start.add(1, unit), label: trendLabel(d, g), income: 0, expense: 0 }
-  })
-  // Счёт = валюта. Складывать разные валюты нечем (курсов в приложении нет),
-  // поэтому без выбранного счёта считаем основную валюту — ту же, в которой
-  // подписан график (selectAnalyticsCurrency).
-  const cur = s.account ?? s.currency
-  for (const t of activeTransactions(s)) {
-    if (txCurrency(t, s) !== cur) continue
-    const x = parseDay(t.date)
-    const b = buckets.find((bk) => x >= bk.start && x < bk.end)
-    if (!b) continue
-    if (t.type === 'income') b.income += t.amount
-    else b.expense += t.amount
-  }
-  // Пустое прошлое не рисуем: у нового пользователя из двенадцати месяцев
-  // одиннадцать были бы нулевыми, и график выглядел бы поломанным. Оставляем
-  // минимум четыре корзины, чтобы не схлопнуть его в один столбик.
-  const firstActive = buckets.findIndex((b) => b.income > 0 || b.expense > 0)
-  const visible = firstActive > 0 ? buckets.slice(Math.min(firstActive, buckets.length - TREND_MIN_BUCKETS)) : buckets
+/** Запаздывание учёта, которое корзине прощаем (как PARTIAL_GRACE обзора). */
+const TREND_PARTIAL_GRACE = 0.07
 
-  return visible.map(({ label, income, expense, start, end }) => ({ label, income, expense, start, end }))
-})
+/**
+ * Параметр — гранулярность (строка), чтобы memo2 кэшировал по ключу. Deps — с
+ * сегодняшним днём: открытое через полночь приложение иначе держало бы
+ * вчерашние корзины.
+ */
+export const selectTrend: (s: State, g: TrendGranularity) => TrendBucket[] = memo2(
+  (s, g) => {
+    const n = TREND_COUNT[g]
+    const unit: dayjs.ManipulateType = g
+    const now = dayjs()
+    const buckets = Array.from({ length: n }, (_, i) => {
+      const d = now.subtract(n - 1 - i, unit)
+      const start = d.startOf(unit)
+      return { start: +start, end: +start.add(1, unit), label: trendLabel(d, g), income: 0, expense: 0 }
+    })
+    // Счёт = валюта. Складывать разные валюты нечем (курсов в приложении нет),
+    // поэтому без выбранного счёта считаем основную валюту — ту же, в которой
+    // подписан график (selectAnalyticsCurrency).
+    const cur = s.account ?? s.currency
+    let firstDay = Infinity
+    for (const t of activeTransactions(s)) {
+      if (txCurrency(t, s) !== cur) continue
+      const x = parseDay(t.date)
+      if (x < firstDay) firstDay = x
+      const b = buckets.find((bk) => x >= bk.start && x < bk.end)
+      if (!b) continue
+      if (t.type === 'income') b.income += t.amount
+      else b.expense += t.amount
+    }
+    // Пустое прошлое не рисуем: у нового пользователя из двенадцати месяцев
+    // одиннадцать были бы нулевыми, и график выглядел бы поломанным. Оставляем
+    // минимум четыре корзины, чтобы не схлопнуть его в один столбик.
+    const firstActive = buckets.findIndex((b) => b.income > 0 || b.expense > 0)
+    const visible = firstActive > 0 ? buckets.slice(Math.min(firstActive, buckets.length - TREND_MIN_BUCKETS)) : buckets
+
+    return visible.map(({ label, income, expense, start, end }) => {
+      const days = Math.round((end - start) / 86_400_000)
+      const partial = firstDay > start && Math.round((firstDay - start) / 86_400_000) > Math.floor(days * TREND_PARTIAL_GRACE)
+      return { label, income, expense, start, end, partial }
+    })
+  },
+  (s, g) => [activeTransactions(s), s.account, s.currency, g, localDayKey(Date.now())],
+)
 
 /* ---------- Обзор (первый сегмент Аналитики) ---------- */
 
@@ -168,12 +188,15 @@ export const selectOverview: (s: State) => Overview = memo1(
       // «За всё время» — окно 1970…2100, реальных границ у него нет.
       openEnded: s.period.mode === 'all',
       // Аренда и подписки — не «разовые покупки» и не «мелочь».
-      recurringKeys: new Set(recurring.map((r) => recurringKey(r.categoryId, r.amount))),
+      // Подорожавший платёж узнаётся и по новой цене (Recurring.keys).
+      recurringKeys: new Set(recurring.flatMap((r) => r.keys)),
       upcoming: recurring.map((r) => ({ amount: r.amount, day: r.nextDay })),
       firstDay: firstDay === Infinity ? undefined : firstDay,
     })
   },
-  (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories],
+  // Сегодняшний день — тоже зависимость: открытое через полночь приложение
+  // иначе показывало бы «сегодня» вчерашним.
+  (s) => [activeTransactions(s), s.period, s.account, s.currency, s.monthlyBudget, s.customCategories, localDayKey(Date.now())],
 )
 
 /* ---------- Календарь Аналитики ---------- */
@@ -252,8 +275,10 @@ export const selectCategoryMonths: (s: State, categoryId: string) => CategoryMon
       return { start: +d, end: +d.add(1, 'month'), label: d.format('MMM'), amount: 0 }
     })
     const cur = s.account ?? s.currency
+    // Тип не фильтруем: категория либо расходная, либо доходная — у «Зарплаты»
+    // след по месяцам тоже есть (раньше считались только расходы — нули).
     for (const t of activeTransactions(s)) {
-      if (t.type !== 'expense' || t.categoryId !== categoryId) continue
+      if (t.categoryId !== categoryId) continue
       if (txCurrency(t, s) !== cur) continue
       const x = parseDay(t.date)
       if (!Number.isFinite(x)) continue

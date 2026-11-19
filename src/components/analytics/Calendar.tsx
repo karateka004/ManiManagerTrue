@@ -41,16 +41,17 @@ function saveMode(m: CalMode) {
 
 /**
  * Число в клетке. До 100 000 — целиком: дневной итог не округляем (4050, а не
- * «4,1к» — округление вверх искажало бы день). Дальше — тысячами («150к»).
+ * «4,1к» — округление вверх искажало бы день). Дальше — тысячами («150к»), от
+ * миллиона — миллионами («5,2м»: у донга, рупии, сума это обычный день).
  * На узком экране (меньше 360 px) клетка вмещает четыре цифры со знаком —
  * там тысячами уже от 10 000: «41к», «27,5к», а не «−410…».
  */
 function cellNum(v: number, lang: string, narrow: boolean): string {
   const a = Math.round(Math.abs(v))
   if (a < (narrow ? 10_000 : 100_000)) return String(a)
-  const k = a / 1000
-  const text = (k < 100 ? Math.round(k * 10) / 10 : Math.round(k)).toLocaleString(lang === 'en' ? 'en' : 'ru')
-  return text + (lang === 'en' ? 'k' : 'к')
+  const en = lang === 'en'
+  const [n, unit] = a >= 999_500 ? [a / 1_000_000, en ? 'm' : 'м'] : [a / 1000, en ? 'k' : 'к']
+  return (n < 100 ? Math.round(n * 10) / 10 : Math.round(n)).toLocaleString(en ? 'en' : 'ru') + unit
 }
 
 /**
@@ -192,24 +193,37 @@ export const CalendarWidget = memo(function CalendarWidget({ onDay }: { onDay: (
           const outside = key < lo || key >= hi
           const today = key === todayKey
           const v = look(day)
+          // Будущий день с записью (аренда наперёд) — тоже открывается: запись
+          // надо уметь поправить. Пустой будущий — нечего открывать.
+          const empty = future && !day
           return (
             <button
               key={d}
               type="button"
-              disabled={future}
+              data-day={d}
+              disabled={empty}
               onClick={() => {
                 hapticTap()
                 onDay(key)
               }}
-              aria-label={`${dayjs(key).format('D MMMM')}${day?.expense ? ', −' + money(day.expense) : ''}${day?.income ? ', +' + money(day.income) : ''}`}
               className={`${v.cls} relative flex min-h-[46px] flex-col items-center justify-center gap-[3px] rounded-[11px] px-0.5 tabular transition-transform active:scale-95 ${
                 v.strong ? 'text-white' : 'text-ink'
-              } ${future ? 'opacity-30' : outside ? 'opacity-45' : ''} ${today ? 'ring-2 ring-brand-400 ring-offset-0' : ''}`}
+              } ${empty ? 'opacity-30' : future ? 'opacity-60' : outside ? 'opacity-45' : ''} ${today ? 'ring-2 ring-brand-400 ring-offset-0' : ''}`}
             >
-              <span className={`text-[12px] font-bold leading-none ${v.lines.length ? 'opacity-70' : ''}`}>{d}</span>
+              {/* Для диктора — текстом, а не aria-label: атрибут Clarity пишет
+                  как есть, а текст под маской скрывает (суммы — личные). */}
+              <span className="sr-only" {...MASK}>
+                {dayjs(key).format(lang === 'en' ? 'MMMM D' : 'D MMMM')}
+                {day?.expense ? ', −' + money(day.expense) : ''}
+                {day?.income ? ', +' + money(day.income) : ''}
+              </span>
+              <span aria-hidden className={`text-[12px] font-bold leading-none ${v.lines.length ? 'opacity-70' : ''}`}>
+                {d}
+              </span>
               {v.lines.map((l) => (
                 <span
                   key={l.text}
+                  aria-hidden
                   className={`max-w-full truncate text-[10px] font-extrabold leading-none tracking-tight max-[359px]:text-[9px] ${l.tone}`}
                   {...MASK}
                 >
@@ -224,7 +238,9 @@ export const CalendarWidget = memo(function CalendarWidget({ onDay }: { onDay: (
         })}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 px-1">
+      {/* Итог не влезает рядом с легендой (миллионы, узкий экран) — уходит
+          строкой ниже, а не обрезается многоточием. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-1">
         {mode === 'both' ? (
           <div className="flex items-center gap-3 text-[11px] font-semibold text-ink-subtle">
             <span className="flex items-center gap-1.5">
@@ -254,7 +270,7 @@ export const CalendarWidget = memo(function CalendarWidget({ onDay }: { onDay: (
           </div>
         )}
         {/* Итог месяца — в выбранном виде. */}
-        <div className="min-w-0 truncate text-right text-[12.5px] font-extrabold tabular" {...MASK}>
+        <div className="ml-auto whitespace-nowrap text-right text-[12.5px] font-extrabold tabular" {...MASK}>
           {mode === 'expense' ? (
             <span className="text-expense-deep dark:text-expense">−{money(totals.expense)}</span>
           ) : mode === 'income' ? (

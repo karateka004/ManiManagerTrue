@@ -52,6 +52,9 @@ export function mergeQs(
   const e = typeof body.e === 'number' && Number.isInteger(body.e) ? Math.min(3, Math.max(0, body.e)) : 0
   // Анкета и обучение — разные шаги: сменился вид — считаем заново.
   const v2 = body.v === 2
+  // Отчёт старого клиента (анкета, без v) поверх обучения — устаревший кэш
+  // приложения, а не новый заход: запись обучения не обнуляем.
+  if (prev?.v === 2 && !v2) return prev
   if (prev && (prev.v === 2) !== v2) prev = null
   const next: QsMeta = { t: prev?.t ?? now, u: now, s: Math.max(prev?.s ?? 0, s) }
   if (v2) next.v = 2
@@ -76,6 +79,7 @@ export async function trackQuickStart(
     const prev = (await env.REFERRALS.getWithMetadata<QsMeta>(key)).metadata ?? null
     const next = mergeQs(prev, body, now)
     if (!next) return false
+    if (next === prev) return true
     try {
       await env.REFERRALS.put(key, '1', { metadata: next, expirationTtl: QS_TTL })
       return true

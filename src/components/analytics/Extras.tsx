@@ -43,11 +43,18 @@ export const RhythmWidget = memo(function RhythmWidget() {
         ))}
       </div>
       <div className="mt-2.5 truncate text-center text-[12px] text-ink-subtle" {...MASK}>
-        {t('w.rhythm_peak', { day: weekdaysFull(lang)[top].toLowerCase(), avg: formatMoney(Math.round(o.weekday[top]), o.currency) })}
+        {t('w.rhythm_peak', {
+          // По-русски день — со строчной («Дороже всего — пятница»), по-английски — нет.
+          day: lang === 'en' ? weekdaysFull(lang)[top] : weekdaysFull(lang)[top].toLowerCase(),
+          avg: formatMoney(Math.round(o.weekday[top]), o.currency),
+        })}
       </div>
     </Widget>
   )
 })
+
+/** Больше строк в панели постоянных трат не показываем. */
+const MAX_RECURRING_ROWS = 6
 
 /**
  * Постоянные траты: что списывается каждый месяц, когда следующий раз — и во
@@ -55,13 +62,15 @@ export const RhythmWidget = memo(function RhythmWidget() {
  * подписок и аренды люди почти никогда не держат в голове.
  */
 export const RecurringWidget = memo(function RecurringWidget() {
-  const rows = useStore(selectRecurring)
+  const all = useStore(selectRecurring)
   const currency = useStore(selectAnalyticsCurrency)
   const lang = useStore((s) => s.lang)
   const t = useAnT()
   const catName = useCatName()
-  if (rows.length === 0) return null
-  const monthly = rows.reduce((a, r) => a + r.amount, 0)
+  if (all.length === 0) return null
+  // Строк — не больше шести, а итог за месяц и год — по всем платежам.
+  const rows = all.slice(0, MAX_RECURRING_ROWS)
+  const monthly = all.reduce((a, r) => a + r.amount, 0)
 
   return (
     <Widget title={t('w.recurring')} delay={220} bodyClass="px-4 py-1">
@@ -157,15 +166,17 @@ export const AskWidget = memo(function AskWidget({ onAsk }: { onAsk: (q: string)
   const t = useAnT()
   const catName = useCatName()
 
-  const questions = useMemo(() => {
-    const out: string[] = []
-    const spike = o.insights.find((i) => i.kind === 'spike' || i.kind === 'trend')
-    if (spike && 'categoryId' in spike) out.push(t('q.why', { name: catName(spike.categoryId, spike.name) }))
-    if (o.insights.some((i) => i.kind === 'weekend')) out.push(t('q.weekend'))
-    out.push(t('q.save'))
-    out.push(mode === 'month' && !o.complete ? t('q.per_day') : t('q.compare'))
-    return out.slice(0, 3)
-  }, [o.insights, o.complete, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Ассистент отвечает про текущий месяц. Вопрос о всплеске категории — только
+  // когда и экран показывает текущий месяц: всплеск прошлой недели он не видит.
+  const current = mode === 'month' && !o.complete
+  // Без useMemo: три строки дешевле сравнения deps, а язык (t, catName) — свежий.
+  const questions: string[] = []
+  const spike = current ? o.insights.find((i) => i.kind === 'spike' || i.kind === 'trend') : undefined
+  if (spike && 'categoryId' in spike) questions.push(t('q.why', { name: catName(spike.categoryId, spike.name) }))
+  if (o.insights.some((i) => i.kind === 'weekend')) questions.push(t('q.weekend'))
+  questions.push(t('q.save'))
+  questions.push(current ? t('q.per_day') : t('q.compare'))
+  questions.length = Math.min(questions.length, 3)
 
   return (
     <Widget title={t('w.ask')} delay={260} bodyClass="p-2">

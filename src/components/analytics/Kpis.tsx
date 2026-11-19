@@ -56,8 +56,8 @@ export const KpiGrid = memo(function KpiGrid() {
         sub={
           o.noSpendStreak >= 2
             ? t('kpi.free_streak', { n: o.noSpendStreak })
-            : o.daysTracked > 0
-              ? t('kpi.free_of', { n: o.daysTracked, days: daysWord(lang, o.daysTracked) })
+            : o.noSpendOf > 0
+              ? t('kpi.free_of', { n: o.noSpendOf, days: daysWord(lang, o.noSpendOf) })
               : undefined
         }
         tone={o.noSpendStreak >= 2 ? 'good' : undefined}

@@ -68,8 +68,9 @@ export function AnalyticsPage({ onEditTx, onAdd, onAddIncome, onAsk }: Props) {
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-300">
             <BarChart3 size={22} strokeWidth={2.4} />
           </span>
-          <div className="mt-3 text-[17px] font-extrabold text-ink">{t('empty.title')}</div>
-          <p className="mx-auto mt-1.5 max-w-[270px] text-[13.5px] leading-snug text-ink-subtle">{t('empty.text')}</p>
+          {/* Записи есть, но не в этом периоде — «запиши первую трату» тут неправда. */}
+          <div className="mt-3 text-[17px] font-extrabold text-ink">{t(hasAny ? 'empty.period_title' : 'empty.title')}</div>
+          <p className="mx-auto mt-1.5 max-w-[270px] text-[13.5px] leading-snug text-ink-subtle">{t(hasAny ? 'empty.period_text' : 'empty.text')}</p>
           {!hasAny && (
             <button
               type="button"

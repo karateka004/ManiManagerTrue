@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { tg, onThemeChange, syncTelegramChrome } from './telegram'
 import { useStore, type ThemeMode } from '../store/transactions'
 import { ACCENT_PALETTES } from './rewards'
+import { setFormatLocale } from './format'
 
 /** Тёмная ли тема: выбор в настройках, иначе (system, старое auto) Telegram, иначе система. */
 function resolveDark(mode: ThemeMode | string): boolean {
@@ -38,6 +39,9 @@ function paintAccent(accent: string) {
  */
 export function applyInitialAppearance() {
   const s = useStore.getState()
+  // Язык дат — тоже до первого кадра: эффект useFormatLocale срабатывал после
+  // него, и у английского интерфейса шапка периода оставалась «Ноябрь 2026».
+  setFormatLocale(s.lang)
   const dark = resolveDark(s.themeMode)
   document.documentElement.classList.toggle('dark', dark)
   paintAccent(s.equipped.accent)

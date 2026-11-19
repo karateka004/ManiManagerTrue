@@ -216,9 +216,11 @@ async function scrub(page, area, from = 0.2, to = 0.6) {
     } else ok(true, 'категорий мало — «Все категории» не нужна')
 
     // Календарь: день с тратами → шторка дня → запись → правка.
-    const day = panel(page).locator('button[aria-label*="−"]:not([disabled])').first()
+    // Клетка дня: подпись для диктора — текстом в .sr-only (не aria-label: его Clarity пишет как есть).
+    const day = panel(page).locator('button[data-day]:not([disabled])').filter({ has: page.locator('.sr-only', { hasText: '−' }) }).first()
     await day.scrollIntoViewIfNeeded()
-    const label = await day.getAttribute('aria-label')
+    const label = await day.locator('.sr-only').textContent()
+    ok(!(await panel(page).locator('button[data-day][aria-label]').count()), 'календарь: суммы не в атрибутах клеток')
     await day.click()
     await page.waitForTimeout(900)
     const dayText = (await sheet(page).textContent()) ?? ''
@@ -232,15 +234,21 @@ async function scrub(page, area, from = 0.2, to = 0.6) {
     // Календарь: режимы как раньше — суммы прямо в клетках.
     const calSeg = panel(page).getByRole('group', { name: 'Календарь' })
     await calSeg.scrollIntoViewIfNeeded()
-    const cellText = () =>
-      page.evaluate(() => [...document.querySelectorAll('.tab-panel:not([data-off]) button[aria-label*="−"]:not([disabled])')].map((b) => b.textContent.trim()))
+    // Видимый текст клеток (без .sr-only) — у дней, где подпись говорит о трате (знак).
+    const cells = (sign) =>
+      page.evaluate(
+        (sign) =>
+          [...document.querySelectorAll('.tab-panel:not([data-off]) button[data-day]:not([disabled])')]
+            .filter((b) => (b.querySelector('.sr-only')?.textContent ?? '').includes(sign))
+            .map((b) => [...b.children].filter((c) => !c.classList.contains('sr-only')).map((c) => c.textContent).join('').trim()),
+        sign,
+      )
+    const cellText = () => cells('−')
     const spentCells = await cellText()
     ok(spentCells.length > 0 && spentCells.every((t) => /^\d{1,2}\d+/.test(t.replace(/\s/g, ''))), 'календарь «Траты»: в клетках сумма дня', spentCells.slice(0, 4))
     await calSeg.getByRole('button', { name: 'Оба', exact: true }).click()
     await page.waitForTimeout(400)
-    const both = await page.evaluate(() =>
-      [...document.querySelectorAll('.tab-panel:not([data-off]) button[aria-label*="+"]:not([disabled])')].map((b) => b.textContent.trim()),
-    )
+    const both = await cells('+')
     // Дни с доходом: строка «+…», а если в тот же день были и траты — ещё «−…».
     ok(both.length > 0 && both.every((t) => /\+\d/.test(t)) && both.some((t) => /−\d/.test(t)), 'календарь «Оба»: доход и трата двумя строками', both.slice(0, 3))
     await calSeg.getByRole('button', { name: 'Итог', exact: true }).click()

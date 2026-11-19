@@ -43,8 +43,12 @@ export const HeroWidget = memo(function HeroWidget() {
     } else if (mode === 'week') cmp = t(full ? 'hero.cmp.week' : 'hero.cmp.week_to', { amount: money(full ? o.prevSpentFull : o.prevSpent ?? 0) })
     else if (mode === 'day') cmp = t('hero.cmp.day', { amount: money(o.prevSpentFull) })
     else if (mode === 'year') cmp = t(full ? 'hero.cmp.year' : 'hero.cmp.year_to', { year: prevStart.getFullYear() - 1, amount: money(full ? o.prevSpentFull : o.prevSpent ?? 0) })
-    else cmp = t('hero.cmp.range', { amount: money(o.prevSpentFull) })
+    else cmp = t(full ? 'hero.cmp.range' : 'hero.cmp.range_to', { amount: money(full ? o.prevSpentFull : o.prevSpent ?? 0) })
   }
+  // Записанное будущим числом (аренда 25-го — сегодня): крупная сумма его
+  // включает, а сравнение «к этому дню» — нет. Без этой строки 49 000 рядом с
+  // «≈» к 19 000 прошлого месяца выглядело ошибкой.
+  const ahead = o.complete ? 0 : o.spent - o.spentToDate
 
   const left = o.income - o.spent
   const lastDay = dayjs(o.endKey - DAY / 2).format(lang === 'en' ? 'MMMM D' : 'D MMMM')
@@ -77,6 +81,11 @@ export const HeroWidget = memo(function HeroWidget() {
               {cmp}
             </div>
           )
+        )}
+        {ahead > 0.5 && (
+          <div className={`${cmp || o.mixedCurrency ? 'mt-0.5' : 'mt-2'} truncate text-[12.5px] text-ink-subtle`} {...MASK}>
+            {t('hero.ahead', { amount: money(ahead) })}
+          </div>
         )}
       </div>
 

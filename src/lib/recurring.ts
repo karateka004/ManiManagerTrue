@@ -34,8 +34,14 @@ const RECUR_NOTE_SHARE = 0.6
 const RECUR_GRACE_DAYS = 12
 /** Глубина поиска регулярных платежей. */
 const RECUR_WINDOW_DAYS = 400
-/** Больше строк в панели постоянных трат не показываем. */
-const MAX_RECURRING = 6
+/**
+ * Новая цена того же платежа: аренду подняли с 30 000 до 32 000. Запись в той
+ * же категории не раньше чем за столько дней до срока и в пределах этой доли
+ * от прежней суммы — это и есть очередной платёж, а не «просрочка» плюс
+ * «разовая покупка 32 000».
+ */
+const RECUR_REPRICE_EARLY_DAYS = 3
+const RECUR_REPRICE_SHARE = 0.25
 
 /** Повторяющийся платёж: одинаковая сумма в одной категории примерно раз в месяц. */
 export interface Recurring {
@@ -51,6 +57,11 @@ export interface Recurring {
    */
   title: string
   amount: number
+  /**
+   * Все ключи (recurringKey), под которыми платёж записывался: прежняя цена и
+   * новая. По ним Аналитика узнаёт в записи регулярный платёж.
+   */
+  keys: string[]
   currency: Currency
   /** Сколько раз уже списывалось. */
   times: number
@@ -68,6 +79,16 @@ export interface Recurring {
 export const recurringKey = (categoryId: string, amount: number) => categoryId + '|' + Math.round(amount * 100)
 
 const capitalize = (v: string) => v.charAt(0).toUpperCase() + v.slice(1)
+
+/** То же число в следующем месяце; в коротком месяце — его последний день. */
+function sameDayNextMonth(key: number): Date {
+  const next = new Date(key)
+  const dom = next.getDate()
+  next.setDate(1)
+  next.setMonth(next.getMonth() + 1)
+  next.setDate(Math.min(dom, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()))
+  return next
+}
 
 /** Число месяца и разница между двумя числами по кругу (31 → 2 — это 2 дня). */
 const domOf = (key: number) => new Date(key).getDate()
@@ -97,6 +118,8 @@ export function buildRecurring(
   const since = now - RECUR_WINDOW_DAYS * DAY_MS
   const groups = new Map<string, { days: number[]; notes: Map<string, number>; spelled: Map<string, string>; currency: Currency }>()
   const perCategory = new Map<string, number>()
+  // Траты по категориям — искать новую цену платежа (RECUR_REPRICE_*).
+  const byCategory = new Map<string, { at: number; amount: number; note: string }[]>()
   let first = Infinity
 
   for (const t of history) {
@@ -105,6 +128,9 @@ export function buildRecurring(
     if (!Number.isFinite(at) || at < since) continue
     if (at < first) first = at
     perCategory.set(t.categoryId, (perCategory.get(t.categoryId) ?? 0) + 1)
+    let list = byCategory.get(t.categoryId)
+    if (!list) byCategory.set(t.categoryId, (list = []))
+    list.push({ at, amount: t.amount, note: t.note?.trim().toLowerCase() ?? '' })
     const key = recurringKey(t.categoryId, t.amount)
     let g = groups.get(key)
     if (!g) {
@@ -174,13 +200,34 @@ export function buildRecurring(
     // месяца, а не через «средние 30,7 дня» — те давали шестое. Платёж раз в
     // четыре недели гуляет по месяцу — его ждём через свой промежуток.
     const c = byId.get(categoryId)
-    const next = new Date(last)
-    if (fixedDay && gap >= 28) {
-      const dom = new Date(last).getDate()
-      next.setDate(1)
-      next.setMonth(next.getMonth() + 1)
-      next.setDate(Math.min(dom, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()))
-    } else next.setDate(next.getDate() + gap)
+    const nextAfter = (day: number) => {
+      if (fixedDay && gap >= 28) return sameDayNextMonth(day)
+      const next = new Date(day)
+      next.setDate(next.getDate() + gap)
+      return next
+    }
+    let amount = Number(key.slice(sep + 1)) / 100
+    const keys = [key]
+    let next = nextAfter(last)
+
+    // Платёж подорожал (подешевел): после последнего списания по старой цене,
+    // не раньше чем за три дня до срока, в той же категории записана сумма в
+    // пределах четверти от прежней. Это очередной платёж — по новой цене: срок
+    // сдвигается от него, а запись не считается ни просрочкой, ни разовой
+    // покупкой. В частой категории — только с той же заметкой.
+    const from = +next - RECUR_REPRICE_EARLY_DAYS * DAY_MS
+    let repriced: { at: number; amount: number } | null = null
+    for (const x of byCategory.get(categoryId) ?? []) {
+      if (x.at <= last || x.at < from || x.amount === amount) continue
+      if (Math.abs(x.amount - amount) > amount * RECUR_REPRICE_SHARE) continue
+      if (busy && x.note !== title) continue
+      if (!repriced || x.at > repriced.at) repriced = x
+    }
+    if (repriced) {
+      amount = repriced.amount
+      keys.push(recurringKey(categoryId, repriced.amount))
+      next = nextAfter(repriced.at)
+    }
 
     out.push({
       id: key,
@@ -189,13 +236,16 @@ export function buildRecurring(
       name: c?.name ?? categoryId,
       color: c?.color ?? '#8A968F',
       icon: c?.icon ?? 'other',
-      amount: Number(key.slice(sep + 1)) / 100,
+      amount,
+      keys,
       currency: group.currency,
-      times: days.length,
+      times: days.length + (repriced ? 1 : 0),
       nextDay: +next,
       due: +next <= todayKey,
     })
   }
 
-  return out.sort((a, b) => b.amount - a.amount).slice(0, MAX_RECURRING)
+  // Все: панели сами решают, сколько строк показать, а расчётам (прогноз,
+  // «разовые покупки») нужен каждый платёж, а не первые шесть.
+  return out.sort((a, b) => b.amount - a.amount)
 }

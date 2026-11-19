@@ -243,7 +243,7 @@ function seed({ days, version }) {
     await bringTitle('Календарь')
     await page.waitForTimeout(800)
     const day = await page.evaluate((P) => {
-      const all = [...document.querySelectorAll(`${P} button[aria-label*="−"]:not([disabled])`)]
+      const all = [...document.querySelectorAll(`${P} button[data-day]:not([disabled])`)].filter((b) => (b.querySelector('.sr-only')?.textContent ?? '').includes('−'))
       const seen = all.filter((e) => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 140 })
       const e = seen[Math.min(seen.length - 1, 9)]
       if (!e) return null

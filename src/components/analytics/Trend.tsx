@@ -44,7 +44,8 @@ export const TrendWidget = memo(function TrendWidget() {
 
   const now = Date.now()
   const stats = useMemo(() => {
-    const done = buckets.filter((b) => b.end <= now && (b.expense > 0 || b.income > 0))
+    // Неполная первая корзина (учёт начался посреди месяца) среднее занижала бы.
+    const done = buckets.filter((b) => b.end <= now && !b.partial && (b.expense > 0 || b.income > 0))
     const avg = done.length ? done.reduce((a, b) => a + b.expense, 0) / done.length : 0
     const top = niceCeil(Math.max(1, ...buckets.map((b) => Math.max(b.expense, b.income)), avg))
     return { avg, top, empty: buckets.every((b) => b.expense === 0 && b.income === 0), anyIncome: buckets.some((b) => b.income > 0) }

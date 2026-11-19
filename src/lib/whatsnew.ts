@@ -33,6 +33,37 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.11.2',
+    date: '2026-11-19',
+    title: { ru: 'Аналитика точнее', en: 'Sharper analytics' },
+    items: [
+      {
+        text: {
+          ru: 'Если учёт начался посреди месяца, этот месяц больше не сравнивается с полными: не будет ложных «+280%» и всплесков',
+          en: 'A month you started tracking halfway through is no longer compared with full ones — no more false “+280%” or spikes',
+        },
+      },
+      {
+        text: {
+          ru: 'Подорожала аренда или подписка — это тот же платёж по новой цене, а не «пора записать» и «разовая покупка»',
+          en: 'When rent or a subscription goes up, it’s the same payment at a new price — not “time to log it” plus a one-off purchase',
+        },
+      },
+      {
+        text: {
+          ru: 'Совет «в день можно до…» учитывает аренду и подписки впереди; записанное наперёд видно отдельной строкой и открывается в календаре',
+          en: 'The “you can spend up to … a day” tip accounts for rent and subscriptions ahead; entries logged in advance get their own line and open from the calendar',
+        },
+      },
+      {
+        text: {
+          ru: 'Обучение новичка: работает в альбомной ориентации, точнее продолжается после перезапуска, подсветка не мигает при переходах',
+          en: 'Newcomer tour: works in landscape, resumes more reliably after a restart, and the highlight no longer flickers between steps',
+        },
+      },
+    ],
+  },
+  {
     version: '2.11.1',
     date: '2026-11-19',
     title: { ru: 'Календарь с суммами', en: 'Calendar with amounts' },
