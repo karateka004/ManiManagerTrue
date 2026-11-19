@@ -35,6 +35,7 @@ export function AnalyticsTabs({ value, onChange }: Props) {
   return (
     <div
       ref={trackRef}
+      data-tour="analytics-tabs"
       className="relative mx-4 mt-4 flex overflow-x-auto rounded-full bg-surface-sunken p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <span ref={pillRef} className="seg-pill" aria-hidden />

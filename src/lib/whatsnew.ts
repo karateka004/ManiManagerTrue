@@ -33,6 +33,31 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.10.0',
+    date: '2026-11-19',
+    title: { ru: 'Обучение — обо всём главном', en: 'A tour of everything that matters' },
+    items: [
+      {
+        text: {
+          ru: 'Обучение новичка теперь показывает всё главное: запись траты, баланс и доходы, аналитику, уровни и задания — и в конце подсказывает про бота и ассистента',
+          en: 'The newcomer tour now covers all the essentials: logging an expense, balance and income, analytics, levels and quests — and ends with tips on the bot and the assistant',
+        },
+      },
+      {
+        text: {
+          ru: 'Без лишних нажатий: шаги идут сами за действиями, подсветка плавно перетекает к следующему месту, а на маленьких экранах подсказка не закрывает сумму и категории',
+          en: 'No extra taps: steps follow your actions, the spotlight glides to the next spot, and on small screens the hint never covers the amount or categories',
+        },
+      },
+      {
+        text: {
+          ru: 'Исправлено: если сервер присылал неполный ответ, опыт на «Прогрессе» мог показаться как «не число»',
+          en: 'Fixed: an incomplete server reply could show your XP on “Progress” as “NaN”',
+        },
+      },
+    ],
+  },
+  {
     version: '2.9.1',
     date: '2026-11-19',
     title: { ru: 'Траты ночью — в свой день', en: 'Late-night entries land on the right day' },

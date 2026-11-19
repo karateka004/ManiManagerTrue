@@ -107,7 +107,7 @@ function Hero() {
   const hasBelow = hasSpark || o.forecast.length > 0
 
   return (
-    <div className="mx-4 mt-3 overflow-hidden rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
+    <div data-tour="spent" className="mx-4 mt-3 overflow-hidden rounded-3xl bg-surface-raised shadow-soft dark:shadow-soft-dark">
       <div className={`px-5 pt-4 ${hasBelow ? '' : 'pb-4'}`}>
         <div className="flex items-start justify-between gap-3">
           <div>

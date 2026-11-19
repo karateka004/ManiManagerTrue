@@ -312,7 +312,7 @@ export function RewardsPage() {
 
       {/* Уровень. Монеты и серия отсюда ушли в строки ниже — там у них есть
           действие, а в герое они были третьим и четвёртым числом на плашке. */}
-      <div className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${skin}`}>
+      <div data-tour="level" className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${skin}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {/* Жетон цветной (как в 2.0 — «стеклянный» из первой сборки 2.1 читался

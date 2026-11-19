@@ -309,6 +309,15 @@ function AddForm({
   useEffect(() => {
     if (keypadRef.current) keypadRef.current.inert = !keypadOpen
   }, [keypadOpen])
+  // Обучение новичка сворачивает клавиатуру само, когда сумма набрана, а
+  // категориям на низком экране не хватает места (onboarding/Tour).
+  useEffect(() => {
+    const pad = keypadRef.current
+    if (!pad) return
+    const fold = () => setKeypadOpen(false)
+    pad.addEventListener('tour-fold', fold)
+    return () => pad.removeEventListener('tour-fold', fold)
+  }, [])
   useEffect(() => () => disarm.current?.(), [])
   const showKeypad = () => {
     hapticSelect()
@@ -641,7 +650,7 @@ function AddForm({
       </div>
 
       {/* Середина прокручивается: повтор, категории, заметка, дата, теги. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+      <div data-tour="form" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
         {/* Повтор частых операций — только при создании: в правке подставлять
             чужую сумму поверх редактируемой было бы неожиданно. */}
         {!editing && frequent.length > 0 && (

@@ -633,33 +633,100 @@ html.perf-low .tabbar-glass {
 }
 
 /* ---------- Обучение новичка ----------
-   Кольцо вокруг подсвеченного места: позицию ставит Tour каждый кадр
-   (transform), пульсирует отдельный слой — всё на композиторе. */
+   Кольцо вокруг того, что нажать: позицию и размер ставит Tour, только когда
+   они меняются (transform — на композиторе). Пульс — отдельный слой, scale на
+   --px/--py: расходится на ~9 px при любом размере кольца. Вспышка (::before)
+   — ответ на нажатие мимо подсветки. */
 .tour-ring {
   position: fixed;
   left: 0;
   top: 0;
   border-radius: 18px;
-  box-shadow: 0 0 0 2px rgb(var(--brand-400)), 0 0 22px rgb(var(--brand-400) / 0.45);
+  box-shadow: 0 0 0 2px rgb(var(--brand-400)), 0 0 24px rgb(var(--brand-400) / 0.4);
   pointer-events: none;
   will-change: transform;
 }
+.tour-ring::before,
 .tour-ring::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   box-shadow: 0 0 0 2px rgb(var(--brand-400));
-  animation: tour-pulse 1600ms var(--ease-out) infinite;
+  opacity: 0;
 }
+.tour-ring::after { animation: tour-pulse 1700ms var(--ease-out) infinite; }
 @keyframes tour-pulse {
-  from { transform: scale(1); opacity: 0.9; }
-  to { transform: scale(1.12); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(var(--px, 1.1), var(--py, 1.1)); opacity: 0; }
 }
-.tour-dim { animation: tour-dim-in 260ms ease both; }
+.tour-ring.tour-flash::before { animation: tour-flash 560ms var(--ease-out); }
+@keyframes tour-flash {
+  0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 4px rgb(var(--brand-300)); }
+  100% { transform: scale(calc(var(--px, 1.1) * 1.08), calc(var(--py, 1.1) * 1.08)); opacity: 0; }
+}
+.tour-dim { animation: tour-dim-in 320ms ease both; }
 @keyframes tour-dim-in {
   from { opacity: 0; }
 }
+.tour-out { animation: tour-out 200ms ease forwards; }
+@keyframes tour-out {
+  to { opacity: 0; }
+}
+
+/* Карточка: место по вертикали — transform на обёртке (.tour-pos, его ведёт
+   Tour пружиной), появление и отклики — на вложенных слоях, чтобы анимация не
+   перебивала положение. Хвостик смотрит на цель: сторону задаёт data-side,
+   сдвиг по горизонтали — Tour. */
+.tour-pos {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 0 16px;
+  will-change: transform;
+}
+.tour-card {
+  position: relative;
+  margin: 0 auto;
+  max-width: 24rem;
+  box-shadow: 0 0 0 1px var(--hairline), 0 18px 48px rgb(0 0 0 / 0.38);
+  animation: tour-card-in 380ms var(--ease-out) both;
+}
+@keyframes tour-card-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
+}
+.tour-tail {
+  position: absolute;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: inherit;
+  display: none;
+}
+.tour-card[data-side='up'] .tour-tail { display: block; top: -7px; }
+.tour-card[data-side='down'] .tour-tail { display: block; bottom: -7px; }
+.tour-swap { animation: tour-swap 280ms var(--ease-out) both; }
+@keyframes tour-swap {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+}
+.tour-nudge { animation: tour-nudge 420ms var(--ease-out); }
+@keyframes tour-nudge {
+  20% { transform: translate3d(-6px, 0, 0); }
+  45% { transform: translate3d(5px, 0, 0); }
+  70% { transform: translate3d(-2px, 0, 0); }
+}
+.tour-bob { animation: tour-bob 1400ms var(--ease-in-out) infinite; }
+@keyframes tour-bob {
+  50% { transform: translate3d(0, 3px, 0); }
+}
+.tour-check { animation: tour-check 560ms var(--ease-spring) 120ms both; }
+@keyframes tour-check {
+  from { transform: scale(0.3); opacity: 0; }
+}
+html.anim-paused .tour-ring::after, html.anim-paused .tour-bob { animation-play-state: paused; }
+html.perf-low .tour-ring::after, html.perf-low .tour-bob { animation: none; }
 
 /* ---------- Меньше движения ----------
    Человек попросил систему не двигать интерфейс — гасим всё декоративное.
@@ -679,7 +746,7 @@ html.perf-low .tabbar-glass {
     animation: fx-fade 1300ms forwards;
     transform: translate3d(var(--x0), var(--y0), 0) translate(-50%, -120%);
   }
-  .odo-roll, .tour-ring::after, .tour-dim { animation: none !important; }
+  .odo-roll, .tour-ring::after, .tour-ring::before, .tour-dim, .tour-out, .tour-card, .tour-swap, .tour-nudge, .tour-bob, .tour-check { animation: none !important; }
   .seg-pill, .reveal, .press, .press-soft, .press-icon, .keypad-fold, .keypad-fold > div > * { transition: none !important; }
   .skeleton { animation: none; }
 }

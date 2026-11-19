@@ -1154,7 +1154,11 @@ export const useStore = create<State & Actions>()(
 
       reconcileReferralRewards: (count) =>
         set((s) => {
-          const total = Math.max(0, Math.floor(count))
+          // Ответ без числа (сбой, чужой формат) — ничего не трогаем: NaN в опыте
+          // показывался бы «не число XP», а при следующем запуске очистка стора
+          // обнулила бы весь бонусный опыт.
+          const total = Math.max(0, Math.floor(Number(count)))
+          if (!Number.isFinite(total)) return s
           const n = total - s.rewardedReferrals
           if (n <= 0) return s
           return {
