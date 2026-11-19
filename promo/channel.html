@@ -140,9 +140,12 @@ const SCREEN_H = (APP_H + SB) * S
 const PW = SCREEN_W + BEZEL * 2
 const PH = SCREEN_H + BEZEL * 2
 const MARGIN = 48
-/* Камера: 0 — виден верх телефона, 1 — низ (касания по «+», клавиатуре, «Записать»). */
-const TOP_Y = MARGIN
-const BOTTOM_Y = Math.min(MARGIN, H - MARGIN - PH)
+/* Камера: 0 — виден верх телефона, 1 — низ (касания по «+», клавиатуре, «Записать»).
+   В вертикальном кадре (portrait, 1080×1350) телефон помещается целиком — стоит
+   по центру, камера не ездит. */
+const FITS = H - PH >= MARGIN * 2
+const TOP_Y = FITS ? (H - PH) / 2 : MARGIN
+const BOTTOM_Y = FITS ? TOP_Y : Math.min(MARGIN, H - MARGIN - PH)
 
 const root = document.documentElement.style
 const set = (k, v) => root.setProperty(k, v)

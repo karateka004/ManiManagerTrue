@@ -5,7 +5,12 @@
  * сцена (promo/channel.html), а не приложение.
  *
  *   npx vite preview --port 4173   (в корне, после npm run build)
- *   node promo/capture.cjs [url]   → promo/out/capture/: кадры *.jpg, timeline.json и .js (для сцены)
+ *   node promo/capture.cjs [url] [--scenario add|analytics]
+ *                                   → promo/out/capture/: кадры *.jpg, timeline.json и .js (для сцены)
+ *
+ * Сценарии: add (пост 2.7.1) — Аналитика свайпом туда-обратно и запись траты;
+ * analytics (пост 2.11) — новая Аналитика: палец по графику «Потрачено»,
+ * подсказки, категории, день календаря, палец по динамике.
  */
 const fs = require('node:fs')
 const path = require('node:path')
@@ -19,7 +24,11 @@ function loadPlaywright() {
   throw new Error('Нужен playwright: npm i -g playwright')
 }
 
-const URL = process.argv[2] || 'http://localhost:4173/'
+const args = process.argv.slice(2)
+const flagAt = args.findIndex((a) => a.startsWith('--scenario'))
+const SCENARIO = flagAt < 0 ? 'add' : args[flagAt].includes('=') ? args[flagAt].split('=')[1] : args[flagAt + 1]
+const URL = args.find((a, i) => !a.startsWith('--') && i !== flagAt + 1) || 'http://localhost:4173/'
+if (!['add', 'analytics'].includes(SCENARIO)) throw new Error('сценарий: add или analytics')
 const OUT = path.join(__dirname, 'out', 'capture')
 const W = 390
 const H = 844
@@ -41,14 +50,18 @@ const TG_STUB = `
   window.Telegram = { WebApp: new Proxy(wa, { get: (t, k) => (k in t ? t[k] : deep()) }) }
 })()`
 
-/** Данные: ~10 недель обычной жизни в долларах, без привязки к стране. */
-function seed() {
+/**
+ * Данные: обычная жизнь в долларах, без привязки к стране. Для Аналитики —
+ * четыре с лишним месяца: подсказкам нужны три прошлых периода к тому же дню.
+ */
+function seed({ days, version }) {
   if (sessionStorage.getItem('seeded')) return
   sessionStorage.setItem('seeded', '1')
   localStorage.clear()
   for (const [k, v] of [
     ['koshel:onboarded', '1'],
-    ['koshel:lastVersion', '2.7.1'],
+    ['koshel:lastVersion', version],
+    ['koshel:tourDone', '1'],
     ['koshel:curAsked', '1'],
     ['koshel:remindAsked', '1'],
     ['koshel:botWrite', '1'],
@@ -72,7 +85,7 @@ function seed() {
   let n = 0
   const add = (d, type, amount, categoryId, note) =>
     tx.push({ id: 'c' + d.getTime().toString(36) + (n++).toString(36), type, amount, categoryId, date: d.toISOString(), ...(note ? { note } : {}) })
-  for (let day = 70; day >= 1; day--) {
+  for (let day = days; day >= 1; day--) {
     const d = at(day, 9)
     const dom = d.getDate()
     if (dom === 1) add(at(day, 10), 'income', 4200, 'salary', 'Зарплата')
@@ -115,7 +128,7 @@ function seed() {
   const browser = await chromium.launch()
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: DPR, isMobile: true, hasTouch: true, locale: 'ru-RU' })
   await ctx.route('https://telegram.org/**', (r) => r.fulfill({ contentType: 'application/javascript', body: TG_STUB }))
-  await ctx.addInitScript(seed)
+  await ctx.addInitScript(seed, SCENARIO === 'analytics' ? { days: 130, version: '2.11.0' } : { days: 70, version: '2.7.1' })
   const page = await ctx.newPage()
   page.on('pageerror', (e) => console.error('[страница]', e.message))
   await page.goto(URL, { waitUntil: 'networkidle' })
@@ -164,7 +177,91 @@ function seed() {
     await tapAt(Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2))
   }
   const modal = '[aria-modal="true"]'
+  // Палец ведёт по графику: плавно, с разгоном и торможением — как живая рука.
+  const hdrag = async (x1, x2, y, steps = 26) => {
+    await touch('touchStart', x1, y)
+    await page.waitForTimeout(90)
+    for (let i = 1; i <= steps; i++) {
+      const k = i / steps
+      await touch('touchMove', x1 + (x2 - x1) * (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2), y)
+      await page.waitForTimeout(34)
+    }
+    await page.waitForTimeout(120)
+    await touch('touchEnd', x2, y)
+  }
+  // Прокрутка «пальцем»: страницу ведём сами (scrollTo по кадрам), а палец
+  // рисуем по той же дорожке. Настоящие касания здесь не годятся: начало жеста
+  // на строке категории браузер иногда засчитывал как нажатие — открывалась
+  // карточка категории, а за ней и правка записи. Без инерции: лист встаёт
+  // ровно там, куда довели.
+  const vdrag = async (dy, x = 195, from = 660) => {
+    const y0 = await page.evaluate(() => scrollY)
+    const steps = 16
+    mark('down', x, from)
+    await page.waitForTimeout(70)
+    for (let i = 1; i <= steps; i++) {
+      const k = i / steps
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2
+      await page.evaluate((y) => window.scrollTo(0, y), y0 + dy * e)
+      mark('move', x, from - dy * e)
+      await page.waitForTimeout(16)
+    }
+    await page.waitForTimeout(110)
+    mark('up', x, from - dy)
+  }
+  /** Довести заголовок раздела до y на экране — одним-двумя движениями пальца. */
+  const bringTitle = async (title, y = 92) => {
+    for (let i = 0; i < 3; i++) {
+      const top = await page.evaluate((title) => {
+        const h = [...document.querySelectorAll('.tab-panel:not([data-off]) h2')].find((e) => e.textContent.trim() === title)
+        return h ? h.getBoundingClientRect().top : null
+      }, title)
+      if (top === null) throw new Error('нет раздела ' + title)
+      const dy = Math.round(top - y)
+      if (Math.abs(dy) < 12) return
+      await vdrag(Math.max(-430, Math.min(430, dy)))
+      await page.waitForTimeout(260)
+    }
+  }
 
+  if (SCENARIO === 'analytics') {
+    const P = '.tab-panel:not([data-off])'
+    await page.waitForTimeout(900)
+    await tapEl(page.locator('[data-tour="tab-analytics"]'))
+    await page.waitForTimeout(1500)
+    // «Потрачено»: палец по прошедшим дням — пузырь с датой и суммой.
+    let b = await page.locator(`${P} [data-tour="spent"] [data-swipe-ignore]`).first().boundingBox()
+    await hdrag(b.x + b.width * 0.08, b.x + b.width * 0.56, b.y + b.height * 0.55)
+    await page.waitForTimeout(900)
+    // Подсказки.
+    await bringTitle('Подсказки')
+    await page.waitForTimeout(1700)
+    // Категории.
+    await bringTitle('Категории')
+    await page.waitForTimeout(1500)
+    // Календарь: день с тратами — шторка дня со списком.
+    await bringTitle('Календарь')
+    await page.waitForTimeout(800)
+    const day = await page.evaluate((P) => {
+      const all = [...document.querySelectorAll(`${P} button[aria-label*="−"]:not([disabled])`)]
+      const seen = all.filter((e) => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 140 })
+      const e = seen[Math.min(seen.length - 1, 9)]
+      if (!e) return null
+      const r = e.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    }, P)
+    if (!day) throw new Error('нет дня с тратами на экране')
+    await tapAt(day.x, day.y)
+    await page.waitForTimeout(1900)
+    await tapEl(page.locator(`${modal} button[aria-label="Закрыть"]`).last())
+    await page.waitForTimeout(800)
+    // Динамика: палец по столбикам месяцев.
+    await bringTitle('Динамика')
+    await page.waitForTimeout(700)
+    b = await page.locator(`${P} [data-swipe-ignore][style*="pan-y"]`).nth(1).boundingBox()
+    await hdrag(b.x + b.width * 0.12, b.x + b.width * 0.9, b.y + b.height * 0.6)
+    await page.waitForTimeout(1400)
+  } else {
   await page.waitForTimeout(1000)
   await swipe(318, 108, 470) // Главная → Аналитика
   await page.waitForTimeout(1900)
@@ -181,6 +278,7 @@ function seed() {
   await page.waitForTimeout(550)
   await tapEl(page.locator(`${modal} button`, { hasText: /^Записать/ }).first())
   await page.waitForTimeout(2600)
+  }
 
   await cdp.send('Page.stopScreencast')
   const duration = Date.now() / 1000 - wall0

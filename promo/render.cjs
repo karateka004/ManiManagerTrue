@@ -7,6 +7,7 @@
  *   node promo/render.cjs square ad       пост: 1080×1080 mp4 со звуком и без, gif 600×600
  *   node promo/render.cjs story ad        сторис: 1080×1920 mp4 — звуки действий; звуки и фон
  *   node promo/render.cjs square 2.7.1 --scene channel
+ *   node promo/render.cjs portrait 2.11 --scene channel   пост 1080×1350: телефон целиком
  *                                         пост в канал: телефон с настоящим приложением
  *                                         (сначала promo/capture.cjs), mp4 1080 и gif 600
  *   node promo/render.cjs story gta --scene tiktok
@@ -42,7 +43,7 @@ const part = flag('--part') !== undefined ? Number(flag('--part')) : null
 /** Сцена: bot-update.html (переписка с ботом) или channel.html (пост в канал). */
 const scene = flag('--scene') ?? 'bot-update'
 const FPS = 30
-const SIZE = { land: [960, 540], square: [1080, 1080], story: [1080, 1920] }[layout]
+const SIZE = { land: [960, 540], square: [1080, 1080], portrait: [1080, 1350], story: [1080, 1920] }[layout]
 // Сторис крупная — хватает полуторного запаса для сглаживания.
 const DPR = layout === 'story' ? 1.5 : 2
 const OUT = path.join(__dirname, 'out')
