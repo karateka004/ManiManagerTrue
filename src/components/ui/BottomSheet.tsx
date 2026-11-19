@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
@@ -98,6 +99,7 @@ export function BottomSheet({
 }: Props) {
   const controls = useDragControls()
   const reduceMotion = useReducedMotion()
+  const slideRef = useRef<HTMLDivElement>(null)
   const dragY = useMotionValue(0)
   // Затемнение уходит вслед за листом: к 360 px сдвига — почти прозрачное.
   const shade = useTransform(dragY, [0, 360], [1, 0.1])
@@ -166,6 +168,14 @@ export function BottomSheet({
           initial={{ transform: 'translateY(100%)' }}
           animate={{ transform: 'translateY(0%)', transition: reduceMotion ? INSTANT : OPEN }}
           exit={{ transform: 'translateY(100%)', transition: reduceMotion ? INSTANT : CLOSE }}
+          // framer снимает законченную WAAPI-анимацию раньше, чем пишет итог в
+          // стиль (запись — кадром позже), и один кадр лист стоял внизу: через
+          // полсекунды после открытия шторка «мигала». Итог — в стиль сразу,
+          // в том же обработчике конца анимации, до отрисовки.
+          ref={slideRef}
+          onAnimationComplete={() => {
+            if (open && slideRef.current) slideRef.current.style.transform = 'translateY(0%)'
+          }}
           className="fixed inset-x-0 bottom-0"
           style={{ zIndex: z + 1 }}
         >

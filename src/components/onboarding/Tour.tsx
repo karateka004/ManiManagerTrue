@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react'
-import { ArrowDown, Bell, Calculator, Check, LayoutGrid, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, type LucideProps } from 'lucide-react'
+import { ArrowDown, Bell, Check, MessageCircle, Pencil, PieChart, Plus, Rocket, Send, Wallet, type LucideProps } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { detectCurrency } from '../../lib/currencyDetect'
 import { reportQuickStart, setReminders } from '../../lib/api'
@@ -111,8 +111,9 @@ const STEPS: Record<Step, StepDef> = {
   balance: { spots: [{ names: ['balance'] }, { names: ['tab-analytics'], tap: at('tab-analytics') }], ring: 'tab-analytics', card: 0, chapter: 1 },
   analytics: { spots: [{ names: ['spent'] }, { names: ['tab-rewards'], tap: at('tab-rewards') }], ring: 'tab-rewards', card: 0, chapter: 2 },
   rewards: { spots: [{ names: ['level'] }, { names: ['tab-home'], tap: at('tab-home') }], ring: 'tab-home', card: 0, chapter: 3 },
-  // Итог: подсвечена кнопка ассистента в шапке Главной (есть только в Telegram).
-  done: { spots: tg.isInTelegram ? [{ names: ['assistant'] }] : [], card: 'modal', chapter: 4 },
+  // Итог: подсвечена кнопка ассистента в шапке Главной (есть только в Telegram),
+  // с кольцом — без него светлый диск в углу выглядел сбоем. Без пульса: это окно.
+  done: { spots: tg.isInTelegram ? [{ names: ['assistant'] }] : [], ring: tg.isInTelegram ? 'assistant' : undefined, card: 'modal', chapter: 4 },
 }
 const CHAPTERS = 4
 /** Куда ведёт строка действия карточки (её можно и нажать — это та же вкладка). */
@@ -125,7 +126,7 @@ const TEXT = {
     offerText: 'За минуту покажу главное: ты запишешь первую трату, а я подскажу, куда нажимать.',
     againTitle: 'Показать, как тут всё устроено?',
     againText: 'Минута — и ты запишешь первую трату, а я подскажу, куда нажимать.',
-    plan: ['Запишешь первую трату', 'Поймёшь, как считается баланс', 'Увидишь, куда уходят деньги', 'Узнаешь про уровни и задания'],
+    plan: ['Первая трата', 'Как считается баланс', 'Куда уходят деньги', 'Уровни и задания'],
     start: 'Покажи',
     decline: 'Не сейчас',
     skip: 'Пропустить',
@@ -138,26 +139,26 @@ const TEXT = {
     amountText: 'Например, сколько сегодня ушло на еду.',
     categoryTitle: 'Выбери категорию',
     categoryText: 'На что ушли деньги.',
-    saveTitle: 'Нажми «Записать расход»',
+    saveTitle: 'Нажми «Записать\u00A0расход»',
     saveText: 'Заметка и дата — по желанию.',
     balanceTitle: 'Первая запись!',
     balanceTitleMore: 'Записано!',
-    balanceExpense: 'Баланс — это доходы минус расходы за месяц. Пока доходов нет, он в минусе. Зарплату запишешь так же: «+» → «Доход».',
-    balanceWithIncome: 'Баланс — это доходы минус расходы за месяц, и трата уже в нём. Доход записывается так же: «+» → «Доход».',
-    balanceIncome: 'Баланс — это доходы минус расходы за месяц. Траты записываются так же: «+» → «Расход».',
+    balanceExpense: 'Доходы минус расходы за месяц\u00A0— пока в минусе. Доход записывается так же: «+»\u00A0→\u00A0«Доход».',
+    balanceWithIncome: 'Доходы минус расходы за месяц\u00A0— трата уже в нём. Доход записывается так же: «+»\u00A0→\u00A0«Доход».',
+    balanceIncome: 'Доходы минус расходы за месяц. Траты записываются так же: «+»\u00A0→\u00A0«Расход».',
     toAnalytics: 'Открой «Аналитику»',
     analyticsTitle: 'Куда уходят деньги',
-    analyticsText: 'Сколько ушло за месяц, а ниже — категории и календарь. Чем больше записей, тем точнее прогноз.',
+    analyticsText: 'Сколько ушло за месяц, а ниже\u00A0— категории и календарь. Чем больше записей, тем точнее прогноз.',
     toRewards: 'Загляни в «Прогресс»',
     rewardsTitle: 'Твой уровень',
-    rewardsText: 'За каждую запись — опыт и новые уровни. За задания — ещё и монеты: на них покупают обложки и рамки.',
+    rewardsText: 'За каждую запись\u00A0— опыт и новые уровни. За задания\u00A0— ещё и монеты: на них покупают обложки и рамки.',
     toHome: 'Вернись на «Главную»',
     doneTitle: 'Ты в деле!',
-    doneText: 'Записывай траты сразу, как они случились, — так картина будет честной.',
-    tipBot: 'Можно и сообщением боту: «Ушло 300 на кофе» — запишет сам.',
-    tipAsk: 'Спроси ассистента: «Сколько ушло на кафе?» — кнопка вверху Главной.',
-    tipEdit: 'Ошибка в записи? Открой её в списке на Главной и поправь.',
-    remindText: 'Напомню вечером, если за день не было ни одной записи.',
+    doneText: 'Записывай траты сразу, как они случились,\u00A0— так картина будет честной.',
+    tipBot: ['Напиши боту', '«Ушло 300 на кофе»\u00A0— запишет сам'],
+    tipAsk: ['Спроси ассистента', 'Кнопка вверху Главной'],
+    tipEdit: ['Поправь запись', 'Открой её в списке на Главной'],
+    remindText: ['Напомню вечером', 'Если за день не было ни одной записи'],
     remindOn: 'Напоминать вечером',
     remindOff: 'Не нужно',
     finish: 'Поехали',
@@ -167,7 +168,7 @@ const TEXT = {
     offerText: 'Let me show you the essentials in a minute: you’ll log your first expense, and I’ll point to where to tap.',
     againTitle: 'Want a quick tour?',
     againText: 'One minute: you’ll log an expense, and I’ll point to where to tap.',
-    plan: ['Log your first expense', 'See how the balance works', 'See where your money goes', 'Learn about levels and quests'],
+    plan: ['Your first expense', 'How the balance works', 'Where the money goes', 'Levels and quests'],
     start: 'Show me',
     decline: 'Not now',
     skip: 'Skip',
@@ -180,13 +181,13 @@ const TEXT = {
     amountText: 'Say, what you spent on food today.',
     categoryTitle: 'Pick a category',
     categoryText: 'What was the money for?',
-    saveTitle: 'Tap “Save expense”',
+    saveTitle: 'Tap “Save\u00A0expense”',
     saveText: 'A note and a date are optional.',
     balanceTitle: 'First entry!',
     balanceTitleMore: 'Saved!',
-    balanceExpense: 'Balance is income minus expenses for the month. With no income yet, it’s in the red. Log your salary the same way: “+” → “Income”.',
-    balanceWithIncome: 'Balance is income minus expenses for the month, and this expense is already in it. Income goes the same way: “+” → “Income”.',
-    balanceIncome: 'Balance is income minus expenses for the month. Expenses go the same way: “+” → “Expense”.',
+    balanceExpense: 'Income minus expenses for the month\u00A0— in the red for now. Income goes the same way: “+”\u00A0→\u00A0“Income”.',
+    balanceWithIncome: 'Income minus expenses for the month\u00A0— this expense is already in it. Income goes the same way: “+”\u00A0→\u00A0“Income”.',
+    balanceIncome: 'Income minus expenses for the month. Expenses go the same way: “+”\u00A0→\u00A0“Expense”.',
     toAnalytics: 'Open “Analytics”',
     analyticsTitle: 'Where the money goes',
     analyticsText: 'What you spent this month, and below — categories and the calendar. The more you log, the sharper the forecast.',
@@ -195,11 +196,11 @@ const TEXT = {
     rewardsText: 'Every entry earns XP and new levels. Quests also give coins — spend them on covers and frames.',
     toHome: 'Back to “Home”',
     doneTitle: 'You’re all set!',
-    doneText: 'Log expenses as they happen — that keeps the picture honest.',
-    tipBot: 'Or just message the bot: “Spent 300 on coffee” — it logs it for you.',
-    tipAsk: 'Ask the assistant: “How much went on cafes?” — the button at the top of Home.',
-    tipEdit: 'Spotted a mistake? Open the entry in the list on Home and fix it.',
-    remindText: 'I’ll remind you in the evening if a day has no entries.',
+    doneText: 'Log expenses as they happen\u00A0— that keeps the picture honest.',
+    tipBot: ['Message the bot', '“Spent 300 on coffee”\u00A0— it logs it for you'],
+    tipAsk: ['Ask the assistant', 'The button at the top of Home'],
+    tipEdit: ['Fix an entry', 'Open it in the list on Home'],
+    remindText: ['Evening reminder', 'If a day has no entries'],
     remindOn: 'Remind me in the evening',
     remindOff: 'No thanks',
     finish: 'Let’s go',
@@ -219,15 +220,11 @@ const CHAPTER_COLOR = ['rgb(var(--brand-500))', '#3E8EF7', '#F2994A', '#9A6BF2']
 /** Синий Telegram — у совета «напиши боту». */
 const TG_BLUE = '#2AABEE'
 const BELL_RED = '#F05A55'
-const STEP_ICON: Partial<Record<Step, ComponentType<LucideProps>>> = {
-  plus: Plus,
-  amount: Calculator,
-  category: LayoutGrid,
-  save: Check,
-  balance: Wallet,
-  analytics: PieChart,
-  rewards: Rocket,
-}
+/**
+ * Сколько пройдено внутри главы — полоска заполняется, как у историй Telegram.
+ * В первой главе четыре шага, в остальных — по одному.
+ */
+const CHAPTER_FILL: Partial<Record<Step, number>> = { plus: 0.25, amount: 0.5, category: 0.75, save: 1 }
 
 /* ------------------------------------------------------------------ */
 /* Место в QS_KEY: шаг (номер в ORDER) и id записанной в обучении траты. */
@@ -348,7 +345,7 @@ const CARD_TAU = 80
 /** Палец замер на сумме — значит, набрал; пора к категории. Назад к сумме — только если стёр её. */
 const SETTLE = 1000
 /** Зазор между карточкой и целью (под хвостик). */
-const GAP = 16
+const GAP = 12
 const EDGE = 10
 
 function spotRect(s: Spot, vw: number, vh: number): Box | null {
@@ -536,7 +533,7 @@ function scrollToMakeRoom(anchor: Box, safeTop: number) {
 /* ------------------------------------------------------------------ */
 
 const NOOP = () => {}
-type Tip = [ComponentType<LucideProps>, string, string]
+type Tip = [ComponentType<LucideProps>, string, readonly [string, string]]
 
 export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: TourReason }) {
   // Воронка в админке — только про новичков.
@@ -697,6 +694,8 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   const leave = () => {
     if (leavingRef.current) return
     leavingRef.current = true
+    // Лист уезжает вниз, как в Telegram, а не гаснет на месте.
+    if (cardRef.current?.classList.contains('tour-sheet')) cardRef.current.classList.add('tour-sheet-out')
     setLeaving(true)
     window.setTimeout(onDone, prefersReducedMotion() ? 0 : 200)
   }
@@ -720,7 +719,11 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     // демо-доход при тексте «пока доходов нет».
     const st = useStore.getState()
     if (st.demoMode) st.setDemoMode(false)
-    go('plus')
+    // Лист сначала уезжает вниз — потом первая подсказка.
+    const card = cardRef.current
+    if (!card || prefersReducedMotion()) return go('plus')
+    card.classList.add('tour-sheet-out')
+    window.setTimeout(() => go('plus'), 200)
   }
 
   // Напоминания: разрешение боту писать — в конце, когда человек уже понял,
@@ -766,12 +769,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
 
   // Шапка и нижняя полоса Telegram — под затемнение: в светлой теме зелёная
   // шапка над тёмным экраном выглядела оторванной. Уходим — как было.
+  // Под листом (предложение, итог) затемнение легче — 0,5, как у Telegram, а
+  // нижняя полоса — цвета самого листа: низ экрана там — лист.
+  const sheetUp = STEPS[step].card === 'modal'
   useEffect(() => {
     const wa = tg.webApp
     if (!wa) return
     const dark = document.documentElement.classList.contains('dark')
-    const head = dark ? '#050505' : '#163B2C'
-    const bg = dark ? '#050505' : '#595957'
+    const head = sheetUp ? (dark ? '#070707' : '#1F523D') : dark ? '#050505' : '#163B2C'
+    const bg = sheetUp ? (dark ? '#1B1C1A' : '#F6F6F3') : dark ? '#050505' : '#595957'
     try {
       wa.setHeaderColor(head)
     } catch {
@@ -782,8 +788,8 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     } catch {
       /* старый клиент */
     }
-    return () => syncTelegramChrome(document.documentElement.classList.contains('dark'))
-  }, [])
+  }, [sheetUp])
+  useEffect(() => () => syncTelegramChrome(document.documentElement.classList.contains('dark')), [])
 
   // Продолжение с «Аналитики» или «Прогресса»: приложение открылось на Главной —
   // открываем нужную вкладку сами (панель вкладок могла ещё не встать). Пока не
@@ -847,7 +853,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
     let stepAt = 0
     let scrolledStep: Step | '' = ''
     let wroteHide = false
+    let seenStep = ''
     let cardY = NaN
+    let cardX = NaN
     let last = performance.now()
     let goneAt = 0
     let lastAmount = -1
@@ -949,7 +957,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       const ringNow = animate(ring, def.ring ?? '', ringLive, now, dur, page, ringLive ? dot(ringLive) : undefined)
       if (ringNow && def.ring && pulsedFor !== def.ring) {
         pulsedFor = def.ring
-        if (!reduce) replay(ringRef.current, 'tour-pulse')
+        if (!reduce && def.card !== 'modal') replay(ringRef.current, 'tour-pulse')
       }
 
       const keep = live.filter((b): b is Box => !!b)
@@ -960,6 +968,19 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         stickStep = cur
         stepAt = now
         stick = ''
+      }
+      // Шаг уже сменился, а React новую карточку ещё не нарисовал: ставить
+      // старую на новое место нельзя — были кадры-призраки (пузырь «Твой
+      // уровень» на месте листа итога). Ждём; дорисовал — высоту читаем сразу,
+      // не дожидаясь ResizeObserver.
+      const cardNow = cardRef.current
+      const drawn = cardNow?.dataset.step
+      if (drawn !== cur) {
+        busy = true
+      } else if (seenStep !== cur && cardNow) {
+        seenStep = cur
+        cardH.current = cardNow.offsetHeight
+        cardW.current = cardNow.offsetWidth
       }
       const place = placeCard(def.card, anchor, keep, cardH.current, vh, safe, stick)
       if (place.side) stick = place.side
@@ -972,11 +993,23 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
       // Больше трети экрана — переносим сразу (содержимое и так меняется
       // с проявлением): пролетая 600 px, карточка на полпути висела посреди
       // выезжающей шторки.
-      cardY =
-        Number.isNaN(cardY) || reduce || Math.abs(place.y - cardY) > vh / 3
-          ? place.y
-          : cardY + (place.y - cardY) * (1 - Math.exp(-dt / CARD_TAU))
+      // По горизонтали — к цели, если экран шире карточки (альбомная): по центру
+      // она закрывала подсвеченное, а хвостик упирался в край. Цель во всю
+      // ширину, рядом с которой места нет, — справа: там у карточек пусто.
+      const w = cardW.current || Math.min(vw - 32, 384)
+      const centered = (vw - w) / 2
+      let left = centered
+      if (anchor && vw - 32 > w + 8) {
+        const cx = anchor.x + anchor.w / 2
+        left = anchor.w > vw * 0.6 && !place.side ? vw - 16 - w : Math.min(Math.max(16, cx - w / 2), vw - 16 - w)
+      }
+      const jump = Number.isNaN(cardY) || reduce || Math.abs(place.y - cardY) > vh / 3
+      const k = 1 - Math.exp(-dt / CARD_TAU)
+      cardY = jump ? place.y : cardY + (place.y - cardY) * k
+      cardX = jump || Number.isNaN(cardX) ? left : cardX + (left - cardX) * k
       if (Math.abs(cardY - place.y) < 0.3) cardY = place.y
+      else busy = true
+      if (Math.abs(cardX - left) < 0.3) cardX = left
       else busy = true
       for (let i = 0; i < MAX_HOLES; i++) if (moving(holes[i], now, dur)) busy = true
       if (moving(ring, now, dur)) busy = true
@@ -1022,12 +1055,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         }
       }
       const pos = posRef.current
-      if (pos) {
-        const sig = cardY.toFixed(1)
+      if (pos && drawn === cur) {
+        const sig = `${(cardX - centered).toFixed(1)}px, ${cardY.toFixed(1)}px`
         if (sig !== wroteCard) {
+          // Первая запись места — и карточку можно показывать (до неё она
+          // стояла бы на нуле: кадр вверху экрана).
+          if (!wroteCard) pos.style.visibility = 'visible'
           wroteCard = sig
           busy = true
-          pos.style.transform = `translate3d(0, ${sig}px, 0)`
+          pos.style.transform = `translate3d(${sig}, 0)`
         }
         // Карточка баланса — когда шторка ушла: поверх уезжающего листа она
         // выглядела как часть шторки.
@@ -1039,16 +1075,15 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         }
         if (hide) busy = true
       }
-      const cardEl = cardRef.current
+      const cardEl = drawn === cur ? cardRef.current : null
       if (cardEl && place.side !== wroteSide) {
         wroteSide = place.side
         if (place.side) cardEl.setAttribute('data-side', place.side)
         else cardEl.removeAttribute('data-side')
       }
       const tail = tailRef.current
-      if (tail && anchor && place.side) {
-        const w = cardW.current || Math.min(vw - 32, 384)
-        const x = Math.min(Math.max(anchor.x + anchor.w / 2 - (vw - w) / 2, 28), w - 28)
+      if (tail && anchor && place.side && drawn === cur) {
+        const x = Math.min(Math.max(anchor.x + anchor.w / 2 - cardX, 28), w - 28)
         const sig = x.toFixed(1)
         if (sig !== wroteTail) {
           wroteTail = sig
@@ -1143,7 +1178,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
         window.setTimeout(() => ring?.classList.remove('tour-lit'), 420)
         return
       }
-      replay(shellRef.current, 'tour-nudge')
+      // Лист во всю ширину не качается вбок (открывал затемнение по краям) —
+      // лёгкий подскок, как у листов Telegram.
+      replay(shellRef.current, STEPS[stepRef.current].card === 'modal' ? 'tour-nudge-y' : 'tour-nudge')
       replay(ringRef.current, 'tour-flash')
     }
     const up = (e: PointerEvent) => {
@@ -1208,7 +1245,6 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
   if (askRemind && reminders) tips.push([Bell, BELL_RED, tx.remindText])
   const short = compact[step]
   const long = info[step]
-  const StepIcon = STEP_ICON[step]
 
   return (
     <div className={`fixed inset-0 z-[55] ${leaving ? 'tour-out' : ''}`} style={{ pointerEvents: 'none' }} data-swipe-ignore>
@@ -1222,7 +1258,8 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             ))}
           </mask>
         </defs>
-        <rect className="tour-dim" x="0" y="0" width="100%" height="100%" fill="rgba(0,0,0,0.64)" mask="url(#tour-mask)" />
+        {/* Под листом — легче (0,5), как затемнение под листами Telegram; на шагах — 0,64. */}
+        <rect className="tour-dim" x="0" y="0" width="100%" height="100%" fill={modal ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.64)'} mask="url(#tour-mask)" />
       </svg>
       <div ref={ringRef} className="tour-ring" style={{ display: 'none' }} />
 
@@ -1231,7 +1268,9 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
           <div
             ref={cardRef}
             data-tour-card
+            data-step={step}
             data-modal={modal ? '' : undefined}
+            data-top={def.card === 'top' ? '' : undefined}
             role="dialog"
             aria-modal={modal ? 'true' : undefined}
             aria-labelledby="tour-title"
@@ -1245,11 +1284,17 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
             {!modal && (
               <div className="relative z-[1] mb-3 flex items-center gap-3">
                 <div className="flex flex-1 gap-1" aria-hidden>
+                  {/* Пройденное — цветом своей главы (те же цвета, что в плане на
+                      предложении), текущая заполняется по шагам. */}
                   {Array.from({ length: CHAPTERS }, (_, i) => (
-                    <span
-                      key={i}
-                      className={`h-[3px] flex-1 rounded-full transition-colors duration-500 ${i <= def.chapter ? 'bg-white' : 'bg-white/[.22]'}`}
-                    />
+                    <span key={i} className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-white/[.3]">
+                      {i <= def.chapter && (
+                        <span
+                          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
+                          style={{ width: `${(i < def.chapter ? 1 : (CHAPTER_FILL[step] ?? 1)) * 100}%`, background: CHAPTER_COLOR[i] }}
+                        />
+                      )}
+                    </span>
                   ))}
                 </div>
                 <span className="sr-only">{tx.chapter.replace('{n}', String(def.chapter + 1)).replace('{all}', String(CHAPTERS))}</span>
@@ -1271,12 +1316,12 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
               {step === 'offer' && (
                 <>
                   <div className="tour-hero mx-auto flex items-center justify-center rounded-full text-white" aria-hidden>
-                    <Wallet size={34} strokeWidth={2.2} />
+                    <Wallet size={40} strokeWidth={2.1} />
                   </div>
                   <div id="tour-title" className="tour-sheet-title mt-4 text-center font-extrabold leading-tight text-ink">
                     {reason === 'new' ? tx.offerTitle : tx.againTitle}
                   </div>
-                  <p className="mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">
+                  <p className="tour-sheet-text mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">
                     {reason === 'new' ? tx.offerText : tx.againText}
                   </p>
                   <ol className="tour-list stagger mt-5">
@@ -1285,18 +1330,20 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                       return (
                         <li key={label} className="flex items-center gap-3 pl-3.5">
                           <span className="tour-ico" style={{ background: CHAPTER_COLOR[i] }} aria-hidden>
-                            <Icon size={17} strokeWidth={2.4} />
+                            <Icon size={18} strokeWidth={2.3} />
                           </span>
                           <span className="tour-row min-w-0 flex-1 pr-3.5 text-[15px] font-semibold leading-snug text-ink">{label}</span>
                         </li>
                       )
                     })}
                   </ol>
-                  <div className="mt-5 flex flex-col gap-1">
+                  {/* Кнопки прилипают к низу листа: на низком экране и в альбомной
+                      список прокручивается, а «Покажи» и «Не сейчас» всегда видны. */}
+                  <div className="tour-actions">
                     <button type="button" onClick={start} className="tour-main press-soft">
                       {tx.start}
                     </button>
-                    <button type="button" onClick={exit} className="press-soft h-11 w-full rounded-[14px] text-[15px] font-semibold text-brand-600 dark:text-brand-300">
+                    <button type="button" onClick={exit} className="tour-second press-soft">
                       {tx.decline}
                     </button>
                   </div>
@@ -1304,30 +1351,25 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
               )}
 
               {(short || long) && (
-                <div className="flex gap-3">
-                  {StepIcon && (
-                    <span className="tour-ico tour-ico-lg mt-0.5" style={{ background: CHAPTER_COLOR[Math.max(0, def.chapter)] }} aria-hidden>
-                      <StepIcon size={19} strokeWidth={2.4} />
-                    </span>
-                  )}
-                  <div className="min-w-0 flex-1">
+                <div>
+                  <div>
                     {short && (
                       <>
-                        <div id="tour-title" className="text-[16px] font-extrabold leading-tight text-white">
+                        <div id="tour-title" className="text-[15px] font-bold leading-tight text-white">
                           {short[0]}
                         </div>
-                        <p className="mt-1 text-[14px] leading-snug text-white/[.72]">{short[1]}</p>
+                        <p className="mt-1 text-[14px] leading-[19px] text-white/[.72]">{short[1]}</p>
                       </>
                     )}
                     {long && (
                       <>
-                        <div id="tour-title" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[16px] font-extrabold leading-tight text-white">
+                        <div id="tour-title" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-bold leading-tight text-white">
                           {long[0]}
                           {step === 'balance' && (
                             <span className="rounded-full bg-white/[.12] px-2 py-0.5 text-[12px] font-extrabold text-white">+{XP_PER_TRANSACTION} XP</span>
                           )}
                         </div>
-                        <p className="mt-1 text-[14px] leading-snug text-white/[.72]">{long[1]}</p>
+                        <p className="mt-1 text-[14px] leading-[19px] text-white/[.72]">{long[1]}</p>
                         {/* Что нажать дальше — кольцо уже на этой вкладке. Строка выглядит
                             как ссылка — пусть и работает как она: открывает ту же вкладку. */}
                         <button
@@ -1338,7 +1380,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                             hapticTap()
                             press(tab)
                           }}
-                          className="press-soft -mx-1 mt-1.5 flex min-h-[40px] items-center gap-2 rounded-full px-1 text-left text-[14px] font-bold text-brand-300"
+                          className="press-soft -mx-1 mt-1 flex min-h-[44px] items-center gap-2 rounded-full px-1 text-left text-[14px] font-bold text-brand-300"
                         >
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-400/[.2]">
                             <ArrowDown size={14} strokeWidth={2.6} />
@@ -1353,24 +1395,28 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
 
               {step === 'done' && (
                 <>
-                  <span ref={badgeRef} className="tour-check tour-hero tour-hero-done mx-auto flex items-center justify-center rounded-full text-white" aria-hidden>
-                    <Check size={36} strokeWidth={3} />
+                  <span ref={badgeRef} className="tour-check tour-hero mx-auto flex items-center justify-center rounded-full text-white" aria-hidden>
+                    <Check size={40} strokeWidth={3} />
                   </span>
                   <div id="tour-title" className="tour-sheet-title mt-4 text-center font-extrabold leading-tight text-ink">
                     {tx.doneTitle}
                   </div>
-                  <p className="mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">{tx.doneText}</p>
+                  <p className="tour-sheet-text mx-auto mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-ink-muted">{tx.doneText}</p>
+                  {/* Советы — строками настроек Telegram: заголовок и подпись. */}
                   <ul className="tour-list stagger mt-5">
-                    {tips.map(([Icon, color, text]) => (
-                      <li key={text} className="flex items-center gap-3 pl-3.5">
+                    {tips.map(([Icon, color, [head, sub]]) => (
+                      <li key={head} className="flex items-center gap-3 pl-3.5">
                         <span className="tour-ico" style={{ background: color }} aria-hidden>
-                          <Icon size={16} strokeWidth={2.4} />
+                          <Icon size={18} strokeWidth={2.3} />
                         </span>
-                        <span className="tour-row min-w-0 flex-1 pr-3.5 text-[14px] leading-snug text-ink">{text}</span>
+                        <span className="tour-row min-w-0 flex-1 pr-3.5">
+                          <span className="block text-[15px] font-semibold leading-snug text-ink">{head}</span>
+                          <span className="block text-[13px] leading-snug text-ink-subtle">{sub}</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-5 flex flex-col gap-1">
+                  <div className="tour-actions">
                     {askRemind && reminders ? (
                       <>
                         <button
@@ -1387,7 +1433,7 @@ export function Tour({ onDone, reason = 'new' }: { onDone: () => void; reason?: 
                           type="button"
                           onClick={() => void finish(false)}
                           disabled={waiting}
-                          className="press-soft h-11 w-full rounded-[14px] text-[15px] font-semibold text-brand-600 dark:text-brand-300"
+                          className="tour-second press-soft"
                         >
                           {tx.remindOff}
                         </button>

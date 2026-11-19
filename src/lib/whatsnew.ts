@@ -43,6 +43,12 @@ export const RELEASES: ReleaseNote[] = [
           en: 'The intro tour now looks native to Telegram: the welcome and the wrap-up slide up as sheets, step hints are dark bubbles, and each chapter has its own color',
         },
       },
+      {
+        text: {
+          ru: 'Шторка записи больше не мигает через полсекунды после открытия',
+          en: 'The entry sheet no longer flickers half a second after opening',
+        },
+      },
     ],
   },
   {
