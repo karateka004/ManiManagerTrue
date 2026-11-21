@@ -368,6 +368,11 @@ KV принимает в один ключ не больше записи в с�
   Ролик для TikTok (1080×1920): `node promo/capture-tiktok.cjs` (данные в €, рейтинг — выдуманные игроки,
   ответ воркера подменён) → `node promo/render.cjs story gta --scene tiktok --jobs 4` (`tiktok.html`: крючок на
   весь экран, телефон, субтитры по отметкам съёмки, финал; поля TikTok: сверху ~150, снизу ~320, справа ~140 px).
+  Второй (21.11.2026, «кофе — это же мелочь»): `node --import ./worker/scripts/ts-resolve.mjs promo/replies-coffee.mjs`
+  (ответы бота на три фразы — настоящим `bot.ts`, → `replies-coffee.js`) → `node promo/capture-coffee.cjs` (данные в € с
+  1 января, утро, Аналитика за год, карточка «Кафе»; числа подсказки и карточки — в `timeline.facts`) →
+  `node promo/render.cjs story coffee --scene tiktok-coffee --jobs 4` (`tiktok-coffee.html`: чат с ботом в стиле Telegram,
+  кнопка меню «Кошель» открывает приложение, развязка «305 чашек = 1.288 €» — числа подписей из стора съёмки).
   Готовые файлы — `promo/media/`; `worker/src/promo.ts` шлёт их владельцу один раз после выката
   (крон `*/5`, метка `promo:sent` = `PROMO_ID`) и по `/promo`; адрес закреплён за коммитом файлов.
 - **Канал обновлений** (`channel.ts`, @koshel_update — бот в нём админ): самые крупные обновления —

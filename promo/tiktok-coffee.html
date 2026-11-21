@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<!--
+  Второй ролик для TikTok (1080×1920): «кофе — это же мелочь».
+  Крючок на весь экран → в телефоне чат с ботом: фраза «Ушло 3,80 на капучино»
+  и настоящий ответ bot.ts (promo/replies-coffee.mjs → replies-coffee.js) →
+  кнопка «Кошель» открывает приложение: Аналитика за год, подсказка «Мелочь
+  складывается», карточка «Кафе» — 305 чашек с января → финал с именем бота.
+
+  Кадры приложения — съёмка настоящей сборки (promo/capture-coffee.cjs →
+  out/capture-coffee/), числа подписей — из её же стора (timeline.facts).
+  Часы — window.renderAt(t): `node promo/render.cjs story coffee --scene tiktok-coffee`.
+
+  Безопасные поля TikTok: сверху ~150 px, снизу ~320 px (подпись, музыка),
+  справа ~140 px (кнопки) — субтитры и главное держим вне них.
+-->
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/manrope/index.css">
+<script src="out/capture-coffee/timeline.js"></script>
+<script src="replies-coffee.js"></script>
+<style>
+  html, body { margin: 0; background: #0b0d0c; }
+  #stage {
+    position: relative;
+    overflow: hidden;
+    width: 1080px;
+    height: 1920px;
+    background:
+      var(--noise),
+      radial-gradient(70% 45% at 85% 8%, rgb(244 162 97 / 0.42), transparent 62%),
+      radial-gradient(70% 50% at 0% 100%, rgb(20 110 80 / 0.55), transparent 70%),
+      linear-gradient(170deg, #16352a 0%, #0e2219 55%, #08130e 100%);
+    background-blend-mode: overlay, normal, normal, normal;
+    font-family: 'Manrope Variable', 'Manrope', system-ui, sans-serif;
+    color: #fff;
+  }
+  :root {
+    --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.14'/></svg>");
+    --s: 1.72;
+    --coffee: #f4a261;
+    --tg: #3e88f7;
+  }
+  .emoji { font-family: 'Noto Color Emoji', 'Apple Color Emoji', sans-serif; font-weight: 400; }
+
+  /* ---------- Крючок ---------- */
+  #hook { position: absolute; left: 90px; right: 70px; top: 560px; }
+  .line {
+    font-size: 96px;
+    line-height: 1.06;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    margin-bottom: 26px;
+    opacity: 0;
+    transform-origin: left center;
+    will-change: transform, opacity;
+  }
+  .line.pov { font-size: 56px; font-weight: 700; color: rgb(255 255 255 / 0.72); letter-spacing: -0.01em; margin-bottom: 40px; white-space: nowrap; }
+  .line.soft { color: rgb(255 255 255 / 0.62); }
+  .hl { color: var(--coffee); }
+  #spoiler {
+    display: inline-block;
+    margin-top: 30px;
+    padding: 22px 40px 26px;
+    border-radius: 28px;
+    background: #e5484d;
+    font-size: 86px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    box-shadow: 0 24px 60px rgb(229 72 77 / 0.45);
+    opacity: 0;
+    transform-origin: left center;
+    will-change: transform, opacity;
+  }
+
+  /* ---------- Субтитры ---------- */
+  #cap {
+    position: absolute;
+    left: 50%;
+    top: 196px;
+    z-index: 5;
+    max-width: 900px;
+    padding: 20px 36px 24px;
+    border-radius: 26px;
+    background: #fff;
+    color: #0c0d0c;
+    font-size: 54px;
+    line-height: 1.12;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: 0 18px 50px rgb(0 0 0 / 0.35);
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    will-change: transform, opacity;
+  }
+  /* Две строки — ниже, чтобы верх не ушёл под вкладки TikTok. */
+  #cap.two { top: 262px; }
+
+  /* ---------- Телефон (как в tiktok.html) ---------- */
+  #phone {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: var(--pw);
+    height: var(--ph);
+    margin-left: calc(var(--pw) / -2);
+    border-radius: var(--pr);
+    background: linear-gradient(150deg, #3a3c41 0%, #141518 22%, #0a0a0b 55%, #1d1e22 100%);
+    box-shadow:
+      0 60px 120px rgb(0 0 0 / 0.55),
+      0 14px 30px rgb(0 0 0 / 0.3),
+      inset 0 0 0 calc(var(--s) * 1.5px) rgb(255 255 255 / 0.10);
+    transform-origin: 50% 0;
+    will-change: transform, opacity;
+  }
+  .btn { position: absolute; width: calc(var(--s) * 4px); border-radius: calc(var(--s) * 2px); background: linear-gradient(90deg, #26272b, #0d0d0f); }
+  .btn.l1 { left: calc(var(--s) * -3px); top: calc(var(--s) * 120px); height: calc(var(--s) * 30px); }
+  .btn.l2 { left: calc(var(--s) * -3px); top: calc(var(--s) * 175px); height: calc(var(--s) * 58px); }
+  .btn.l3 { left: calc(var(--s) * -3px); top: calc(var(--s) * 245px); height: calc(var(--s) * 58px); }
+  .btn.r1 { right: calc(var(--s) * -3px); top: calc(var(--s) * 200px); height: calc(var(--s) * 92px); }
+  #screen {
+    position: absolute;
+    inset: var(--bezel);
+    border-radius: var(--sr);
+    overflow: hidden;
+    background: rgb(14 15 14);
+    box-shadow: inset 0 0 0 calc(var(--s) * 1px) rgb(255 255 255 / 0.06);
+  }
+  #appwrap { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgb(14 15 14); will-change: transform; }
+  #app { position: absolute; left: 0; top: var(--sb); width: var(--aw); height: var(--ah); display: block; }
+  .status { position: absolute; z-index: 4; left: 0; right: 0; top: 0; height: var(--sb); color: #f2f4f3; font-weight: 700; font-size: calc(var(--s) * 16px); letter-spacing: -0.01em; }
+  .status .time { position: absolute; left: calc(var(--s) * 38px); top: calc(var(--s) * 15px); }
+  .status .icons { position: absolute; right: calc(var(--s) * 30px); top: calc(var(--s) * 17px); display: flex; gap: calc(var(--s) * 6px); align-items: center; }
+  .island { position: absolute; z-index: 4; left: 50%; top: calc(var(--s) * 11px); width: calc(var(--s) * 120px); height: calc(var(--s) * 35px); margin-left: calc(var(--s) * -60px); border-radius: 999px; background: #000; }
+  #touch {
+    position: absolute;
+    z-index: 5;
+    left: 0; top: 0;
+    width: calc(var(--s) * 46px);
+    height: calc(var(--s) * 46px);
+    margin: calc(var(--s) * -23px) 0 0 calc(var(--s) * -23px);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(255 255 255 / 0.42) 0%, rgb(255 255 255 / 0.22) 60%, rgb(255 255 255 / 0.08) 100%);
+    box-shadow: 0 0 0 calc(var(--s) * 2px) rgb(255 255 255 / 0.7), 0 calc(var(--s) * 4px) calc(var(--s) * 14px) rgb(0 0 0 / 0.35);
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+
+  /* ---------- Чат с ботом (в точках экрана телефона, масштаб — --s) ---------- */
+  #chat {
+    position: absolute;
+    left: 0; top: 0;
+    width: 390px; height: 888px;
+    transform: scale(var(--s));
+    transform-origin: 0 0;
+    overflow: hidden;
+    font-family: -apple-system, 'Manrope Variable', system-ui, sans-serif;
+    color: #fff;
+    background:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><g fill='none' stroke='%23ffffff' stroke-opacity='.045' stroke-width='1.6' stroke-linecap='round'><circle cx='22' cy='24' r='9'/><path d='M22 19v10M19 21.5h5M19 26.5h5'/><path d='M74 14h14v12a7 7 0 0 1-7 7a7 7 0 0 1-7-7z'/><path d='M88 18h3a3 3 0 0 1 0 6h-3'/><path d='M30 78l8-8 6 6 12-12'/><path d='M50 64h6v6'/><rect x='80' y='72' width='22' height='15' rx='4'/><path d='M80 77h22'/><path d='M12 104h12M18 98v12'/></g></svg>"),
+      radial-gradient(90% 60% at 80% 20%, #173326 0%, transparent 70%),
+      linear-gradient(180deg, #0f1a15 0%, #0b120f 100%);
+  }
+  .tg-head {
+    position: absolute; left: 0; right: 0; top: 0; height: 98px; z-index: 2;
+    background: rgb(22 23 25 / 0.96);
+    box-shadow: 0 0.5px 0 rgb(255 255 255 / 0.10);
+  }
+  .tg-head .back { position: absolute; left: 8px; top: 57px; display: flex; align-items: center; gap: 2px; color: var(--tg); font-size: 17px; letter-spacing: -0.01em; }
+  .tg-head .back svg { width: 13px; height: 22px; }
+  .tg-head .back .badge { margin-left: 4px; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: var(--tg); color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .tg-head .who { position: absolute; left: 0; right: 0; top: 52px; text-align: center; }
+  .tg-head .who .n { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .tg-head .who .s { margin-top: 1px; font-size: 13px; color: rgb(255 255 255 / 0.5); }
+  .tg-head .ava { position: absolute; right: 10px; top: 53px; width: 38px; height: 38px; border-radius: 50%; background: url(media/koshel-bot-avatar.jpg) center / cover; }
+  .tg-msgs { position: absolute; left: 0; right: 0; bottom: 86px; padding: 0 8px 8px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .tg-day { margin: 10px 0 8px; padding: 3px 10px 4px; border-radius: 11px; background: rgb(255 255 255 / 0.10); font-size: 13px; font-weight: 600; color: rgb(255 255 255 / 0.85); }
+  .tg-row { display: flex; overflow: visible; }
+  .tg-row.out { justify-content: flex-end; }
+  .tg-cell { max-width: 290px; padding-bottom: 6px; }
+  .tg-row.out .tg-cell { transform-origin: 100% 100%; }
+  .tg-row.in .tg-cell { transform-origin: 0 100%; width: 300px; max-width: 300px; }
+  .tg-bubble { position: relative; padding: 6px 11px 7px 12px; border-radius: 18px; font-size: 17px; line-height: 1.28; letter-spacing: -0.01em; }
+  .out .tg-bubble { background: linear-gradient(180deg, #3d84e6 0%, #3274d6 100%); border-bottom-right-radius: 6px; }
+  .in .tg-bubble { background: #232427; border-bottom-left-radius: 6px; }
+  .tg-bubble b { font-weight: 700; }
+  .tg-bubble .note { color: rgb(255 255 255 / 0.92); }
+  .tg-bubble blockquote {
+    margin: 5px 0 1px; padding: 3px 9px 4px 10px;
+    border-left: 3px solid var(--tg); border-radius: 5px;
+    background: rgb(62 136 247 / 0.14); font-size: 16px;
+  }
+  .tg-meta { float: right; position: relative; top: 7px; margin-left: 10px; font-size: 12px; color: rgb(255 255 255 / 0.62); display: inline-flex; gap: 3px; align-items: center; }
+  .in .tg-meta { color: rgb(255 255 255 / 0.42); }
+  .tg-meta svg { width: 17px; height: 11px; }
+  .tg-keys { display: flex; gap: 5px; margin-top: 5px; }
+  .tg-keys div { flex: 1; height: 38px; border-radius: 10px; background: rgb(255 255 255 / 0.11); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .tg-input {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 86px; z-index: 2;
+    background: rgb(22 23 25 / 0.96);
+    box-shadow: 0 -0.5px 0 rgb(255 255 255 / 0.10);
+  }
+  .tg-menu { position: absolute; left: 8px; top: 9px; height: 34px; padding: 0 12px 0 10px; border-radius: 17px; background: var(--tg); display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; transform-origin: 50% 50%; }
+  .tg-menu svg { width: 16px; height: 16px; }
+  .tg-field { position: absolute; left: 108px; right: 50px; top: 8px; height: 36px; border-radius: 18px; background: #0d0d0e; box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.16); display: flex; align-items: center; padding: 0 12px; box-sizing: border-box; font-size: 17px; white-space: nowrap; overflow: hidden; }
+  .tg-field .ph { color: rgb(255 255 255 / 0.38); }
+  .tg-field .caret { display: inline-block; width: 2px; height: 21px; margin-left: 1px; background: var(--tg); border-radius: 1px; }
+  .tg-mic, .tg-send { position: absolute; right: 8px; top: 9px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; }
+  .tg-mic svg { width: 24px; height: 24px; }
+  .tg-send { border-radius: 50%; background: var(--tg); opacity: 0; transform-origin: 50% 50%; }
+  .tg-send svg { width: 18px; height: 18px; }
+  .tg-home { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: rgb(255 255 255 / 0.85); }
+
+  /* ---------- Развязка: плашка над карточкой «Кафе» ---------- */
+  #reveal {
+    position: absolute;
+    left: 50%;
+    top: 1010px;
+    z-index: 6;
+    width: 860px;
+    margin-left: -430px;
+    padding: 30px 36px 38px;
+    box-sizing: border-box;
+    border-radius: 36px;
+    background: #e5484d;
+    text-align: center;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 0.5), 0 0 0 3px rgb(255 255 255 / 0.12);
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+  #reveal .top { font-size: 50px; font-weight: 700; color: rgb(255 255 255 / 0.9); letter-spacing: -0.02em; }
+  #reveal .big { margin-top: 6px; font-size: 128px; line-height: 1; font-weight: 800; letter-spacing: -0.045em; }
+
+  /* ---------- Финал ---------- */
+  #outro { position: absolute; left: 0; right: 0; top: 560px; text-align: center; opacity: 0; }
+  #outro .icon {
+    width: 230px; height: 230px; margin: 0 auto 46px; border-radius: 56px;
+    background: url(media/koshel-channel-avatar.jpg) center / cover;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 0.5), 0 0 0 2px rgb(255 255 255 / 0.08);
+  }
+  #outro .name { font-size: 132px; font-weight: 800; letter-spacing: -0.045em; line-height: 1; }
+  #outro .tag { margin-top: 26px; font-size: 52px; font-weight: 600; color: rgb(255 255 255 / 0.78); letter-spacing: -0.015em; }
+  #outro .bot {
+    display: inline-block; margin-top: 64px; padding: 26px 46px 30px; border-radius: 999px;
+    background: #fff; color: #0c0d0c; font-size: 56px; font-weight: 800; letter-spacing: -0.02em;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 0.4);
+  }
+  #outro .free { margin-top: 30px; font-size: 40px; font-weight: 600; color: #6fe3b0; }
+  #outro > * { will-change: transform, opacity; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hook">
+    <div class="line pov" id="l0">POV: «кофе — это же мелочь» <span class="emoji">☕</span></div>
+    <div class="line" id="l1">Капучино — <span class="hl">3,80 €</span></div>
+    <div class="line" id="l2">каждое утро</div>
+    <div class="line soft" id="l3">…ну копейки же</div>
+    <div id="spoiler">Спойлер: нет <span class="emoji">💀</span></div>
+  </div>
+
+  <div id="cap"></div>
+
+  <div id="phone">
+    <div class="btn l1"></div><div class="btn l2"></div><div class="btn l3"></div><div class="btn r1"></div>
+    <div id="screen">
+      <div id="chat">
+        <div class="tg-msgs" id="msgs"></div>
+        <div class="tg-head">
+          <div class="back">
+            <svg viewBox="0 0 13 22"><path d="M11 2L2 11l9 9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Чаты<span class="badge">3</span>
+          </div>
+          <div class="who"><div class="n">Кошель</div><div class="s">бот</div></div>
+          <div class="ava"></div>
+        </div>
+        <div class="tg-input">
+          <div class="tg-menu" id="menu">
+            <svg viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></svg>
+            Кошель
+          </div>
+          <div class="tg-field" id="field"><span class="ph">Сообщение</span></div>
+          <div class="tg-mic" id="mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="rgb(255 255 255 / 0.5)" stroke-width="1.8" stroke-linecap="round"><rect x="8.5" y="3" width="7" height="12" rx="3.5"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5V21"/></svg>
+          </div>
+          <div class="tg-send" id="send">
+            <svg viewBox="0 0 18 18" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15V3M4 8l5-5 5 5"/></svg>
+          </div>
+          <div class="tg-home"></div>
+        </div>
+      </div>
+      <div id="appwrap"><canvas id="app"></canvas></div>
+      <div class="status">
+        <span class="time">8:41</span>
+        <span class="icons">
+          <svg width="18" height="12" viewBox="0 0 18 12" style="width:calc(var(--s)*18px);height:calc(var(--s)*12px)"><g fill="#f2f4f3"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></g></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" style="width:calc(var(--s)*16px);height:calc(var(--s)*12px)"><g fill="none" stroke="#f2f4f3" stroke-width="2" stroke-linecap="round"><path d="M1.5 4.2a9.5 9.5 0 0 1 13 0"/><path d="M4.2 7a5.6 5.6 0 0 1 7.6 0"/></g><circle cx="8" cy="10.2" r="1.6" fill="#f2f4f3"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13" style="width:calc(var(--s)*27px);height:calc(var(--s)*13px)"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" fill="none" stroke="#f2f4f3" stroke-opacity=".4"/><rect x="2.5" y="2.5" width="17" height="8" rx="2" fill="#f2f4f3"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" fill="#f2f4f3" fill-opacity=".4"/></svg>
+        </span>
+      </div>
+      <div class="island"></div>
+      <div id="touch"></div>
+    </div>
+  </div>
+
+  <div id="reveal"><div class="top" id="revealTop"></div><div class="big" id="revealBig"></div></div>
+
+  <div id="outro">
+    <div class="icon" id="o0"></div>
+    <div class="name" id="o1">Кошель</div>
+    <div class="tag" id="o2">учёт денег прямо в Telegram</div>
+    <div class="bot" id="o3">@TrueManiManager_Bot</div>
+    <div class="free" id="o4">бесплатно · без регистрации</div>
+  </div>
+</div>
+<script>
+const TL = window.TIMELINE
+const M = Object.fromEntries(TL.marks.map((m) => [m.id, m.t]))
+const D = TL.duration
+const F = TL.facts
+const CHAT = window.CHAT
+
+/* ---------- Числа подписей — из стора съёмки, в виде, как на экране (1.288 €) ---------- */
+const eur = (v) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(v)) + ' €'
+const smallMatch = /(\d+) покупок до [^—]+— вместе ([\d.,]+)\s*€/.exec(F.insight || "")
+if (!smallMatch) throw new Error('нет подсказки «Мелочь складывается»: ' + F.insight)
+const SMALL_TOTAL = smallMatch[2] + " €"
+const CUPS = F.cups
+const CAFE = eur(F.cafe)
+
+/* ---------- Время ролика ---------- */
+const PHONE_IN = 2.55
+const TYPE0 = 3.3 // фраза набирается в поле
+const TYPED = CHAT[2].typed
+const TYPE1 = TYPE0 + TYPED.length * 0.05
+const SEND = TYPE1 + 0.22 // палец на «отправить»
+const REPLY = SEND + 0.6 // ответ бота
+const MENU = REPLY + 1.25 // палец на «Кошель»
+const OPEN = MENU + 0.12 // приложение выезжает снизу
+const CAP0 = OPEN // с этого момента идёт съёмка приложения
+const OUT0 = CAP0 + D - 0.1 // финал
+const DURATION = OUT0 + 3.9
+
+/* ---------- Телефон ---------- */
+const S = 1.72
+const SB = 44
+const BEZEL = 14
+const APP_W = TL.viewport.w
+const APP_H = TL.viewport.h
+const PW = APP_W * S + BEZEL * 2
+const PH = (APP_H + SB) * S + BEZEL * 2
+const TOP_Y = 340 // виден весь телефон, над ним — субтитры
+const BOTTOM_Y = 1920 - 300 - PH // низ телефона над подписью TikTok — для касаний внизу
+const SAFE_Y = 1560 // ниже касание прячется под подписью TikTok
+
+const root = document.documentElement.style
+const set = (k, v) => root.setProperty(k, v)
+set('--pw', PW + 'px')
+set('--ph', PH + 'px')
+set('--bezel', BEZEL + 'px')
+set('--pr', 47 * S + BEZEL + 'px')
+set('--sr', 47 * S + 'px')
+set('--sb', SB * S + 'px')
+set('--aw', APP_W * S + 'px')
+set('--ah', APP_H * S + 'px')
+
+const $ = (id) => document.getElementById(id)
+const phone = $('phone')
+const canvas = $('app')
+const appwrap = $('appwrap')
+const ctx2d = canvas.getContext('2d')
+const touchEl = $('touch')
+const cap = $('cap')
+const dpr = window.devicePixelRatio || 1
+canvas.width = Math.round(APP_W * S * dpr)
+canvas.height = Math.round(APP_H * S * dpr)
+ctx2d.imageSmoothingQuality = 'high'
+
+const images = TL.frames.map((f) => {
+  const img = new Image()
+  img.src = 'out/capture-coffee/' + f.file
+  return img
+})
+function frameAt(ct) {
+  let lo = 0
+  let hi = TL.frames.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (TL.frames[mid].t <= ct) lo = mid
+    else hi = mid - 1
+  }
+  return images[lo]
+}
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const easeInOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2)
+const easeOut = (p) => 1 - Math.pow(1 - p, 3)
+const easeBack = (p) => { const c = 1.7; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2) }
+const prog = (t, a, b) => clamp((t - a) / Math.max(1e-6, b - a), 0, 1)
+
+/* ---------- Чат: сообщения из настоящих ответов бота ---------- */
+const CHECKS = '<svg viewBox="0 0 17 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6l3.2 3.2L10.5 2.5"/><path d="M6.6 8.6l.6.6L13.5 2.5"/></svg>'
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
+/** Разметка ответа бота (HTML Telegram) → пузырь: жирная строка, заметка, цитата. */
+function botHtml(text) {
+  return text
+    .replace(/\n<blockquote>/g, '<blockquote>')
+    .split('\n')
+    .map((line, i) => (i === 0 ? line : `<div class="note">${line}</div>`))
+    .join('')
+}
+const msgs = $('msgs')
+const rows = [] // { el, cell, h, at } — at: время появления (null — было раньше)
+function addDay(label, at) {
+  const row = document.createElement('div')
+  row.className = 'tg-row'
+  row.style.justifyContent = 'center'
+  const d = document.createElement('div')
+  d.className = 'tg-day'
+  d.style.transformOrigin = '50% 100%'
+  d.textContent = label
+  row.appendChild(d)
+  msgs.appendChild(row)
+  rows.push({ el: row, cell: d, at, h: 0 })
+}
+function addRow(kind, html, at) {
+  const row = document.createElement('div')
+  row.className = 'tg-row ' + kind
+  const cell = document.createElement('div')
+  cell.className = 'tg-cell'
+  cell.innerHTML = html
+  row.appendChild(cell)
+  msgs.appendChild(row)
+  rows.push({ el: row, cell, at, h: 0 })
+}
+let lastDay = ''
+CHAT.forEach((m, i) => {
+  const live = i === CHAT.length - 1
+  if (m.day !== lastDay) addDay((lastDay = m.day), live ? SEND - 0.04 : null)
+  addRow('out', `<div class="tg-bubble">${esc(m.typed)}<span class="tg-meta">${m.time}${CHECKS}</span></div>`, live ? SEND : null)
+  const keys = m.reply.buttons.map((r) => `<div class="tg-keys">${r.map((b) => `<div>${esc(b)}</div>`).join('')}</div>`).join('')
+  addRow('in', `<div class="tg-bubble">${botHtml(m.reply.text)}<span class="tg-meta">${m.time}</span></div>${keys}`, live ? REPLY : null)
+})
+const field = $('field')
+const sendBtn = $('send')
+const mic = $('mic')
+const menuBtn = $('menu')
+
+/* Точки касаний чата — в координатах приложения (под строкой состояния), как у съёмки. */
+const SEND_AT = { x: 390 - 8 - 17, y: 888 - 86 + 9 + 17 - SB }
+const MENU_AT = { x: 8 + 48, y: 888 - 86 + 9 + 17 - SB }
+const CHAT_TAPS = [
+  { t0: SEND - 0.07, t1: SEND, ...SEND_AT },
+  { t0: MENU - 0.07, t1: MENU, ...MENU_AT },
+]
+
+/* ---------- Касания и камера — по дорожке съёмки ---------- */
+const gestures = []
+for (const p of TL.touches) {
+  if (p.kind === 'down') gestures.push({ t0: p.t, t1: Infinity, path: [p], swipe: false })
+  else if (gestures.length) {
+    const g = gestures[gestures.length - 1]
+    g.path.push(p)
+    if (p.kind === 'move') g.swipe = true
+    if (p.kind === 'up') g.t1 = p.t
+  }
+}
+function pointAt(g, t) {
+  const path = g.path
+  if (t <= path[0].t) return path[0]
+  for (let i = 1; i < path.length; i++) {
+    if (t <= path[i].t) {
+      const a = path[i - 1]
+      const b = path[i]
+      const k = (t - a.t) / Math.max(1e-6, b.t - a.t)
+      return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }
+    }
+  }
+  return path[path.length - 1]
+}
+const ARRIVE = 0.09
+const LEAVE = 0.28
+function fingerAt(t, t0, t1, p) {
+  if (t < t0 - ARRIVE || t > t1 + LEAVE) return null
+  let opacity = 1
+  let scale = 0.92
+  if (t < t0) {
+    const k = easeOut((t - (t0 - ARRIVE)) / ARRIVE)
+    opacity = k
+    scale = 1.15 - 0.23 * k
+  } else if (t > t1) {
+    const k = easeOut((t - t1) / LEAVE)
+    opacity = 1 - k
+    scale = 0.92 + 0.3 * k
+  }
+  return { x: p.x, y: p.y, opacity, scale }
+}
+function touchAt(t) {
+  for (const c of CHAT_TAPS) {
+    const f = fingerAt(t, c.t0, c.t1, c)
+    if (f) return f
+  }
+  if (t < CAP0 || t > CAP0 + D) return null
+  const ct = t - CAP0
+  for (const g of gestures) {
+    const f = fingerAt(ct, g.t0, g.t1, pointAt(g, ct))
+    if (f) return f
+  }
+  return null
+}
+
+/*
+ * Камера: 0 — телефон целиком под субтитрами, 1 — поднят (касания у нижнего
+ * края). Чат весь внизу — камера поднята; в приложении остаётся поднятой до
+ * вкладки «Аналитика», дальше поднимается только к касаниям, которые иначе
+ * ушли бы под подпись TikTok.
+ */
+const sceneY = (y, cam) => TOP_Y + (BOTTOM_Y - TOP_Y) * cam + BEZEL + (y + SB) * S
+const taps = gestures.filter((g) => !g.swipe)
+const firstTap = taps[0]
+const lift = taps.slice(1).map((g) => ({ g, need: clamp((sceneY(g.path[0].y, 0) - SAFE_Y) / (TOP_Y - BOTTOM_Y), 0, 1) })).filter((x) => x.need > 0.02)
+function cameraAt(t) {
+  if (t < CAP0) return 1
+  const ct = t - CAP0
+  let c = 1 - easeInOut(prog(ct, firstTap.t1 + 0.3, firstTap.t1 + 0.85))
+  for (const { g, need } of lift) {
+    const up = easeInOut(prog(ct, g.t0 - 0.55, g.t0 - 0.08))
+    const down = 1 - easeInOut(prog(ct, g.t1 + 0.4, g.t1 + 0.95))
+    c = Math.max(c, need * Math.min(up, down))
+  }
+  return c
+}
+
+/* ---------- Субтитры ---------- */
+const E = '<span class="emoji">'
+const CAPS = [
+  [PHONE_IN + 0.15, REPLY, `Пишу боту одной фразой ${E}✍️</span>`],
+  [REPLY, CAP0 + 0.35, `Бот понял: кафе, 3,80 € ${E}✅</span>`],
+  [CAP0 + 0.35, CAP0 + M.year - 0.3, `И всё уже в приложении ${E}📲</span>`],
+  [CAP0 + M.year - 0.3, CAP0 + M.insights, `А теперь — за весь год ${E}👀</span>`],
+  [CAP0 + M.insights, CAP0 + M.cafe, `«Мелочи» за год — ${SMALL_TOTAL} ${E}😬</span>`],
+  [CAP0 + M.cafe, CAP0 + M.list + 0.9, `А сколько из них — кофе? ${E}☕</span>`],
+  [CAP0 + M.list + 0.9, CAP0 + D - 1.2, `Капучино. Капучино. Капучино…`],
+  [CAP0 + D - 1.2, OUT0 + 0.2, `А я думал — мелочь ${E}🙃</span>`],
+  [OUT0 + 1.15, DURATION + 1, `А сколько у тебя<br>уходит на кофе? ${E}👇</span>`, 'two'],
+]
+let capShown = -1
+
+/* ---------- Развязка ---------- */
+$('revealTop').textContent = `${CUPS} чашек кофе с января`
+$('revealBig').innerHTML = `= ${CAFE} ${E}😳</span>`
+const REVEAL0 = CAP0 + M.cafe + 0.95
+const REVEAL1 = CAP0 + M.list + 0.75
+
+/* ---------- Звук (sound.mjs): моменты те же, что у анимации ---------- */
+// «POV» и цена стоят уже на первом кадре — его TikTok берёт обложкой по умолчанию.
+const HOOK = { l0: -0.5, l1: -0.3, l2: 0.45, l3: 0.95, spoiler: 1.45 }
+const SOUNDS = [
+  { t: 0.05, kind: 'receive' },
+  { t: HOOK.l2, kind: 'key', i: 2 },
+  { t: HOOK.l3, kind: 'key', i: 3 },
+  { t: HOOK.spoiler, kind: 'recStop' },
+  { t: HOOK.spoiler + 0.02, kind: 'shutter' },
+  { t: 2.45, kind: 'whoosh' },
+]
+for (let i = 0; i < TYPED.length; i++) if (TYPED[i] !== ' ') SOUNDS.push({ t: TYPE0 + i * 0.05, kind: 'key', i: 40 + i })
+SOUNDS.push({ t: SEND, kind: 'send' }, { t: REPLY, kind: 'receive' }, { t: MENU, kind: 'key', i: 90 }, { t: OPEN + 0.1, kind: 'whoosh' })
+gestures.forEach((g, i) => SOUNDS.push(g.swipe ? { t: CAP0 + g.t0 + 0.05, kind: 'swish' } : { t: CAP0 + g.t0, kind: 'key', i: 10 + i }))
+SOUNDS.push({ t: REVEAL0, kind: 'recStop' }, { t: REVEAL0 + 0.02, kind: 'shutter' }, { t: REVEAL0 + 0.3, kind: 'found' })
+SOUNDS.push({ t: OUT0 + 0.05, kind: 'whoosh' }, { t: OUT0 + 0.45, kind: 'chord' })
+for (const c of CAPS.slice(1)) SOUNDS.push({ t: c[0], kind: 'swish' })
+window.SOUNDS = SOUNDS.sort((a, b) => a.t - b.t)
+window.DURATION = DURATION
+
+/* Появление «с пружиной»: прозрачность и масштаб от 0.7 к 1 с лёгким перелётом. */
+function pop(el, t, at, { dur = 0.32, from = 0.7, dy = 30 } = {}) {
+  const p = prog(t, at, at + dur)
+  el.style.opacity = easeOut(prog(t, at, at + dur * 0.6)).toFixed(3)
+  const s = from + (1 - from) * easeBack(p)
+  el.style.transform = `translate3d(0, ${(dy * (1 - easeOut(p))).toFixed(1)}px, 0) scale(${s.toFixed(4)})`
+}
+/** Тряска «шок»: затухающие колебания по горизонтали. */
+const shake = (t, at, amp = 16) => (t > at + 0.1 && t < at + 0.6 ? Math.sin(((t - at - 0.1) / 0.5) * Math.PI * 7) * amp * (1 - (t - at - 0.1) / 0.5) : 0)
+
+function renderChat(t) {
+  // Набор: буквы по одной, мигающий курсор; после отправки поле снова пустое.
+  const typing = t >= TYPE0 && t < SEND
+  const n = typing ? Math.min(TYPED.length, Math.floor(prog(t, TYPE0, TYPE1) * TYPED.length + 1e-6)) : 0
+  const caret = typing && Math.floor(t * 2.6) % 2 === 0 ? '<span class="caret"></span>' : ''
+  field.innerHTML = n > 0 ? esc(TYPED.slice(0, n)) + caret : (typing ? caret : '') + '<span class="ph">Сообщение</span>'
+  const hasText = n > 0
+  sendBtn.style.opacity = hasText ? '1' : '0'
+  sendBtn.style.transform = `scale(${hasText ? 1 - 0.12 * (t > SEND - 0.07 && t < SEND + 0.08 ? 1 : 0) : 0.6})`
+  mic.style.opacity = hasText ? '0' : '1'
+  menuBtn.style.transform = `scale(${t > MENU - 0.07 && t < MENU + 0.1 ? 0.93 : 1})`
+  // Новые сообщения: место под пузырь раскрывается, пузырь выскакивает пружиной.
+  for (const r of rows) {
+    if (r.at === null) continue
+    const grow = easeOut(prog(t, r.at, r.at + 0.24))
+    r.el.style.height = (r.h * grow).toFixed(2) + 'px'
+    const p = prog(t, r.at, r.at + 0.34)
+    r.cell.style.opacity = easeOut(Math.min(1, p * 2)).toFixed(3)
+    r.cell.style.transform = `scale(${(0.6 + 0.4 * easeBack(p)).toFixed(4)})`
+  }
+}
+
+window.renderAt = function renderAt(t) {
+  t = clamp(t, 0, DURATION)
+
+  /* Крючок: строки по очереди, спойлер — с тряской; к 2,7 с всё уезжает вверх. */
+  const hookOut = easeInOut(prog(t, 2.2, 2.65))
+  for (const id of ['l0', 'l1', 'l2', 'l3']) pop($(id), t, HOOK[id])
+  const sp = $('spoiler')
+  pop(sp, t, HOOK.spoiler, { dur: 0.36, from: 0.5, dy: 0 })
+  sp.style.transform += ` translateX(${shake(t, HOOK.spoiler).toFixed(1)}px)` + (t >= HOOK.spoiler + 0.1 ? ' rotate(-2deg)' : '')
+  const hook = $('hook')
+  hook.style.opacity = (1 - hookOut).toFixed(3)
+  hook.style.transform = `translate3d(0, ${(-260 * hookOut).toFixed(1)}px, 0)`
+
+  /* Телефон: въезжает снизу, в финале уезжает вниз. */
+  const enter = easeOut(prog(t, PHONE_IN - 0.05, PHONE_IN + 0.65))
+  const leave = easeInOut(prog(t, OUT0 - 0.1, OUT0 + 0.5))
+  const cam = cameraAt(t)
+  const y = (1920 + 40) * (1 - enter) + (TOP_Y + (BOTTOM_Y - TOP_Y) * cam) * enter + 1500 * leave
+  const sc = 0.94 + 0.06 * enter - 0.1 * leave
+  phone.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0) scale(${sc.toFixed(4)})`
+  phone.style.opacity = (1 - leave).toFixed(3)
+
+  /* Чат, а поверх — мини-приложение: выезжает снизу по нажатию «Кошель». */
+  renderChat(t)
+  const open = easeOut(prog(t, OPEN, OPEN + 0.42))
+  appwrap.style.transform = `translate3d(0, ${(100 * (1 - open)).toFixed(3)}%, 0)`
+  appwrap.style.visibility = t >= OPEN ? 'visible' : 'hidden'
+  if (t >= OPEN) ctx2d.drawImage(frameAt(clamp(t - CAP0, 0, D)), 0, 0, canvas.width, canvas.height)
+
+  const tp = touchAt(t)
+  if (tp) {
+    touchEl.style.opacity = tp.opacity.toFixed(3)
+    touchEl.style.transform = `translate3d(${(tp.x * S).toFixed(2)}px, ${((tp.y + SB) * S).toFixed(2)}px, 0) scale(${tp.scale.toFixed(3)})`
+  } else touchEl.style.opacity = '0'
+
+  /* Развязка над карточкой «Кафе». */
+  const rv = $('reveal')
+  if (t > REVEAL0 - 0.05 && t < REVEAL1 + 0.4) {
+    const p = prog(t, REVEAL0, REVEAL0 + 0.4)
+    const o = Math.min(easeOut(prog(t, REVEAL0, REVEAL0 + 0.22)), 1 - easeOut(prog(t, REVEAL1, REVEAL1 + 0.3)))
+    rv.style.opacity = o.toFixed(3)
+    rv.style.transform = `translateX(${shake(t, REVEAL0, 18).toFixed(1)}px) rotate(-2deg) scale(${(0.5 + 0.5 * easeBack(p)).toFixed(4)})`
+  } else rv.style.opacity = '0'
+
+  /* Субтитр: текущий по времени, появляется пружиной. */
+  let ci = -1
+  for (let i = 0; i < CAPS.length; i++) if (t >= CAPS[i][0] && t < CAPS[i][1]) ci = i
+  if (ci !== capShown) {
+    capShown = ci
+    cap.innerHTML = ci >= 0 ? CAPS[ci][2] : ''
+    cap.className = ci >= 0 && CAPS[ci][3] ? CAPS[ci][3] : ''
+  }
+  if (ci >= 0) {
+    const p = prog(t, CAPS[ci][0], CAPS[ci][0] + 0.26)
+    cap.style.opacity = easeOut(Math.min(1, p * 1.6)).toFixed(3)
+    cap.style.transform = `translate(-50%, -50%) scale(${(0.82 + 0.18 * easeBack(p)).toFixed(4)})`
+  } else cap.style.opacity = '0'
+
+  /* Финал: значок, имя, слоган, бот — по очереди. */
+  const outro = $('outro')
+  outro.style.opacity = t >= OUT0 ? '1' : '0'
+  ;['o0', 'o1', 'o2', 'o3', 'o4'].forEach((id, i) => pop($(id), t, OUT0 + 0.35 + i * 0.16, { from: 0.8, dy: 40 }))
+}
+
+window.sceneReady = Promise.all([
+  document.fonts.ready,
+  document.fonts.load('800 92px "Manrope Variable"'),
+  ...images.map((img) => (img.complete ? Promise.resolve() : new Promise((r) => { img.onload = r; img.onerror = r }))),
+  ...['media/koshel-channel-avatar.jpg', 'media/koshel-bot-avatar.jpg'].map((src) => new Promise((r) => { const i = new Image(); i.onload = r; i.onerror = r; i.src = src })),
+]).then(() => {
+  // Высоты новых сообщений — по готовой раскладке (шрифты уже на месте).
+  for (const r of rows) {
+    r.h = r.el.offsetHeight
+    if (r.at !== null) r.el.style.overflow = 'visible'
+  }
+  window.renderAt(0)
+})
+</script>
+</body>
+</html>

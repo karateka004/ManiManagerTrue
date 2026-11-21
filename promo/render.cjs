@@ -13,6 +13,9 @@
  *   node promo/render.cjs story gta --scene tiktok
  *                                         ролик для TikTok 1080×1920 (сначала promo/capture-tiktok.cjs):
  *                                         со звуками действий и с музыкой
+ *   node promo/render.cjs story coffee --scene tiktok-coffee
+ *                                         второй ролик для TikTok — «кофе — это же мелочь»
+ *                                         (сначала promo/capture-coffee.cjs и replies-coffee.mjs)
  *   … --jobs 4                            кадры в 4 процесса (по числу ядер)
  *   … --stills 2.9,8.6                    отдельные кадры в png
  *
@@ -47,7 +50,7 @@ const SIZE = { land: [960, 540], square: [1080, 1080], portrait: [1080, 1350], s
 // Сторис крупная — хватает полуторного запаса для сглаживания.
 const DPR = layout === 'story' ? 1.5 : 2
 const OUT = path.join(__dirname, 'out')
-const name = scene === 'channel' ? `koshel-post-${cta}` : scene === 'tiktok' ? `koshel-tiktok-${cta}` : `koshel-2.7-${layout}-${cta}`
+const name = scene === 'channel' ? `koshel-post-${cta}` : scene.startsWith('tiktok') ? `koshel-tiktok-${cta}` : `koshel-2.7-${layout}-${cta}`
 fs.mkdirSync(OUT, { recursive: true })
 
 /** Что получаем из мастера: [файл, масштаб, вид]; звук — 'sfx' или 'music'. */
