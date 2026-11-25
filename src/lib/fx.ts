@@ -62,8 +62,8 @@ export interface BurstOptions {
   spread?: number
   /** Конфетти: прямоугольники и падение вниз, а не ровный круг. */
   confetti?: boolean
-  /** Форма частиц: точки (по умолчанию), звёзды, монетки. */
-  shape?: 'dot' | 'star' | 'coin'
+  /** Форма частиц: точки (по умолчанию), звёзды, монетки, снежинки (падают медленно). */
+  shape?: 'dot' | 'star' | 'coin' | 'snow'
 }
 
 /** Всплеск частиц из точки (или из центра элемента). */
@@ -87,13 +87,18 @@ export function burst(at: Point | Element | null | undefined, opts: BurstOptions
     const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.7
     const dist = spread * (0.5 + Math.random() * 0.7)
     // Конфетти разлетается вверх и оседает: смещение по y сдвигаем вниз.
-    const fall = opts.confetti ? spread * (0.5 + Math.random() * 0.8) : 0
-    const dur = (opts.confetti ? 1000 : 720) + Math.random() * 360
+    const snow = opts.shape === 'snow'
+    const fall = opts.confetti || snow ? spread * (snow ? 0.9 + Math.random() * 0.9 : 0.5 + Math.random() * 0.8) : 0
+    const dur = (snow ? 1500 : opts.confetti ? 1000 : 720) + Math.random() * (snow ? 700 : 360)
     longest = Math.max(longest, dur)
     s.className =
       opts.shape === 'star'
         ? 'fx-p fx-star'
-        : opts.shape === 'coin'
+        : snow
+          ? i % 3 === 0
+            ? 'fx-p fx-snow fx-flake'
+            : 'fx-p fx-snow'
+          : opts.shape === 'coin'
           ? 'fx-p fx-coin-p'
           : opts.confetti && i % 3 !== 0
             ? 'fx-p fx-rect'
@@ -101,10 +106,22 @@ export function burst(at: Point | Element | null | undefined, opts: BurstOptions
     s.style.setProperty('--x0', '0px')
     s.style.setProperty('--y0', '0px')
     s.style.setProperty('--dx', px(Math.cos(angle) * dist))
-    s.style.setProperty('--dy', px(Math.sin(angle) * dist * (opts.confetti ? 1.1 : 1) + fall - (opts.confetti ? spread * 0.35 : 0)))
+    s.style.setProperty(
+      '--dy',
+      px(Math.sin(angle) * dist * (opts.confetti ? 1.1 : snow ? 0.5 : 1) + fall - (opts.confetti ? spread * 0.35 : snow ? spread * 0.55 : 0)),
+    )
     s.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 540)}deg`)
     s.style.setProperty('--s', String(0.6 + Math.random() * 0.6))
-    const size = opts.shape === 'star' ? 9 + Math.round(Math.random() * 7) : opts.shape === 'coin' ? 9 + Math.round(Math.random() * 4) : opts.confetti ? 5 + Math.round(Math.random() * 4) : 4 + Math.round(Math.random() * 5)
+    const size =
+      opts.shape === 'star'
+        ? 9 + Math.round(Math.random() * 7)
+        : snow
+          ? (i % 3 === 0 ? 11 : 5) + Math.round(Math.random() * 4)
+          : opts.shape === 'coin'
+            ? 9 + Math.round(Math.random() * 4)
+            : opts.confetti
+              ? 5 + Math.round(Math.random() * 4)
+              : 4 + Math.round(Math.random() * 5)
     s.style.setProperty('--sz', `${size}px`)
     s.style.setProperty('--dur', `${Math.round(dur)}ms`)
     s.style.background = colors[i % colors.length]

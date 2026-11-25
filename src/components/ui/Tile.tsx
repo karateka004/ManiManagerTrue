@@ -2,7 +2,7 @@ import { type CSSProperties, type ReactNode } from 'react'
 import { hapticTap } from '../../lib/telegram'
 import { TileScene, type Scene } from '../rewards/TileScene'
 
-export type TileAccent = 'brand' | 'amber' | 'sky' | 'orange' | 'violet'
+export type TileAccent = 'brand' | 'amber' | 'sky' | 'orange' | 'violet' | 'pine'
 
 /**
  * RGB-триплеты для SVG-обложек: плитка кладёт их в `--tile-a`, а сцена
@@ -15,6 +15,8 @@ export const TILE_RGB: Record<TileAccent, string> = {
   sky: '56 189 248',
   orange: '249 115 22',
   violet: '139 92 246',
+  // Хвоя — плитка адвента (2.12), когда окошко дня уже открыто.
+  pine: '29 140 86',
 }
 
 interface Props {
@@ -26,6 +28,8 @@ interface Props {
   /** Бейдж поверх обложки (монеты, «+2»). */
   badge?: ReactNode
   accent?: TileAccent
+  /** Новогодний сезон: снег на сцене. */
+  festive?: boolean
   onClick?: () => void
 }
 
@@ -36,7 +40,7 @@ interface Props {
  * Высота поля (106px) и сцены подобраны так, что низ сцены срезается краем
  * поля — фигуры стоят на земле, а не висят. Не менять по отдельности.
  */
-export function Tile({ scene, title, subtitle, badge, accent = 'brand', onClick }: Props) {
+export function Tile({ scene, title, subtitle, badge, accent = 'brand', festive, onClick }: Props) {
   return (
     <button
       type="button"
@@ -48,7 +52,7 @@ export function Tile({ scene, title, subtitle, badge, accent = 'brand', onClick 
       className="press-soft relative flex min-h-[154px] w-full flex-col overflow-hidden rounded-4xl bg-surface-raised text-left shadow-soft"
     >
       <div className="tile-art relative h-[106px] w-full overflow-hidden">
-        <TileScene scene={scene} />
+        <TileScene scene={scene} festive={festive} />
         {badge && <div className="absolute right-2.5 top-2.5">{badge}</div>}
       </div>
       <div className="px-4 pb-4 pt-3">

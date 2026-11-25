@@ -20,7 +20,7 @@ import { TileScene } from './TileScene'
  * Разметка повторяет Tile вручную: у горячего состояния своё поле и свой цвет
  * сцены — протаскивать этот частный случай в общий Tile незачем.
  */
-export function StreakTile() {
+export function StreakTile({ festive }: { festive?: boolean }) {
   const streak = useStore((s) => s.streak)
   const claimDailyStreak = useStore((s) => s.claimDailyStreak)
   const equipReward = useStore((s) => s.equipReward)
@@ -99,7 +99,7 @@ export function StreakTile() {
           claimable ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'tile-art'
         }`}
       >
-        <TileScene scene="flame" />
+        <TileScene scene="flame" festive={festive} />
         <div className="absolute right-2.5 top-2.5">
           {claimable ? (
             <span

@@ -13,6 +13,7 @@ import { useEffect } from 'react'
 import { useStore } from '../store/transactions'
 import { categoryName } from './categoryNames'
 import { setFormatLocale } from './format'
+import { getReward } from './rewards'
 import { tg } from './telegram'
 
 export type Lang = 'ru' | 'en'
@@ -914,10 +915,23 @@ function interpolate(str: string, vars?: Record<string, string | number>): strin
   return str.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`))
 }
 
+/**
+ * Название и описание вещи, которой нет в словаре: новогодняя коллекция (2.12)
+ * держит их в самом каталоге (lib/rewards.ts, ru и en) — словарь целиком в
+ * стартовом чанке, и кириллица девяти вещей прибавляла к нему почти килобайт.
+ */
+function rewardText(lang: Lang, key: string): string | undefined {
+  const m = /^reward\.(.+)\.(name|hint)$/.exec(key)
+  const r = m ? getReward(m[1]) : undefined
+  if (!m || !r) return undefined
+  const en = lang === 'en' ? r.en : undefined
+  return m[2] === 'name' ? (en?.name ?? r.name) : (en?.hint ?? r.hint)
+}
+
 /** Перевести ключ на указанный язык (вне React). */
 export function translate(lang: Lang, key: string, vars?: Record<string, string | number>): string {
   const entry = DICT[key]
-  if (!entry) return key
+  if (!entry) return rewardText(lang, key) ?? key
   // Язык не из словаря (испорченные данные, блоб из версии с новым языком) —
   // по-русски. Раньше entry['de'] давал undefined: пустые подписи по всему
   // приложению, а строки с подстановкой падали на undefined.replace.

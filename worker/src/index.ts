@@ -156,6 +156,12 @@ const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
 const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
 const XP_ALL_QUESTS = 1684 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP), с особым fan_channel
 /**
+ * Опыт адвент-календаря (2.12): все 31 окошко и главный подарок — ADVENT_TOTAL_XP
+ * в src/lib/advent.ts (сверяет scripts/test-advent.mjs). Серия, которую в декабре
+ * засчитывают окошки, — в запасе на серию ниже, как и раньше.
+ */
+const XP_ADVENT = 435
+/**
  * Запас на XP от ежедневной серии (src/lib/streak.ts: 2 XP в день плюс 20/40/100
  * на рубежах 7/14/30). Величина не фиксированная — она копится со временем,
  * поэтому считаем от рекорда серии из блоба самого игрока.
@@ -614,9 +620,9 @@ async function handleProfile(req: Request, env: Env, origin: string | null): Pro
   const ops = blobOps >= 0 ? blobOps : Math.min(clampInt(body.ops), OPS_WITHOUT_BLOB)
   const streakXp = streakBest * XP_PER_STREAK_DAY * STREAK_REBUILD_FACTOR + XP_STREAK_BASE
 
-  // Потолок: операции + рефералы + все задания + серия + запас на несинхронизированное.
+  // Потолок: операции + рефералы + все задания + адвент + серия + запас на несинхронизированное.
   const maxXp =
-    ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + streakXp + XP_GRACE
+    ops * XP_PER_TRANSACTION + refs * XP_PER_REFERRAL + XP_ALL_QUESTS + XP_ADVENT + streakXp + XP_GRACE
   const capped = Math.min(clampInt(body.xp), maxXp, HARD_MAX_XP)
 
   // Косметика — недоверенные строки: только кап длины, клиент валидирует id по каталогу.

@@ -47,9 +47,18 @@ import { useBackButton } from '../lib/useBackButton'
 import { onRewardsReset, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
 import { useHeroSkin } from '../lib/useHeroSkin'
 import { useTabActive } from '../lib/tabActive'
+import { festive, daysToNewYear } from '../lib/season'
+import { useSeason } from '../components/advent/useSeason'
+import { AdventCard, AdventTile } from '../components/advent/AdventHub'
+import { FestiveSky, Garland } from '../components/advent/Festive'
+import { useAdventT } from '../components/advent/text'
+import { TreePine } from 'lucide-react'
+import '../styles/advent.css'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
+// Адвент-календарь (2.12) — под-экран отдельным чанком: окошки, советы, шторка.
+const AdventScreen = lazy(() => import('./Advent').then((m) => ({ default: m.AdventScreen })))
 
 /**
  * Вкладка «Прогресс» — хаб геймификации: уровень, серия, магазин, рейтинг,
@@ -60,8 +69,12 @@ const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').the
  * Картинка на плитке ничего не сообщала, а за цифрой приходили — и её как раз
  * не было видно.
  */
-export function RewardsPage() {
+export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: string) => void } = {}) {
   const t = useT()
+  const at = useAdventT()
+  // Новогодний сезон: праздничный вид, а в декабре окошко адвента вместо «Серии дня».
+  const { s: sea, now: seaNow } = useSeason()
+  const fest = festive(sea)
   const transactions = useStore((s) => s.transactions)
   const coins = useStore((s) => s.coins)
   const claimedQuests = useStore((s) => s.claimedQuests)
@@ -94,13 +107,18 @@ export function RewardsPage() {
   useEffect(() => {
     rewardsNav.screen = view.screen
   }, [view.screen])
-  // Повторный тап по вкладке «Прогресс» из Магазина — назад на хаб (как в iOS).
+  // Повторный тап по вкладке «Прогресс» из Магазина — назад на хаб (как в iOS);
+  // переход извне — сразу на под-экран (Главная → адвент).
   useEffect(
-    () => onRewardsReset(() => setView((v) => (v.screen === 'hub' ? v : { screen: 'hub', enter: 'back' }))),
+    () =>
+      onRewardsReset((screen) =>
+        setView((v) => (v.screen === screen ? v : { screen, enter: screen === 'hub' ? 'back' : 'deep' })),
+      ),
     [],
   )
   const shopOpen = view.screen === 'shop'
   const levelRewardsOpen = view.screen === 'titles'
+  const adventOpen = view.screen === 'advent'
   const goTo = (screen: RewardsScreen) => setView({ screen, enter: screen === 'hub' ? 'back' : 'deep' })
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const seenLeaderboard = useRef(false)
@@ -263,6 +281,11 @@ export function RewardsPage() {
     rewardsNav.hubScroll = window.scrollY
     goTo('titles')
   }
+  const openAdvent = () => {
+    track('open_advent')
+    rewardsNav.hubScroll = window.scrollY
+    goTo('advent')
+  }
 
   // Вложенный экран открывается с начала, хаб — там, где его оставили. Только
   // при переходе внутри вкладки: при открытии самой вкладки прокрутку ставит
@@ -302,17 +325,52 @@ export function RewardsPage() {
         <LevelRewardsScreen onBack={() => goTo('hub')} />
       </div>
     )
+  if (adventOpen)
+    return (
+      <div className={deep}>
+        <Suspense fallback={<div className="min-h-screen" />}>
+          <AdventScreen onBack={() => goTo('hub')} onAdd={onAdd} onAsk={onAsk} />
+        </Suspense>
+      </div>
+    )
+
+  // Отсчёт до Нового года — до 31 декабря; в январе шапка просто поздравляет.
+  const nyDays = sea.phase === 'teaser' || sea.phase === 'live' ? daysToNewYear(seaNow) : 0
 
   return (
-    <div className={`pb-28 ${view.enter === 'back' ? 'tab-in-back' : ''}`}>
-      <div className="px-5 pb-1 pt-6">
-        <div className="kicker">{t('rewards.kicker')}</div>
-        <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('nav.rewards')}</div>
+    <div className={`relative isolate pb-28 ${view.enter === 'back' ? 'tab-in-back' : ''}`}>
+      {fest && <FestiveSky />}
+      <div className="flex items-end justify-between gap-3 px-5 pb-1 pt-6">
+        <div className="min-w-0">
+          <div className="kicker">
+            {fest ? at(sea.phase === 'finale' ? 'hub.kicker_ny' : 'hub.kicker') : t('rewards.kicker')}
+          </div>
+          <div className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{t('nav.rewards')}</div>
+        </div>
+        {nyDays > 0 && (
+          <span className="ny-chip mb-1 shrink-0" data-ny-chip>
+            <TreePine size={14} strokeWidth={2.4} />
+            {nyDays === 1 ? (
+              at('hub.countdown_today')
+            ) : (
+              <>
+                {/* На 320 px полная фраза выдавливала «С наступающим!» в две строки. */}
+                <span className="max-[359px]:hidden">{at('hub.countdown', { n: nyDays })}</span>
+                <span className="hidden max-[359px]:inline">{at('hub.countdown_short', { n: nyDays })}</span>
+              </>
+            )}
+          </span>
+        )}
       </div>
 
       {/* Уровень. Монеты и серия отсюда ушли в строки ниже — там у них есть
-          действие, а в герое они были третьим и четвёртым числом на плашке. */}
-      <div data-tour="level" className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${skin}`}>
+          действие, а в герое они были третьим и четвёртым числом на плашке.
+          В новогодний сезон по верхнему краю висит гирлянда. */}
+      <div
+        data-tour="level"
+        className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${fest ? 'pt-8' : ''} ${skin}`}
+      >
+        {fest && <Garland />}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {/* Жетон цветной (как в 2.0 — «стеклянный» из первой сборки 2.1 читался
@@ -356,6 +414,7 @@ export function RewardsPage() {
       <div className="stagger mx-4 mt-4 grid grid-cols-2 gap-3">
         <Tile
           scene="coins"
+          festive={fest}
           accent="amber"
           title={t('shop.title')}
           // Неразрывные пробелы: на 320 px «−30%» не отрывается от «Витрина дня».
@@ -373,6 +432,7 @@ export function RewardsPage() {
         />
         <Tile
           scene="podium"
+          festive={fest}
           accent="sky"
           title={t('profile.leaderboard')}
           subtitle={
@@ -384,9 +444,11 @@ export function RewardsPage() {
           }
           onClick={openLeaderboard}
         />
-        <StreakTile />
+        {/* В декабре — окошко адвента: оно засчитывает и день серии. */}
+        {sea.phase === 'live' ? <AdventTile onOpen={openAdvent} /> : <StreakTile festive={fest} />}
         <Tile
           scene="crown"
+          festive={fest}
           accent="violet"
           title={t('lvlrew.title')}
           subtitle={t('progress.of', { n: titlesOwned, total: LEVEL_REWARDS.length })}
@@ -398,6 +460,9 @@ export function RewardsPage() {
           onClick={openTitles}
         />
       </div>
+
+      {/* До 1 декабря — отсчёт до первого окошка, в январе — главный подарок. */}
+      {(sea.phase === 'teaser' || sea.phase === 'finale') && <AdventCard onOpen={openAdvent} />}
 
       {fanQuest && (
         <LimitedQuestCard

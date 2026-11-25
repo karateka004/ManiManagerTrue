@@ -26,6 +26,10 @@ export function playSaveEffect(from: Parameters<typeof burst>[0], preview?: Save
     case 'stars':
       burst(from, { colors: ['#FDE68A', '#FFFFFF', 'rgb(var(--brand-300))'], count: 16, spread: 110, shape: 'star' })
       break
+    case 'snow':
+      // Снегопад (адвент 2.12): хлопья поднимаются над кнопкой и медленно оседают.
+      burst(from, { colors: ['#FFFFFF', '#E0F2FE', '#BAE6FD'], count: 22, spread: 120, shape: 'snow' })
+      break
     default:
       break
   }

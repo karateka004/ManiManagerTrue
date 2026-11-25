@@ -12,11 +12,11 @@
  * вкладке), а импорт из страницы втащил бы её ленивый чанк в стартовый.
  */
 
-export type RewardsScreen = 'hub' | 'shop' | 'titles'
+export type RewardsScreen = 'hub' | 'shop' | 'titles' | 'advent'
 
 export const rewardsNav: { screen: RewardsScreen; hubScroll: number } = { screen: 'hub', hubScroll: 0 }
 
-const listeners = new Set<() => void>()
+const listeners = new Set<(screen: RewardsScreen) => void>()
 
 /**
  * Вернуть «Прогресс» на хаб. `top` — ещё и в начало хаба (переход из Профиля
@@ -26,11 +26,20 @@ const listeners = new Set<() => void>()
 export function resetRewardsNav(top: boolean) {
   rewardsNav.screen = 'hub'
   if (top) rewardsNav.hubScroll = 0
-  for (const l of listeners) l()
+  for (const l of listeners) l('hub')
 }
 
-/** Открытая вкладка узнаёт о сбросе (повторный тап по вкладке из Магазина). */
-export function onRewardsReset(listener: () => void): () => void {
+/**
+ * Открыть под-экран «Прогресса» извне (Главная: «окошко адвента ждёт»). Если
+ * вкладка отрисована, она перейдёт сама; если нет — откроется сразу на нём.
+ */
+export function openRewardsScreen(screen: RewardsScreen) {
+  rewardsNav.screen = screen
+  for (const l of listeners) l(screen)
+}
+
+/** Открытая вкладка узнаёт о сбросе (повторный тап по вкладке из Магазина) и о переходе извне. */
+export function onRewardsReset(listener: (screen: RewardsScreen) => void): () => void {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)

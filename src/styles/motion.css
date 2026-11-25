@@ -461,6 +461,16 @@ html.perf-low .tabbar-glass {
   background-image: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 0.75) 0 18%, transparent 42%) !important;
   box-shadow: inset 0 0 0 1px rgb(150 90 0 / 0.35);
 }
+/* Снежинка (эффект «Снегопад»): мягкий круг со свечением; каждая третья —
+   шестилучевая. На светлой теме белое на белом не видно — голубая кайма. */
+.fx-p.fx-snow { box-shadow: 0 0 6px 1px rgb(255 255 255 / 0.55); }
+.fx-p.fx-flake {
+  border-radius: 0;
+  box-shadow: none;
+  clip-path: polygon(50% 0%, 57% 36%, 93% 25%, 64% 50%, 93% 75%, 57% 64%, 50% 100%, 43% 64%, 7% 75%, 36% 50%, 7% 25%, 43% 36%);
+}
+html:not(.dark) .fx-p.fx-snow { box-shadow: 0 0 0 1px rgb(96 165 250 / 0.5); }
+html:not(.dark) .fx-p.fx-flake { filter: drop-shadow(0 0 1px rgb(59 130 246 / 0.7)); }
 @keyframes fx-burst {
   0% { transform: translate3d(var(--x0), var(--y0), 0) scale(0.3) rotate(0deg); opacity: 1; }
   65% { opacity: 1; }

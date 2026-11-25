@@ -22,6 +22,7 @@ import { currencyAsked } from '../lib/currencyAsked'
 import { remindAsked } from '../lib/remindAsked'
 import { readPendingRelabel } from '../lib/relabelPending'
 import { ONBOARDED_KEY } from '../lib/introKeys'
+import { todayDoorWaiting } from '../lib/season'
 import { MASK } from '../lib/clarity'
 
 // Планирование — та же ленивая шторка, что в Профиле (общий чанк).
@@ -32,6 +33,7 @@ const PlanningSheet = lazy(() =>
 // валют нужны лишь им, поэтому отдельным чанком.
 const CurrencyNudge = lazy(() => import('../components/home/CurrencyNudge'))
 const RemindNudge = lazy(() => import('../components/home/RemindNudge'))
+const AdventNudge = lazy(() => import('../components/home/AdventNudge'))
 
 interface Props {
   onOpenProfile: () => void
@@ -43,6 +45,8 @@ interface Props {
   onOpenSearch: () => void
   /** Открыть ассистента: вопросы про свои деньги. */
   onOpenAssistant: () => void
+  /** Адвент-календарь на «Прогрессе» (декабрь, окошко дня ждёт). */
+  onOpenAdvent?: () => void
 }
 
 /**
@@ -50,7 +54,7 @@ interface Props {
  * и без этого каждое её открытие или закрытие перерисовывало бы весь список
  * категорий. Пропсы приходят стабильными (useCallback в App).
  */
-export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onAdd, onOpenSearch, onOpenAssistant }: Props) {
+export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onAdd, onOpenSearch, onOpenAssistant, onOpenAdvent }: Props) {
   // Планирование прямо с Главной: получил зарплату → сразу распределил бюджет.
   const track = useStore((s) => s.track)
   const [planningOpen, setPlanningOpen] = useState(false)
@@ -74,6 +78,7 @@ export const HomePage = memo(function HomePage({ onOpenProfile, onEditTx, onAdd,
       {/* Ниже героя: карточка появляется после первой записи и не должна
           сдвигать только что обновившийся баланс. */}
       <RemindNudgeGate />
+      <AdventNudgeGate onOpen={onOpenAdvent} />
       <MonthlyRecap />
       <DueRecurring />
       <CategoryList onEditTx={onEditTx} />
@@ -114,6 +119,21 @@ function CurrencyNudgeGate() {
  * Start не нажимали), когда записи уже есть. Дёшево и в стартовом чанке; сама
  * карточка — ленивая. Вопрос о валюте важнее: две карточки сразу — много.
  */
+/**
+ * Декабрь: окошко адвента ждёт — карточка над категориями. Дёшево и в
+ * стартовом чанке: только проверка даты и списка окошек, сама карточка ленивая.
+ * Без записей не показываем (новичок сначала проходит обучение).
+ */
+function AdventNudgeGate({ onOpen }: { onOpen?: () => void }) {
+  const waiting = useStore((s) => !s.demoMode && s.transactions.length > 0 && todayDoorWaiting(s.advent))
+  if (!waiting || !onOpen) return null
+  return (
+    <Suspense fallback={null}>
+      <AdventNudge onOpen={onOpen} />
+    </Suspense>
+  )
+}
+
 function RemindNudgeGate() {
   const eligible = useStore((s) => s.remindersEnabled && !s.demoMode && s.transactions.length > 0)
   const currencyFirst = useStore((s) => s.currency === 'USD' && !s.demoMode) && !currencyAsked()

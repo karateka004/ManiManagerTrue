@@ -1,10 +1,11 @@
-import { Check } from 'lucide-react'
+import { Check, Gift } from 'lucide-react'
 import { CoinAmount } from './CoinAmount'
 import { useStore } from '../../store/transactions'
 import { useT } from '../../lib/i18n'
 import { hapticSelect, hapticTap } from '../../lib/telegram'
 import { rewardPrice, type RewardDef } from '../../lib/rewards'
 import { RewardThumb } from './RewardPreview'
+import { useAdventT } from '../advent/text'
 
 interface Props {
   reward: RewardDef
@@ -24,6 +25,7 @@ interface Props {
  */
 export function RewardRow({ reward, priceOverride, onOpen }: Props) {
   const t = useT()
+  const at = useAdventT()
   const equippedId = useStore((s) => s.equipped[reward.kind])
   const owned = useStore((s) => s.owned.includes(reward.id))
   const coins = useStore((s) => s.coins)
@@ -94,6 +96,12 @@ export function RewardRow({ reward, priceOverride, onOpen }: Props) {
               {t('roadpass.equip')}
             </button>
           )
+        ) : reward.source === 'advent' ? (
+          // Вещь новогодней коллекции не продаётся — она в окошке адвента.
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-3 py-1.5 text-[12px] font-bold text-ink-muted">
+            <Gift size={13} strokeWidth={2.4} />
+            {at('shop.badge')}
+          </span>
         ) : (
           <span
             className={`flex shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-3 py-1.5 text-[13px] font-bold tabular-nums ${

@@ -17,10 +17,13 @@ import {
   DAILY_DISCOUNT_PCT,
   SHOP_KINDS,
   SHOP_REWARDS,
+  ADVENT_REWARDS,
   type RewardDef,
   type RewardKind,
 } from '../lib/rewards'
 import { RewardRow } from '../components/rewards/RewardRow'
+import { festive, season } from '../lib/season'
+import { useAdventT } from '../components/advent/text'
 
 // Шторка товара — отдельным чанком по первому открытию (в нём примерка).
 const ProductSheet = lazy(() => import('../components/rewards/ProductSheet').then((m) => ({ default: m.ProductSheet })))
@@ -81,6 +84,7 @@ function useUntilMidnight(t: TFunc): string {
 /** Полноэкранный магазин кастомизации (под-вид вкладки «Прогресс»). */
 export function ShopScreen({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const at = useAdventT()
   const lang = useStore((s) => s.lang)
   const coins = useStore((s) => s.coins)
   const owned = useStore((s) => s.owned)
@@ -94,6 +98,10 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
   const until = useUntilMidnight(t)
   const items = rewardsByKind(tab)
   const ownedCount = SHOP_REWARDS.filter((r) => owned.includes(r.id)).length
+  // Новогодняя коллекция: в сезон — всем (видно, что ждёт в окошках), после —
+  // тем, у кого есть её вещи (надеть их больше негде).
+  const adventOwned = ADVENT_REWARDS.filter((r) => owned.includes(r.id)).length
+  const showAdvent = festive(season()) || adventOwned > 0
   const { trackRef, pillRef } = useSegPill<HTMLDivElement>(tab)
   // Чипы видов не помещаются на узком экране — правый край тает, чтобы было
   // видно, что ряд прокручивается (иначе «Эффекты» не найти).
@@ -133,6 +141,19 @@ export function ShopScreen({ onBack }: { onBack: () => void }) {
           </span>
         }
       />
+
+      {showAdvent && (
+        <Group
+          className="mx-4 mt-5"
+          title={at('shop.title')}
+          footer={at('shop.hint', { n: adventOwned, total: ADVENT_REWARDS.length })}
+          bodyClassName="stagger"
+        >
+          {ADVENT_REWARDS.map((r) => (
+            <RewardRow key={'ny-' + r.id} reward={r} onOpen={open} />
+          ))}
+        </Group>
+      )}
 
       {/* Витрина дня — группой строк, со сроком до обновления */}
       {featured.length > 0 && (

@@ -182,9 +182,73 @@
   to { transform: translate3d(14%, 0, 0); }
 }
 
+/* ---------- Ёлочные огни (epic, адвент 2.12) ----------
+   Хвоя и размытые тёплые огоньки в правом верхнем углу (боке), слева под
+   текстом — тёмная хвоя: огоньки не ложатся на цифры. Статичная. */
+.hero-surface.skin-lights {
+  background-image:
+    var(--hero-noise),
+    radial-gradient(16px 16px at 88% 16%, rgb(255 209 102 / 0.55), transparent 72%),
+    radial-gradient(11px 11px at 76% 28%, rgb(255 96 96 / 0.5), transparent 72%),
+    radial-gradient(20px 20px at 95% 40%, rgb(61 220 151 / 0.34), transparent 72%),
+    radial-gradient(9px 9px at 68% 12%, rgb(120 210 255 / 0.5), transparent 72%),
+    radial-gradient(13px 13px at 83% 50%, rgb(255 190 110 / 0.36), transparent 72%),
+    radial-gradient(24px 24px at 97% 8%, rgb(255 140 90 / 0.3), transparent 72%),
+    radial-gradient(7px 7px at 72% 42%, rgb(255 230 160 / 0.6), transparent 72%),
+    radial-gradient(62% 82% at 100% 0%, rgb(255 196 110 / 0.16), transparent 64%),
+    linear-gradient(160deg, #10291d 0%, #07120c 80%);
+  background-blend-mode: overlay, normal, normal, normal, normal, normal, normal, normal, normal, normal;
+  box-shadow: inset 0 1px 0 rgb(255 230 170 / 0.12);
+}
+
+/* ---------- Новогодняя ночь (legendary, главный подарок адвента) ----------
+   Полночная синь, луна в углу, огоньки гирлянды вдоль верхнего края и снег.
+   Снег — псевдоэлемент на двойную высоту плитки узора, едет вниз ровно на одну
+   плитку (бесшовно): на Главной один проход, в примерке — без остановки. */
+.hero-surface.skin-newyear {
+  background-image:
+    var(--hero-noise),
+    radial-gradient(3.5px 3.5px at 7% 6%, #ffd166, transparent 80%),
+    radial-gradient(3.5px 3.5px at 17% 9%, #ff6b6b, transparent 80%),
+    radial-gradient(3.5px 3.5px at 27% 7%, #4cc9f0, transparent 80%),
+    radial-gradient(3.5px 3.5px at 37% 9.5%, #3ddc97, transparent 80%),
+    radial-gradient(3.5px 3.5px at 47% 7%, #ffd166, transparent 80%),
+    radial-gradient(3.5px 3.5px at 57% 9%, #ff6b6b, transparent 80%),
+    radial-gradient(3.5px 3.5px at 67% 6.5%, #4cc9f0, transparent 80%),
+    radial-gradient(3.5px 3.5px at 77% 9%, #3ddc97, transparent 80%),
+    radial-gradient(3.5px 3.5px at 87% 7%, #ffd166, transparent 80%),
+    radial-gradient(3.5px 3.5px at 96% 9%, #ff6b6b, transparent 80%),
+    radial-gradient(30% 46% at 90% 18%, rgb(255 238 190 / 0.2), transparent 70%),
+    radial-gradient(70% 90% at 100% 0%, rgb(76 110 255 / 0.24), transparent 64%),
+    linear-gradient(160deg, #0c1a3d 0%, #050a1b 80%);
+  background-blend-mode: overlay, normal, normal, normal, normal, normal, normal, normal, normal, normal, normal, normal, normal, normal;
+}
+.hero-surface.skin-newyear::before {
+  content: '';
+  position: absolute;
+  inset: -120px 0 0 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.7px 1.7px at 8% 14%, rgb(255 255 255 / 0.85), transparent 75%),
+    radial-gradient(1.3px 1.3px at 23% 61%, rgb(255 255 255 / 0.7), transparent 75%),
+    radial-gradient(2px 2px at 41% 33%, rgb(255 255 255 / 0.75), transparent 75%),
+    radial-gradient(1.4px 1.4px at 58% 82%, rgb(255 255 255 / 0.65), transparent 75%),
+    radial-gradient(1.8px 1.8px at 72% 22%, rgb(255 255 255 / 0.8), transparent 75%),
+    radial-gradient(1.2px 1.2px at 86% 55%, rgb(255 255 255 / 0.6), transparent 75%),
+    radial-gradient(1.6px 1.6px at 95% 90%, rgb(255 255 255 / 0.7), transparent 75%);
+  background-size: 150px 120px;
+  animation: ny-snow 9s linear 1;
+}
+@keyframes ny-snow {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 120px, 0); }
+}
+
 /* Примерка в Магазине: живые обложки играют без остановки. */
 .hero-surface.skin-live.skin-aurora::before { animation-iteration-count: infinite; animation-duration: 9s; }
 .hero-surface.skin-live.skin-holo::before { animation: holo-sweep 4.5s ease-in-out infinite alternate; }
+.hero-surface.skin-live.skin-newyear::before { animation: ny-snow 6s linear infinite; }
 
 /* Текст редкости — свои оттенки: цвет точки редкости (#F59E0B и т. п.)
    на белом даёт контраст 2–4:1. Здесь 5–7,6:1 в обеих темах. */
@@ -234,6 +298,25 @@
 @keyframes frame-pulse {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
+}
+/* Гирлянда (адвент 2.12): второй набор огоньков поверх первого (--ring2),
+   цвета сдвинуты на два места — слой плавно проявляется и гаснет, огоньки
+   «перемигиваются». Только прозрачность, на композиторе. */
+.frame-anim-garland::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--ring2);
+  opacity: 0;
+  /* Две перемигивания за круг (как 1,8 с туда-обратно): конец круга будит
+     главный поток, длинный круг — вчетверо реже. */
+  animation: garland-blink 7.2s ease-in-out infinite;
+}
+@keyframes garland-blink {
+  0%, 50%, 100% { opacity: 0; }
+  25%, 75% { opacity: 1; }
 }
 
 /* ---------- Особое задание (Прогресс): светящаяся рамка ----------

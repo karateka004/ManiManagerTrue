@@ -155,6 +155,8 @@ const BOTH_CHANGED: Record<string, (l: unknown, c: unknown, b: unknown) => unkno
   events: (l, c, b) => perKey(l, c, b, counter),
   owned: (l, c, b) => strings(l, c, b),
   claimedQuests: (l, c, b) => strings(l, c, b),
+  // Окошки адвента (2.12) — открытые на любом устройстве остаются открытыми.
+  advent: (l, c, b) => strings(l, c, b),
   // Сколько друзей уже вознаграждено — не прибавляется, а догоняется.
   rewardedReferrals: later,
   // Когда получены награды заданий — по ключам, поздняя метка.
@@ -267,7 +269,12 @@ export interface OnceRewards {
   quest: (id: string) => { xp: number; coins: number } | undefined
   streak: (count: number) => { xp: number; coins: number }
   referral: { xp: number; coins: number }
+  /** Окошко адвента по ключу без ':late' (lib/advent: adventKeyGift); price — цена пропущенного. */
+  advent?: (key: string) => { xp: number; coins: number; price: number } | undefined
 }
+
+/** Окошко, открытое позже своего дня (за монеты): ключ с этим хвостом. */
+const ADVENT_LATE = ':late'
 
 type StreakLike = { count?: unknown; lastClaim?: unknown }
 
@@ -300,6 +307,31 @@ export function doubledRewards(local: Data, cloud: Data, base: Data, r: OnceRewa
   }
   const [lr, cr, br] = [local.rewardedReferrals, cloud.rewardedReferrals, base.rewardedReferrals]
   if (num(lr) && num(cr) && num(br) && Math.min(lr, cr) > br) add(r.referral, Math.min(lr, cr) - br)
+  // Адвент: одно окошко, открытое на обоих устройствах. Подарок — один; если
+  // хоть с одной стороны за него платили (пропущенное), одна оплата лишняя —
+  // её возвращаем (поэтому coins бывает и отрицательным: «вычесть минус»).
+  if (r.advent && Array.isArray(base.advent)) {
+    const was = new Set(ids(base.advent))
+    const fresh = (list: unknown) => {
+      const out = new Map<string, boolean>()
+      for (const k of ids(list)) {
+        if (was.has(k)) continue
+        const late = k.endsWith(ADVENT_LATE)
+        const door = late ? k.slice(0, -ADVENT_LATE.length) : k
+        out.set(door, (out.get(door) ?? false) || late)
+      }
+      return out
+    }
+    const mine = fresh(local.advent)
+    const theirs = fresh(cloud.advent)
+    for (const [door, lateHere] of mine) {
+      if (!theirs.has(door)) continue
+      const g = r.advent(door)
+      if (!g) continue
+      xp += g.xp
+      coins += g.coins - (lateHere || theirs.get(door) ? g.price : 0)
+    }
+  }
   return { xp, coins }
 }
 
@@ -336,7 +368,9 @@ export function mergeStates(
       return num(l) && num(c) && num(b) && l !== c && l !== b && c !== b
     }
     if (dup.xp > 0 && summed('bonusXp')) merged.bonusXp = Math.max(0, (merged.bonusXp as number) - dup.xp)
-    if (dup.coins > 0 && summed('coins')) merged.coins = Math.max(0, (merged.coins as number) - dup.coins)
+    // Монеты — в обе стороны: задвоенный подарок вычитаем, задвоенную оплату
+    // пропущенного окошка возвращаем.
+    if (dup.coins !== 0 && summed('coins')) merged.coins = Math.max(0, (merged.coins as number) - dup.coins)
   }
   return { merged, differs: !same(merged, cloud) }
 }

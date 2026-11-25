@@ -22,10 +22,10 @@ export function LevelRewardsScreen({ onBack }: { onBack: () => void }) {
   const streakNow = useStore((s) => s.streak.count)
   const owned = useStore((s) => s.owned)
   const claimed = LEVEL_REWARDS.filter((r) => owned.includes(r.id)).length
-  // Особые титулы (за задание, подарок от команды) — только полученные: надеть
-  // или вернуть их больше негде, в Магазине их нет.
+  // Особые титулы (за задание, подарок от команды, из адвента) — только
+  // полученные: в Магазине их не купить, а надеть их здесь удобнее всего.
   const special = REWARDS.filter(
-    (r) => r.kind === 'title' && (r.source === 'quest' || r.source === 'gift') && owned.includes(r.id),
+    (r) => r.kind === 'title' && (r.source === 'quest' || r.source === 'gift' || r.source === 'advent') && owned.includes(r.id),
   )
 
   return (

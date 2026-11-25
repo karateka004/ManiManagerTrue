@@ -20,14 +20,15 @@ export type RewardKind = 'accent' | 'title' | 'frame' | 'card' | 'effect'
  * Особая рамка (см. components/rewards/FrameRing и styles/skins.css):
  *   spin  — кольцо медленно вращается;
  *   pulse — дышит цветом акцента;
- *   week  — семь сегментов, закрашены дни текущей серии (данные, а не узор).
+ *   week  — семь сегментов, закрашены дни текущей серии (данные, а не узор);
+ *   garland — огоньки гирлянды по кругу, перемигиваются (2.12, адвент).
  * Анимируется только на крупном аватаре (от 56 px): на 40 px движение не
  * разглядеть, и оно читается как мельтешение.
  */
-export type FrameAnim = 'spin' | 'pulse' | 'week'
+export type FrameAnim = 'spin' | 'pulse' | 'week' | 'garland'
 
 /** Эффект записи операции (см. lib/saveEffect.ts). */
-export type SaveEffect = 'none' | 'sparks' | 'confetti' | 'stars'
+export type SaveEffect = 'none' | 'sparks' | 'confetti' | 'stars' | 'snow'
 
 export interface RarityMeta {
   label: string
@@ -64,21 +65,27 @@ export interface RewardDef {
    * Откуда берётся награда. Не задано — обычный товар магазина (за монеты);
    * 'level' — выдаётся бесплатно по достижении unlockLevel (экран «Титулы уровня»);
    * 'gift' — персональный подарок от команды (PERSONAL_GIFTS), в магазине не виден;
-   * 'quest' — награда особого задания (QuestDef.reward), выдаётся вместе с его XP.
+   * 'quest' — награда особого задания (QuestDef.reward), выдаётся вместе с его XP;
+   * 'advent' — новогодняя коллекция: только из окошек адвент-календаря (lib/advent).
    */
-  source?: 'level' | 'gift' | 'quest'
+  source?: 'level' | 'gift' | 'quest' | 'advent'
   /** Для title — текст титула. */
   title?: string
   /** Для accent — палитра. */
   palette?: AccentPalette
   /** Для frame — CSS-стиль кольца (применяется к аватару через style.background для ring). */
-  frame?: { ring: string; glow?: string; anim?: FrameAnim }
+  frame?: { ring: string; glow?: string; anim?: FrameAnim; ring2?: string }
   /** Для card — id обложки: класс `skin-<id>` на .hero-surface ('' — классика). */
   card?: string
   /** Для effect — что проигрывается при записи операции. */
   effect?: SaveEffect
   /** Новинка релиза: в магазине помечается «Новое». */
   fresh?: boolean
+  /**
+   * Название и описание по-английски — у вещей, которых нет в общем словаре
+   * (новогодняя коллекция): translate берёт их отсюда (lib/i18n.ts).
+   */
+  en?: { name: string; hint: string }
 }
 
 /* ---------- Акцентные палитры ---------- */
@@ -118,6 +125,12 @@ const GOLD: AccentPalette = {
   400: '251 191 36', 500: '245 158 11', 600: '217 119 6', 700: '180 83 9',
   800: '146 64 14', 900: '120 53 15',
 }
+/** Иней (2.12, адвент): холодный небесно-голубой — не синий «Океан» и не бирюзовая «Лагуна». */
+const FROST: AccentPalette = {
+  50: '240 249 255', 100: '224 242 254', 200: '186 230 253', 300: '125 211 252',
+  400: '56 189 248', 500: '14 165 233', 600: '2 132 199', 700: '3 105 161',
+  800: '7 89 133', 900: '12 74 110',
+}
 const GRAPHITE: AccentPalette = {
   50: '248 250 252', 100: '241 245 249', 200: '226 232 240', 300: '203 213 225',
   400: '148 163 184', 500: '100 116 139', 600: '71 85 105', 700: '51 65 85',
@@ -133,7 +146,26 @@ export const ACCENT_PALETTES: Record<string, AccentPalette> = {
   accent_lagoon: LAGOON,
   accent_gold: GOLD,
   accent_graphite: GRAPHITE,
+  accent_frost: FROST,
 }
+
+/**
+ * Гирлянда: двенадцать огоньков по кругу на тёмном проводе. Второй набор —
+ * те же места, цвета со сдвигом: слои перемигиваются прозрачностью (styles/skins.css).
+ */
+function garlandRing(colors: string[], shift: number): string {
+  const n = 12
+  const step = 360 / n
+  const wire = '#173225'
+  const parts: string[] = []
+  for (let i = 0; i < n; i++) {
+    const a = i * step
+    const c = colors[(i + shift) % colors.length]
+    parts.push(`${wire} ${a}deg ${(a + 8).toFixed(1)}deg`, `${c} ${(a + 8).toFixed(1)}deg ${(a + step - 8).toFixed(1)}deg`, `${wire} ${(a + step - 8).toFixed(1)}deg ${(a + step).toFixed(1)}deg`)
+  }
+  return `conic-gradient(${parts.join(', ')})`
+}
+const GARLAND = ['#FF5A5F', '#FFD166', '#3DDC97', '#4CC9F0']
 
 /* ---------- Каталог наград ---------- */
 
@@ -213,7 +245,21 @@ export const REWARDS: RewardDef[] = [
   { id: 'title_ambassador', kind: 'title', name: 'Амбассадор', rarity: 'legendary', unlockLevel: 1, hint: 'Особый знак от команды Кошеля', source: 'gift', title: 'Амбассадор' },
   // За особое задание (source: 'quest') — подписка на канал обновлений, только неделю.
   { id: 'title_fan', kind: 'title', name: 'Преданный фанат', rarity: 'legendary', unlockLevel: 1, hint: 'За подписку на канал обновлений', source: 'quest', title: 'Преданный фанат' },
+
+  // Новогодняя коллекция (2.12, source: 'advent') — только из окошек адвент-календаря.
+  { id: 'title_snowman', kind: 'title', name: 'Снеговик', rarity: 'rare', unlockLevel: 1, hint: 'Первое окошко адвента', source: 'advent', title: 'Снеговик', en: { name: 'Snowman', hint: 'The first advent window' } },
+  { id: 'accent_frost', kind: 'accent', name: 'Иней', rarity: 'rare', unlockLevel: 1, hint: 'Морозный голубой', source: 'advent', palette: FROST, en: { name: 'Frost', hint: 'Frosty sky blue' } },
+  { id: 'effect_snow', kind: 'effect', name: 'Снегопад', rarity: 'epic', unlockLevel: 1, hint: 'Снежинки летят из «Записать»', source: 'advent', effect: 'snow', en: { name: 'Snowfall', hint: 'Snowflakes fly out of Save' } },
+  { id: 'frame_tinsel', kind: 'frame', name: 'Мишура', rarity: 'epic', unlockLevel: 1, hint: 'Золото, серебро и ёлочный блеск', source: 'advent', frame: { ring: 'conic-gradient(from 15deg,#E8B83A,#FFF4C9,#D7263D,#F2F4F7,#1E9E5A,#FFE08A,#B9BFC8,#E8B83A)', glow: '0 0 12px rgba(232,184,58,0.45)' }, en: { name: 'Tinsel', hint: 'Gold, silver and festive sparkle' } },
+  { id: 'card_lights', kind: 'card', name: 'Ёлочные огни', rarity: 'epic', unlockLevel: 1, hint: 'Хвоя и тёплые огоньки', source: 'advent', card: 'lights', en: { name: 'Tree lights', hint: 'Pine and warm little lights' } },
+  { id: 'frame_garland', kind: 'frame', name: 'Гирлянда', rarity: 'legendary', unlockLevel: 1, hint: 'Огоньки перемигиваются', source: 'advent', frame: { ring: garlandRing(GARLAND, 0), ring2: garlandRing(GARLAND, 2), glow: '0 0 14px rgba(255,209,102,0.45)', anim: 'garland' }, en: { name: 'Garland', hint: 'Lights that twinkle' } },
+  { id: 'title_santa', kind: 'title', name: 'Дед Мороз', rarity: 'epic', unlockLevel: 1, hint: 'Последнее окошко декабря', source: 'advent', title: 'Дед Мороз', en: { name: 'Father Frost', hint: 'The last window of December' } },
+  { id: 'card_newyear', kind: 'card', name: 'Новогодняя ночь', rarity: 'legendary', unlockLevel: 1, hint: 'Снег, луна и гирлянда', source: 'advent', card: 'newyear', en: { name: 'New Year night', hint: 'Snow, moon and a garland' } },
+  { id: 'title_newyear', kind: 'title', name: 'Новогодний дух', rarity: 'legendary', unlockLevel: 1, hint: 'Главный подарок адвента', source: 'advent', title: 'Новогодний дух', en: { name: 'Holiday spirit', hint: 'The advent’s grand prize' } },
 ]
+
+/** Новогодняя коллекция — вещи адвент-календаря (Магазин показывает их отдельной группой). */
+export const ADVENT_REWARDS: RewardDef[] = REWARDS.filter((r) => r.source === 'advent')
 
 /* ---------- Хелперы ---------- */
 

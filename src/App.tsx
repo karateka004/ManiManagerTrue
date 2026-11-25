@@ -26,7 +26,7 @@ import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 import { whenIdle } from './lib/idle'
 import { useBackButton } from './lib/useBackButton'
-import { resetRewardsNav, rewardsNav } from './lib/rewardsNav'
+import { openRewardsScreen, resetRewardsNav, rewardsNav } from './lib/rewardsNav'
 import { useSwipeNav, type SwipeDir, type SwipeHost } from './lib/useSwipeNav'
 import { TabActiveContext } from './lib/tabActive'
 import { Toaster } from './components/ui/Toaster'
@@ -392,6 +392,12 @@ export default function App() {
     scrollMemory.current.rewards = 0
     changeTab('rewards')
   }, [changeTab])
+  // Главная → адвент-календарь (окошко дня ждёт): «Прогресс» сразу на нём.
+  const openAdvent = useCallback(() => {
+    openRewardsScreen('advent')
+    scrollMemory.current.rewards = 0
+    changeTab('rewards')
+  }, [changeTab])
 
   // Настройки — вложенный экран: системная «Назад» Telegram возвращает в Профиль.
   useBackButton(tab === 'settings', openProfile)
@@ -468,8 +474,8 @@ export default function App() {
   useSwipeNav(pagerRef, swipeHost)
 
   const pageProps = useMemo<PageProps>(
-    () => ({ openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards }),
-    [openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards],
+    () => ({ openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards, openAdvent }),
+    [openProfile, openEdit, openAdd, openAddIncome, openSearch, openAssistant, openSettings, openRewards, openAdvent],
   )
 
   return (
@@ -544,6 +550,7 @@ interface PageProps {
   openAssistant: (q?: string) => void
   openSettings: () => void
   openRewards: () => void
+  openAdvent: () => void
 }
 
 /**
@@ -605,6 +612,7 @@ const TabPanel = memo(function TabPanel({
                   onAdd={pages.openAdd}
                   onOpenSearch={pages.openSearch}
                   onOpenAssistant={pages.openAssistant}
+                  onOpenAdvent={pages.openAdvent}
                 />
               )}
               {tab === 'analytics' && (
@@ -615,7 +623,7 @@ const TabPanel = memo(function TabPanel({
                   onAsk={pages.openAssistant}
                 />
               )}
-              {tab === 'rewards' && <RewardsPage />}
+              {tab === 'rewards' && <RewardsPage onAdd={pages.openAdd} onAsk={pages.openAssistant} />}
               {tab === 'profile' && <ProfilePage onOpenSettings={pages.openSettings} onOpenRewards={pages.openRewards} />}
               {tab === 'settings' && <SettingsPage onBack={pages.openProfile} />}
               {!active && <Prewarm panel={self} />}

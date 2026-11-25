@@ -3,6 +3,8 @@ import { Home, PieChart, User, Rocket, Plus, type LucideProps } from 'lucide-rea
 import { hapticSelect, hapticTap } from '../lib/telegram'
 import { useT } from '../lib/i18n'
 import { UNMASK } from '../lib/clarity'
+import { useStore } from '../store/transactions'
+import { todayDoorWaiting } from '../lib/season'
 
 // 'settings' остаётся валидным значением вкладки (рендерится в App), но в нижней
 // панели его НЕТ — Настройки открываются из шапки Профиля (иконка-шестерёнка).
@@ -41,6 +43,8 @@ const ITEMS: { id: Tab; labelKey: string; icon: ComponentType<LucideProps> }[] =
 export function TabBar({ value, onChange, onAdd }: Props) {
   const t = useT()
   const activeIndex = ITEMS.findIndex((i) => i.id === value)
+  // Декабрь: окошко адвента ждёт — точка на «Прогрессе», пока его не открыли.
+  const adventDot = useStore((s) => !s.demoMode && s.transactions.length > 0 && todayDoorWaiting(s.advent))
 
   return (
     <div
@@ -80,8 +84,15 @@ export function TabBar({ value, onChange, onAdd }: Props) {
                 >
                   {/* Иконка выбранной вкладки «подпрыгивает» — класс появляется
                       в момент выбора, и анимация отыгрывает один раз. */}
-                  <span className={active ? 'tab-icon-pop' : undefined}>
+                  <span className={`relative ${active ? 'tab-icon-pop' : ''}`}>
                     <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+                    {item.id === 'rewards' && adventDot && (
+                      <span
+                        data-advent-dot
+                        aria-hidden
+                        className="absolute -right-1 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#e5484d] ring-2 ring-surface-raised"
+                      />
+                    )}
                   </span>
                   <span className="max-w-full truncate text-[10px] font-semibold">{t(item.labelKey)}</span>
                 </button>

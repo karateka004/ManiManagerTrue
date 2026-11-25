@@ -33,6 +33,37 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.12.0',
+    date: '2026-11-25',
+    title: { ru: 'Новогодний адвент-календарь', en: 'A New Year advent calendar' },
+    items: [
+      {
+        text: {
+          ru: 'С 1 декабря на «Прогрессе» вместо огонька серии — адвент-календарь: 31 окошко, по одному на каждый день декабря. Окошко дня засчитывает и день серии',
+          en: 'From December 1, Progress swaps the streak flame for an advent calendar: 31 windows, one for every day of December. Today’s window counts as a streak day too',
+        },
+      },
+      {
+        text: {
+          ru: 'В окошках — монеты, опыт, праздничные советы о деньгах и новогодняя коллекция: титулы, акцент «Иней», эффект «Снегопад», рамки «Мишура» и «Гирлянда», обложка «Ёлочные огни»',
+          en: 'The windows hold coins, XP, holiday money tips and a New Year collection: titles, the Frost accent, the Snowfall effect, Tinsel and Garland frames and the Tree lights cover',
+        },
+      },
+      {
+        text: {
+          ru: 'Пропустил день — окошко можно открыть позже за монеты. А 1 января за 24 окошка откроется главный подарок: обложка «Новогодняя ночь» и титул «Новогодний дух»',
+          en: 'Missed a day? Open that window later for coins. And on January 1, 24 windows unlock the grand prize: the New Year night cover and the Holiday spirit title',
+        },
+      },
+      {
+        text: {
+          ru: '«Прогресс» по-праздничному: снег, гирлянда на карте уровня и отсчёт до Нового года',
+          en: 'Progress dresses up for the holidays: snow, a garland on the level card and a countdown to New Year',
+        },
+      },
+    ],
+  },
+  {
     version: '2.11.3',
     date: '2026-11-20',
     title: { ru: 'Обучение в стиле Telegram', en: 'A Telegram-style tour' },

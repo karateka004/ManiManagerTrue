@@ -140,6 +140,11 @@ export interface State {
   claimedQuests: string[]
   /** Ежедневная серия (стрик) — ретеншн-движок. */
   streak: StreakState
+  /**
+   * Адвент-календарь (2.12): открытые окошки — '2026-12-05', позже за монеты —
+   * '2026-12-05:late', главный подарок — '2026-final'. См. lib/season.ts.
+   */
+  advent: string[]
   /** Надетые косметические награды: акцент, титул, рамка аватара, обложка карты, эффект записи. */
   equipped: { accent: string; title: string; frame: string; card: string; effect: string }
   /** Купленные (доступные к надеванию) награды. */
@@ -459,9 +464,11 @@ function sanitizePersisted(raw: unknown): Record<string, unknown> {
   }
 
   // Контейнеры: если тип не тот, приложение упадёт на первом же .map/.filter.
-  for (const key of ['customCategories', 'goals', 'investments', 'owned', 'quickCurrencies', 'claimedQuests']) {
+  for (const key of ['customCategories', 'goals', 'investments', 'owned', 'quickCurrencies', 'claimedQuests', 'advent']) {
     if (s[key] !== undefined && !Array.isArray(s[key])) s[key] = []
   }
+  // Окошки адвента — только строки: число или объект в списке ломали бы подсчёт.
+  if (Array.isArray(s.advent)) s.advent = (s.advent as unknown[]).filter((x) => typeof x === 'string')
   for (const key of ['budgets', 'events', 'questClaims']) {
     const v = s[key]
     if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v))) s[key] = {}
@@ -743,6 +750,7 @@ export const useStore = create<State & Actions>()(
       rewardedReferrals: 0,
       claimedQuests: [],
       streak: { count: 0, best: 0, lastClaim: null },
+      advent: [],
       equipped: { ...DEFAULT_EQUIPPED },
       owned: [...DEFAULT_OWNED],
       demoMode: false,
@@ -1145,8 +1153,9 @@ export const useStore = create<State & Actions>()(
         const s = get()
         if (s.owned.includes(id)) return false
         const r = getReward(id)
-        // Награда особого задания приходит только с ним самим (claimQuest).
-        if (!r || !r.source || r.source === 'quest') return false
+        // Награда особого задания приходит только с ним самим (claimQuest), вещь
+        // адвента — только из окошка (lib/advent).
+        if (!r || !r.source || r.source === 'quest' || r.source === 'advent') return false
         // Титул за уровень — только если выполнены оба условия: уровень и рекорд
         // ежедневной серии (streak.best) — та же «Серия дня», что на хабе наград.
         if (r.source === 'level') {
@@ -1176,7 +1185,7 @@ export const useStore = create<State & Actions>()(
     }),
     {
       name: 'finance-mini-app:v1',
-      version: 18,
+      version: 19,
       storage: throttledStorage as PersistStorage<State & Actions>,
       // Нормализуем снимок ПОСЛЕ миграций и перед тем, как он станет состоянием.
       merge: (persisted, current) => ({ ...current, ...sanitizePersisted(persisted) }),
@@ -1272,6 +1281,10 @@ export const useStore = create<State & Actions>()(
         // версии проходит эту же миграцию при слиянии (cloud.ts → rehydrate).
         if (persisted && version < 18) {
           if (persisted.themeMode === 'auto' || persisted.themeMode === undefined) persisted.themeMode = 'dark'
+        }
+        // v19 (2.12): адвент-календарь — список открытых окошек.
+        if (persisted && version < 19) {
+          if (!Array.isArray(persisted.advent)) persisted.advent = []
         }
         return persisted
       },

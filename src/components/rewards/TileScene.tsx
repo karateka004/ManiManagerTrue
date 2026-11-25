@@ -1,6 +1,6 @@
 import { useId, type CSSProperties } from 'react'
 
-export type Scene = 'coins' | 'podium' | 'flame' | 'crown'
+export type Scene = 'coins' | 'podium' | 'flame' | 'crown' | 'advent'
 
 /**
  * Обложка плитки хаба «Прогресс»: небольшая живая векторная сцена.
@@ -15,7 +15,7 @@ export type Scene = 'coins' | 'podium' | 'flame' | 'crown'
  * тихо живут блёстки, верхняя монета, пламя и сияние. Анимации висят только на
  * обёртках `<g>`: CSS-transform заменил бы собственный transform фигуры.
  */
-export function TileScene({ scene }: { scene: Scene }) {
+export function TileScene({ scene, festive }: { scene: Scene; festive?: boolean }) {
   const id = useId()
   return (
     <svg
@@ -28,6 +28,8 @@ export function TileScene({ scene }: { scene: Scene }) {
       {scene === 'podium' && <Podium />}
       {scene === 'flame' && <Flame />}
       {scene === 'crown' && <Crown id={id} />}
+      {scene === 'advent' && <Advent />}
+      {festive && <Snow />}
     </svg>
   )
 }
@@ -124,6 +126,69 @@ function Flame() {
         <path transform="translate(37.4,40.95) scale(2.05)" d={FLAME_PATH} fill="rgb(var(--tile-a) / 0.92)" />
       </g>
     </>
+  )
+}
+
+/**
+ * Адвент (2.12): ёлка со звездой и игрушками и коробка с бантом. Звезда и лента
+ * золотые при любом цвете плитки — как звезда пьедестала.
+ */
+function Advent() {
+  return (
+    <>
+      <g className="ts-rise" style={d(0)}>
+        <path d="M28 20 L46 44 L38 44 L52 62 L43 62 L58 84 L-2 84 L13 62 L4 62 L18 44 L10 44 Z" fill="rgb(var(--tile-a) / 0.92)" />
+        <g className="ts-twinkle" style={d(600)}>
+          <circle cx="21" cy="55" r="3.2" fill="rgb(255 255 255 / 0.75)" />
+        </g>
+        <g className="ts-twinkle" style={d(1200)}>
+          <circle cx="37" cy="70" r="3.2" fill="rgb(255 255 255 / 0.65)" />
+        </g>
+        <g className="ts-twinkle" style={d(1800)}>
+          <circle cx="30" cy="38" r="2.6" fill="rgb(255 255 255 / 0.7)" />
+        </g>
+      </g>
+      {/* Звезда левее середины: правый верх занят бейджем «Открыть». */}
+      <g className="ts-drop" style={d(260)}>
+        <g className="ts-twinkle" style={d(900)}>
+          <path d="M28 5 L30.6 11.8 L37.9 12.1 L32.2 16.6 L34.1 23.6 L28 19.6 L21.9 23.6 L23.8 16.6 L18.1 12.1 L25.4 11.8 Z" fill="rgb(250 204 21 / 0.95)" />
+        </g>
+      </g>
+      <g className="ts-drop" style={d(160)}>
+        <rect x="66" y="58" width="34" height="26" rx="4" fill="rgb(var(--tile-a) / 0.55)" />
+        <rect x="64" y="53" width="38" height="9" rx="3" fill="rgb(var(--tile-a) / 0.85)" />
+        <rect x="80" y="53" width="6" height="31" fill="rgb(250 204 21 / 0.9)" />
+        <path d="M83 53 C 76 44, 70 50, 78 54 Z M83 53 C 90 44, 96 50, 88 54 Z" fill="rgb(250 204 21 / 0.9)" />
+        <rect x="104" y="68" width="18" height="16" rx="3" fill="rgb(var(--tile-a) / 0.4)" />
+        <rect x="111" y="68" width="4" height="16" fill="rgb(250 204 21 / 0.75)" />
+      </g>
+    </>
+  )
+}
+
+/**
+ * Снег на плитках в новогодний сезон: сугроб по нижнему краю (поле его и
+ * срезает, как землю у сцен) и три снежинки. Поверх сцены — фигуры стоят в снегу.
+ */
+function Snow() {
+  return (
+    <g aria-hidden>
+      <path
+        d="M-6 86 C 8 79, 20 82, 32 80 C 46 77, 58 82, 72 79 C 86 76, 98 81, 112 78 C 118 77, 124 79, 128 80 L128 96 L-6 96 Z"
+        fill="rgb(255 255 255 / 0.94)"
+        stroke="rgb(148 163 184 / 0.35)"
+        strokeWidth="0.8"
+      />
+      <g className="ts-twinkle" style={d(400)}>
+        <circle cx="10" cy="22" r="1.8" fill="rgb(255 255 255 / 0.85)" />
+      </g>
+      <g className="ts-twinkle" style={d(1300)}>
+        <circle cx="70" cy="10" r="1.4" fill="rgb(255 255 255 / 0.75)" />
+      </g>
+      <g className="ts-twinkle" style={d(2100)}>
+        <circle cx="104" cy="58" r="1.6" fill="rgb(255 255 255 / 0.8)" />
+      </g>
+    </g>
   )
 }
 

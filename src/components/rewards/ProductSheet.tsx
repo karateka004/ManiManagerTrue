@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Gift } from 'lucide-react'
 import { useStore } from '../../store/transactions'
 import { rewardPrice, type RewardDef } from '../../lib/rewards'
 import { coinsWord, useT } from '../../lib/i18n'
@@ -9,6 +9,7 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { Odometer } from '../ui/Odometer'
 import { CoinAmount } from './CoinAmount'
 import { RewardStage } from './RewardPreview'
+import { useAdventT } from '../advent/text'
 
 /**
  * Шторка товара: примерка, цена и покупка в одном месте.
@@ -44,6 +45,7 @@ export function ProductSheet({
 
 function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOverride?: number; onClose: () => void }) {
   const t = useT()
+  const at = useAdventT()
   const lang = useStore((s) => s.lang)
   const coins = useStore((s) => s.coins)
   const owned = useStore((s) => s.owned.includes(reward.id))
@@ -118,6 +120,12 @@ function Body({ reward, priceOverride, onClose }: { reward: RewardDef; priceOver
               {t('roadpass.equip')}
             </button>
           )
+        ) : reward.source === 'advent' ? (
+          // Новогодняя коллекция: примерить можно, купить — нет, только из окошка.
+          <div className="flex items-center justify-center gap-2 rounded-full bg-surface-sunken py-3.5 text-[15px] font-bold text-ink-muted">
+            <Gift size={18} strokeWidth={2.4} />
+            {at('shop.only')}
+          </div>
         ) : (
           // Цена — один раз, в кнопке (со скидкой — зачёркнутая полная рядом).
           <button

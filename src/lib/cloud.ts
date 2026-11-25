@@ -349,15 +349,20 @@ async function resolveConflict(snap: CloudSnapshot): Promise<void> {
  * на экране что-то поменялось.
  */
 /**
- * Таблицы разовых наград для слияния: одно задание, забранное на двух
- * устройствах, — одна награда. Задания — ленивым чанком (в стартовом их нет);
- * не загрузился — сливаем без поправки, как раньше.
+ * Таблицы разовых наград для слияния: одно задание (окошко адвента), забранное
+ * на двух устройствах, — одна награда. Задания и адвент — ленивыми чанками (в
+ * стартовом их нет); не загрузились — сливаем без поправки, как раньше.
  */
 function onceRewards(): Promise<OnceRewards | undefined> {
-  return import('./quests')
-    .then(({ QUESTS }) => {
+  return Promise.all([import('./quests'), import('./advent')])
+    .then(([{ QUESTS }, { adventKeyGift }]) => {
       const byId = new Map(QUESTS.map((q) => [q.id, { xp: q.xp, coins: q.coins }]))
-      return { quest: (id: string) => byId.get(id), streak: (n: number) => streakReward(n), referral: REF_REWARD }
+      return {
+        quest: (id: string) => byId.get(id),
+        streak: (n: number) => streakReward(n),
+        referral: REF_REWARD,
+        advent: adventKeyGift,
+      }
     })
     .catch(() => undefined)
 }

@@ -68,10 +68,12 @@ export function FrameRing({
   const ringW = Math.max(2, Math.round(size * 0.07))
   const live = (animate ?? size >= FRAME_ANIM_MIN) && frame.anim && frame.anim !== 'week'
   const ring = frame.anim === 'week' ? weekRing(week) : frame.ring
+  // Гирлянда: второй набор огоньков (--ring2) поверх первого перемигивается.
+  const vars = { '--ring': ring, ...(live && frame.ring2 ? { '--ring2': frame.ring2 } : {}) }
   return (
     <div
       className={clsx('frame-ring flex shrink-0 items-center justify-center', live && `frame-anim-${frame.anim}`, className)}
-      style={{ width: size, height: size, padding: ringW, boxShadow: frame.glow, '--ring': ring } as CSSProperties}
+      style={{ width: size, height: size, padding: ringW, boxShadow: frame.glow, ...vars } as CSSProperties}
     >
       {children}
     </div>
