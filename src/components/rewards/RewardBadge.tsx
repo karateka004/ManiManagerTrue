@@ -5,6 +5,7 @@ import {
   GraduationCap, Gem, Landmark, Coins, Sparkles, Bitcoin, Swords, BadgeCheck,
   Star, Leaf, Anchor, Grape, Sunset, Flower, TreePalm, Pencil,
   Feather, Vault, Mountain, CircleOff, PartyPopper,
+  Snowflake, WandSparkles, Citrus, Gift, Target, CloudSnow, TreePine, Cherry, MountainSnow, ThermometerSnowflake,
   type LucideProps,
 } from 'lucide-react'
 import { RARITY, type AccentPalette, type Rarity } from '../../lib/rewards'
@@ -61,6 +62,19 @@ const ICON_BY_ID: Record<string, ComponentType<LucideProps>> = {
   accent_lagoon: TreePalm,
   accent_gold: Sparkles,
   accent_graphite: Pencil,
+
+  // Новогодняя коллекция (адвент): у каждого титула свой знак.
+  title_snowman: Snowflake,
+  title_elf: WandSparkles,
+  title_tangerine: Citrus,
+  title_reindeer: Gift,
+  title_strategist: Target,
+  title_drifts: MountainSnow,
+  title_santa: TreePine,
+  title_newyear: PartyPopper,
+  accent_frost: ThermometerSnowflake,
+  accent_cranberry: Cherry,
+  effect_snow: CloudSnow,
 }
 
 /** Скруглённый шестиугольник жетона (viewBox 48×48). */

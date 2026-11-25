@@ -1,16 +1,16 @@
 import type { CSSProperties } from 'react'
 import { Gift, Snowflake } from 'lucide-react'
 import { useStore } from '../../../store/transactions'
-import { Keepsake } from '../Keepsake'
-import { keepsakeOf } from '../keepsakes'
+import { doorPrize } from '../../../lib/advent'
+import { GiftGlyph } from './GiftGlyph'
 import { useAdventT } from '../text'
 import { weekGrid, type BoardProps } from './types'
 
 /**
- * Вариант «Шкатулка»: бархатная коробка с золотой лентой и бантом, 31 ящичек
- * по дням недели. Крышечка с тиснёным числом откидывается вверх — внутри на
- * папиросной бумаге лежит игрушка дня. В пустых клетках последней недели —
- * отсек главного подарка, в первой — золотые медальоны.
+ * Шкатулка: бархатная коробка с золотой лентой и бантом, 31 ящичек по дням
+ * недели. Крышечка с тиснёным числом откидывается вверх — внутри на папиросной
+ * бумаге лежит подарок окошка (рамка, титул, монеты…). В пустых клетках
+ * последней недели — отсек главного подарка, в первой — золотые медальоны.
  */
 const WEEK = {
   ru: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
@@ -19,6 +19,7 @@ const WEEK = {
 
 export function BoxBoard({ year, phase, states, selected, opening, doorRef, onDoor, label }: BoardProps) {
   const lang = useStore((s) => s.lang)
+  const advent = useStore((s) => s.advent)
   const t = useAdventT()
   const grid = weekGrid(year)
   const firstCol = grid[0].col
@@ -70,7 +71,6 @@ export function BoxBoard({ year, phase, states, selected, opening, doorRef, onDo
         {states.map((state, i) => {
           const day = i + 1
           const g = grid[i]
-          const ks = keepsakeOf(day)
           const paper = (g.col + g.row) % 4
           const cls = [
             'adv-door',
@@ -93,7 +93,11 @@ export function BoxBoard({ year, phase, states, selected, opening, doorRef, onDo
             >
               <span className="bx-well">
                 <span className="bx-tissue" />
-                {state === 'open' && ks && <Keepsake shape={ks.shape} size={40} className="bx-ks" />}
+                {state === 'open' && (
+                  <span className="bx-ks">
+                    <GiftGlyph prize={doorPrize(day, advent, year)} />
+                  </span>
+                )}
               </span>
               <span className={`bx-lid paper-${paper}`}>
                 <span className="bx-num">{day}</span>

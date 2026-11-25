@@ -131,6 +131,12 @@ const FROST: AccentPalette = {
   400: '56 189 248', 500: '14 165 233', 600: '2 132 199', 700: '3 105 161',
   800: '7 89 133', 900: '12 74 110',
 }
+/** Клюква — новогодний красный акцент (адвент). */
+const CRANBERRY: AccentPalette = {
+  50: '255 241 242', 100: '255 226 229', 200: '254 202 207', 300: '252 156 166',
+  400: '246 98 115', 500: '225 49 72', 600: '196 30 58', 700: '163 21 47',
+  800: '136 20 45', 900: '112 19 41',
+}
 const GRAPHITE: AccentPalette = {
   50: '248 250 252', 100: '241 245 249', 200: '226 232 240', 300: '203 213 225',
   400: '148 163 184', 500: '100 116 139', 600: '71 85 105', 700: '51 65 85',
@@ -147,6 +153,7 @@ export const ACCENT_PALETTES: Record<string, AccentPalette> = {
   accent_gold: GOLD,
   accent_graphite: GRAPHITE,
   accent_frost: FROST,
+  accent_cranberry: CRANBERRY,
 }
 
 /**
@@ -255,6 +262,16 @@ export const REWARDS: RewardDef[] = [
   { id: 'frame_garland', kind: 'frame', name: 'Гирлянда', rarity: 'legendary', unlockLevel: 1, hint: 'Огоньки перемигиваются', source: 'advent', frame: { ring: garlandRing(GARLAND, 0), ring2: garlandRing(GARLAND, 2), glow: '0 0 14px rgba(255,209,102,0.45)', anim: 'garland' }, en: { name: 'Garland', hint: 'Lights that twinkle' } },
   { id: 'title_santa', kind: 'title', name: 'Дед Мороз', rarity: 'epic', unlockLevel: 1, hint: 'Последнее окошко декабря', source: 'advent', title: 'Дед Мороз', en: { name: 'Father Frost', hint: 'The last window of December' } },
   { id: 'card_newyear', kind: 'card', name: 'Новогодняя ночь', rarity: 'legendary', unlockLevel: 1, hint: 'Снег, луна и гирлянда', source: 'advent', card: 'newyear', en: { name: 'New Year night', hint: 'Snow, moon and a garland' } },
+  // 2.13: титулы-никнеймы и рамки для аватара в рейтинге — по окошкам декабря.
+  { id: 'title_elf', kind: 'title', name: 'Бюджетный эльф', rarity: 'rare', unlockLevel: 1, hint: 'Помогает Деду Морозу не уйти в минус', source: 'advent', title: 'Бюджетный эльф', en: { name: 'Budget elf', hint: 'Keeps Santa out of the red' } },
+  { id: 'title_tangerine', kind: 'title', name: 'Барон Мандарин', rarity: 'rare', unlockLevel: 1, hint: 'Главный актив декабря — мандарины', source: 'advent', title: 'Барон Мандарин', en: { name: 'Baron Tangerine', hint: 'December’s top asset: tangerines' } },
+  { id: 'title_reindeer', kind: 'title', name: 'Олень-эконом', rarity: 'epic', unlockLevel: 1, hint: 'Везёт подарки, но строго в рамках лимита', source: 'advent', title: 'Олень-эконом', en: { name: 'Budget reindeer', hint: 'Delivers gifts, strictly within the limit' } },
+  { id: 'title_strategist', kind: 'title', name: 'Хладнокровный', rarity: 'epic', unlockLevel: 1, hint: 'Холодная голова в сезон распродаж', source: 'advent', title: 'Хладнокровный', en: { name: 'Cool-headed', hint: 'A cool head in sale season' } },
+  { id: 'title_drifts', kind: 'title', name: 'Царь сугробов', rarity: 'epic', unlockLevel: 1, hint: 'Копит, как снег зимой: тихо и много', source: 'advent', title: 'Царь сугробов', en: { name: 'Snowdrift king', hint: 'Saves like winter snow: quietly and a lot' } },
+  { id: 'frame_icerim', kind: 'frame', name: 'Ледяная кромка', rarity: 'rare', unlockLevel: 1, hint: 'Прозрачный лёд с голубым отблеском', source: 'advent', frame: { ring: 'conic-gradient(from 210deg,#BFE8FF,#FFFFFF,#7CC8F2,#E6F6FF,#9AD7F7,#FFFFFF,#BFE8FF)', glow: '0 0 12px rgba(124,200,242,0.5)' }, en: { name: 'Ice rim', hint: 'Clear ice with a blue glint' } },
+  { id: 'frame_candy', kind: 'frame', name: 'Леденец', rarity: 'epic', unlockLevel: 1, hint: 'Красно-белые полоски бегут по кругу', source: 'advent', frame: { ring: 'repeating-conic-gradient(#E23B4B 0deg 18deg,#FFF7F2 18deg 36deg)', glow: '0 0 10px rgba(226,59,75,0.4)', anim: 'spin' }, en: { name: 'Candy cane', hint: 'Red and white stripes run around' } },
+  { id: 'frame_aurora', kind: 'frame', name: 'Северное сияние', rarity: 'legendary', unlockLevel: 1, hint: 'Зелёные и сиреневые всполохи', source: 'advent', frame: { ring: 'conic-gradient(from 0deg,#34E3A4,#2BB8E8,#8B6CFF,#E06CFF,#34E3A4)', glow: '0 0 16px rgba(52,227,164,0.45)', anim: 'spin' }, en: { name: 'Northern lights', hint: 'Green and lilac flashes' } },
+  { id: 'accent_cranberry', kind: 'accent', name: 'Клюква', rarity: 'rare', unlockLevel: 1, hint: 'Новогодний красный', source: 'advent', palette: CRANBERRY, en: { name: 'Cranberry', hint: 'Festive red' } },
   { id: 'title_newyear', kind: 'title', name: 'Новогодний дух', rarity: 'legendary', unlockLevel: 1, hint: 'Главный подарок адвента', source: 'advent', title: 'Новогодний дух', en: { name: 'Holiday spirit', hint: 'The advent’s grand prize' } },
 ]
 

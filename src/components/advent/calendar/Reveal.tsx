@@ -1,23 +1,21 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, ChevronUp, Coins, Flame, Gift, Lightbulb, Lock, Snowflake, Sparkles } from 'lucide-react'
+import { Check, ChevronUp, Coins, Flame, Gift, Lightbulb, Lock, PackageOpen, Snowflake, Sparkles } from 'lucide-react'
 import { useStore } from '../../../store/transactions'
 import { coinsWord, daysWord, useT } from '../../../lib/i18n'
 import { hapticTap } from '../../../lib/telegram'
 import { getReward, type RewardDef } from '../../../lib/rewards'
 import { ADVENT_LATE_PRICE } from '../../../lib/season'
-import { ADVENT_DOORS, ADVENT_DUP_COINS, ADVENT_FINAL, chestOf, type AdventAction, type AdventGift, type OpenResult } from '../../../lib/advent'
+import { ADVENT_DOORS, ADVENT_DUP_COINS, ADVENT_FINAL, doorPrize, type AdventAction, type AdventGift, type OpenResult } from '../../../lib/advent'
 import { CoinAmount } from '../../rewards/CoinAmount'
 import { RewardThumb } from '../../rewards/RewardPreview'
 import { ADVENT_TIPS, FINAL_TIP, tipText } from '../tips'
 import { useAdventT } from '../text'
-import { Keepsake } from '../Keepsake'
-import { keepsakeOf } from '../keepsakes'
 import { YearRecap } from './YearRecap'
 
 export type RevealState =
   /** Только что открыли: что получено (вместе с днём серии). */
   | { mode: 'got'; day: number; result: Extract<OpenResult, { ok: true }> }
-  /** Открытое раньше: игрушка, что было внутри и совет дня. */
+  /** Открытое раньше: что было внутри и совет дня. */
   | { mode: 'view'; day: number }
   /** Пропущенное: открыть за монеты. */
   | { mode: 'late'; day: number }
@@ -104,7 +102,7 @@ function Body({
       <div className="adv-rev">
         <Head label={t('sheet.final_title')} onClose={onClose} />
         <div className="adv-rev-hero">
-          <span className="adv-rev-ks adv-rev-bigift" aria-hidden>
+          <span className="adv-rev-medal adv-medal-legendary adv-rev-wrapped is-new" aria-hidden>
             <Gift size={40} strokeWidth={1.8} />
           </span>
           <div className="min-w-0">
@@ -124,7 +122,6 @@ function Body({
     )
   }
 
-  const ks = keepsakeOf(state.day)
   const door = ADVENT_DOORS[state.day - 1]
 
   if (state.mode === 'late') {
@@ -133,8 +130,8 @@ function Body({
       <div className="adv-rev">
         <Head label={t('rev.late', { date: dateOf(state.day) })} onClose={onClose} />
         <div className="adv-rev-hero">
-          <span className="adv-rev-ks adv-rev-wrapped" aria-hidden>
-            <Gift size={34} strokeWidth={1.9} />
+          <span className="adv-rev-medal adv-rev-wrapped" aria-hidden>
+            <Gift size={30} strokeWidth={1.9} />
           </span>
           <div className="min-w-0">
             <div className="adv-rev-name">{t('sheet.late_t')}</div>
@@ -163,13 +160,17 @@ function Body({
 
   // Окошко: только что открытое или открытое раньше.
   const result = state.mode === 'got' ? state.result : null
-  const itemId = result ? (door?.item && result.gift.items.includes(door.item) ? door.item : undefined) : door?.item
-  const item = itemId ? getReward(itemId) : undefined
-  const chestId = result ? result.gift.chest : chestOf(advent, year, state.day)
-  const chest = chestId ? getReward(chestId) : undefined
-  const chestEmpty = !!door?.chest && !!result && !result.gift.chest
+  // Что было в окошке: у только что открытого — по факту (сундучок мог оказаться
+  // монетами), у открытого раньше — по таблице и ключу сундучка.
+  const prize = result
+    ? door?.chest
+      ? ({ type: 'chest', id: result.gift.chest } as const)
+      : doorPrize(state.day, advent, year)
+    : doorPrize(state.day, advent, year)
+  const prizeItem = prize.type === 'item' || prize.type === 'chest' ? (prize.id ? getReward(prize.id) : undefined) : undefined
   const streakGift = result?.streak?.gift ? getReward(result.streak.gift) : undefined
   const frozen = result?.streak?.frozen ?? 0
+  const dupItem = !!result?.gift.dup
   const tip = ADVENT_TIPS[state.day]
   const action = door?.action
   const showAction = action && (action !== 'ask' || (canAsk && tip?.ask))
@@ -180,53 +181,60 @@ function Body({
       ? t('rev.opened', { date: dateOf(state.day) })
       : t('rev.today', { date: dateOf(state.day) })
     : t('rev.opened', { date: dateOf(state.day) })
+  const kicker = prize.type === 'chest' ? t('gift.chest') : result ? t('rev.got') : t('rev.was')
+  const chips = (
+    <Chips
+      coins={coinsGot}
+      xp={xpGot}
+      lang={lang}
+      streak={result?.streak ? { n: result.streak.count, word: daysWord(lang, result.streak.count) } : undefined}
+    />
+  )
 
   return (
     <div className="adv-rev">
       <Head label={label} onClose={onClose} />
-      {ks && (
+      {prizeItem ? (
+        <PrizeItem reward={prizeItem} kicker={kicker} isNew={!!result}>
+          {chips}
+        </PrizeItem>
+      ) : (
         <div className="adv-rev-hero">
-          <span className={`adv-rev-ks ${result ? 'is-new' : ''}`} aria-hidden>
-            <Keepsake shape={ks.shape} size={64} />
+          <span className={`adv-rev-medal ${result ? 'is-new' : ''} ${prize.type === 'freeze' ? 'is-freeze' : 'is-coins'}`} aria-hidden>
+            {prize.type === 'freeze' ? (
+              <Snowflake size={30} strokeWidth={2.2} />
+            ) : prize.type === 'chest' ? (
+              <PackageOpen size={30} strokeWidth={2} />
+            ) : (
+              <Coins size={30} strokeWidth={2.2} />
+            )}
           </span>
           <div className="min-w-0">
-            <div className="adv-rev-kicker">{result ? t('rev.got') : t('coll.title')}</div>
-            <div className="adv-rev-name">{lang === 'en' ? ks.en.name : ks.ru.name}</div>
-            <p className="adv-rev-note">{lang === 'en' ? ks.en.note : ks.ru.note}</p>
+            <div className="adv-rev-kicker">{kicker}</div>
+            <div className="adv-rev-name">
+              {prize.type === 'freeze'
+                ? t('gift.freeze')
+                : prize.type === 'chest'
+                  ? t('gift.chest_coins')
+                  : t(coinsName(door?.coins ?? 0))}
+            </div>
+            <p className="adv-rev-note">
+              {prize.type === 'freeze' ? t('gift.freeze_x') : prize.type === 'chest' ? t('gift.chest_empty') : t('gift.coins_x')}
+            </p>
           </div>
         </div>
       )}
-      <Chips
-        coins={coinsGot}
-        xp={xpGot}
-        lang={lang}
-        streak={result?.streak ? { n: result.streak.count, word: daysWord(lang, result.streak.count) } : undefined}
-        freeze={!!door?.freeze}
-      />
-      {door?.freeze && <Note icon={<Snowflake size={15} strokeWidth={2.4} />}>{t('gift.freeze_x')}</Note>}
+      {!prizeItem && chips}
       {frozen > 0 && (
         <Note icon={<Snowflake size={15} strokeWidth={2.4} />}>
           {frozen === 1 ? t('gift.frozen') : t('gift.frozen_n', { n: frozen, word: daysWord(lang, frozen) })}
         </Note>
       )}
-      {result?.gift.dup && <Note>{t('sheet.dup', { n: ADVENT_DUP_COINS })}</Note>}
-      {chestEmpty && <Note>{t('gift.chest_empty')}</Note>}
+      {dupItem && <Note>{t('sheet.dup', { n: ADVENT_DUP_COINS })}</Note>}
       {streakGift && (
         <Note icon={<Gift size={15} strokeWidth={2.4} />}>
           {t('sheet.streak_gift', { name: tr('reward.' + streakGift.id + '.name') })}
         </Note>
-      )}
-      {item && (
-        <div className="mt-3">
-          <div className="adv-rev-kicker mb-1.5">{t('rev.also')}</div>
-          <ItemRow reward={item} />
-        </div>
-      )}
-      {chest && (
-        <div className="mt-3">
-          <div className="adv-rev-kicker mb-1.5">{t('gift.chest')}</div>
-          <ItemRow reward={chest} />
-        </div>
       )}
       {state.day === 31 && <YearRecap year={year} />}
       {tip && (
@@ -243,6 +251,65 @@ function Body({
           )}
         </Tip>
       )}
+    </div>
+  )
+}
+
+/** Название монетного окошка — по щедрости. */
+const coinsName = (n: number) => (n <= 15 ? 'gift.coins_s' : n <= 25 ? 'gift.coins_m' : 'gift.coins_l')
+
+/**
+ * Вещь из окошка крупно: жетон в медальоне цвета редкости, вид вещи, название,
+ * описание и «Надеть» — сразу, без Магазина. Титул показан так, как его увидят
+ * в рейтинге: плашкой под именем.
+ */
+function PrizeItem({ reward, kicker, isNew, children }: { reward: RewardDef; kicker: string; isNew: boolean; children?: ReactNode }) {
+  const t = useAdventT()
+  const tr = useT()
+  const owned = useStore((s) => s.owned.includes(reward.id))
+  const equipped = useStore((s) => s.equipped[reward.kind] === reward.id)
+  const equipReward = useStore((s) => s.equipReward)
+  const name = tr('reward.' + reward.id + '.name')
+  return (
+    <div className="adv-prize" data-advent-prize={reward.id}>
+      <div className="adv-rev-hero">
+        <span className={`adv-rev-medal adv-medal-${reward.rarity} ${isNew ? 'is-new' : ''}`} aria-hidden>
+          <span className="adv-medal-thumb">
+            <RewardThumb reward={reward} />
+          </span>
+        </span>
+        <div className="min-w-0">
+          <div className="adv-rev-kicker">
+            {kicker} · {t(('kind.' + reward.kind) as 'kind.title')}
+          </div>
+          {reward.kind === 'title' ? (
+            <div className="adv-title-chip">{name}</div>
+          ) : (
+            <div className="adv-rev-name">{name}</div>
+          )}
+          <p className="adv-rev-note">{tr('reward.' + reward.id + '.hint')}</p>
+          <span className={`adv-rarity adv-rarity-${reward.rarity}`}>{tr('rarity.' + reward.rarity)}</span>
+        </div>
+      </div>
+      {children}
+      {owned &&
+        (equipped ? (
+          <div className="adv-worn">
+            <Check size={16} strokeWidth={2.8} className="pop" /> {t('sheet.worn')}
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-advent-wear
+            onClick={() => {
+              hapticTap()
+              equipReward(reward.kind, reward.id)
+            }}
+            className="adv-btn mt-3 w-full"
+          >
+            {t('gift.wear_' + reward.kind as 'gift.wear_title')}
+          </button>
+        ))}
     </div>
   )
 }

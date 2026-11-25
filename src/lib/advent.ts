@@ -53,41 +53,41 @@ export interface AdventDoor {
 }
 
 /**
- * 31 окошко. В каждом — своя ёлочная игрушка (components/advent/keepsakes),
- * монеты и опыт. Вещи коллекции — по вехам (1, 5, 10, 15, 20, 25, 31), в 7-м и
- * 21-м — заморозка серии, в 13-м и 27-м — сундучок с вещью из магазина (её
- * ещё нет), в 31-м — итоги года.
+ * 31 окошко. В каждом — монеты и опыт; в пятнадцати — вещь новогодней
+ * коллекции: титулы-никнеймы, рамки аватара (видны в рейтинге), акценты,
+ * обложка, эффект. В 7-м и 21-м — заморозка серии, в 13-м и 27-м — сундучок с
+ * вещью из магазина (её ещё нет), в 31-м — Дед Мороз и итоги года.
  */
 export const ADVENT_DOORS: AdventDoor[] = [
   { day: 1, coins: 10, xp: 10, item: 'title_snowman', action: 'limits' },
   { day: 2, coins: 15, xp: 5, action: 'add' },
-  { day: 3, coins: 20, xp: 10 },
+  { day: 3, coins: 10, xp: 10, item: 'frame_icerim' },
   { day: 4, coins: 15, xp: 5 },
   { day: 5, coins: 10, xp: 10, item: 'accent_frost', action: 'budget' },
   { day: 6, coins: 25, xp: 10, action: 'goals' },
   { day: 7, coins: 20, xp: 15, freeze: true },
-  { day: 8, coins: 15, xp: 5 },
+  { day: 8, coins: 10, xp: 5, item: 'title_elf' },
   { day: 9, coins: 20, xp: 10 },
   { day: 10, coins: 10, xp: 10, item: 'effect_snow', action: 'add' },
   { day: 11, coins: 25, xp: 10, action: 'ask' },
-  { day: 12, coins: 20, xp: 5 },
+  { day: 12, coins: 10, xp: 5, item: 'title_tangerine' },
   { day: 13, coins: 15, xp: 15, chest: 'rare' },
   { day: 14, coins: 15, xp: 10, action: 'ask' },
   { day: 15, coins: 10, xp: 10, item: 'frame_tinsel' },
-  { day: 16, coins: 20, xp: 5 },
+  { day: 16, coins: 10, xp: 5, item: 'title_reindeer' },
   { day: 17, coins: 25, xp: 10 },
-  { day: 18, coins: 20, xp: 10 },
+  { day: 18, coins: 10, xp: 10, item: 'accent_cranberry' },
   { day: 19, coins: 30, xp: 15, action: 'goals' },
   { day: 20, coins: 10, xp: 10, item: 'card_lights', action: 'limits' },
   { day: 21, coins: 25, xp: 10, freeze: true },
-  { day: 22, coins: 20, xp: 10 },
+  { day: 22, coins: 10, xp: 10, item: 'title_strategist' },
   { day: 23, coins: 25, xp: 15 },
-  { day: 24, coins: 30, xp: 15, action: 'add' },
+  { day: 24, coins: 10, xp: 15, item: 'frame_candy', action: 'add' },
   { day: 25, coins: 15, xp: 15, item: 'frame_garland' },
   { day: 26, coins: 20, xp: 10, action: 'ask' },
   { day: 27, coins: 15, xp: 10, chest: 'epic', action: 'goals' },
-  { day: 28, coins: 20, xp: 10 },
-  { day: 29, coins: 25, xp: 15, action: 'budget' },
+  { day: 28, coins: 10, xp: 10, item: 'title_drifts' },
+  { day: 29, coins: 15, xp: 15, item: 'frame_aurora', action: 'budget' },
   { day: 30, coins: 30, xp: 15, action: 'add' },
   { day: 31, coins: 20, xp: 20, item: 'title_santa' },
 ]
@@ -156,6 +156,22 @@ export function chestOf(advent: readonly string[], year: number, day: number): s
   const head = `${year}-chest-${String(day).padStart(2, '0')}:`
   const k = advent.find((x) => x.startsWith(head))
   return k ? k.slice(head.length) : null
+}
+
+/** Главное в окошке — что показать в ящичке и крупно в карточке подарка. */
+export type DoorPrize =
+  | { type: 'item'; id: string }
+  | { type: 'chest'; id: string | null }
+  | { type: 'freeze' }
+  | { type: 'coins'; coins: number; xp: number }
+
+export function doorPrize(day: number, advent: readonly string[], year: number): DoorPrize {
+  const door = ADVENT_DOORS[day - 1]
+  if (!door) return { type: 'coins', coins: 0, xp: 0 }
+  if (door.item) return { type: 'item', id: door.item }
+  if (door.chest) return { type: 'chest', id: chestOf(advent, year, day) }
+  if (door.freeze) return { type: 'freeze' }
+  return { type: 'coins', coins: door.coins, xp: door.xp }
 }
 
 /** Окошки с заморозкой в таблице совпадают с FREEZE_DAYS (сверяет test-advent). */

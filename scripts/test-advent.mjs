@@ -148,7 +148,7 @@ for (const id of A.ADVENT_FINAL.items) check(`вещь главного пода
 const advRewards = REWARDS.filter((x) => x.source === 'advent')
 const given = new Set(A.ADVENT_ITEMS.map((x) => x.id))
 check('каждая вещь коллекции где-то выдаётся', advRewards.every((x) => given.has(x.id)), advRewards.map((x) => x.id))
-check('в коллекции 9 вещей', advRewards.length === 9 && A.ADVENT_ITEMS.length === 9)
+check('в коллекции 18 вещей: 16 в окошках и 2 в главном подарке', advRewards.length === 18 && A.ADVENT_ITEMS.length === 18, advRewards.length)
 // Названия коллекции — в самом каталоге (ru и en): общий словарь в стартовом
 // чанке, translate берёт их оттуда (lib/i18n.ts, rewardText). В словаре их быть
 // не должно — иначе две правды разойдутся.
@@ -218,6 +218,14 @@ check('сундучок 27-го — эпическая и выше', (() => {
 })())
 check('ключ сундучка — не окошко и не награда', A.adventKeyGift('2026-chest-13:card_titan') === undefined && A.adventKeyGift('2026-frz-2026-12-08') === undefined)
 check('опыт адвента не изменился (435)', A.ADVENT_TOTAL_XP === 435, A.ADVENT_TOTAL_XP)
+{
+  const seen = new Set()
+  const dup = REWARDS.map((r) => r.id).filter((id) => (seen.has(id) ? true : (seen.add(id), false)))
+  check('id в каталоге наград не повторяются', dup.length === 0, dup)
+}
+check('вещи окошек — из новогодней коллекции', A.ADVENT_DOORS.filter((d) => d.item).every((d) => getReward(d.item)?.source === 'advent'), A.ADVENT_DOORS.filter((d) => d.item && getReward(d.item)?.source !== 'advent').map((d) => d.item))
+check('вещь — в половине окошек', A.ADVENT_DOORS.filter((d) => d.item).length >= 15)
+check('главное в окошке: вещь, сундучок, заморозка, монеты', A.doorPrize(3, [], 2026).type === 'item' && A.doorPrize(13, ['2026-chest-13:card_titan'], 2026).id === 'card_titan' && A.doorPrize(7, [], 2026).type === 'freeze' && A.doorPrize(2, [], 2026).type === 'coins')
 
 /* ---------- 7. Облако: два телефона ---------- */
 const rewards = {

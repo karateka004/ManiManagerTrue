@@ -33,6 +33,31 @@ export interface ReleaseNote {
 /** Новые записи — сверху. */
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2.13.0',
+    date: '2026-11-26',
+    title: { ru: 'Адвент-шкатулка прямо на «Прогрессе»', en: 'The advent box, right on Progress' },
+    items: [
+      {
+        text: {
+          ru: 'Адвент-календарь теперь живёт на «Прогрессе», под плитками: бархатная шкатулка с золотой лентой, 31 ящичек по дням недели. Крышка откидывается на месте, подарок раскрывается тут же',
+          en: 'The advent calendar now lives on Progress, under the tiles: a velvet box with a gold ribbon and 31 drawers by weekday. Lids open right there, and the gift unfolds below',
+        },
+      },
+      {
+        text: {
+          ru: 'Подарков стало вдвое больше: титулы «Бюджетный эльф», «Барон Мандарин», «Олень-эконом», «Хладнокровный», «Царь сугробов», рамки для аватара в рейтинге «Ледяная кромка», «Леденец», «Северное сияние» и цвет «Клюква»',
+          en: 'Twice as many gifts: the titles Budget elf, Baron Tangerine, Budget reindeer, Cool-headed and Snowdrift king, avatar frames for the leaderboard Ice rim, Candy cane and Northern lights, and the Cranberry colour',
+        },
+      },
+      {
+        text: {
+          ru: '7 и 21 декабря — заморозка серии: пропустишь день, а серия не сгорит. 13 и 27 — сундучок с вещью из Магазина, которой у тебя ещё нет. 31-го — твой год в Кошеле',
+          en: 'December 7 and 21 bring a streak freeze: miss a day and your streak survives. The 13th and 27th hold a chest with a Shop item you don’t have yet. On the 31st — your year in Koshel',
+        },
+      },
+    ],
+  },
+  {
     version: '2.12.0',
     date: '2026-11-25',
     title: { ru: 'Новогодний адвент-календарь', en: 'A New Year advent calendar' },

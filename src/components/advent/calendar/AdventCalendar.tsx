@@ -25,11 +25,7 @@ import { useAdventT, windowsWord } from '../text'
 import { useSeason } from '../useSeason'
 import { CardSnow } from '../Festive'
 import { Reveal, type RevealState } from './Reveal'
-import { ADVENT_VARIANTS, canPickVariant, useAdventVariant, type AdventVariant } from './variant'
-import { TreeBoard } from './TreeBoard'
-import { VillageBoard } from './VillageBoard'
 import { BoxBoard } from './BoxBoard'
-import type { BoardProps } from './types'
 
 const PlanningSheet = lazy(() => import('../../PlanningSheet').then((m) => ({ default: m.PlanningSheet })))
 
@@ -44,26 +40,13 @@ const slice = (s: AdventSlice): AdventSlice => ({
   streak: s.streak,
 })
 
-const BOARDS: Record<AdventVariant, (p: BoardProps) => JSX.Element> = {
-  tree: TreeBoard,
-  village: VillageBoard,
-  box: BoxBoard,
-}
-
-const VARIANT_NAME: Record<AdventVariant, { ru: string; en: string }> = {
-  tree: { ru: 'Ёлка', en: 'Tree' },
-  village: { ru: 'Городок', en: 'Village' },
-  box: { ru: 'Шкатулка', en: 'Box' },
-}
-
 /**
- * Адвент-календарь прямо на «Прогрессе» (2.12.1): между плитками и заданиями,
- * без отдельного экрана и шторки. Окошко открывается на месте — дверца, всплеск,
- * игрушка; подарок раскрывается карточкой под календарём. Правила — по «?».
+ * Адвент-календарь прямо на «Прогрессе» (2.13): между плитками и заданиями,
+ * без отдельного экрана и шторки. Шкатулка: крышка ящичка откидывается, внутри
+ * — подарок; карточка подарка раскрывается под календарём. Правила — по «?».
  *
  * Награды считает lib/advent.ts (чистые функции): сюда приходит готовое
- * изменение стора, одним setState. Вид календаря — один из трёх (variant.ts),
- * логика у всех общая.
+ * изменение стора, одним setState.
  */
 export default function AdventCalendar({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: string) => void }) {
   const t = useAdventT()
@@ -73,8 +56,6 @@ export default function AdventCalendar({ onAdd, onAsk }: { onAdd?: () => void; o
   const year = s.year
   const opened = openedCount(advent, year)
   const finalDone = advent.includes(finalKey(year))
-  const [variant, setVariant] = useAdventVariant()
-  const Board = BOARDS[variant]
 
   const [reveal, setReveal] = useState<RevealState | null>(null)
   const [opening, setOpening] = useState<number | null>(null)
@@ -240,8 +221,7 @@ export default function AdventCalendar({ onAdd, onAsk }: { onAdd?: () => void; o
     <section
       ref={rootRef}
       data-advent-calendar
-      data-variant={variant}
-      className={`adv-cal adv-${variant} mx-4 mt-4`}
+      className="adv-cal adv-box mx-4 mt-4"
       aria-label={t('cal.kicker')}
     >
       <CardSnow />
@@ -281,7 +261,7 @@ export default function AdventCalendar({ onAdd, onAsk }: { onAdd?: () => void; o
         </div>
       </div>
 
-      <Board
+      <BoxBoard
         year={year}
         phase={s.phase}
         today={today}
@@ -343,24 +323,6 @@ export default function AdventCalendar({ onAdd, onAsk }: { onAdd?: () => void; o
               left: Math.max(0, ADVENT_FINAL_NEED - opened),
               word: windowsWord(lang, Math.max(0, ADVENT_FINAL_NEED - opened)),
             })}
-          </div>
-        )}
-        {canPickVariant() && (
-          <div className="adv-variants" data-swipe-ignore data-advent-variants>
-            {ADVENT_VARIANTS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => {
-                  hapticTap()
-                  setReveal(null)
-                  setVariant(v)
-                }}
-                className={`adv-variant ${v === variant ? 'is-on' : ''}`}
-              >
-                {VARIANT_NAME[v][lang === 'en' ? 'en' : 'ru']}
-              </button>
-            ))}
           </div>
         )}
       </div>

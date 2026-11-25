@@ -1,7 +1,7 @@
 import type { DoorState } from '../../../lib/advent'
 import type { AdventPhase } from '../../../lib/season'
 
-/** Что знает вид календаря (ёлка, городок, шкатулка): правила и подарки — снаружи. */
+/** Что знает доска календаря (шкатулка): правила и подарки — снаружи. */
 export interface BoardProps {
   year: number
   phase: AdventPhase
