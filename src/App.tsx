@@ -26,7 +26,7 @@ import { giftsFor } from './lib/rewards'
 import { lazyRetry } from './lib/lazyRetry'
 import { whenIdle } from './lib/idle'
 import { useBackButton } from './lib/useBackButton'
-import { openRewardsScreen, resetRewardsNav, rewardsNav } from './lib/rewardsNav'
+import { requestAdventFocus, resetRewardsNav, rewardsNav } from './lib/rewardsNav'
 import { useSwipeNav, type SwipeDir, type SwipeHost } from './lib/useSwipeNav'
 import { TabActiveContext } from './lib/tabActive'
 import { Toaster } from './components/ui/Toaster'
@@ -392,10 +392,11 @@ export default function App() {
     scrollMemory.current.rewards = 0
     changeTab('rewards')
   }, [changeTab])
-  // Главная → адвент-календарь (окошко дня ждёт): «Прогресс» сразу на нём.
+  // Главная → адвент-календарь (окошко дня ждёт): хаб «Прогресса», календарь
+  // сам прокрутится к себе и подсветит окошко дня.
   const openAdvent = useCallback(() => {
-    openRewardsScreen('advent')
-    scrollMemory.current.rewards = 0
+    resetRewardsNav(false)
+    requestAdventFocus()
     changeTab('rewards')
   }, [changeTab])
 

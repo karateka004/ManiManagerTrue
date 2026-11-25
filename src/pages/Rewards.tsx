@@ -44,21 +44,22 @@ import { RewardBadge } from '../components/rewards/RewardBadge'
 import { Odometer } from '../components/ui/Odometer'
 import { flyCoins, floatText, replay } from '../lib/fx'
 import { useBackButton } from '../lib/useBackButton'
-import { onRewardsReset, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
+import { onRewardsReset, requestAdventFocus, rewardsNav, type RewardsScreen } from '../lib/rewardsNav'
 import { useHeroSkin } from '../lib/useHeroSkin'
 import { useTabActive } from '../lib/tabActive'
 import { festive, daysToNewYear } from '../lib/season'
 import { useSeason } from '../components/advent/useSeason'
-import { AdventCard, AdventTile } from '../components/advent/AdventHub'
-import { FestiveSky, Garland } from '../components/advent/Festive'
+import { AdventTile } from '../components/advent/AdventHub'
+import { Bullfinch, FestiveSky, Garland } from '../components/advent/Festive'
 import { useAdventT } from '../components/advent/text'
 import { TreePine } from 'lucide-react'
 import '../styles/advent.css'
 
 // Таблица лидеров — отдельным чанком, грузится по первому открытию.
 const LeaderboardSheet = lazy(() => import('../components/LeaderboardSheet').then((m) => ({ default: m.LeaderboardSheet })))
-// Адвент-календарь (2.12) — под-экран отдельным чанком: окошки, советы, шторка.
-const AdventScreen = lazy(() => import('./Advent').then((m) => ({ default: m.AdventScreen })))
+// Адвент-календарь (2.12.1) — прямо на хабе между плитками и заданиями, своим
+// чанком: грузится только в новогодний сезон.
+const AdventCalendar = lazy(() => import('../components/advent/calendar/AdventCalendar'))
 
 /**
  * Вкладка «Прогресс» — хаб геймификации: уровень, серия, магазин, рейтинг,
@@ -107,8 +108,7 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
   useEffect(() => {
     rewardsNav.screen = view.screen
   }, [view.screen])
-  // Повторный тап по вкладке «Прогресс» из Магазина — назад на хаб (как в iOS);
-  // переход извне — сразу на под-экран (Главная → адвент).
+  // Повторный тап по вкладке «Прогресс» из Магазина — назад на хаб (как в iOS).
   useEffect(
     () =>
       onRewardsReset((screen) =>
@@ -118,7 +118,6 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
   )
   const shopOpen = view.screen === 'shop'
   const levelRewardsOpen = view.screen === 'titles'
-  const adventOpen = view.screen === 'advent'
   const goTo = (screen: RewardsScreen) => setView({ screen, enter: screen === 'hub' ? 'back' : 'deep' })
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const seenLeaderboard = useRef(false)
@@ -281,10 +280,10 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
     rewardsNav.hubScroll = window.scrollY
     goTo('titles')
   }
+  // Плитка «Адвент» — к календарю ниже на этом же экране.
   const openAdvent = () => {
     track('open_advent')
-    rewardsNav.hubScroll = window.scrollY
-    goTo('advent')
+    requestAdventFocus()
   }
 
   // Вложенный экран открывается с начала, хаб — там, где его оставили. Только
@@ -325,14 +324,6 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
         <LevelRewardsScreen onBack={() => goTo('hub')} />
       </div>
     )
-  if (adventOpen)
-    return (
-      <div className={deep}>
-        <Suspense fallback={<div className="min-h-screen" />}>
-          <AdventScreen onBack={() => goTo('hub')} onAdd={onAdd} onAsk={onAsk} />
-        </Suspense>
-      </div>
-    )
 
   // Отсчёт до Нового года — до 31 декабря; в январе шапка просто поздравляет.
   const nyDays = sea.phase === 'teaser' || sea.phase === 'live' ? daysToNewYear(seaNow) : 0
@@ -366,9 +357,13 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
       {/* Уровень. Монеты и серия отсюда ушли в строки ниже — там у них есть
           действие, а в герое они были третьим и четвёртым числом на плашке.
           В новогодний сезон по верхнему краю висит гирлянда. */}
+      {/* Снегирь сидит на краю карты, у крючка гирлянды: у карты overflow
+          hidden (обложки), поэтому он снаружи — в обёртке. */}
+      <div className="relative">
+      {fest && <Bullfinch className="hub-bullfinch" />}
       <div
         data-tour="level"
-        className={`hero-surface mx-4 mt-3 overflow-hidden rounded-4xl p-5 ${fest ? 'pt-8' : ''} ${skin}`}
+        className={`hero-surface mx-4 overflow-hidden rounded-4xl p-5 ${fest ? 'mt-5 pt-8' : 'mt-3'} ${skin}`}
       >
         {fest && <Garland />}
         <div className="flex items-center justify-between gap-3">
@@ -407,6 +402,7 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
             ? t('profile.max_level')
             : t('profile.xp_progress', { into: lvl.xpIntoLevel, need: lvl.xpForLevel, toNext: lvl.toNext })}
         </div>
+      </div>
       </div>
 
       {/* Плитки 2×2: Магазин · Рейтинг · Серия · Титулы. В 2.0 их заменили
@@ -461,8 +457,12 @@ export function RewardsPage({ onAdd, onAsk }: { onAdd?: () => void; onAsk?: (q: 
         />
       </div>
 
-      {/* До 1 декабря — отсчёт до первого окошка, в январе — главный подарок. */}
-      {(sea.phase === 'teaser' || sea.phase === 'finale') && <AdventCard onOpen={openAdvent} />}
+      {/* Адвент-календарь: с 24 ноября (окошки закрыты) по 14 января. */}
+      {fest && (
+        <Suspense fallback={<div className="adv-cal-ph mx-4 mt-4" />}>
+          <AdventCalendar onAdd={onAdd} onAsk={onAsk} />
+        </Suspense>
+      )}
 
       {fanQuest && (
         <LimitedQuestCard

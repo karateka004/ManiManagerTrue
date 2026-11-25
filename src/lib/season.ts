@@ -74,6 +74,26 @@ export function openedCount(advent: readonly string[], year: number): number {
   return n
 }
 
+/**
+ * Заморозка серии — подарок окошек FREEZE_DAYS: пропущенный день не обнуляет
+ * серию (одна заморозка — один день). Действует, пока идёт сезон (декабрь и
+ * до 14 января). Выданные считаются по открытым окошкам, потраченные — ключами
+ * '2026-frz-2026-12-08' (сезон и спасённый день) в том же списке `advent`:
+ * облако сливает его объединением, и день, спасённый на двух телефонах,
+ * тратит одну заморозку.
+ */
+export const FREEZE_DAYS = [7, 21]
+export const freezeKey = (year: number, missed: string): string => `${year}-frz-${missed}`
+
+export function freezesLeft(advent: readonly string[], now: Date = new Date()): number {
+  const s = season(now)
+  if (s.phase !== 'live' && s.phase !== 'finale') return 0
+  let n = 0
+  for (const day of FREEZE_DAYS) if (isDoorOpen(advent, s.year, day)) n++
+  const used = new Set(advent.filter((k) => k.startsWith(`${s.year}-frz-`))).size
+  return Math.max(0, n - used)
+}
+
 /** Окошко дня ждёт: декабрь, и сегодняшнее ещё не открыто. */
 export function todayDoorWaiting(advent: readonly string[], now: Date = new Date()): boolean {
   const s = season(now)

@@ -1,14 +1,17 @@
-// Адвент-календарь и праздничный «Прогресс» (vite preview :4180) — по датам,
+// Адвент-календарь прямо на «Прогрессе» (vite preview :4180) — по датам,
 // часы страницы подменены (Date до кода приложения):
-//   26 ноября — тизер: праздничный вид, отсчёт, «Серия дня» на месте, окошки закрыты;
-//   5 декабря — плитка вместо серии, точка на вкладке, карточка на Главной →
-//               адвент; окошко дня (серия, монеты, совет, действие), повторный тап
-//               без награды, пропущенное за монеты (и без монет — нельзя);
-//   31 декабря — «Новый год этой ночью», окошко 31;
+//   26 ноября — тизер: праздничный вид, снегирь, отсчёт, календарь под плитками
+//               с закрытыми окошками, «Серия дня» на месте; стор 18 → 19;
+//   5 декабря — точка на вкладке, карточка на Главной → календарь в поле зрения;
+//               окошко дня раскрывает подарок под календарём (игрушка, серия,
+//               монеты, вещь «Надеть», совет и действие), повтор без награды,
+//               пропущенное за монеты (без монет — нельзя), правила за «?»;
+//   7 декабря — заморозка из окошка спасает пропущенный день;
+//   13 декабря — сундучок: вещь из магазина;
+//   31 декабря — «Новый год этой ночью», окошко 31 и итоги года;
 //   2 января — «Серия дня» вернулась, главный подарок (и когда окошек мало);
-//   15 января — сезон закончился;
-//   320 px — без вылезания по ширине и без обрезанного заголовка; светлая тема;
-//   стор 18 → 19 (миграция), Магазин: новогодняя коллекция не продаётся.
+//   15 января — сезон закончился; Магазин: коллекция не продаётся;
+//   три вида (ёлка, домик, шкатулка) — переключатель по ссылке, 320 px и светлая.
 const { chromium } = require('playwright')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -29,7 +32,7 @@ function seedState(extra, version) {
   return { version, extra }
 }
 
-async function newApp(browser, { date, state = {}, version = 19, width = 390, scheme = 'dark' }) {
+async function newApp(browser, { date, state = {}, version = 19, width = 390, scheme = 'dark', query = '' }) {
   const ctx = await browser.newContext({ viewport: { width, height: 800 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true, timezoneId: 'Europe/Berlin', colorScheme: scheme })
   await ctx.route('https://telegram.org/**', (r) => r.fulfill({ contentType: 'application/javascript', body: '' }))
   await ctx.route('https://*.clarity.ms/**', (r) => r.abort())
@@ -81,7 +84,7 @@ async function newApp(browser, { date, state = {}, version = 19, width = 390, sc
   const page = await ctx.newPage()
   page.errs = []
   page.on('pageerror', (e) => page.errs.push(e.message))
-  await page.goto(BASE)
+  await page.goto(BASE + query)
   await page.waitForTimeout(1300)
   return { ctx, page }
 }
@@ -91,11 +94,16 @@ const store = async (page) => {
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
   return page.evaluate(() => JSON.parse(localStorage.getItem('finance-mini-app:v1') || 'null')?.state)
 }
-const progress = (page) => page.locator('[data-tour="tab-rewards"]').click().then(() => page.waitForTimeout(1300))
-const door = (page, d) => page.locator(`.door[data-day="${d}"]`)
-// Текст всех открытых окон: поверх шторки может встать «Новый уровень» (главный подарок даёт +100 XP).
-const sheetText = (page) => page.locator('[aria-modal=true]').evaluateAll((els) => els.map((e) => e.innerText).join('\n')).catch(() => '')
-const closeSheet = (page) => page.keyboard.press('Escape').then(() => page.waitForTimeout(600))
+const progress = (page) => page.locator('[data-tour="tab-rewards"]').click().then(() => page.waitForTimeout(1500))
+const CAL = '.tab-panel:not([data-off]) [data-advent-calendar]'
+const door = (page, d) => page.locator(`${CAL} .adv-door[data-day="${d}"]`)
+const reveal = (page) => page.locator(`${CAL} .adv-reveal`)
+const revealText = (page) => reveal(page).innerText().catch(() => '')
+const status = (page) => page.locator(`${CAL} [data-advent-status]`).innerText().catch(() => '')
+const tap = async (page, d, wait = 900) => {
+  await door(page, d).click()
+  await page.waitForTimeout(wait)
+}
 const days = (n, skip = []) => {
   const out = []
   for (let d = 1; out.length < n && d <= 31; d++) if (!skip.includes(d)) out.push('2026-12-' + String(d).padStart(2, '0'))
@@ -105,7 +113,7 @@ const days = (n, skip = []) => {
 ;(async () => {
   const browser = await chromium.launch()
 
-  /* 1. Тизер, 26 ноября: праздничный вид, отсчёт, серия на месте, окошки закрыты. */
+  /* 1. Тизер, 26 ноября: праздничный вид, календарь с закрытыми окошками. */
   {
     const { ctx, page } = await newApp(browser, { date: '2026-11-26T12:00:00', version: 18 })
     const st = await store(page)
@@ -116,166 +124,203 @@ const days = (n, skip = []) => {
     const chip = (await page.locator('[data-ny-chip]').innerText().catch(() => '')).replace(/\s+/g, ' ')
     ok(chip.includes('36'), 'тизер: «Новый год через 36 дн.»', chip)
     ok(await page.locator('.hero-surface .garland').count() === 1, 'тизер: гирлянда на карте уровня')
-    ok(await page.locator('[data-advent-tile]').count() === 0, 'тизер: плитки адвента ещё нет — «Серия дня» на месте')
-    const card = await page.locator('[data-advent-card]').innerText().catch(() => '')
-    ok(/через\s5\sдней/.test(card), 'тизер: карточка «через 5 дней»', card)
-    await page.locator('[data-advent-card]').click()
-    await page.waitForTimeout(1400)
-    const states = await page.locator('.door').evaluateAll((els) => els.map((e) => e.dataset.state))
+    ok(await page.locator('.tab-panel:not([data-off]) .hub-bullfinch').count() === 1, 'тизер: снегирь у гирлянды')
+    ok(await page.locator('[data-advent-tile]').count() === 0, 'тизер: «Серия дня» на месте')
+    ok(await page.locator(CAL).count() === 1, 'тизер: календарь прямо на «Прогрессе»')
+    ok(/через\s5\sдней/.test(await status(page)), 'тизер: «Первое окошко — через 5 дней»', await status(page))
+    const states = await page.locator(`${CAL} .adv-door`).evaluateAll((els) => els.map((e) => e.dataset.state))
     ok(states.length === 31 && states.every((x) => x === 'locked'), 'тизер: 31 окошко, все закрыты', states)
-    await door(page, 1).click()
-    await page.waitForTimeout(500)
+    // Календарь стоит между плитками и заданиями.
+    const order = await page.evaluate((sel) => {
+      const cal = document.querySelector(sel)
+      const tiles = document.querySelector('.tab-panel:not([data-off]) .grid.grid-cols-2')
+      return !!cal && !!tiles && !!(tiles.compareDocumentPosition(cal) & Node.DOCUMENT_POSITION_FOLLOWING)
+    }, CAL)
+    ok(order, 'тизер: календарь — под плитками')
+    await tap(page, 1, 500)
     ok((await page.locator('body').innerText()).includes('Окошки откроются с 1 декабря'), 'тизер: тап по окошку — «откроются с 1 декабря»')
     ok(((await store(page))?.advent ?? []).length === 0, 'тизер: ничего не открылось')
-    await page.screenshot({ path: path.join(OUT, 'advent-teaser.png') })
+    ok(await page.locator(`${CAL} [data-advent-variants]`).count() === 0, 'тизер: переключателя видов нет (не владелец)')
+    await page.locator(CAL).screenshot({ path: path.join(OUT, 'advent-teaser.png') })
     ok(page.errs.length === 0, 'тизер: ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 2. 5 декабря: плитка, точка, Главная → адвент, окошко дня, повтор, пропущенное. */
+  /* 2. 5 декабря: точка, Главная → календарь, окошко дня, повтор, пропущенное. */
   {
     const state = { advent: ['2026-12-01', '2026-12-02', '2026-12-04'], streak: { count: 3, best: 9, lastClaim: '2026-12-04' }, coins: 25 }
     const { ctx, page } = await newApp(browser, { date: '2026-12-05T09:30:00', state })
     ok(await page.locator('[data-advent-dot]').count() === 1, '5 дек: точка на «Прогрессе»')
     ok(await page.locator('[data-advent-nudge]').count() === 1, '5 дек: на Главной «Окошко адвента ждёт»')
     await page.locator('[data-advent-nudge]').click()
-    await page.waitForTimeout(1600)
-    ok(await page.locator('.advent-grid').count() === 1, '5 дек: карточка Главной открыла адвент')
+    await page.waitForTimeout(2200)
+    const box = await page.locator(CAL).boundingBox()
+    ok(!!box && box.y > -20 && box.y < 200, '5 дек: карточка Главной привела к календарю', box)
     ok((await door(page, 5).getAttribute('data-state')) === 'today', '5 дек: окошко 5 — сегодняшнее')
     ok((await door(page, 6).getAttribute('data-state')) === 'locked', '5 дек: окошко 6 закрыто')
     ok((await door(page, 3).getAttribute('data-state')) === 'missed', '5 дек: окошко 3 пропущено')
     ok((await door(page, 4).getAttribute('data-state')) === 'open', '5 дек: окошко 4 открыто')
+    ok((await page.locator('[data-advent-tile]').innerText().catch(() => '')).includes('Открыть'), '5 дек: плитка серии зовёт открыть окошко')
+
+    // Правила — за «?».
+    await page.locator(`${CAL} [data-advent-rules-btn]`).click()
+    await page.waitForTimeout(500)
+    ok((await page.locator(`${CAL} [data-advent-rules]`).getAttribute('data-advent-rules')) === 'open', '5 дек: «?» раскрыл правила')
+    ok((await page.locator(`${CAL} [data-advent-rules]`).innerText()).includes('заморозки'), '5 дек: в правилах — заморозки и сундучки')
+    await page.locator(`${CAL} [data-advent-rules-btn]`).click()
+    await page.waitForTimeout(400)
 
     // Пропущенное без монет (25 < 30) — нельзя.
-    await door(page, 3).click()
-    await page.waitForTimeout(800)
-    let txt = await sheetText(page)
+    await tap(page, 3)
+    let txt = await revealText(page)
     ok(txt.includes('Пропущенное окошко') && txt.includes('Не хватает 5'), '5 дек: пропущенное при 25 монетах — «Не хватает 5»', txt.slice(0, 160))
-    await page.locator('[data-advent-late]').click({ force: true })
+    await page.locator(`${CAL} [data-advent-late]`).click({ force: true })
     await page.waitForTimeout(400)
     ok(!((await store(page))?.advent ?? []).some((k) => k.startsWith('2026-12-03')), '5 дек: без монет окошко не открылось')
-    await closeSheet(page)
 
-    // Окошко дня: серия, монеты, вещь, совет с действием.
-    await door(page, 5).click()
-    await page.waitForTimeout(1600)
+    // Окошко дня: серия, монеты, игрушка, вещь, совет с действием.
+    await tap(page, 5, 1700)
     let st = await store(page)
     ok(st.advent.includes('2026-12-05'), '5 дек: окошко 5 открыто в свой день')
     ok(st.streak.lastClaim === '2026-12-05' && st.streak.count === 4, '5 дек: окошко засчитало день серии', st.streak)
     ok(st.coins === 25 + 10 + 5, '5 дек: монеты = окошко 10 + серия 5', st.coins)
     ok(st.owned.includes('accent_frost'), '5 дек: «Иней» в купленном')
-    txt = await sheetText(page)
-    ok(txt.includes('5 декабря') && txt.includes('Иней') && txt.includes('Совет дня') && txt.includes('Задать бюджет'), '5 дек: шторка — вещь, совет и «Задать бюджет»', txt.slice(0, 200))
-    await page.locator('[data-advent-wear]').click()
+    ok((await reveal(page).getAttribute('data-advent-reveal')) === 'got', '5 дек: подарок раскрылся под календарём')
+    txt = await revealText(page)
+    ok(txt.includes('5 декабря') && txt.includes('Варежка') && txt.includes('Иней') && txt.includes('Совет дня') && txt.includes('Задать бюджет'), '5 дек: игрушка «Варежка», вещь, совет и «Задать бюджет»', txt.slice(0, 260))
+    ok(txt.includes('Серия 4 дня'), '5 дек: «Серия 4 дня»')
+    await page.locator(`${CAL} [data-advent-wear]`).click()
     await page.waitForTimeout(300)
     ok((await store(page)).equipped.accent === 'accent_frost', '5 дек: «Надеть» надело «Иней»')
-    await page.screenshot({ path: path.join(OUT, 'advent-door.png') })
-    await page.locator('[data-advent-action]').click()
+    await page.locator(CAL).screenshot({ path: path.join(OUT, 'advent-door.png') })
+    await page.locator(`${CAL} [data-advent-action]`).click()
     await page.waitForTimeout(1200)
     ok((await page.locator('[aria-modal=true]').last().innerText()).includes('Бюджет'), '5 дек: «Задать бюджет» открыло планирование')
-    await closeSheet(page)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(700)
     ok((await door(page, 5).getAttribute('data-state')) === 'open', '5 дек: окошко 5 теперь открыто')
+    ok((await door(page, 5).locator('svg').count()) > 0, '5 дек: в окошке висит игрушка')
 
-    // Повторный тап — только посмотреть, без награды.
-    await door(page, 5).click()
-    await page.waitForTimeout(800)
+    // Повторный тап — свернуть; ещё раз — посмотреть, без награды.
+    await tap(page, 5, 600)
+    ok((await reveal(page).getAttribute('data-advent-reveal')) === null, '5 дек: повторный тап свернул подарок')
+    await tap(page, 5, 700)
+    ok((await reveal(page).getAttribute('data-advent-reveal')) === 'view' && (await revealText(page)).includes('Варежка'), '5 дек: открытое — посмотреть игрушку')
     ok((await store(page)).coins === 40, '5 дек: повторный тап не начисляет', (await store(page)).coins)
-    await closeSheet(page)
 
     // Пропущенное за монеты: 40 → 40 − 30 + 20.
-    await door(page, 3).click()
-    await page.waitForTimeout(700)
-    await page.locator('[data-advent-late]').click()
-    await page.waitForTimeout(900)
+    await tap(page, 3, 700)
+    await page.locator(`${CAL} [data-advent-late]`).click()
+    await page.waitForTimeout(1100)
     st = await store(page)
     ok(st.advent.includes('2026-12-03:late'), '5 дек: пропущенное открыто за монеты (:late)')
     ok(st.coins === 40 - 30 + 20, '5 дек: монеты за пропущенное', st.coins)
     ok(st.streak.count === 4, '5 дек: пропущенное серию не трогает', st.streak)
-    await closeSheet(page)
+    ok((await revealText(page)).includes('Снегирь'), '5 дек: игрушка пропущенного — «Снегирь»')
 
-    // Точка и карточка Главной уходят.
+    // Точка и карточка Главной уходят, плитка показывает серию.
     ok(await page.locator('[data-advent-dot]').count() === 0, '5 дек: точка на вкладке погасла')
+    const tile = await page.locator('[data-advent-tile]').innerText().catch(() => '')
+    ok(tile.includes('Серия дня') && tile.includes('4 дня подряд'), '5 дек: плитка — «4 дня подряд»', tile)
     await page.locator('[data-tour="tab-home"]').click()
     await page.waitForTimeout(900)
     ok(await page.locator('[data-advent-nudge]').count() === 0, '5 дек: карточки на Главной больше нет')
-    await page.locator('[data-tour="tab-rewards"]').click()
-    await page.waitForTimeout(1200)
-    // Повторный тап по вкладке — на хаб: там плитка адвента вместо серии.
-    await page.locator('[data-tour="tab-rewards"]').click()
-    await page.waitForTimeout(900)
-    const tile = await page.locator('[data-advent-tile]').innerText().catch(() => '')
-    ok(tile.includes('Открыто 5 из 31'), '5 дек: плитка — «Открыто 5 из 31»', tile)
     ok(page.errs.length === 0, '5 дек: ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 3. 31 декабря: «Новый год этой ночью», окошко 31 с «Дедом Морозом». */
+  /* 3. 7 декабря, пропущено 6-е: заморозка из окошка 7 спасает серию. */
+  {
+    const state = { advent: days(5), streak: { count: 5, best: 5, lastClaim: '2026-12-05' } }
+    const { ctx, page } = await newApp(browser, { date: '2026-12-07T10:00:00', state })
+    await progress(page)
+    await tap(page, 7, 1700)
+    const st = await store(page)
+    ok(st.streak.count === 6 && st.streak.lastClaim === '2026-12-07', '7 дек: серия не сгорела — 6 дней', st.streak)
+    ok(st.advent.includes('2026-frz-2026-12-06'), '7 дек: заморозка потрачена на 6-е')
+    const txt = await revealText(page)
+    ok(txt.includes('Заморозка серии') && txt.includes('спасла серию'), '7 дек: «Заморозка серии» и «спасла серию»', txt.slice(0, 300))
+    ok(txt.includes('Копилка'), '7 дек: игрушка «Копилка»')
+    ok(page.errs.length === 0, '7 дек: ошибок нет', page.errs)
+    await ctx.close()
+  }
+
+  /* 4. 13 декабря: сундучок — вещь из магазина. */
+  {
+    const { ctx, page } = await newApp(browser, { date: '2026-12-13T10:00:00', state: { advent: days(12) } })
+    await progress(page)
+    await tap(page, 13, 1700)
+    const st = await store(page)
+    const chest = st.advent.find((k) => k.startsWith('2026-chest-13:'))
+    ok(!!chest && st.owned.includes(chest.split(':')[1]), '13 дек: сундучок дал вещь из магазина', chest)
+    ok((await revealText(page)).includes('Из сундучка'), '13 дек: «Из сундучка» в подарке')
+    await tap(page, 13, 500)
+    await tap(page, 13, 700)
+    ok((await revealText(page)).includes('Из сундучка'), '13 дек: и при повторном просмотре видно, что было в сундучке')
+    await ctx.close()
+  }
+
+  /* 5. 31 декабря: «Новый год этой ночью», окошко 31, итоги года. */
   {
     const { ctx, page } = await newApp(browser, { date: '2026-12-31T21:00:00', state: { advent: days(20) } })
     await progress(page)
     ok((await page.locator('[data-ny-chip]').innerText().catch(() => '')).includes('этой ночью'), '31 дек: «Новый год этой ночью»')
-    await page.locator('[data-advent-tile]').click()
-    await page.waitForTimeout(1400)
     ok((await door(page, 31).getAttribute('data-state')) === 'today', '31 дек: окошко 31 — сегодняшнее')
-    await door(page, 31).click()
-    await page.waitForTimeout(1500)
+    await tap(page, 31, 1700)
     ok((await store(page)).owned.includes('title_santa'), '31 дек: «Дед Мороз» получен')
+    const recap = await page.locator(`${CAL} [data-advent-recap]`).innerText().catch(() => '')
+    ok(recap.includes('Твой 2026') && recap.includes('записей за год') && recap.includes('чаще всего'), '31 дек: итоги года', recap)
+    ok(!/[€$₽]/.test(recap), '31 дек: в итогах — без сумм', recap)
     ok(page.errs.length === 0, '31 дек: ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 4. 2 января, 24 окошка: серия на месте, главный подарок. */
+  /* 6. 2 января, 24 окошка: серия на месте, главный подарок. */
   {
     const { ctx, page } = await newApp(browser, { date: '2027-01-02T12:00:00', state: { advent: days(24, [9, 17]), streak: { count: 0, best: 24, lastClaim: '2026-12-26' } } })
     await progress(page)
-    ok(await page.locator('[data-advent-tile]').count() === 0, '2 янв: плитка адвента ушла — «Серия дня» вернулась')
+    ok(await page.locator('[data-advent-tile]').count() === 0, '2 янв: «Серия дня» своей плиткой')
     ok((await page.locator('.tab-panel:not([data-off]) .kicker').first().innerText()).includes('С Новым годом'), '2 янв: «С Новым годом!»')
     ok(await page.locator('[data-ny-chip]').count() === 0, '2 янв: отсчёта нет')
-    const card = await page.locator('[data-advent-card]').innerText().catch(() => '')
-    ok(card.includes('Главный подарок ждёт'), '2 янв: карточка «Главный подарок ждёт»', card)
-    await page.locator('[data-advent-card]').click()
-    await page.waitForTimeout(1400)
-    ok((await page.locator('[data-advent-final]').getAttribute('data-advent-final')) === 'is-ready', '2 янв: главный подарок готов')
+    ok((await status(page)).includes('Главный подарок ждёт'), '2 янв: «Главный подарок ждёт»', await status(page))
     ok((await door(page, 9).getAttribute('data-state')) === 'missed', '2 янв: неоткрытое — пропущенное')
     const before = await store(page)
-    await page.locator('[data-advent-final]').click()
-    await page.waitForTimeout(1500)
+    await page.locator(`${CAL} [data-advent-final="is-ready"]`).click()
+    await page.waitForTimeout(1600)
     const st = await store(page)
     ok(st.advent.includes('2026-final'), '2 янв: главный подарок открыт')
     ok(st.owned.includes('card_newyear') && st.owned.includes('title_newyear'), '2 янв: «Новогодняя ночь» и «Новогодний дух» получены')
     ok(st.bonusXp === before.bonusXp + 100 && st.coins === before.coins + 100, '2 янв: +100 монет и +100 XP', { c: st.coins, x: st.bonusXp })
-    ok((await sheetText(page)).includes('С Новым годом'), '2 янв: шторка «С Новым годом!»')
-    await page.screenshot({ path: path.join(OUT, 'advent-final.png') })
-    await closeSheet(page)
-    ok((await page.locator('[data-advent-final]').getAttribute('data-advent-final')) === 'is-done', '2 янв: главный подарок — «получено»')
+    ok((await revealText(page)).includes('С Новым годом'), '2 янв: подарок «С Новым годом!»')
+    await page.locator(CAL).screenshot({ path: path.join(OUT, 'advent-final.png') })
+    ok((await page.locator(`${CAL} [data-advent-final]`).getAttribute('data-advent-final')) === 'is-done', '2 янв: главный подарок — «получено»')
     ok(page.errs.length === 0, '2 янв: ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 5. 2 января, 20 окошек: подарок закрыт, сколько не хватает. */
+  /* 7. 2 января, 20 окошек: подарок закрыт, сколько не хватает. */
   {
     const { ctx, page } = await newApp(browser, { date: '2027-01-02T12:00:00', state: { advent: days(20) } })
     await progress(page)
-    const card = await page.locator('[data-advent-card]').innerText().catch(() => '')
-    ok(card.includes('открыто 20 из 31') && card.includes('4 окошка'), '2 янв, 20 окошек: «до главного подарка — 4 окошка»', card)
+    ok((await status(page)).includes('4 окошка'), '2 янв, 20 окошек: «до главного подарка — 4 окошка»', await status(page))
+    ok(await page.locator(`${CAL} [data-advent-final="is-locked"]`).count() === 1, '2 янв, 20 окошек: подарок закрыт')
     await ctx.close()
   }
 
-  /* 6. 15 января: сезон закончился. */
+  /* 8. 15 января: сезон закончился; Магазин — коллекция. */
   {
     const { ctx, page } = await newApp(browser, { date: '2027-01-15T12:00:00', state: { advent: days(24), owned: ['accent_mint', 'card_newyear'] } })
     await progress(page)
-    ok(await page.locator('.festive-sky').count() === 0 && (await page.locator('[data-advent-card]').count()) === 0, '15 янв: ни неба, ни карточки')
+    ok(await page.locator('.festive-sky').count() === 0 && (await page.locator(CAL).count()) === 0, '15 янв: ни неба, ни календаря')
+    ok(await page.locator('.tab-panel:not([data-off]) .hub-bullfinch').count() === 0, '15 янв: снегирь улетел')
     ok((await page.locator('.tab-panel:not([data-off]) .kicker').first().innerText()).includes('Уровень'), '15 янв: обычная шапка')
-    // Купленное из коллекции надеть можно и после сезона — в Магазине.
     await page.locator('text=Магазин').first().click()
     await page.waitForTimeout(1200)
-    const shop = await page.locator('body').innerText()
-    ok(shop.includes('Новогодняя коллекция'), '15 янв: в Магазине коллекция (есть её вещь)')
+    ok((await page.locator('body').innerText()).includes('Новогодняя коллекция'), '15 янв: в Магазине коллекция (есть её вещь)')
     await ctx.close()
   }
 
-  /* 7. Магазин в сезон: коллекция не продаётся. */
+  /* 9. Магазин в сезон: коллекция не продаётся. */
   {
     const { ctx, page } = await newApp(browser, { date: '2026-12-05T12:00:00', state: { coins: 5000 } })
     await progress(page)
@@ -284,27 +329,36 @@ const days = (n, skip = []) => {
     ok((await page.locator('body').innerText()).includes('Новогодняя коллекция'), 'Магазин: группа «Новогодняя коллекция»')
     await page.locator('.row', { hasText: 'Гирлянда' }).first().click()
     await page.waitForTimeout(1200)
-    const txt = await sheetText(page)
+    const txt = await page.locator('[aria-modal=true]').evaluateAll((els) => els.map((e) => e.innerText).join('\n')).catch(() => '')
     ok(txt.includes('Только из адвент-календаря') && !txt.includes('Купить'), 'Магазин: «Гирлянду» не купить — только из адвента', txt.slice(0, 160))
     ok(!(await store(page)).owned.includes('frame_garland'), 'Магазин: гирлянды нет в купленном')
     ok(page.errs.length === 0, 'Магазин: ошибок нет', page.errs)
     await ctx.close()
   }
 
-  /* 8. 320 px и светлая тема: без вылезания и обрезанного заголовка. */
-  for (const [width, scheme] of [[320, 'dark'], [390, 'light']]) {
-    const { ctx, page } = await newApp(browser, { date: '2026-12-05T12:00:00', width, scheme, state: { advent: ['2026-12-01'] } })
+  /* 10. Три вида: переключатель по ссылке, 320 px и светлая — без вылезания, окошки не мельче пальца. */
+  for (const [variant, width, scheme] of [['tree', 320, 'dark'], ['village', 320, 'dark'], ['box', 320, 'dark'], ['tree', 390, 'light'], ['village', 390, 'light'], ['box', 390, 'light']]) {
+    const { ctx, page } = await newApp(browser, { date: '2026-12-05T12:00:00', width, scheme, state: { advent: ['2026-12-01', '2026-12-02'] }, query: `?advent=${variant}` })
     await progress(page)
+    ok((await page.locator(CAL).getAttribute('data-variant')) === variant, `${variant} ${width}/${scheme}: вид из ссылки`)
     const kickerH = await page.locator('.tab-panel:not([data-off]) .kicker').first().evaluate((e) => e.getBoundingClientRect().height)
-    ok(kickerH < 24, `${width}/${scheme}: «С наступающим!» в одну строку`, kickerH)
-    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}/${scheme}: хаб не шире экрана`)
-    await page.locator('[data-advent-tile]').click()
-    await page.waitForTimeout(1400)
-    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}/${scheme}: адвент не шире экрана`)
-    const cut = await page.locator('.text-2xl.truncate').first().evaluate((e) => e.scrollWidth > e.clientWidth)
-    ok(!cut, `${width}/${scheme}: заголовок «Адвент-календарь» целиком`)
-    await page.screenshot({ path: path.join(OUT, `advent-${width}-${scheme}.png`) })
-    ok(page.errs.length === 0, `${width}/${scheme}: ошибок нет`, page.errs)
+    ok(kickerH < 24, `${variant} ${width}/${scheme}: «С наступающим!» в одну строку`, kickerH)
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${variant} ${width}/${scheme}: не шире экрана`)
+    const sizes = await page.locator(`${CAL} .adv-door`).evaluateAll((els) => els.map((e) => Math.min(e.getBoundingClientRect().width, e.getBoundingClientRect().height)))
+    const min = Math.min(...sizes)
+    ok(min >= 30, `${variant} ${width}/${scheme}: окошко не мельче 30 px`, min)
+    await tap(page, 5, 1600)
+    ok(((await store(page)).advent ?? []).includes('2026-12-05'), `${variant} ${width}/${scheme}: окошко дня открылось`)
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${variant} ${width}/${scheme}: с подарком не шире экрана`)
+    if (variant === 'tree' && width === 320) {
+      ok(await page.locator(`${CAL} [data-advent-variants]`).count() === 1, 'по ссылке ?advent= — переключатель видов')
+      await page.locator(`${CAL} .adv-variant`, { hasText: 'Шкатулка' }).click()
+      await page.waitForTimeout(700)
+      ok((await page.locator(CAL).getAttribute('data-variant')) === 'box', 'переключатель: «Шкатулка»')
+      ok((await page.evaluate(() => localStorage.getItem('koshel:adventStyle'))) === 'box', 'переключатель: выбор запомнен')
+    }
+    await page.locator(CAL).screenshot({ path: path.join(OUT, `advent-${variant}-${width}-${scheme}.png`) })
+    ok(page.errs.length === 0, `${variant} ${width}/${scheme}: ошибок нет`, page.errs)
     await ctx.close()
   }
 

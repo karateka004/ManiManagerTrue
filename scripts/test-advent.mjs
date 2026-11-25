@@ -166,6 +166,59 @@ check('ключ → награда: окошко', A.adventKeyGift('2026-12-05')
 check('ключ → награда: главный', A.adventKeyGift('2026-final')?.xp === A.ADVENT_FINAL.xp)
 check('ключ → награда: мусор', A.adventKeyGift('2026-11-05') === undefined && A.adventKeyGift('x') === undefined)
 
+/* ---------- 6б. Заморозки серии, сундучки ---------- */
+const dayjs = (await import('dayjs')).default
+const { nextStreak, effectiveStreak, missedDays } = await import('../src/lib/streak.ts')
+check('заморозки: окошки в таблице = FREEZE_DAYS', JSON.stringify(A.FREEZE_DOORS) === JSON.stringify(S.FREEZE_DAYS), A.FREEZE_DOORS)
+check('заморозок нет без окошек', S.freezesLeft([], at(2026, 12, 9)) === 0)
+check('окошко 7 — одна заморозка', S.freezesLeft(['2026-12-07'], at(2026, 12, 9)) === 1)
+check('пропущенное 7 позже — тоже заморозка', S.freezesLeft(['2026-12-07:late'], at(2027, 1, 3)) === 1)
+check('после 14 января заморозок нет', S.freezesLeft(['2026-12-07', '2026-12-21'], at(2027, 1, 15)) === 0)
+check('потраченная не считается', S.freezesLeft(['2026-12-07', '2026-frz-2026-12-08'], at(2026, 12, 10)) === 0)
+check('день, спасённый на двух телефонах, — одна заморозка', S.freezesLeft(['2026-12-07', '2026-12-21', '2026-frz-2026-12-08', '2026-frz-2026-12-08'], at(2026, 12, 22)) === 1)
+// Пропустил 8-е, заморозка из 7-го спасает серию 9-го.
+r = A.openDoor(fresh({ advent: ['2026-12-07'], streak: { count: 6, best: 6, lastClaim: '2026-12-07' } }), 9, at(2026, 12, 9), () => 0)
+check('заморозка спасает серию', r.ok && r.streak?.count === 7 && r.streak.frozen === 1, r.streak)
+check('…и тратится ключом спасённого дня', r.ok && r.patch.advent.includes('2026-frz-2026-12-08'), r.patch?.advent)
+check('…больше её нет', r.ok && S.freezesLeft(r.patch.advent, at(2026, 12, 10)) === 0)
+// Пропустил 6-е, а заморозка — в самом окошке 7: спасает сразу.
+r = A.openDoor(fresh({ streak: { count: 3, best: 3, lastClaim: '2026-12-05' } }), 7, at(2026, 12, 7))
+check('заморозка из окошка дня спасает сразу', r.ok && r.streak?.count === 4 && r.streak.frozen === 1 && r.gift.freeze === 1, r.streak)
+// Два пропуска, заморозка одна — серия заново.
+r = A.openDoor(fresh({ advent: ['2026-12-07'], streak: { count: 6, best: 6, lastClaim: '2026-12-07' } }), 10, at(2026, 12, 10))
+check('два пропуска, заморозка одна — серия заново', r.ok && r.streak?.count === 1 && r.streak.frozen === 0 && !r.patch.advent.some((k) => k.includes('frz')), r.streak)
+// Две заморозки — два пропуска.
+r = A.openDoor(fresh({ advent: ['2026-12-07', '2026-12-21'], streak: { count: 9, best: 9, lastClaim: '2026-12-21' } }), 24, at(2026, 12, 24))
+check('две заморозки — два пропуска', r.ok && r.streak?.count === 10 && r.streak.frozen === 2, r.streak)
+// Пропущенное окошко серию не трогает и заморозку не тратит.
+r = A.openDoor(fresh({ coins: 100, advent: ['2026-12-07'], streak: { count: 6, best: 6, lastClaim: '2026-12-07' } }), 8, at(2026, 12, 9))
+check('пропущенное заморозку не тратит', r.ok && r.late && !r.patch.advent.some((k) => k.includes('frz')))
+// Плитка серии в январе (nextStreak с заморозками).
+const nx = nextStreak({ count: 10, best: 12, lastClaim: '2027-01-02' }, dayjs('2027-01-04T10:00:00'), 1)
+check('январь: заморозка закрывает пропуск', nx?.state.count === 11 && nx.frozen.length === 1 && nx.frozen[0] === '2027-01-03', nx)
+check('без заморозки — заново', nextStreak({ count: 10, best: 12, lastClaim: '2027-01-02' }, dayjs('2027-01-04T10:00:00'), 0)?.state.count === 1)
+check('пропусков: вчера — 0, позавчера — 1', missedDays({ count: 2, best: 2, lastClaim: '2026-12-08' }, dayjs('2026-12-09T09:00:00')) === 0 && missedDays({ count: 2, best: 2, lastClaim: '2026-12-07' }, dayjs('2026-12-09T09:00:00')) === 1)
+check('серия под заморозкой видна', effectiveStreak({ count: 5, best: 5, lastClaim: '2026-12-07' }, dayjs('2026-12-09T09:00:00'), 1) === 5)
+check('без заморозки — погасла', effectiveStreak({ count: 5, best: 5, lastClaim: '2026-12-07' }, dayjs('2026-12-09T09:00:00'), 0) === 0)
+check('переход на зимнее время — один пропуск', missedDays({ count: 2, best: 2, lastClaim: '2026-10-24' }, dayjs('2026-10-26T09:00:00')) === 1)
+// Сундучок.
+const d13 = at(2026, 12, 13)
+r = A.openDoor(fresh({ streak: { count: 0, best: 0, lastClaim: null } }), 13, d13, () => 0.5)
+const chest = r.ok ? r.gift.chest : null
+check('сундучок: вещь магазина нужной редкости', !!chest && !getReward(chest)?.source && ['rare', 'epic', 'legendary'].includes(getReward(chest)?.rarity), chest)
+check('…в купленном', r.ok && r.patch.owned.includes(chest))
+check('…и в списке адвента', r.ok && A.chestOf(r.patch.advent, 2026, 13) === chest, r.patch?.advent)
+check('…окошко открыто', r.ok && S.isDoorOpen(r.patch.advent, 2026, 13) && S.openedCount(r.patch.advent, 2026) === 1)
+const allShop = REWARDS.filter((x) => !x.source).map((x) => x.id)
+r = A.openDoor(fresh({ owned: allShop, streak: { count: 0, best: 0, lastClaim: null } }), 13, d13)
+check('всё уже есть — сундучок монетами', r.ok && r.gift.chest === null && r.gift.coins === A.ADVENT_DOORS[12].coins + A.ADVENT_DUP_COINS, r.gift)
+check('сундучок 27-го — эпическая и выше', (() => {
+  const g = A.doorGift(27, ['accent_mint'], () => 0)
+  return !!g.chest && ['epic', 'legendary'].includes(getReward(g.chest)?.rarity)
+})())
+check('ключ сундучка — не окошко и не награда', A.adventKeyGift('2026-chest-13:card_titan') === undefined && A.adventKeyGift('2026-frz-2026-12-08') === undefined)
+check('опыт адвента не изменился (435)', A.ADVENT_TOTAL_XP === 435, A.ADVENT_TOTAL_XP)
+
 /* ---------- 7. Облако: два телефона ---------- */
 const rewards = {
   quest: () => undefined,
@@ -199,6 +252,10 @@ check('…окошко открыто', S.isDoorOpen(m.merged.advent, 2026, 5) &
 const fin = { ...base0, advent: ['2026-final'], coins: 100 + A.ADVENT_FINAL.coins, bonusXp: A.ADVENT_FINAL.xp }
 m = mergeStates({ ...fin, coins: fin.coins + 2 }, fin, makeBase(base0, 1), undefined, rewards)
 check('главный подарок на двух телефонах — один', m.merged.coins === 100 + A.ADVENT_FINAL.coins + 2 && m.merged.bonusXp === A.ADVENT_FINAL.xp, m.merged)
+// Заморозка и сундучок на двух телефонах: ключи сливаются, лишних поправок нет.
+const fz = { ...base0, advent: ['2026-12-07', '2026-frz-2026-12-08', '2026-chest-13:card_titan', '2026-12-13'] }
+m = mergeStates({ ...fz, coins: 150 }, { ...fz, coins: 150 }, makeBase(base0, 1), undefined, rewards)
+check('ключи заморозки и сундучка — по одному', m.merged.advent.filter((k) => k.includes('frz')).length === 1 && m.merged.advent.filter((k) => k.includes('chest')).length === 1, m.merged.advent)
 // Без поля в основе (основа от старого приложения) — ничего не вычитаем.
 check('основа без адвента — без поправки', doubledRewards(both, both, { coins: 100 }, rewards).coins === 0)
 

@@ -1,5 +1,6 @@
 /**
  * Где человек был внутри вкладки «Прогресс»: хаб, Магазин или Титулы.
+ * Адвент-календарь (2.12.1) — часть хаба, не под-экран: к нему ведёт `requestAdventFocus`.
  *
  * Вкладка размонтируется, когда уходишь от неё дальше соседней (App держит
  * отрисованными только открытую и её соседей по свайпу), поэтому открытый
@@ -12,9 +13,13 @@
  * вкладке), а импорт из страницы втащил бы её ленивый чанк в стартовый.
  */
 
-export type RewardsScreen = 'hub' | 'shop' | 'titles' | 'advent'
+export type RewardsScreen = 'hub' | 'shop' | 'titles'
 
-export const rewardsNav: { screen: RewardsScreen; hubScroll: number } = { screen: 'hub', hubScroll: 0 }
+export const rewardsNav: { screen: RewardsScreen; hubScroll: number; focusAdvent: boolean } = {
+  screen: 'hub',
+  hubScroll: 0,
+  focusAdvent: false,
+}
 
 const listeners = new Set<(screen: RewardsScreen) => void>()
 
@@ -29,13 +34,24 @@ export function resetRewardsNav(top: boolean) {
   for (const l of listeners) l('hub')
 }
 
+const focusListeners = new Set<() => void>()
+
 /**
- * Открыть под-экран «Прогресса» извне (Главная: «окошко адвента ждёт»). Если
- * вкладка отрисована, она перейдёт сама; если нет — откроется сразу на нём.
+ * Показать адвент-календарь на хабе «Прогресса» (Главная: «окошко ждёт»,
+ * плитка «Адвент»): календарь сам прокрутится к себе и подсветит окошко дня,
+ * как только будет на экране — флаг живёт до этого момента (вкладка и чанк
+ * календаря могли ещё не загрузиться).
  */
-export function openRewardsScreen(screen: RewardsScreen) {
-  rewardsNav.screen = screen
-  for (const l of listeners) l(screen)
+export function requestAdventFocus() {
+  rewardsNav.focusAdvent = true
+  for (const l of focusListeners) l()
+}
+
+export function onAdventFocus(listener: () => void): () => void {
+  focusListeners.add(listener)
+  return () => {
+    focusListeners.delete(listener)
+  }
 }
 
 /** Открытая вкладка узнаёт о сбросе (повторный тап по вкладке из Магазина) и о переходе извне. */

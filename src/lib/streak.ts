@@ -58,19 +58,39 @@ export function canClaim(s: StreakState, now = dayjs()): boolean {
 export function nextStreak(
   s: StreakState,
   now = dayjs(),
-): { state: StreakState; reward: StreakReward } | null {
+  freezes = 0,
+): { state: StreakState; reward: StreakReward; frozen: string[] } | null {
   const today = dayKey(now)
   if (s.lastClaim === today) return null
 
   const yesterday = dayKey(now.subtract(1, 'day'))
-  const continued = s.lastClaim === yesterday
+  let continued = s.lastClaim === yesterday
+  // Заморозки серии (адвент): пропущенные дни, если на каждый есть заморозка,
+  // серию не рвут — их даты возвращаются в frozen, чтобы потратить заморозки.
+  const frozen: string[] = []
+  const gap = missedDays(s, now)
+  if (!continued && gap > 0 && gap <= freezes) {
+    for (let i = gap; i >= 1; i--) frozen.push(dayKey(now.subtract(i, 'day')))
+    continued = true
+  }
   const count = continued ? s.count + 1 : 1
   const reward = streakReward(count)
 
   return {
     state: { count, best: Math.max(s.best, count), lastClaim: today },
     reward,
+    frozen,
   }
+}
+
+/** Сколько дней пропущено с последнего забора (вчера забирали — 0; серии нет — 0). */
+export function missedDays(s: StreakState, now = dayjs()): number {
+  if (!s.lastClaim || s.count <= 0) return 0
+  const last = dayjs(s.lastClaim)
+  if (!last.isValid()) return 0
+  // round: сутки перехода на зимнее время длиннее 24 часов.
+  const diff = Math.round((now.startOf('day').valueOf() - last.startOf('day').valueOf()) / 86_400_000)
+  return Math.max(0, diff - 1)
 }
 
 /**
@@ -78,11 +98,14 @@ export function nextStreak(
  * чем вчера, серия фактически прервана (count визуально = 0 до клейма).
  * Не мутирует стор — только для UI-логики «сгорела/активна».
  */
-export function effectiveStreak(s: StreakState, now = dayjs()): number {
+export function effectiveStreak(s: StreakState, now = dayjs(), freezes = 0): number {
   if (!s.lastClaim) return 0
   const today = dayKey(now)
   const yesterday = dayKey(now.subtract(1, 'day'))
   if (s.lastClaim === today || s.lastClaim === yesterday) return s.count
+  // Пропуск, который закроют заморозки, серию не гасит.
+  const gap = missedDays(s, now)
+  if (gap > 0 && gap <= freezes) return s.count
   return 0
 }
 
@@ -96,8 +119,8 @@ export function nextMilestone(count: number): number | null {
  * серию. Серия — это `count` дней подряд, заканчивая днём `lastClaim`.
  * Используют полоски серии на «Прогрессе» и рамка «Неделя».
  */
-export function streakWeek(s: StreakState, now = dayjs()): boolean[] {
-  const count = effectiveStreak(s, now) > 0 ? s.count : 0
+export function streakWeek(s: StreakState, now = dayjs(), freezes = 0): boolean[] {
+  const count = effectiveStreak(s, now, freezes) > 0 ? s.count : 0
   const out: boolean[] = []
   const last = s.lastClaim ? dayjs(s.lastClaim).startOf('day') : null
   const today = now.startOf('day')

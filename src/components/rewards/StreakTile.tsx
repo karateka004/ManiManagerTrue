@@ -4,6 +4,7 @@ import { useStore } from '../../store/transactions'
 import { daysWord, useT } from '../../lib/i18n'
 import { hapticNotify, hapticTap } from '../../lib/telegram'
 import { canClaim, effectiveStreak, streakReward, streakWeek } from '../../lib/streak'
+import { freezesLeft } from '../../lib/season'
 import { burst, flyCoins, floatText, BRAND_FX } from '../../lib/fx'
 import { showToast } from '../../lib/toast'
 import { getReward, STREAK_GIFTS } from '../../lib/rewards'
@@ -27,11 +28,13 @@ export function StreakTile({ festive }: { festive?: boolean }) {
   const lang = useStore((s) => s.lang)
   const t = useT()
 
-  const active = effectiveStreak(streak)
+  // Заморозки серии из адвента (до 14 января): пропуск, который они закроют, серию не гасит.
+  const freezes = freezesLeft(useStore((s) => s.advent))
+  const active = effectiveStreak(streak, undefined, freezes)
   const claimable = canClaim(streak)
   // Награда за сегодня: продолжение серии, если она жива, иначе первый день.
   const next = streakReward(active > 0 ? streak.count + 1 : 1)
-  const week = useMemo(() => streakWeek(streak), [streak])
+  const week = useMemo(() => streakWeek(streak, undefined, freezes), [streak, freezes])
 
   // Только что забрали — сегодняшняя полоска заполняется с отскоком.
   const [justClaimed, setJustClaimed] = useState(false)

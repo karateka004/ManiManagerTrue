@@ -5,6 +5,7 @@ import type { CategoryKind, Category } from './categories'
 import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
+import { freezeKey, freezesLeft, season } from '../lib/season'
 import {
   DEFAULT_EQUIPPED,
   DEFAULT_OWNED,
@@ -308,7 +309,7 @@ interface Actions {
    * Забрать ежедневную награду серии (идемпотентно за день).
    * Возвращает начисленную награду или null, если сегодня уже забирали.
    */
-  claimDailyStreak: () => { coins: number; xp: number; milestone: number; gift: string | null } | null
+  claimDailyStreak: () => { coins: number; xp: number; milestone: number; gift: string | null; frozen: number } | null
   /**
    * Задать валюту быстрого выбора в слот 0..2. Первый вызов фиксирует текущий
    * автоподбор, дальше правится только выбранный слот.
@@ -1115,18 +1116,21 @@ export const useStore = create<State & Actions>()(
 
       claimDailyStreak: () => {
         const s = get()
-        const result = nextStreak(s.streak)
+        // Заморозки серии из адвента (до 14 января) закрывают пропущенные дни.
+        const result = nextStreak(s.streak, undefined, freezesLeft(s.advent))
         if (!result) return null // сегодня уже забирали
         // Рубеж серии (7/14/30 дней) — ещё и вещь из магазина в подарок.
         const giftRarity = STREAK_GIFTS[result.reward.milestone]
         const gift = giftRarity ? pickGift(s.owned, giftRarity) : null
+        const year = season().year
         set({
           streak: result.state,
           coins: Math.max(0, s.coins + result.reward.coins),
           bonusXp: Math.max(0, s.bonusXp + result.reward.xp),
           ...(gift ? { owned: [...s.owned, gift] } : {}),
+          ...(result.frozen.length ? { advent: [...s.advent, ...result.frozen.map((d) => freezeKey(year, d))] } : {}),
         })
-        return { ...result.reward, gift }
+        return { ...result.reward, gift, frozen: result.frozen.length }
       },
 
       equipReward: (kind, id) =>

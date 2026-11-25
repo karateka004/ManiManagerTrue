@@ -66,3 +66,28 @@ export function FestiveSky() {
 export function CardSnow() {
   return <i className="festive-snow" aria-hidden />
 }
+
+/**
+ * Снегирь на краю карты уровня — сидит у крючка гирлянды и раз в ~11 с
+ * подпрыгивает и вертит головой (одна анимация transform, styles/advent.css).
+ */
+export function Bullfinch({ className }: { className?: string }) {
+  return (
+    <span className={`bullfinch ${className ?? ''}`} aria-hidden>
+      <svg viewBox="0 0 32 26" width="100%" height="100%">
+        <path d="M21 13.6 L 31.4 10.4 L 31 16.2 Z" fill="#23262d" />
+        <ellipse cx="15.4" cy="14.6" rx="10.2" ry="7.8" fill="#7d8798" />
+        <ellipse cx="12.6" cy="17" rx="8.4" ry="5.8" fill="#e8573c" />
+        <ellipse cx="20.4" cy="19" rx="3.4" ry="2" fill="#eef1f5" />
+        <path d="M14 10.6 C 20 8.4, 25.6 11, 24.6 15.6 C 20.4 16.6, 16.4 14.6, 14 10.6 Z" fill="#23262d" />
+        <path d="M16.2 12.6 C 19.2 12, 22 13, 23.2 14.6" stroke="#f3f5f8" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        <circle cx="8" cy="9.6" r="5.8" fill="#e8573c" />
+        <path d="M2.3 9.4 C 2.4 3.8, 12.4 2.6, 13.8 8.2 C 10.6 6.8, 6 7.2, 2.3 9.4 Z" fill="#1c1e23" />
+        <circle cx="6.6" cy="9.4" r="1" fill="#101114" />
+        <circle cx="6.3" cy="9.1" r=".34" fill="#fff" />
+        <path d="M2.9 10 L 0.5 11.2 L 3.1 12.2 Z" fill="#2b2e35" />
+        <path d="M12.8 21.6 L 12 24.6 M16.4 21.8 L 16.4 24.6" stroke="#4a4d55" strokeWidth="1.1" strokeLinecap="round" />
+      </svg>
+    </span>
+  )
+}

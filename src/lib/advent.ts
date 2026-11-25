@@ -27,6 +27,8 @@ import {
   LATE,
   doorKey,
   finalKey,
+  freezeKey,
+  freezesLeft,
   isDoorOpen,
   openedCount,
   season,
@@ -42,14 +44,19 @@ export interface AdventDoor {
   xp: number
   /** Вещь новогодней коллекции (lib/rewards, source 'advent'). */
   item?: string
+  /** Заморозка серии: пропущенный день не обнулит серию (lib/season FREEZE_DAYS). */
+  freeze?: boolean
+  /** Сундучок: вещь магазина этой редкости, которой ещё нет. */
+  chest?: 'rare' | 'epic'
   /** Кнопка под советом дня (текст — в components/advent/tips.ts). */
   action?: AdventAction
 }
 
 /**
- * 31 окошко. Вещи — по выходным и праздничным вехам (1, 5, 10, 15, 20, 25,
- * 31): ради них стоит не пропускать. В остальные — монеты и опыт, к концу
- * месяца щедрее.
+ * 31 окошко. В каждом — своя ёлочная игрушка (components/advent/keepsakes),
+ * монеты и опыт. Вещи коллекции — по вехам (1, 5, 10, 15, 20, 25, 31), в 7-м и
+ * 21-м — заморозка серии, в 13-м и 27-м — сундучок с вещью из магазина (её
+ * ещё нет), в 31-м — итоги года.
  */
 export const ADVENT_DOORS: AdventDoor[] = [
   { day: 1, coins: 10, xp: 10, item: 'title_snowman', action: 'limits' },
@@ -58,13 +65,13 @@ export const ADVENT_DOORS: AdventDoor[] = [
   { day: 4, coins: 15, xp: 5 },
   { day: 5, coins: 10, xp: 10, item: 'accent_frost', action: 'budget' },
   { day: 6, coins: 25, xp: 10, action: 'goals' },
-  { day: 7, coins: 20, xp: 15 },
+  { day: 7, coins: 20, xp: 15, freeze: true },
   { day: 8, coins: 15, xp: 5 },
   { day: 9, coins: 20, xp: 10 },
   { day: 10, coins: 10, xp: 10, item: 'effect_snow', action: 'add' },
   { day: 11, coins: 25, xp: 10, action: 'ask' },
   { day: 12, coins: 20, xp: 5 },
-  { day: 13, coins: 30, xp: 15 },
+  { day: 13, coins: 15, xp: 15, chest: 'rare' },
   { day: 14, coins: 15, xp: 10, action: 'ask' },
   { day: 15, coins: 10, xp: 10, item: 'frame_tinsel' },
   { day: 16, coins: 20, xp: 5 },
@@ -72,13 +79,13 @@ export const ADVENT_DOORS: AdventDoor[] = [
   { day: 18, coins: 20, xp: 10 },
   { day: 19, coins: 30, xp: 15, action: 'goals' },
   { day: 20, coins: 10, xp: 10, item: 'card_lights', action: 'limits' },
-  { day: 21, coins: 25, xp: 10 },
+  { day: 21, coins: 25, xp: 10, freeze: true },
   { day: 22, coins: 20, xp: 10 },
   { day: 23, coins: 25, xp: 15 },
   { day: 24, coins: 30, xp: 15, action: 'add' },
   { day: 25, coins: 15, xp: 15, item: 'frame_garland' },
   { day: 26, coins: 20, xp: 10, action: 'ask' },
-  { day: 27, coins: 25, xp: 10, action: 'goals' },
+  { day: 27, coins: 15, xp: 10, chest: 'epic', action: 'goals' },
   { day: 28, coins: 20, xp: 10 },
   { day: 29, coins: 25, xp: 15, action: 'budget' },
   { day: 30, coins: 30, xp: 15, action: 'add' },
@@ -103,29 +110,56 @@ export const ADVENT_ITEMS: { id: string; day: number | 'final' }[] = [
 export interface AdventGift {
   coins: number
   xp: number
-  /** Новые вещи (уже имеющиеся заменены монетами). */
+  /** Новые вещи (уже имеющиеся заменены монетами), вместе с вещью из сундучка. */
   items: string[]
   /** Вещь окошка уже была — её монеты сверху. */
   dup: boolean
+  /** Заморозок серии в окошке. */
+  freeze: number
+  /** Вещь из сундучка (она же в items); всё уже есть — null, монеты сверху. */
+  chest: string | null
 }
 
-export function doorGift(day: number, owned: readonly string[]): AdventGift {
+export function doorGift(day: number, owned: readonly string[], rnd: () => number = Math.random): AdventGift {
   const door = ADVENT_DOORS[day - 1]
-  if (!door) return { coins: 0, xp: 0, items: [], dup: false }
+  if (!door) return { coins: 0, xp: 0, items: [], dup: false, freeze: 0, chest: null }
   const dup = !!door.item && owned.includes(door.item)
-  return {
-    coins: door.coins + (dup ? ADVENT_DUP_COINS : 0),
-    xp: door.xp,
-    items: door.item && !dup ? [door.item] : [],
-    dup,
+  const items = door.item && !dup ? [door.item] : []
+  let coins = door.coins + (dup ? ADVENT_DUP_COINS : 0)
+  let chest: string | null = null
+  if (door.chest) {
+    chest = pickGift([...owned, ...items], door.chest, rnd)
+    if (chest) items.push(chest)
+    else coins += ADVENT_DUP_COINS
   }
+  return { coins, xp: door.xp, items, dup, freeze: door.freeze ? 1 : 0, chest }
 }
 
 export function finalGift(owned: readonly string[]): AdventGift {
   const fresh = ADVENT_FINAL.items.filter((id) => !owned.includes(id))
   const dups = ADVENT_FINAL.items.length - fresh.length
-  return { coins: ADVENT_FINAL.coins + dups * ADVENT_DUP_COINS, xp: ADVENT_FINAL.xp, items: fresh, dup: dups > 0 }
+  return {
+    coins: ADVENT_FINAL.coins + dups * ADVENT_DUP_COINS,
+    xp: ADVENT_FINAL.xp,
+    items: fresh,
+    dup: dups > 0,
+    freeze: 0,
+    chest: null,
+  }
 }
+
+/** Что выпало из сундучка: '2026-chest-13:card_titan' в списке `advent`. */
+export const chestKey = (year: number, day: number, id: string): string =>
+  `${year}-chest-${String(day).padStart(2, '0')}:${id}`
+
+export function chestOf(advent: readonly string[], year: number, day: number): string | null {
+  const head = `${year}-chest-${String(day).padStart(2, '0')}:`
+  const k = advent.find((x) => x.startsWith(head))
+  return k ? k.slice(head.length) : null
+}
+
+/** Окошки с заморозкой в таблице совпадают с FREEZE_DAYS (сверяет test-advent). */
+export const FREEZE_DOORS = ADVENT_DOORS.filter((d) => d.freeze).map((d) => d.day)
 
 /** Состояние окошка на экране. */
 export type DoorState = 'open' | 'today' | 'missed' | 'locked'
@@ -147,7 +181,12 @@ export interface AdventSlice {
   streak: StreakState
 }
 
-export type StreakPart = StreakReward & { count: number; gift: string | null }
+export type StreakPart = StreakReward & {
+  count: number
+  gift: string | null
+  /** Сколько пропущенных дней закрыли заморозки. */
+  frozen: number
+}
 
 export type OpenResult =
   | {
@@ -178,16 +217,19 @@ export function openDoor(s: AdventSlice, day: number, now: Date = new Date(), rn
   const price = late ? ADVENT_LATE_PRICE : 0
   if (s.coins < price) return { ok: false, reason: 'coins' }
 
-  const gift = doorGift(day, s.owned)
+  const gift = doorGift(day, s.owned, rnd)
   let owned = gift.items.length ? [...s.owned, ...gift.items] : s.owned
   let coins = s.coins - price + gift.coins
   let bonusXp = s.bonusXp + gift.xp
   let streakPart: StreakPart | null = null
   let streak: StreakState | undefined
+  let advent = [...s.advent, doorKey(sea.year, day) + (late ? LATE : '')]
+  if (gift.chest) advent.push(chestKey(sea.year, day, gift.chest))
 
   // Окошко дня = день серии (с подарком за 7/14/30 дней, как у плитки серии).
+  // Заморозки — в том числе только что выпавшая — закрывают пропущенные дни.
   if (!late) {
-    const next = nextStreak(s.streak, dayjs(now))
+    const next = nextStreak(s.streak, dayjs(now), freezesLeft(advent, now))
     if (next) {
       const rarity = STREAK_GIFTS[next.reward.milestone]
       const streakGift = rarity ? pickGift(owned, rarity, rnd) : null
@@ -195,13 +237,13 @@ export function openDoor(s: AdventSlice, day: number, now: Date = new Date(), rn
       coins += next.reward.coins
       bonusXp += next.reward.xp
       streak = next.state
-      streakPart = { ...next.reward, count: next.state.count, gift: streakGift }
+      if (next.frozen.length) advent = [...advent, ...next.frozen.map((d) => freezeKey(sea.year, d))]
+      streakPart = { ...next.reward, count: next.state.count, gift: streakGift, frozen: next.frozen.length }
     }
   }
 
-  const key = doorKey(sea.year, day) + (late ? LATE : '')
   const patch: Partial<AdventSlice> = {
-    advent: [...s.advent, key],
+    advent,
     coins: Math.max(0, coins),
     bonusXp: Math.max(0, bonusXp),
     ...(owned !== s.owned ? { owned } : {}),
