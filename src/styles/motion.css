@@ -416,6 +416,9 @@ button.row:active,
   50% { transform: scale(0.9); opacity: 0.7; }
 }
 .ts-halo { animation: ts-halo 3.6s ease-in-out 3; }
+/* Сцена после ухода с вкладки — сразу в итоговой позе (TileScene). */
+.ts-still, .ts-still * { animation: none !important; }
+.ts-still .ts-ember { opacity: 0; }
 html.anim-paused .ts-bob, html.anim-paused .ts-twinkle, html.anim-paused .ts-flicker,
 html.anim-paused .ts-ember, html.anim-paused .ts-halo { animation-play-state: paused; }
 html.perf-low .ts-bob, html.perf-low .ts-twinkle, html.perf-low .ts-flicker,

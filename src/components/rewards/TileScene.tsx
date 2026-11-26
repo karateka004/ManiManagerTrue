@@ -1,4 +1,5 @@
-import { useId, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { useTabActive } from '../../lib/tabActive'
 
 export type Scene = 'coins' | 'podium' | 'flame' | 'crown' | 'advent'
 
@@ -17,12 +18,25 @@ export type Scene = 'coins' | 'podium' | 'flame' | 'crown' | 'advent'
  */
 export function TileScene({ scene, festive }: { scene: Scene; festive?: boolean }) {
   const id = useId()
+  // Ушли с вкладки — сцена замирает навсегда (новые элементы без анимаций). Иначе
+  // её конечные SVG-анимации, оставшись в скрытой вкладке (content-visibility:
+  // hidden), держали главный поток в цикле пустых кадров — 120 кадров за 2 с
+  // на чужой вкладке, пока что-то не перерисуется (CLAUDE.md, «Грабли»).
+  // Возврат на вкладку сцену заново не проигрывает: она уже стоит в итоге.
+  const active = useTabActive()
+  const wasActive = useRef(active)
+  const [still, setStill] = useState(false)
+  useEffect(() => {
+    if (wasActive.current && !active) setStill(true)
+    wasActive.current = active
+  }, [active])
   return (
     <svg
+      key={still ? 'still' : 'live'}
       aria-hidden
       viewBox="0 0 120 88"
       fill="none"
-      className="pointer-events-none absolute bottom-0 right-1 h-[85px] w-[116px] overflow-visible"
+      className={`pointer-events-none absolute bottom-0 right-1 h-[85px] w-[116px] overflow-visible ${still ? 'ts-still' : ''}`}
     >
       {scene === 'coins' && <Coins />}
       {scene === 'podium' && <Podium />}
