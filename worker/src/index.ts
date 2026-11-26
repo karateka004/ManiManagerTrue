@@ -855,8 +855,14 @@ async function handleLeaderboard(req: Request, env: Env, origin: string | null):
  */
 
 /* Префикс ключа KV для пользовательских данных — DATA_PREFIX из analytics.ts. */
-/** Потолок размера блоба (символов) — защита от разрастания значения KV. */
-const MAX_BLOB = 2_000_000
+/**
+ * Потолок размера блоба (символов) — защита от мусора. Операция в блобе ~140
+ * символов: прежние 2 млн — это ~14 000 операций, и выписка банка за пару лет
+ * (импорт CSV до 20 000 строк) молча переставала уходить в облако. 12 млн —
+ * ~85 000 операций, раньше упрётся localStorage телефона (~5 МБ); значение KV
+ * держит до 25 МБ. Замеры — docs/storage-design.md.
+ */
+const MAX_BLOB = 12_000_000
 
 /**
  * Сколько операций в persist-блобе приложения. Нужно, чтобы «пустой» снимок не
@@ -924,7 +930,7 @@ async function handleDataPut(req: Request, env: Env, origin: string | null): Pro
   }
   const user = await verifyInitData(body.initData ?? '', env.BOT_TOKEN)
   if (!user) return json({ ok: false, error: 'bad_init_data' }, { status: 401 }, env, origin)
-  // Анти-DDoS/квота: не более 20 записей в минуту на пользователя (блоб до 2 MB).
+  // Анти-DDoS/квота: не более 20 записей в минуту на пользователя (блоб до 12 млн символов).
   if (await isRateLimited(env, 'dput', user.id, 20, 60)) return tooMany(env, origin)
 
   const blob = typeof body.blob === 'string' ? body.blob : ''
@@ -1499,7 +1505,7 @@ async function handleAdminPerson(req: Request, env: Env, origin: string | null):
   const id = String(body.id ?? '')
   if (!/^\d{1,20}$/.test(id)) return json({ ok: false, error: 'bad_id' }, { status: 400 }, env, origin)
 
-  // data:<id> перечисляем, а не читаем: значение — весь блоб человека (до 2 МБ),
+  // data:<id> перечисляем, а не читаем: значение — весь блоб человека (до 12 млн символов),
   // а нужны только метаданные.
   const [dataPage, own, inbox, src, claimed, blocked, remind] = await Promise.all([
     env.REFERRALS.list<DataMeta>({ prefix: `${DATA_PREFIX}${id}`, limit: 20 }),
