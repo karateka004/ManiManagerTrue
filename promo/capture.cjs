@@ -11,6 +11,9 @@
  * Сценарии: add (пост 2.7.1) — Аналитика свайпом туда-обратно и запись траты;
  * analytics (пост 2.11) — новая Аналитика: палец по графику «Потрачено»,
  * подсказки, категории, день календаря, палец по динамике.
+ * advent (пост 2.13) — часы на 8 декабря: карточка Главной → шкатулка на
+ * «Прогрессе», окошко дня (титул «Бюджетный эльф»), «Взять титул», рамка из
+ * открытого раньше окошка.
  */
 const fs = require('node:fs')
 const path = require('node:path')
@@ -28,7 +31,7 @@ const args = process.argv.slice(2)
 const flagAt = args.findIndex((a) => a.startsWith('--scenario'))
 const SCENARIO = flagAt < 0 ? 'add' : args[flagAt].includes('=') ? args[flagAt].split('=')[1] : args[flagAt + 1]
 const URL = args.find((a, i) => !a.startsWith('--') && i !== flagAt + 1) || 'http://localhost:4173/'
-if (!['add', 'analytics'].includes(SCENARIO)) throw new Error('сценарий: add или analytics')
+if (!['add', 'analytics', 'advent'].includes(SCENARIO)) throw new Error('сценарий: add, analytics или advent')
 const OUT = path.join(__dirname, 'out', 'capture')
 const W = 390
 const H = 844
@@ -54,7 +57,7 @@ const TG_STUB = `
  * Данные: обычная жизнь в долларах, без привязки к стране. Для Аналитики —
  * четыре с лишним месяца: подсказкам нужны три прошлых периода к тому же дню.
  */
-function seed({ days, version }) {
+function seed({ days, version, extra }) {
   if (sessionStorage.getItem('seeded')) return
   sessionStorage.setItem('seeded', '1')
   localStorage.clear()
@@ -115,6 +118,7 @@ function seed({ days, version }) {
         monthlyBudget: 2600,
         coins: 340,
         bonusXp: 600,
+        ...(extra || {}),
       },
       version: 17,
     }),
@@ -128,7 +132,33 @@ function seed({ days, version }) {
   const browser = await chromium.launch()
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: DPR, isMobile: true, hasTouch: true, locale: 'ru-RU' })
   await ctx.route('https://telegram.org/**', (r) => r.fulfill({ contentType: 'application/javascript', body: TG_STUB }))
-  await ctx.addInitScript(seed, SCENARIO === 'analytics' ? { days: 130, version: '2.11.0' } : { days: 70, version: '2.7.1' })
+  if (SCENARIO === 'advent') {
+    // Часы страницы — утро 8 декабря: окошки 1–7 открыты, восьмое ждёт.
+    await ctx.addInitScript(() => {
+      const T = new Date('2026-12-08T10:00:00').getTime()
+      const D = Date
+      const off = T - D.now()
+      class FD extends D {
+        constructor(...a) {
+          super(...(a.length ? a : [D.now() + off]))
+        }
+        static now() {
+          return D.now() + off
+        }
+      }
+      globalThis.Date = FD
+    })
+  }
+  const ADVENT = {
+    days: 70,
+    version: '2.13.0',
+    extra: {
+      advent: ['2026-12-01', '2026-12-02', '2026-12-03', '2026-12-04', '2026-12-05', '2026-12-06', '2026-12-07'],
+      owned: ['accent_mint', 'title_newbie', 'title_snowman', 'frame_icerim', 'accent_frost'],
+      streak: { count: 7, best: 12, lastClaim: '2026-12-07' },
+    },
+  }
+  await ctx.addInitScript(seed, SCENARIO === 'analytics' ? { days: 130, version: '2.11.0' } : SCENARIO === 'advent' ? ADVENT : { days: 70, version: '2.7.1' })
   const page = await ctx.newPage()
   page.on('pageerror', (e) => console.error('[страница]', e.message))
   await page.goto(URL, { waitUntil: 'networkidle' })
@@ -224,7 +254,23 @@ function seed({ days, version }) {
     }
   }
 
-  if (SCENARIO === 'analytics') {
+  if (SCENARIO === 'advent') {
+    const CAL = '.tab-panel:not([data-off]) [data-advent-calendar]'
+    await page.waitForTimeout(1100)
+    // Главная: карточка «Окошко адвента ждёт» ведёт прямо к шкатулке.
+    await tapEl(page.locator('[data-advent-nudge]'))
+    await page.waitForTimeout(2300)
+    // Окошко дня: крышка откидывается, внутри титул.
+    await tapEl(page.locator(`${CAL} .adv-door[data-day="8"]`))
+    await page.waitForTimeout(2900)
+    await tapEl(page.locator(`${CAL} [data-advent-wear]`))
+    await page.waitForTimeout(1300)
+    // Открытое раньше окошко — рамка для аватара.
+    await vdrag(-260)
+    await page.waitForTimeout(500)
+    await tapEl(page.locator(`${CAL} .adv-door[data-day="3"]`))
+    await page.waitForTimeout(2600)
+  } else if (SCENARIO === 'analytics') {
     const P = '.tab-panel:not([data-off])'
     await page.waitForTimeout(900)
     await tapEl(page.locator('[data-tour="tab-analytics"]'))
