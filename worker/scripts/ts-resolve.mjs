@@ -6,9 +6,13 @@
  * ESM так не умеет и требует «./entry.ts». Переписывать ради тестов все импорты
  * в рабочем коде — хвост, виляющий собакой; проще научить Node одному правилу.
  *
+ * Второе правило — как у wrangler: `import html from './admin.html'` отдаёт текст файла.
+ *
  * Подключается флагом: `node --import ./scripts/ts-resolve.mjs scripts/test-reply.mjs`
  */
+import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -22,5 +26,12 @@ registerHooks({
       }
       throw err
     }
+  },
+  load(url, context, nextLoad) {
+    if (url.startsWith('file:') && url.endsWith('.html')) {
+      const text = readFileSync(fileURLToPath(url), 'utf8')
+      return { format: 'module', source: 'export default ' + JSON.stringify(text), shortCircuit: true }
+    }
+    return nextLoad(url, context)
   },
 })
