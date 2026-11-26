@@ -6,6 +6,7 @@ import { DEFAULT_CATEGORIES, getCategory } from './categories'
 import type { Currency } from '../lib/currencies'
 import { type StreakState, nextStreak } from '../lib/streak'
 import { freezeKey, freezesLeft, season } from '../lib/season'
+import { XP_PER_REFERRAL } from '../../shared/xp'
 import {
   DEFAULT_EQUIPPED,
   DEFAULT_OWNED,
@@ -372,7 +373,7 @@ function quickCurrenciesOf(s: State): Currency[] {
 }
 
 /** Фикс-награда за каждого присоединившегося реферала. */
-export const REF_REWARD = { xp: 25, coins: 10 } as const
+export const REF_REWARD = { xp: XP_PER_REFERRAL, coins: 10 } as const
 
 /**
  * Монеты за день с записью (2.1). Раньше монеты шли только за серию и за

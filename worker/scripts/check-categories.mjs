@@ -1,55 +1,27 @@
 /**
- * Сверка категорий бота с категориями приложения.
+ * Категории бота. Список (id, вид, название) один на приложение и бота —
+ * shared/categories.ts, разойтись он уже не может. Остаётся проверить, что у
+ * каждой встроенной категории есть слова: без них в неё нельзя записать
+ * сообщением, и что слов не осталось у категории, которой больше нет.
  *
- * Бот разбирает «кофе 300» и должен положить операцию в ту же категорию, что
- * есть в приложении. Если id разойдутся (переименовали, удалили, добавили),
- * операция попадёт в несуществующую категорию и покажется «без категории» —
- * причём молча. Названия сверяем тоже: бот пишет их человеку в ответ
- * («Записал: Кафе 300 ₴»), и «Жилье» в чате против «Жильё» в приложении
- * читается как два разных места.
- *
- * Дублирование здесь сознательное: воркер собирается отдельно от приложения и
- * не может импортировать его модули. Лучше дубль под присмотром, чем импорт
- * через границу двух сборок.
+ * Запуск: `node --import ./scripts/ts-resolve.mjs scripts/check-categories.mjs`
  */
 import { readFileSync } from 'node:fs'
+import { DEFAULT_CATEGORIES } from '../../shared/categories.ts'
+import { CATEGORY_RULES } from '../src/entry.ts'
 
-const app = readFileSync(new URL('../../src/store/categories.ts', import.meta.url), 'utf8')
-const bot = readFileSync(new URL('../src/entry.ts', import.meta.url), 'utf8')
-
-// Приложение: `{ id: 'food', name: 'Еда', kind: 'expense', color: …`
-const appCats = new Map()
-for (const m of app.matchAll(/\{\s*id:\s*'([a-z_]+)',\s*name:\s*'([^']+)',\s*kind:\s*'(income|expense)'/g)) {
-  appCats.set(m[1], { name: m[2].trim(), kind: m[3] })
-}
-// Бот: `{ id: 'food', kind: 'expense', name: 'Еда', words: [...] }`
-const botCats = new Map()
-for (const m of bot.matchAll(/\{\s*id:\s*'([a-z_]+)',\s*kind:\s*'(income|expense)',\s*name:\s*'([^']+)'/g)) {
-  botCats.set(m[1], { name: m[3].trim(), kind: m[2] })
-}
-
-if (appCats.size === 0 || botCats.size === 0) {
-  console.error(
-    'check-categories: не смог разобрать списки (appCats=' + appCats.size + ', botCats=' + botCats.size + ')',
-  )
-  process.exit(1)
-}
+const entry = readFileSync(new URL('../src/entry.ts', import.meta.url), 'utf8')
+const block = entry.slice(entry.indexOf('const WORDS'), entry.indexOf('export const CATEGORY_RULES'))
+const wordIds = [...block.matchAll(/^\s{2}([a-z_]+):\s*\[/gm)].map((m) => m[1])
+const ids = new Set(DEFAULT_CATEGORIES.map((c) => c.id))
 
 const problems = []
-for (const [id, bc] of botCats) {
-  const ac = appCats.get(id)
-  if (!ac) problems.push(`бот знает «${id}», а в приложении такой категории нет`)
-  else if (ac.kind !== bc.kind) problems.push(`«${id}»: в боте ${bc.kind}, в приложении ${ac.kind}`)
-  else if (ac.name !== bc.name) problems.push(`«${id}»: в боте называется «${bc.name}», в приложении «${ac.name}»`)
-}
-for (const id of appCats.keys()) {
-  if (!botCats.has(id)) {
-    problems.push(`в приложении есть «${id}», а бот про неё не знает — в неё нельзя записать сообщением`)
-  }
-}
+for (const r of CATEGORY_RULES) if (r.words.length === 0) problems.push(`у «${r.id}» нет слов — сообщением в неё не записать`)
+for (const id of wordIds) if (!ids.has(id)) problems.push(`слова для «${id}», а такой категории нет`)
+if (wordIds.length === 0) problems.push('не смог прочитать WORDS в entry.ts')
 
 if (problems.length) {
-  console.error('check-categories: списки категорий разошлись\n  - ' + problems.join('\n  - '))
+  console.error('check-categories:\n  - ' + problems.join('\n  - '))
   process.exit(1)
 }
-console.log(`check-categories: ${botCats.size} категорий совпадают с приложением (id, вид, название)`)
+console.log(`check-categories: ${CATEGORY_RULES.length} категорий из общего списка, у всех есть слова`)

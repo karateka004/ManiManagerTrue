@@ -17,9 +17,9 @@
  * охват категорий и т. д. Награда начисляется один раз — см. claimQuest() в сторе.
  * Тексты — из i18n (`quest.<id>.title` / `.desc`).
  *
- * ВАЖНО: суммарный XP всех заданий продублирован в воркере (`XP_ALL_QUESTS` в
- * worker/src/index.ts) — он входит в потолок XP для рейтинга. Меняешь награды или
- * состав пула — поправь и там, иначе честные игроки упрутся в потолок.
+ * ВАЖНО: суммарный XP всех заданий — `XP_ALL_QUESTS` в shared/xp.ts, он входит в
+ * потолок XP рейтинга (воркер). Меняешь награды или состав пула — поправь число
+ * там (test-xp.mjs не даст забыть), иначе честные игроки упрутся в потолок.
  */
 
 export type QuestMetric =
@@ -146,7 +146,7 @@ export const QUESTS: QuestDef[] = [
   },
 ]
 
-/** Суммарный XP пула — держать в синхроне с XP_ALL_QUESTS в воркере. */
+/** Суммарный XP пула — равен XP_ALL_QUESTS в shared/xp.ts (потолок рейтинга; сверяет scripts/test-xp.mjs). */
 export const QUESTS_TOTAL_XP = QUESTS.reduce((sum, q) => sum + q.xp, 0)
 
 export interface QuestProgress {

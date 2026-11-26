@@ -159,9 +159,8 @@ for (const x of advRewards) {
   if (x.kind === 'title') check(`титул ${x.id} не длиннее 14 знаков`, (x.title ?? '').length <= 14, x.title)
 }
 check('словарь берёт названия из каталога', /function rewardText/.test(dict) && /rewardText\(lang, key\) \?\? key/.test(dict))
-const worker = readFileSync(new URL('../worker/src/index.ts', import.meta.url), 'utf8')
-const wxp = Number(/const XP_ADVENT = (\d+)/.exec(worker)?.[1])
-check('опыт адвента = потолок в воркере (XP_ADVENT)', wxp === A.ADVENT_TOTAL_XP, { app: A.ADVENT_TOTAL_XP, worker: wxp })
+const { XP_ADVENT } = await import('../shared/xp.ts')
+check('опыт адвента = потолок в воркере (shared XP_ADVENT)', XP_ADVENT === A.ADVENT_TOTAL_XP, { app: A.ADVENT_TOTAL_XP, shared: XP_ADVENT })
 check('ключ → награда: окошко', A.adventKeyGift('2026-12-05')?.coins === A.ADVENT_DOORS[4].coins)
 check('ключ → награда: главный', A.adventKeyGift('2026-final')?.xp === A.ADVENT_FINAL.xp)
 check('ключ → награда: мусор', A.adventKeyGift('2026-11-05') === undefined && A.adventKeyGift('x') === undefined)

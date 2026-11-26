@@ -66,6 +66,7 @@ import {
 import { MSK_OFFSET_MS, markDay, mskDateStr, mskDay, mskDayStart, startOfTodayMskMs } from './days'
 import { SRC_PREFIX, campaignTag, startParamOf, type SourceMeta } from './sources'
 import type { InboxMeta } from './inbox'
+import { XP_ADVENT, XP_ALL_QUESTS, XP_PER_REFERRAL, XP_PER_TRANSACTION } from '../../shared/xp'
 import {
   escapeHtml,
   getWebhookInfo,
@@ -149,18 +150,11 @@ const LB_MAX = 500
  * место. Теперь значение режется потолком, выведенным из данных, которые сервер
  * знает сам: числа операций в облачном блобе и своего счётчика рефералов.
  *
- * Константы обязаны совпадать с клиентскими — при изменении правил начисления
- * поправить и здесь, иначе честные игроки упрутся в потолок.
+ * Константы начисления — общие с приложением (shared/xp.ts).
  */
-const XP_PER_TRANSACTION = 12 // src/lib/levels.ts
-const XP_PER_REFERRAL = 25 // REF_REWARD.xp в src/store/transactions.ts
-const XP_ALL_QUESTS = 1684 // сумма xp всех заданий в src/lib/quests.ts (QUESTS_TOTAL_XP), с особым fan_channel
-/**
- * Опыт адвент-календаря (2.12): все 31 окошко и главный подарок — ADVENT_TOTAL_XP
- * в src/lib/advent.ts (сверяет scripts/test-advent.mjs). Серия, которую в декабре
- * засчитывают окошки, — в запасе на серию ниже, как и раньше.
- */
-const XP_ADVENT = 435
+// Опыт за операцию, друга, все задания и адвент — общие с приложением числа
+// (shared/xp.ts; с таблицами приложения их сверяет scripts/test-xp.mjs). Серия,
+// которую в декабре засчитывают окошки адвента, — в запасе на серию ниже.
 /**
  * Запас на XP от ежедневной серии (src/lib/streak.ts: 2 XP в день плюс 20/40/100
  * на рубежах 7/14/30). Величина не фиксированная — она копится со временем,

@@ -15,7 +15,7 @@
  * Вещь, которая уже есть, — монетами (ADVENT_DUP_COINS): окошко не бывает пустым.
  *
  * Опыт адвента входит в потолок XP рейтинга: ADVENT_TOTAL_XP повторён в
- * worker/src/index.ts (XP_ADVENT), их сверяет test-advent.mjs.
+ * shared/xp.ts (XP_ADVENT — потолок рейтинга в воркере), их сверяет test-xp.mjs.
  */
 import dayjs from 'dayjs'
 import { nextStreak, type StreakState, type StreakReward } from './streak'
@@ -98,7 +98,7 @@ export const ADVENT_FINAL = { coins: 100, xp: 100, items: ['card_newyear', 'titl
 /** Вещь окошка уже есть (купил раньше, прошлый сезон) — вместо неё монеты. */
 export const ADVENT_DUP_COINS = 50
 
-/** Весь опыт адвента — для потолка рейтинга (worker: XP_ADVENT). */
+/** Весь опыт адвента — равен XP_ADVENT в shared/xp.ts (сверяет scripts/test-xp.mjs). */
 export const ADVENT_TOTAL_XP = ADVENT_DOORS.reduce((a, d) => a + d.xp, 0) + ADVENT_FINAL.xp
 
 /** Вещи новогодней коллекции по порядку окошек (финальные — последними). */

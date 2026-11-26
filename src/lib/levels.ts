@@ -27,7 +27,8 @@ export const LEVELS: LevelDef[] = [
 ]
 
 /** XP за одну операцию. */
-export const XP_PER_TRANSACTION = 12
+export { XP_PER_TRANSACTION } from '../../shared/xp'
+import { XP_PER_TRANSACTION } from '../../shared/xp'
 
 export interface LevelProgress {
   level: number
